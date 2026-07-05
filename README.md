@@ -15,6 +15,7 @@ Nothing here downloads by default except the explicit NZBGet fallback.
 - [The Usenet caveat](#the-usenet-caveat)
 - [Plex library locations to add](#plex-library-locations-to-add)
 - [Zilean hardware tuning](#zilean-hardware-tuning)
+- [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
 - [Security note](#security-note)
 - [Optional extras reference](#optional-extras-reference)
 
@@ -54,6 +55,7 @@ Stack/
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
 ├── config/homepage/{services,bookmarks}.yaml
 ├── config/recyclarr/recyclarr.yml  # TRaSH profiles for Radarr/Sonarr (chmod 600)
+├── scripts/enforce_custom_format_scores.py  # re-asserts CF score Recyclarr resets (cron)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
 └── media/{movies,shows,music,books}  # local root folders for NZBGet-acquired content
 ```
@@ -66,7 +68,8 @@ Stack/
   `chmod 600`.
 - `config/recyclarr/recyclarr.yml` has Radarr + Sonarr API keys and TRaSH template
   references, `chmod 600`.
-- Homepage is configured with grouped service links and a Debrid Media Manager bookmark.
+- Homepage is configured with grouped service links, a Debrid Media Manager bookmark, and
+  links to this README/CHANGELOG (GitHub-hosted, rendered).
 - `docker-compose.yml` validates clean (`docker compose config`), all image references
   verified against live registries rather than assumed.
 - Full stack (core + extras) is live and healthy — see [CHANGELOG.md](CHANGELOG.md) for the
@@ -83,6 +86,12 @@ Stack/
   [Zilean hardware tuning](#zilean-hardware-tuning) below.
 - **Seerr** is initialized, signed in to Plex, and connected to Radarr + Sonarr as default
   servers.
+- **Prowlarr** is connected to all 5 *arr apps under Settings → Apps (`fullSync`), so
+  indexers propagate down automatically instead of needing to be configured per-app.
+- A **custom format** ("Low Quality Sources/Groups") blocks known low-trust
+  aggregator/group releases in every Radarr and Sonarr quality profile — see
+  [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
+  below for an important quirk around Recyclarr.
 
 ## One prerequisite: extend Zurg for new media types (done)
 
@@ -250,6 +259,32 @@ Postgres database were tuned deliberately rather than maxed out:
 Container limits: Zilean 4GB RAM / 12 CPUs (reservation 512MB / 1 CPU), zilean-postgres 2GB
 RAM / 4 CPUs. Both confirmed applied via live `SHOW` queries and container env inspection
 after restart.
+
+## Custom format: blocking low-quality sources
+
+Both Radarr and Sonarr have a custom format, **"Low Quality Sources/Groups"**, matching a
+regex against generic low-tier source tags and known low-trust aggregator/group names (YTS,
+TGX, RARBG, EZTV, FGT, LOL, KILLERS, and similar). It's scored `-10000` in every quality
+profile in both apps — since `minFormatScore` is `0` everywhere, this is a hard reject, not
+just deprioritization.
+
+**This custom format can't be managed by Recyclarr.** Recyclarr's own config schema requires
+a `trash_ids` field for any `custom_formats` entry — there's no way to declare an arbitrary,
+non-TRaSH-Guides regex format inline. Worse, Recyclarr's daily sync actively **resets this
+format's score back to 0**, but only on the one profile it manages in each app (`HD Bluray +
+WEB` in Radarr, `WEB-1080p` in Sonarr) — the other 6 built-in profiles per app are untouched.
+
+The fix: `scripts/enforce_custom_format_scores.py` re-applies the `-10000` score to those two
+profiles, scheduled via host crontab at `00:20` daily — 20 minutes after Recyclarr's own
+`@daily` (midnight) sync, so it always runs after and wins. API keys are read from
+environment variables (not hardcoded), passed inline in the crontab entry:
+
+```
+20 0 * * * RADARR_API_KEY=<radarr key> SONARR_API_KEY=<sonarr key> /usr/bin/python3 /home/bear/Stack/scripts/enforce_custom_format_scores.py >> /home/bear/Stack/scripts/enforce_custom_format_scores.log 2>&1
+```
+
+If you ever add more Recyclarr-managed profiles or more manually-added custom formats, this
+script's `TARGETS` list needs updating to match.
 
 ## Security note
 

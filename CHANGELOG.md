@@ -178,3 +178,53 @@ are from a single build session.
   none of that belongs in git history. Added `.env.example` as a sanitized template.
 - Created a private repo at `github.com/WhispersOfJ/media-stack` and pushed. Local git
   identity set to match the GitHub account (scoped to this repo only, not global config).
+
+### Added: Homepage README/Changelog bookmarks
+
+- Added a "Documentation" bookmark group in `config/homepage/bookmarks.yaml` linking to the
+  GitHub-hosted `README.md` and `CHANGELOG.md` (rendered, not raw — more useful than a local
+  file link). Verified via Homepage's `/api/bookmarks` endpoint.
+
+### Added: Prowlarr connected to all 5 *arr apps (Settings → Apps)
+
+- Added Radarr, Sonarr, Lidarr, Readarr, and Whisparr as Prowlarr "Applications" with
+  `syncLevel: fullSync`, so indexers now sync down automatically instead of needing to be
+  configured per-app.
+- This took about 8 minutes to actually finish — not stuck, just genuinely rate-limited:
+  Prowlarr validates every indexer against every app it's syncing to, and several trackers
+  cap requests at 60/minute. Confirmed complete by polling indexer counts until they held
+  steady across multiple checks with zero further log activity, since the sync command's own
+  status field didn't update promptly.
+- Final synced counts (category-filtered per app type, not all 70 to everyone): Radarr 19,
+  Sonarr 25, Lidarr 17, Readarr 9, Whisparr 19.
+
+### Added: Custom format to block low-quality sources/groups
+
+- Created a `ReleaseTitleSpecification` custom format ("Low Quality Sources/Groups") in both
+  Radarr and Sonarr matching a regex covering generic low-tier source tags plus known
+  low-trust aggregator/group names (YTS, TGX, RARBG, EZTV, FGT, LOL, KILLERS, etc).
+- Applied a score of **-10000** to every quality profile in both apps (`minFormatScore` is
+  `0` everywhere, so this is a hard reject, not just deprioritization, per what was asked).
+- Note along the way: creating a new custom format auto-attaches it to every existing profile
+  at score 0 — the first attempt to *add* a formatItems entry found one already present in
+  all 7 profiles, so the fix was to update the existing entry's score instead of appending.
+
+### Investigated and fixed: custom format score doesn't survive Recyclarr's sync
+
+- Checked whether the new custom format could be defined in `recyclarr.yml` so it'd survive
+  future Recyclarr syncs. Pulled Recyclarr's own JSON config schema directly from its repo:
+  `custom_formats` entries **require** a `trash_ids` field referencing TRaSH-Guides'
+  catalogued formats by hash — there's no way to declare an arbitrary regex-based format
+  inline. This one can't be expressed in Recyclarr's config at all.
+- Checked whether Recyclarr's daily sync would at least delete the format outright —
+  `delete_old_custom_formats` defaults to `false` and isn't set here, so no.
+- Ran a real sync to check empirically rather than trusting docs alone, and found the actual
+  behavior: Recyclarr treats the *specific profile* it manages (`HD Bluray + WEB` in Radarr,
+  `WEB-1080p` in Sonarr — the ones its own templates target) as fully authoritative, and
+  resets any custom format score it doesn't recognize back to **0** on that profile
+  specifically, every sync. The other 6 profiles per app (untouched by Recyclarr) kept the
+  -10000 score fine.
+- Fix: added `scripts/enforce_custom_format_scores.py`, which re-applies the -10000 score to
+  the two Recyclarr-managed profiles. Scheduled via host crontab at `00:20` daily — 20 minutes
+  after Recyclarr's own `@daily` (midnight) sync, so it always runs after and wins. Verified
+  the script correctly detects and fixes the reset score.
