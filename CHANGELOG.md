@@ -243,8 +243,17 @@ are from a single build session.
   `extras` profiles) on every push/PR to `main`. Tested locally in an isolated copy before
   pushing: both profiles pass. Uses `.env.example` to resolve compose's variable references,
   no real secrets involved.
-- `.github/dependabot.yml` — weekly check for newer Docker image versions
-  (`package-ecosystem: docker`, which covers Compose files too), opens a PR when found. Only
-  meaningfully applies to the handful of images pinned to an actual version
+- `.github/dependabot.yml` — weekly check for newer Docker image versions, opens a PR when
+  found. Only meaningfully applies to the handful of images pinned to an actual version
   (`postgres:16-alpine`, `recyclarr:7`, `readarr:0.4.19-nightly`) — everything else here is
   pinned to `:latest`, which has nothing for Dependabot to bump.
+
+### Fixed: wrong Dependabot ecosystem identifier
+
+- First push used `package-ecosystem: "docker"`, based on a GitHub docs table skimmed too
+  quickly — misread it as one ecosystem covering both Dockerfiles and Compose files. It's
+  actually two separate identifiers (`docker` for Dockerfiles, `docker-compose` for Compose
+  files specifically). Confirmed by checking the actual run logs after both auto-triggered
+  Dependabot jobs failed: `Error during file fetching; aborting: No Dockerfiles nor
+  Kubernetes YAML found in /`. Re-checked the docs table properly, corrected to
+  `docker-compose`, verified YAML syntax before pushing the fix.
