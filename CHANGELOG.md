@@ -257,3 +257,49 @@ are from a single build session.
   Dependabot jobs failed: `Error during file fetching; aborting: No Dockerfiles nor
   Kubernetes YAML found in /`. Re-checked the docs table properly, corrected to
   `docker-compose`, verified YAML syntax before pushing the fix.
+
+### Added: Recyclarr upgraded to v8, config migrated (closes Dependabot #1)
+
+- Checked the v8 upgrade guide before merging anything — it explicitly removes the `include:
+  template:` mechanism our config used (`radarr-custom-formats-hd-bluray-web` and similar
+  references stop resolving entirely, not just deprecated). Merging the raw version bump
+  would have broken the nightly sync outright.
+- Found the guide-backed replacement's exact `trash_id` values directly from TRaSH-Guides'
+  own JSON source rather than guessing: `d1d67249d3890e49bc12e275d989a7e9` (Radarr "HD
+  Bluray + WEB") and `72dae194fc92bf828f32cde7744e51a1` (Sonarr "WEB-1080p") — both matched
+  the upgrade guide's own worked example exactly.
+- Rewrote `recyclarr.yml` to the new `quality_profiles: - trash_id:` format (replaces all
+  three old include lines per app with one reference each — profile, custom format scores,
+  and quality definitions all come from the guide automatically now).
+- Followed the documented adoption steps to avoid creating duplicate profiles: profile names
+  already matched the guide's stock names exactly, so adoption was a clean rename-in-place —
+  confirmed via before/after profile ID snapshots (same 7 profiles, same IDs, in both apps).
+- **Found the actual fix for the whole score-reset problem**: v8's `reset_unmatched_scores`
+  is an explicit opt-in (default: do not reset any scores), replacing v7's implicit
+  always-on reset behavior that `scripts/enforce_custom_format_scores.py` existed to work
+  around. Left it unset, ran `recyclarr sync` twice, confirmed the "Low Quality
+  Sources/Groups" custom format score held at -10000 both times with zero intervention.
+  **Removed the cron job and deleted the now-obsolete script** — the root cause is fixed,
+  not just patched around anymore.
+
+### Added: Postgres upgraded to 18 (closes Dependabot #2)
+
+- Zilean's Postgres holds only the DMM hash-list cache (re-scraped hourly), so unlike a
+  normal production database, wipe-and-rebuild was an acceptable path here instead of a real
+  `pg_upgrade` — a straight image swap would have refused to start regardless, since Postgres
+  major versions use incompatible on-disk formats.
+- Stopped both containers, moved (not deleted) the old data directory aside to
+  `config/zilean-postgres.pg16.bak` — reversible if anything went wrong.
+- First attempt failed for an unrelated reason: Postgres 18's official image changed its
+  expected volume layout entirely, even against a genuinely empty directory — confirmed via
+  the actual error message and the upstream Dockerfile (`PGDATA` changed from
+  `/var/lib/postgresql/data` to a version-specific `/var/lib/postgresql/18/docker`, and the
+  `VOLUME` declaration moved up to the parent `/var/lib/postgresql`). Updated the compose
+  mount to match, verified against the real Dockerfile source rather than assuming.
+- Confirmed working end-to-end: Postgres 18.4 started clean, Zilean applied its EF Core
+  migrations against the fresh database, its DMM sync job started rebuilding the hash-list
+  cache automatically, the Torznab endpoint Prowlarr depends on responded correctly, and the
+  earlier hardware-tuning settings (`shared_buffers`, `max_parallel_workers`,
+  `random_page_cost`, container resource limits) all survived untouched.
+- The old `zilean-postgres.pg16.bak` (1.1GB) is left on disk for now rather than deleted
+  outright — safe to remove once you're satisfied the rebuild is complete.

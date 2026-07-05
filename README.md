@@ -56,7 +56,6 @@ Stack/
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
 ├── config/homepage/{services,bookmarks}.yaml
 ├── config/recyclarr/recyclarr.yml  # TRaSH profiles for Radarr/Sonarr (chmod 600)
-├── scripts/enforce_custom_format_scores.py  # re-asserts CF score Recyclarr resets (cron)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
 └── media/{movies,shows,music,books}  # local root folders for NZBGet-acquired content
 ```
@@ -67,8 +66,11 @@ Stack/
   password + API key.
 - `config/decypharr/config.json` has your Real-Debrid and AllDebrid API keys filled in,
   `chmod 600`.
-- `config/recyclarr/recyclarr.yml` has Radarr + Sonarr API keys and TRaSH template
-  references, `chmod 600`.
+- `config/recyclarr/recyclarr.yml` has Radarr + Sonarr API keys and TRaSH guide-backed
+  `quality_profiles` (v8 format — see below), `chmod 600`.
+- **Recyclarr** is on v8, **zilean-postgres** is on Postgres 18 — both migrated from
+  Dependabot's initial version-bump PRs, which needed real accompanying changes beyond the
+  image tag (see [CHANGELOG.md](CHANGELOG.md) for what each required).
 - Homepage is configured with grouped service links, a Debrid Media Manager bookmark, and
   links to this README/CHANGELOG (GitHub-hosted, rendered).
 - `docker-compose.yml` validates clean (`docker compose config`), all image references
@@ -269,23 +271,18 @@ TGX, RARBG, EZTV, FGT, LOL, KILLERS, and similar). It's scored `-10000` in every
 profile in both apps — since `minFormatScore` is `0` everywhere, this is a hard reject, not
 just deprioritization.
 
-**This custom format can't be managed by Recyclarr.** Recyclarr's own config schema requires
-a `trash_ids` field for any `custom_formats` entry — there's no way to declare an arbitrary,
-non-TRaSH-Guides regex format inline. Worse, Recyclarr's daily sync actively **resets this
-format's score back to 0**, but only on the one profile it manages in each app (`HD Bluray +
-WEB` in Radarr, `WEB-1080p` in Sonarr) — the other 6 built-in profiles per app are untouched.
+This custom format isn't managed by Recyclarr (its config schema requires a `trash_ids`
+reference to the TRaSH-Guides catalog — there's no way to declare an arbitrary regex format
+inline), so it was added directly via each app's API instead.
 
-The fix: `scripts/enforce_custom_format_scores.py` re-applies the `-10000` score to those two
-profiles, scheduled via host crontab at `00:20` daily — 20 minutes after Recyclarr's own
-`@daily` (midnight) sync, so it always runs after and wins. API keys are read from
-environment variables (not hardcoded), passed inline in the crontab entry:
-
-```
-20 0 * * * RADARR_API_KEY=<radarr key> SONARR_API_KEY=<sonarr key> /usr/bin/python3 /home/bear/Stack/scripts/enforce_custom_format_scores.py >> /home/bear/Stack/scripts/enforce_custom_format_scores.log 2>&1
-```
-
-If you ever add more Recyclarr-managed profiles or more manually-added custom formats, this
-script's `TARGETS` list needs updating to match.
+On Recyclarr v7, this required a workaround: v7's sync implicitly reset any score it didn't
+recognize back to `0`, but only on the one profile it actively manages per app — meaning this
+custom format kept getting silently zeroed out daily on exactly the profile that matters.
+**As of the v8 migration, this is no longer an issue** — v8's `reset_unmatched_scores` is an
+explicit opt-in (default: leave unrecognized scores alone), and it's left unset here on
+purpose. Verified by running `recyclarr sync` twice in a row and confirming the score held at
+`-10000` both times with no intervention needed. The old enforcement script and its cron job
+have been removed.
 
 ## Security note
 
@@ -304,9 +301,11 @@ Two things run on GitHub, not on this host:
   errors before they'd bite at deploy time.
 - **`.github/dependabot.yml`** — checks weekly for newer Docker image versions and opens a PR
   when it finds one. This only does something useful for images pinned to an actual version —
-  `postgres:16-alpine`, `recyclarr:7`, `readarr:0.4.19-nightly`. Everything else in this stack
+  `postgres:18-alpine`, `recyclarr:8`, `readarr:0.4.19-nightly`. Everything else in this stack
   is pinned to `:latest`, which has no "newer version" for Dependabot to bump to; those get
-  whatever's current on every `docker compose pull` regardless.
+  whatever's current on every `docker compose pull` regardless. Its first two PRs (Recyclarr
+  7→8, Postgres 16→18) both needed real migration work beyond the version bump — see the
+  changelog for what that involved before merging any future major-version PR it opens.
 
 ## Optional extras reference
 
