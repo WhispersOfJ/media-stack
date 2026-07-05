@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.1.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.2.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -40,13 +40,21 @@ Radarr / Sonarr / Lidarr / Readarr / Whisparr ──grab──> Decypharr (qBitt
    │                                                        │
    │                                                        ├─> Real-Debrid API  (add magnet)
    │                                                        └─> AllDebrid API    (add magnet)
+   │                                                        │
+   │                                        symlinked into  ▼
+   │                                        each app's root folder: ./media/<type> → /data/<type>
    │
-   └──(secondary/fallback)──> NZBGet ──real local download──> ./usenet/downloads
+   └──(secondary/fallback)──> NZBGet ──real local download──> ./usenet/downloads ──imported into──> same /data/<type>
 
-Zurg (native, already running)  → /mnt/zurg/{movies,shows,...}  → read by Plex directly
-Decypharr DFS mount (new)       → /mnt/decypharr/{...}          → add as new Plex locations
+Zurg (native, already running)  → /mnt/zurg/{movies,shows,...}  → read by Plex directly (existing content)
+Decypharr DFS mount             → /mnt/decypharr/{...}          → symlink target, add as Plex location
 rclone AllDebrid (native)       → /mnt/all/{magnets,links,...}  → already a Plex location
+./media/{movies,shows,...}      → /data/{movies,shows,...}      → every app's writable root folder (add as Plex location)
 ```
+
+Root folders live on regular host disk (`./media/<type>`), not on Zurg's rclone FUSE mount —
+that mount doesn't support having new files/symlinks written into it. See
+[CHANGELOG.md v2.2.0](CHANGELOG.md) for why this changed.
 
 Seerr (formerly Overseerr/Jellyseerr — the projects merged) is the user-facing request page,
 talking to Plex + Radarr/Sonarr.
@@ -68,7 +76,7 @@ Stack/
 ├── config/recyclarr/recyclarr.yml  # TRaSH profiles for Radarr/Sonarr (chmod 600)
 ├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
-└── media/{movies,shows,music,books}  # local root folders for NZBGet-acquired content
+└── media/{movies,shows,music,books,adult}  # every arr app's writable root folder (mounted at /data/<type>)
 ```
 
 ## What's already done
@@ -97,7 +105,9 @@ verified live against the running stack before being marked done.*
 - **Decypharr** and **NZBGet** are both added as download clients (priority 1 and 2
   respectively) in Radarr, Sonarr, Lidarr, Readarr, and Whisparr — Decypharr auto-detected
   all 5 apps.
-- **Root folders** are set in all 5 arr apps, pointed at their matching Zurg path.
+- **Root folders** are set in all 5 arr apps, pointed at `/data/<type>` (backed by
+  `./media/<type>` on regular host disk) — not `/mnt/zurg/<type>`, since Zurg's rclone FUSE
+  mount can't have new files written into it. See the v2.2.0 fix below.
 - **Zilean** is tuned for this host's actual hardware (16-thread CPU, NVMe) rather than left
   on defaults sized for a machine with a few hundred MB of RAM — see
   [Zilean hardware tuning](#zilean-hardware-tuning) below.
@@ -109,11 +119,15 @@ verified live against the running stack before being marked done.*
   aggregator/group releases in every Radarr and Sonarr quality profile — see
   [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
   below for an important quirk around Recyclarr.
-- **Every arr app can now actually import from Decypharr.** All 5 containers share
-  `config/decypharr/downloads` at the identical path Decypharr uses internally
-  (`/app/downloads`) — until this was fixed, no app could see the files Decypharr symlinked
-  for it, so imports silently failed. Verified with a controlled write/read test across
-  containers, not assumed. See CHANGELOG.md v2.1.0 for the full story.
+- **Every arr app can now actually import from Decypharr, end-to-end.** v2.1.0 fixed path
+  *visibility* (all 5 containers share `config/decypharr/downloads` at the identical path
+  Decypharr uses internally, `/app/downloads`). v2.2.0 fixed the deeper issue underneath it —
+  root folders were still on Zurg's read-only FUSE mount, so the final import write always
+  failed even after visibility was fixed. Root folders now live on regular disk (`/data/<type>`,
+  backed by `./media/<type>`). Verified for real: a live Blue Bloods S01E03 search flowed all
+  the way through Prowlarr → Sonarr → Decypharr → import, confirmed on disk as a working,
+  readable symlink with `hasFile: true`. See [CHANGELOG.md](CHANGELOG.md) v2.1.0 and v2.2.0 for
+  the full story.
 
 ## One prerequisite: extend Zurg for new media types (done)
 
@@ -216,12 +230,13 @@ noted as **done** where complete. What's left is a preference call, not a techni
    credentials per-site if you want to add any — those weren't and can't be automated.
 2. **Each *arr app** (Radarr/Sonarr/Lidarr/Readarr/Whisparr) (done): Decypharr (priority 1)
    and NZBGet (priority 2, fallback) both added as download clients; root folders set to
-   `/mnt/zurg/movies`, `/mnt/zurg/shows`, `/mnt/zurg/music`, `/mnt/zurg/books`,
-   `/mnt/zurg/adult` respectively.
+   `/data/movies`, `/data/shows`, `/data/music`, `/data/books`, `/data/adult` respectively
+   (regular disk, backed by `./media/<type>` — not Zurg's read-only FUSE mount; see
+   [CHANGELOG.md](CHANGELOG.md) v2.2.0).
 3. **Seerr** (done): initialized and signed in to Plex using the existing Plex token already
    on this host (from Zurg's config) rather than the interactive OAuth flow, so it turned out
-   scriptable after all. Connected to Radarr (`HD Bluray + WEB` profile, `/mnt/zurg/movies`)
-   and Sonarr (`WEB-1080p` profile, `/mnt/zurg/shows`) as default servers.
+   scriptable after all. Connected to Radarr (`HD Bluray + WEB` profile, `/data/movies`)
+   and Sonarr (`WEB-1080p` profile, `/data/shows`) as default servers.
 4. **Decypharr** (done): debrid API keys set, all 5 arr apps auto-detected. `download_action`
    defaults to `symlink` for every arr — no change needed.
 5. **Recyclarr** (done): already synced once manually (`HD Bluray + WEB` profile in Radarr,
@@ -241,11 +256,13 @@ NZBGet is a **real, local download** — the one piece of this stack that isn't 
 based, per the explicit ask to include it as a minimum component. Its completed files land
 in `./usenet/downloads` on local disk, not in Real-Debrid/AllDebrid's cloud, so:
 
-- It needs its own local root folders (`./media/movies`, `./media/shows`, etc.) since you
-  can't write local files into the Zurg/Decypharr virtual filesystems.
-- Plex needs additional library **locations** added for these paths if you want NZBGet-
-  acquired content to show up (the same way `/mnt/all/magnets` is already an extra location
-  on the TV Shows library today).
+- It shares the same `./media/<type>` root folders (mounted at `/data/<type>`) that every arr
+  app now uses for all imports, debrid or not — see [CHANGELOG.md](CHANGELOG.md) v2.2.0. You
+  can't write local files into the Zurg/Decypharr virtual filesystems, which is exactly why
+  these root folders exist on regular disk instead.
+- Plex needs additional library **locations** added for these paths — see
+  [Plex library locations to add](#plex-library-locations-to-add) below. This now matters for
+  *all* newly-imported content, not just NZBGet's.
 - It consumes real disk space, unlike everything else in this stack.
 
 Already wired up this way — NZBGet is priority 2 behind Decypharr's priority 1 in all 5 arr
@@ -257,10 +274,16 @@ service has cached.
 Add these as new library locations in Plex (Settings → Libraries → Edit → Add folder),
 matching how `/mnt/all/magnets` is already an extra TV Shows location:
 
-- `/mnt/zurg/music`, `/mnt/zurg/books`, `/mnt/zurg/adult` — new libraries, folders already
-  exist and are live.
-- `/mnt/decypharr/...` — Decypharr's own organized mount, already mounted and populating.
-- `./media/...` — only if you want NZBGet-acquired content visible too.
+- **`/home/bear/Stack/media/{movies,shows,music,books,adult}`** — required, not optional, as
+  of v2.2.0. Every arr app's root folder now lives here (regular disk, not Zurg's FUSE mount),
+  so this is where *all* future imports land — Decypharr-symlinked and NZBGet alike. Without
+  this added as a library location, newly-acquired content won't appear in Plex even though
+  it's successfully imported. Confirmed live and working for Sonarr (Blue Bloods S01E03); add
+  the matching location for each library type.
+- `/mnt/zurg/music`, `/mnt/zurg/books`, `/mnt/zurg/adult` — still worth adding for content that
+  predates v2.2.0's root folder migration; folders already exist and are live.
+- `/mnt/decypharr/...` — Decypharr's own organized mount; the symlinks under `./media/<type>`
+  point here, so Plex needs to be able to resolve through to it either way.
 
 ## Zilean hardware tuning
 
@@ -346,5 +369,5 @@ requested specifically.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.1.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.2.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

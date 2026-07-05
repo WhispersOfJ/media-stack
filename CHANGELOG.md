@@ -4,9 +4,62 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.1.0**.
+features, **PATCH** for fixes. Current version: **v2.2.0**.
 
 ---
+
+## [2.2.0] — Root folders moved off Zurg's read-only FUSE mount, verified end-to-end
+
+### Fixed
+- v2.1.0 fixed *visibility* of Decypharr's staged downloads but "verify fix in real time" (an
+  explicit ask, not an assumption that the first fix was sufficient) surfaced a second, deeper
+  bug: every arr app's root folder was still `/mnt/zurg/<type>` — Zurg's own rclone FUSE mount.
+  Reproduced directly rather than inferred from logs: `docker exec sonarr sh -c "ln -s ...
+  /mnt/zurg/shows/_symlink_test"` returned `System.IO.IOException: I/O error [EIO]`. Rclone/
+  WebDAV-backed FUSE mounts like Zurg's are read-oriented and simply do not support having new
+  files or symlinks written into them — confirmed with symlink, hardlink, and plain copy, all
+  failing identically. This meant **no import had ever been able to complete** through any arr
+  app since the stack went live, regardless of the v2.1.0 path-visibility fix: Decypharr could
+  stage a file, the arr app could now see it, but writing the actual symlink into the root
+  folder always failed at the last step.
+- Considered two narrower options (remote-path-map Decypharr's own mount into each root
+  folder; or point root folders at Decypharr's DFS mount directly) and asked whether doing
+  both was overkill — it was, and neither actually solved the real problem: NZBGet's fallback
+  path independently needs a genuinely writable root folder regardless of what's done for
+  Decypharr specifically, so patching only the Decypharr side would've left a second write-
+  incompatible path unaddressed.
+- Fix: gave every arr app a new root folder backed by regular host disk instead of a FUSE
+  mount — `./media/{movies,shows,music,books,adult}`, mounted into each container at
+  `/data/<type>` (these directories existed since v2.0.0 but were unused placeholders until
+  now). Migrated existing tracked content via each app's API: added the new root folder,
+  updated every tracked series/movie's `rootFolderPath`/`path` to the new location, removed
+  the old `/mnt/zurg/<type>` root folder. Sonarr had 2 series, Radarr 2 movies, Whisparr 1
+  series to migrate; Lidarr and Readarr had none yet.
+- Discovered along the way: this specific Whisparr build (v2.2.0.108) uses Sonarr's
+  `series`/`episode` API shape, not Radarr's `movie` shape — the first migration attempt 404'd
+  on `/api/v3/movie` against it, corrected to `/api/v3/series`.
+- Verified genuinely end-to-end, not just "no error returned": triggered a live search for
+  Blue Bloods S01E03, watched it flow Prowlarr → Sonarr → Decypharr (Real-Debrid caching +
+  symlinking) → back into Sonarr's queue → import. Confirmed at the filesystem level —
+  `/data/shows/Blue Bloods/Season 1/blue.bloods.s01e03.720p.web.h264-skyfire.mkv` exists as a
+  symlink into `/mnt/decypharr/__all__/...`, `episode.hasFile` is `true`, and the symlink
+  target was proven genuinely readable (pulled real bytes through the full chain from inside
+  Sonarr's container, confirming it isn't a dangling link to a debrid file that never actually
+  cached). Also confirmed write access on the other 4 new mounts (`/data/movies`, `/data/music`,
+  `/data/books`, `/data/adult`) directly.
+- Blocklist cleanup was needed mid-investigation: Sonarr auto-blocklists a release after a
+  failed import, which kept blocking re-tests of the exact releases needed to prove the fix —
+  cleared via `DELETE /api/v3/blocklist/bulk`, scoped only to entries from the bug's specific
+  timestamp window (42 entries total across two passes), not a blanket wipe.
+
+### Action needed
+- **Plex** (native, not dockerized) needs new library locations added for
+  `/home/bear/Stack/media/{movies,shows,music,books,adult}` — this is where all future arr-app
+  imports land now, and Plex can't be reconfigured via this stack's tooling; it's a manual
+  Settings → Libraries → Edit → Add folder step. See
+  [Plex library locations to add](README.md#plex-library-locations-to-add).
+
+*Built with Claude AI.*
 
 ## [2.1.0] — Decypharr download path visibility fixed across every arr app
 
