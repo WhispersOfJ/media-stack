@@ -236,3 +236,15 @@ are from a single build session.
   had no sudo access. Added `/etc/sudoers.d/bear-nopasswd` (`bear ALL=(ALL) NOPASSWD: ALL`),
   validated with `visudo -c`, confirmed working. Any future host-level fixes like that one
   no longer need a manual hand-off.
+
+### Added: GitHub Actions CI
+
+- `.github/workflows/validate.yml` — validates `docker compose config` (both default and
+  `extras` profiles) on every push/PR to `main`. Tested locally in an isolated copy before
+  pushing: both profiles pass. Uses `.env.example` to resolve compose's variable references,
+  no real secrets involved.
+- `.github/dependabot.yml` — weekly check for newer Docker image versions
+  (`package-ecosystem: docker`, which covers Compose files too), opens a PR when found. Only
+  meaningfully applies to the handful of images pinned to an actual version
+  (`postgres:16-alpine`, `recyclarr:7`, `readarr:0.4.19-nightly`) — everything else here is
+  pinned to `:latest`, which has nothing for Dependabot to bump.

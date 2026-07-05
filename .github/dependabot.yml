@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Checks docker-compose.yml for newer image tags and opens a PR when found.
+  # Only meaningfully bumps images pinned to an actual version (postgres:16-alpine,
+  # recyclarr:7, readarr:0.4.19-nightly) - services pinned to :latest have nothing
+  # to bump since latest is already floating; those still get pulled fresh on every
+  # `docker compose pull` regardless of Dependabot.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
