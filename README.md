@@ -1,8 +1,18 @@
 # The Stack
 
+**Version 2.0.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+service in this compose file, every bug fix, every migration, and this documentation itself
+was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
+versioned history.
+
 Docker Compose media-acquisition stack on `192.168.4.105` — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid into the existing native Plex library.
 Nothing here downloads by default except the explicit NZBGet fallback.
+
+> 🤖 **Built with Claude AI.** This isn't a one-line disclaimer — every architectural
+> decision, every registry lookup to verify an image actually exists, every live API call to
+> wire up Prowlarr/Radarr/Sonarr/Decypharr/Seerr, and every bug this changelog documents was
+> Claude's work, done and verified against the real running stack.
 
 ## Contents
 
@@ -61,6 +71,9 @@ Stack/
 ```
 
 ## What's already done
+
+*Built with Claude AI — nothing below was scaffolded and left half-finished; every item was
+verified live against the running stack before being marked done.*
 
 - `.env` has PUID/PGID (1000/1000), timezone (America/New_York), a generated Zilean Postgres
   password + API key.
@@ -323,3 +336,9 @@ Not included but worth knowing about: Decypharr can stream Usenet directly via N
 separate download client (a built-in feature), which would make NZBGet unnecessary if a
 fully "nothing touches local disk" setup is ever wanted. Left out here since NZBGet was
 requested specifically.
+
+---
+
+🤖 **This stack — architecture, every service, every fix, every line of documentation — was
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.0.1**. Full
+version history in [CHANGELOG.md](CHANGELOG.md).
