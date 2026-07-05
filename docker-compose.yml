@@ -1,0 +1,305 @@
+x-common: &common
+  restart: unless-stopped
+  environment: &common-env
+    PUID: ${PUID}
+    PGID: ${PGID}
+    TZ: ${TZ}
+
+networks:
+  stacknet:
+    name: stacknet
+
+services:
+  # ---------------------------------------------------------------------
+  # Indexing
+  # ---------------------------------------------------------------------
+  prowlarr:
+    <<: *common
+    image: ghcr.io/hotio/prowlarr:latest
+    container_name: prowlarr
+    networks: [stacknet]
+    ports:
+      - "9696:9696"
+    volumes:
+      - ./config/prowlarr:/config
+
+  zilean-postgres:
+    restart: unless-stopped
+    image: postgres:16-alpine
+    container_name: zilean-postgres
+    networks: [stacknet]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
+      POSTGRES_DB: zilean
+    volumes:
+      - ./config/zilean-postgres:/var/lib/postgresql/data
+    # Postgres's own defaults are hardware-agnostic (128MB shared_buffers etc)
+    # regardless of host. Sized for this host's NVMe + shared-desktop memory
+    # budget, not maxed out since Plex/desktop apps also run here.
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=1536MB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "max_worker_processes=4"
+      - "-c"
+      - "max_parallel_workers=4"
+      - "-c"
+      - "max_parallel_workers_per_gather=2"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 4
+
+  zilean:
+    restart: unless-stopped
+    image: ipromknight/zilean:latest
+    container_name: zilean
+    networks: [stacknet]
+    ports:
+      - "8181:8181"
+    depends_on:
+      - zilean-postgres
+    environment:
+      TZ: ${TZ}
+      Zilean__ApiKey: ${ZILEAN_API_KEY}
+      Zilean__Database__ConnectionString: "Host=zilean-postgres;Database=zilean;Username=postgres;Password=${ZILEAN_POSTGRES_PASSWORD};Include Error Detail=true;Timeout=30;CommandTimeout=3600;"
+      Zilean__Dmm__EnableScraping: "true"
+      Zilean__Torrents__EnableEndpoint: "true"
+      Zilean__EnableDashboard: "true"
+      # Hardware tuning: 16 threads available on this host. Reserve 4 for
+      # Plex/desktop/other containers rather than pinning all cores to IMDB
+      # title-matching (Zilean's one real CPU-parallel workload).
+      Zilean__Imdb__UseAllCores: "false"
+      Zilean__Imdb__NumberOfCores: "12"
+      # Lucene indexing is "massively faster" per Zilean's own docs, at the
+      # cost of ~3GB extra RAM during resyncs - covered by the mem_limit below.
+      Zilean__Imdb__UseLucene: "true"
+      # .NET Server GC: per-core heaps + parallel collection, the standard
+      # throughput-oriented choice for a multi-core backend service
+      # (default Workstation GC is tuned for low-latency desktop apps instead).
+      DOTNET_gcServer: "1"
+      # 3GB hard limit, leaving ~1GB of the 4GB container limit for non-GC
+      # (native/thread stack) memory headroom.
+      DOTNET_GCHeapHardLimit: "0xC0000000"
+    mem_limit: 4g
+    mem_reservation: 512m
+    cpus: 12
+
+  # ---------------------------------------------------------------------
+  # Debrid gateway (Real-Debrid + AllDebrid -> qBittorrent-compatible API
+  # for the *arr apps, symlink-only, no real downloading)
+  # ---------------------------------------------------------------------
+  decypharr:
+    <<: *common
+    image: cy01/blackhole:latest
+    container_name: decypharr
+    networks: [stacknet]
+    ports:
+      - "8282:8282"
+    volumes:
+      - /mnt:/mnt:rshared
+      - ./config/decypharr:/app
+      - ./config/decypharr/cache:/cache
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+
+  # ---------------------------------------------------------------------
+  # *arr apps
+  # ---------------------------------------------------------------------
+  radarr:
+    <<: *common
+    image: ghcr.io/hotio/radarr:latest
+    container_name: radarr
+    networks: [stacknet]
+    ports:
+      - "7878:7878"
+    volumes:
+      - ./config/radarr:/config
+      - /mnt:/mnt:rslave
+      - ./usenet:/usenet:rslave
+
+  sonarr:
+    <<: *common
+    image: ghcr.io/hotio/sonarr:latest
+    container_name: sonarr
+    networks: [stacknet]
+    ports:
+      - "8989:8989"
+    volumes:
+      - ./config/sonarr:/config
+      - /mnt:/mnt:rslave
+      - ./usenet:/usenet:rslave
+
+  lidarr:
+    <<: *common
+    image: ghcr.io/hotio/lidarr:latest
+    container_name: lidarr
+    networks: [stacknet]
+    ports:
+      - "8686:8686"
+    volumes:
+      - ./config/lidarr:/config
+      - /mnt:/mnt:rslave
+      - ./usenet:/usenet:rslave
+
+  readarr:
+    <<: *common
+    image: lscr.io/linuxserver/readarr:0.4.19-nightly
+    container_name: readarr
+    networks: [stacknet]
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./config/readarr:/config
+      - /mnt:/mnt:rslave
+      - ./usenet:/usenet:rslave
+
+  whisparr:
+    <<: *common
+    image: ghcr.io/hotio/whisparr:latest
+    container_name: whisparr
+    networks: [stacknet]
+    ports:
+      - "6969:6969"
+    volumes:
+      - ./config/whisparr:/config
+      - /mnt:/mnt:rslave
+      - ./usenet:/usenet:rslave
+
+  # ---------------------------------------------------------------------
+  # Usenet (real local downloads - only path that isn't debrid/symlink based)
+  # ---------------------------------------------------------------------
+  nzbget:
+    <<: *common
+    image: ghcr.io/hotio/nzbget:latest
+    container_name: nzbget
+    networks: [stacknet]
+    ports:
+      - "6789:6789"
+    volumes:
+      - ./config/nzbget:/config
+      - ./usenet:/usenet
+
+  # ---------------------------------------------------------------------
+  # Requests
+  # ---------------------------------------------------------------------
+  seerr:
+    restart: unless-stopped
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    networks: [stacknet]
+    ports:
+      - "5055:5055"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/seerr:/app/config
+
+  # =======================================================================
+  # Optional / recommended extras - start with:
+  #   docker compose --profile extras up -d
+  # =======================================================================
+  bazarr:
+    <<: *common
+    image: ghcr.io/hotio/bazarr:latest
+    container_name: bazarr
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "6767:6767"
+    volumes:
+      - ./config/bazarr:/config
+      - /mnt:/mnt:rslave
+
+  flaresolverr:
+    restart: unless-stopped
+    image: flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "8191:8191"
+    environment:
+      TZ: ${TZ}
+      LOG_LEVEL: info
+
+  tautulli:
+    <<: *common
+    image: ghcr.io/hotio/tautulli:latest
+    container_name: tautulli
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "8182:8181"
+    volumes:
+      - ./config/tautulli:/config
+
+  homepage:
+    restart: unless-stopped
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "3000:3000"
+    environment:
+      TZ: ${TZ}
+      HOMEPAGE_ALLOWED_HOSTS: "*"
+    volumes:
+      - ./config/homepage:/app/config
+
+  recyclarr:
+    restart: unless-stopped
+    image: ghcr.io/recyclarr/recyclarr:7
+    container_name: recyclarr
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/recyclarr:/config
+
+  unpackerr:
+    restart: unless-stopped
+    image: golift/unpackerr:latest
+    container_name: unpackerr
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+      UN_RADARR_0_URL: http://radarr:7878
+      UN_SONARR_0_URL: http://sonarr:8989
+      UN_LIDARR_0_URL: http://lidarr:8686
+    volumes:
+      - /mnt:/mnt:rslave
+      - ./usenet:/usenet:rslave
+
+  watchtower:
+    restart: unless-stopped
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_SCHEDULE: "0 0 4 * * *"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
