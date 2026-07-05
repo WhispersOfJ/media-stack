@@ -1,0 +1,25 @@
+name: Validate Compose
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create dummy .env
+        # docker compose config needs the vars referenced in compose to resolve
+        # (doesn't need real values - this just validates YAML/schema, not secrets).
+        run: cp .env.example .env
+
+      - name: Validate default profile
+        run: docker compose config --quiet
+
+      - name: Validate extras profile
+        run: docker compose --profile extras config --quiet

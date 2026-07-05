@@ -17,6 +17,7 @@ Nothing here downloads by default except the explicit NZBGet fallback.
 - [Zilean hardware tuning](#zilean-hardware-tuning)
 - [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
 - [Security note](#security-note)
+- [CI: validation and dependency updates](#ci-validation-and-dependency-updates)
 - [Optional extras reference](#optional-extras-reference)
 
 ## Architecture
@@ -292,6 +293,20 @@ script's `TARGETS` list needs updating to match.
 plaintext and are both `chmod 600`. This matches how Zurg's own `config.yml` already stores
 its Real-Debrid token — consistent with the existing setup, but worth knowing if this host is
 ever shared or backed up somewhere less trusted.
+
+## CI: validation and dependency updates
+
+Two things run on GitHub, not on this host:
+
+- **`.github/workflows/validate.yml`** — on every push/PR to `main`, copies `.env.example` to
+  `.env` (just to resolve the variables compose references — no real secrets involved) and
+  runs `docker compose config` for both the default and `extras` profiles. Catches YAML/schema
+  errors before they'd bite at deploy time.
+- **`.github/dependabot.yml`** — checks weekly for newer Docker image versions and opens a PR
+  when it finds one. This only does something useful for images pinned to an actual version —
+  `postgres:16-alpine`, `recyclarr:7`, `readarr:0.4.19-nightly`. Everything else in this stack
+  is pinned to `:latest`, which has no "newer version" for Dependabot to bump to; those get
+  whatever's current on every `docker compose pull` regardless.
 
 ## Optional extras reference
 
