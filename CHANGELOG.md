@@ -4,9 +4,42 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.0.1**.
+features, **PATCH** for fixes. Current version: **v2.1.0**.
 
 ---
+
+## [2.1.0] — Decypharr download path visibility fixed across every arr app
+
+### Fixed
+- Radarr surfaced a health warning: "download client Decypharr places downloads in
+  `/app/downloads/radarr` but this directory does not appear to exist inside the container."
+  Investigated rather than dismissed — this was real and already actively breaking imports.
+  Sonarr's history showed repeated `grabbed` → `downloadFailed` cycles for the same episodes
+  across many different releases, timestamped exactly when Decypharr had real symlinked media
+  files sitting in its own container that no arr app could see. Since v1.7.0 first wired up
+  Decypharr as the download client, every app's container only shared `/mnt`, `/usenet`, and
+  its own `/config` — none of which overlapped with where Decypharr stages completed
+  downloads internally (`/app/downloads/<category>`, backed by `config/decypharr` on the
+  host). This meant no debrid-grabbed content had ever actually been importable through
+  Decypharr in any app, only appearing to work when Recyclarr/Prowlarr syncs succeeded
+  upstream of the actual download step.
+- Fix: bind-mounted `config/decypharr/downloads` into Radarr, Sonarr, Lidarr, Readarr, and
+  Whisparr at the identical path Decypharr uses internally (`/app/downloads`) — avoids
+  needing Remote Path Mappings entirely, per Decypharr's own documented best practice of
+  matching paths exactly across containers.
+- Verified with a controlled test rather than assuming: wrote a file from inside Decypharr's
+  container, confirmed it was immediately readable from Sonarr's container at the identical
+  path. Live-release testing was confounded by unrelated (and correctly-working) mechanisms —
+  Sonarr's own blocklist protecting against re-grabbing releases that failed before the fix,
+  the "Low Quality Sources/Groups" custom format correctly rejecting garbage EZTV releases,
+  and one candidate correctly refused by Decypharr for not being cached on Real-Debrid
+  (`download_uncached: false`) — none of which are bugs, all confirmed as intended behavior
+  along the way.
+- The 3 specific episodes that failed during the fix window are gone (cleaned up by the
+  download client's normal failed-download handling) and will need a fresh search to re-grab;
+  everything going forward uses the corrected path.
+
+*Built with Claude AI.*
 
 ## [2.0.1] — Cleanup
 
