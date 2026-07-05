@@ -267,7 +267,7 @@ services:
 
   recyclarr:
     restart: unless-stopped
-    image: ghcr.io/recyclarr/recyclarr:7
+    image: ghcr.io/recyclarr/recyclarr:8
     container_name: recyclarr
     profiles: [extras]
     networks: [stacknet]
