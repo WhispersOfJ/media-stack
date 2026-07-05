@@ -1,0 +1,15 @@
+# Secrets
+.env
+
+# Per-app runtime config, databases, caches, logs - all stateful/regenerated,
+# several contain plaintext API keys (decypharr/config.json, recyclarr/recyclarr.yml,
+# every *arr app's config.xml). None of this belongs in git history.
+config/
+
+# NZBGet local downloads and NZBGet-acquired local media library
+usenet/
+media/
+
+# Misc
+*.log
+.DS_Store

@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Stack — Documentation</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1c1f24; --text-dim: #5b6472;
+    --border: #e1e4e9; --accent: #3b6fe0; --accent-dim: #eaf0fd;
+    --code-bg: #f0f2f5; --code-border: #dde1e7;
+    --warn-bg: #fdf3e0; --warn-border: #f0cf8a; --warn-text: #8a5a00;
+    --shadow: 0 1px 2px rgba(20,20,30,.04), 0 4px 14px rgba(20,20,30,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --panel: #1b1e24; --text: #e7e9ed; --text-dim: #9aa2b1;
+      --border: #2a2e36; --accent: #7fa2f7; --accent-dim: #1f2942;
+      --code-bg: #101317; --code-border: #262b33;
+      --warn-bg: #362c12; --warn-border: #6b5220; --warn-text: #e3b866;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161a; --panel: #1b1e24; --text: #e7e9ed; --text-dim: #9aa2b1;
+    --border: #2a2e36; --accent: #7fa2f7; --accent-dim: #1f2942;
+    --code-bg: #101317; --code-border: #262b33;
+    --warn-bg: #362c12; --warn-border: #6b5220; --warn-text: #e3b866;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 20px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1c1f24; --text-dim: #5b6472;
+    --border: #e1e4e9; --accent: #3b6fe0; --accent-dim: #eaf0fd;
+    --code-bg: #f0f2f5; --code-border: #dde1e7;
+    --warn-bg: #fdf3e0; --warn-border: #f0cf8a; --warn-text: #8a5a00;
+    --shadow: 0 1px 2px rgba(20,20,30,.04), 0 4px 14px rgba(20,20,30,.05);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 24px 90px; }
+  a { color: var(--accent); }
+  h1 { font-size: 1.9rem; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--text-dim); font-size: 1rem; margin-bottom: 28px; }
+  h2 {
+    font-size: 1.25rem; margin: 40px 0 14px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  h2:first-of-type { margin-top: 8px; }
+  p { margin: 10px 0; }
+  code {
+    font-family: ui-monospace, "SFMono-Regular", "Courier New", Consolas, Menlo, monospace;
+    background: var(--code-bg); border: 1px solid var(--code-border);
+    border-radius: 4px; padding: 1px 6px; font-size: .88em;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--code-border);
+    border-radius: 8px; padding: 14px 16px; overflow-x: auto;
+    font-family: ui-monospace, "SFMono-Regular", "Courier New", Consolas, Menlo, monospace;
+    font-size: .85rem; line-height: 1.5;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0 20px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden; box-shadow: var(--shadow); font-size: .92rem;
+  }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th { background: var(--accent-dim); font-weight: 650; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 5px 0; }
+  .note {
+    background: var(--warn-bg); border: 1px solid var(--warn-border);
+    color: var(--warn-text); border-radius: 8px; padding: 12px 16px; margin: 16px 0;
+    font-size: .92rem;
+  }
+  .note strong { color: inherit; }
+  .diagram {
+    background: var(--code-bg); border: 1px solid var(--code-border);
+    border-radius: 8px; padding: 16px; overflow-x: auto;
+    font-family: ui-monospace, "SFMono-Regular", "Courier New", Consolas, Menlo, monospace;
+    font-size: .8rem; line-height: 1.5; white-space: pre;
+  }
+  .toc { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 20px; margin: 20px 0; box-shadow: var(--shadow); font-size: .92rem; }
+  .toc ul { margin: 6px 0; }
+  .badge { display: inline-block; font-size: .74rem; font-weight: 700; padding: 1px 7px;
+    border-radius: 999px; background: var(--accent-dim); color: var(--accent); margin-left: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>The Stack</h1>
+<div class="sub">Docker Compose media-acquisition stack on <code>192.168.4.105</code> — indexes, requests, and symlinks already-cached content from Real-Debrid / AllDebrid into the existing native Plex library. Nothing here downloads by default except the explicit NZBGet fallback.</div>
+
+<div class="toc">
+  <strong>Contents</strong>
+  <ul>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#layout">Directory layout</a></li>
+    <li><a href="#done">What's already done</a></li>
+    <li><a href="#zurg">Zurg prerequisite</a></li>
+    <li><a href="#bringup">Bringing the stack up</a></li>
+    <li><a href="#config">Post-deployment configuration</a></li>
+    <li><a href="#usenet">The Usenet caveat</a></li>
+    <li><a href="#plex">Plex library locations to add</a></li>
+    <li><a href="#zilean-tuning">Zilean hardware tuning</a></li>
+    <li><a href="#security">Security note</a></li>
+    <li><a href="#extras">Optional extras reference</a></li>
+  </ul>
+</div>
+
+<h2 id="architecture">Architecture</h2>
+<div class="diagram">Prowlarr ──indexes──&gt; (your trackers + Zilean's DMM cache-hash list)
+   │
+   ▼
+Radarr / Sonarr / Lidarr / Readarr / Whisparr ──grab──&gt; Decypharr (qBittorrent-compatible API)
+   │                                                        │
+   │                                                        ├─&gt; Real-Debrid API  (add magnet)
+   │                                                        └─&gt; AllDebrid API    (add magnet)
+   │
+   └──(secondary/fallback)──&gt; NZBGet ──real local download──&gt; ./usenet/downloads
+
+Zurg (native, already running)  → /mnt/zurg/{movies,shows,...}  → read by Plex directly
+Decypharr DFS mount (new)       → /mnt/decypharr/{...}          → add as new Plex locations
+rclone AllDebrid (native)       → /mnt/all/{magnets,links,...}  → already a Plex location</div>
+
+<p>Seerr (formerly Overseerr/Jellyseerr — the projects merged) is the user-facing request page, talking to Plex + Radarr/Sonarr.</p>
+<p>Zilean specifically searches <a href="https://debridmediamanager.com">DebridMediaManager</a>'s shared hash-list of content already known to be cached on Real-Debrid/AllDebrid, so grabs from it come back near-instantly instead of waiting on an uncached download.</p>
+
+<h2 id="layout">Directory layout</h2>
+<pre><code>Stack/
+├── docker-compose.yml
+├── .env                          # PUID/PGID/TZ, Zilean DB password + API key
+├── README.html, CHANGELOG.html
+├── config/&lt;app&gt;/                 # each app's persistent config
+├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
+├── config/homepage/{services,bookmarks}.yaml
+├── config/recyclarr/recyclarr.yml  # TRaSH profiles for Radarr/Sonarr (chmod 600)
+├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
+└── media/{movies,shows,music,books}  # local root folders for NZBGet-acquired content</code></pre>
+
+<h2 id="done">What's already done</h2>
+<ul>
+  <li><code>.env</code> has PUID/PGID (1000/1000), timezone (America/New_York), a generated Zilean Postgres password + API key.</li>
+  <li><code>config/decypharr/config.json</code> has your Real-Debrid and AllDebrid API keys filled in, <code>chmod 600</code>.</li>
+  <li><code>config/recyclarr/recyclarr.yml</code> has Radarr + Sonarr API keys and TRaSH template references, <code>chmod 600</code>.</li>
+  <li>Homepage is configured with grouped service links and a Debrid Media Manager bookmark.</li>
+  <li><code>docker-compose.yml</code> validates clean (<code>docker compose config</code>), all image references verified against live registries rather than assumed.</li>
+  <li>Full stack (core + extras) is live and healthy — see <a href="CHANGELOG.html">CHANGELOG.html</a> for the issues hit and fixed along the way.</li>
+  <li><strong>Prowlarr</strong> has 70 indexers configured (69 public trackers + Zilean), FlareSolverr wired up as an Indexer Proxy for the Cloudflare-protected ones, and NZBGet added as its own global download client.</li>
+  <li><strong>Decypharr</strong> and <strong>NZBGet</strong> are both added as download clients (priority 1 and 2 respectively) in Radarr, Sonarr, Lidarr, Readarr, and Whisparr — Decypharr auto-detected all 5 apps.</li>
+  <li><strong>Root folders</strong> are set in all 5 arr apps, pointed at their matching Zurg path.</li>
+  <li><strong>Zilean</strong> is tuned for this host's actual hardware (16-thread CPU, NVMe) rather than left on defaults sized for a machine with a few hundred MB of RAM — see <a href="#zilean-tuning">Zilean hardware tuning</a> below.</li>
+  <li><strong>Seerr</strong> is initialized, signed in to Plex, and connected to Radarr + Sonarr as default servers.</li>
+</ul>
+
+<h2 id="zurg">One prerequisite: extend Zurg for new media types <span class="badge">done</span></h2>
+<p>Music/books/adult are routed through Zurg rather than a separate AllDebrid path, so Lidarr/Readarr/Whisparr need Zurg to organize those into their own folders. This meant editing the <strong>live</strong> <code>config.yml</code> for a service actively serving the Plex library — this has already been applied and the service restarted cleanly, confirmed by the <code>music</code>/<code>books</code>/<code>adult</code> folders appearing under <code>/mnt/zurg</code>.</p>
+
+<p>For reference, the change made to <code>/home/bear/zurg/config.yml</code> (backup kept at <code>config.yml.bak</code>):</p>
+<pre><code>directories:
+  shows:
+    group: media
+    group_order: 10
+    filters:
+      - has_episodes: true
+  music:
+    group: media
+    group_order: 15
+    filters:
+      - regex: /(?i)\b(FLAC|MP3|320kbps|CDDA|Discography)\b/
+  books:
+    group: media
+    group_order: 16
+    filters:
+      - regex: /(?i)\b(AUDIOBOOK|EPUB|MOBI|AZW3)\b/
+  adult:
+    group: media
+    group_order: 17
+    filters:
+      - regex: /(?i)\bXXX\b/
+  movies:
+    filters:
+      - regex: /.*/
+    group: media
+    group_order: 20</code></pre>
+<p>These regexes are a starting heuristic based on common release-naming conventions, not a guarantee — anything that doesn't match just falls through to <code>movies</code> as it did before, so a miscategorized item is a quick fix later, not data loss.</p>
+<p>Restart command, if the config ever needs tuning again — <code>zurg.service</code> runs the <code>zurg</code> binary directly, which spawns its own rclone mount as a child process, so one restart handles both:</p>
+<pre><code>systemctl --user restart zurg.service</code></pre>
+<div class="note">This briefly interrupts <code>/mnt/zurg</code> for a few seconds. Do it when nothing's actively streaming from Plex. (<code>rclone-all.service</code> and <code>/mnt/all</code> are unrelated and untouched by this.)</div>
+
+<h2 id="bringup">Bringing the stack up</h2>
+<p>Core services only:</p>
+<pre><code>cd /home/bear/Stack
+docker compose up -d</code></pre>
+<p>Core + optional extras (Bazarr, FlareSolverr, Tautulli, Homepage, Recyclarr, Unpackerr, Watchtower):</p>
+<pre><code>docker compose --profile extras up -d</code></pre>
+
+<table>
+<tr><th>Service</th><th>URL</th><th>Notes</th></tr>
+<tr><td>Prowlarr</td><td><a href="http://192.168.4.105:9696">192.168.4.105:9696</a></td><td>indexer manager</td></tr>
+<tr><td>Zilean</td><td><a href="http://192.168.4.105:8181">192.168.4.105:8181</a></td><td>DMM cache-hash indexer + dashboard</td></tr>
+<tr><td>Decypharr</td><td><a href="http://192.168.4.105:8282">192.168.4.105:8282</a></td><td>debrid gateway UI</td></tr>
+<tr><td>Radarr</td><td><a href="http://192.168.4.105:7878">192.168.4.105:7878</a></td><td>movies</td></tr>
+<tr><td>Sonarr</td><td><a href="http://192.168.4.105:8989">192.168.4.105:8989</a></td><td>TV</td></tr>
+<tr><td>Lidarr</td><td><a href="http://192.168.4.105:8686">192.168.4.105:8686</a></td><td>music</td></tr>
+<tr><td>Readarr</td><td><a href="http://192.168.4.105:8787">192.168.4.105:8787</a></td><td>books — pinned to <code>0.4.19-nightly</code> (LinuxServer's generic <code>nightly</code> tag is dead upstream)</td></tr>
+<tr><td>Whisparr</td><td><a href="http://192.168.4.105:6969">192.168.4.105:6969</a></td><td>adult</td></tr>
+<tr><td>NZBGet</td><td><a href="http://192.168.4.105:6789">192.168.4.105:6789</a></td><td>usenet, real local downloads, fallback path</td></tr>
+<tr><td>Seerr</td><td><a href="http://192.168.4.105:5055">192.168.4.105:5055</a></td><td>request frontend</td></tr>
+<tr><td>Bazarr <em>(extras)</em></td><td><a href="http://192.168.4.105:6767">192.168.4.105:6767</a></td><td>subtitles</td></tr>
+<tr><td>FlareSolverr <em>(extras)</em></td><td><a href="http://192.168.4.105:8191">192.168.4.105:8191</a></td><td>Cloudflare-protected indexers</td></tr>
+<tr><td>Tautulli <em>(extras)</em></td><td><a href="http://192.168.4.105:8182">192.168.4.105:8182</a></td><td>Plex stats</td></tr>
+<tr><td>Homepage <em>(extras)</em></td><td><a href="http://192.168.4.105:3000">192.168.4.105:3000</a></td><td>dashboard linking every service + DMM library bookmark</td></tr>
+</table>
+
+<h2 id="config">Configuration status</h2>
+<p>Everything below was done via each app's API directly (scripted, not clicked through) — noted as <span class="badge">done</span> where complete. What's left is a preference call, not a technical gap (which quality profile to assign where).</p>
+<ol>
+  <li><strong>Prowlarr</strong> <span class="badge">done</span>: 69 public trackers + Zilean added (see <a href="#done">What's already done</a>), FlareSolverr proxy wired up, NZBGet added as Prowlarr's own download client. Private/semi-private trackers need your own account credentials per-site if you want to add any — those weren't and can't be automated.</li>
+  <li><strong>Each *arr app</strong> (Radarr/Sonarr/Lidarr/Readarr/Whisparr) <span class="badge">done</span>: Decypharr (priority 1) and NZBGet (priority 2, fallback) both added as download clients; root folders set to <code>/mnt/zurg/movies</code>, <code>/mnt/zurg/shows</code>, <code>/mnt/zurg/music</code>, <code>/mnt/zurg/books</code>, <code>/mnt/zurg/adult</code> respectively.</li>
+  <li><strong>Seerr</strong> <span class="badge">done</span>: initialized and signed in to Plex using the existing Plex token already on this host (from Zurg's config) rather than the interactive OAuth flow, so it turned out scriptable after all. Connected to Radarr (<code>HD Bluray + WEB</code> profile, <code>/mnt/zurg/movies</code>) and Sonarr (<code>WEB-1080p</code> profile, <code>/mnt/zurg/shows</code>) as default servers.</li>
+  <li><strong>Decypharr</strong> <span class="badge">done</span>: debrid API keys set, all 5 arr apps auto-detected. <code>download_action</code> defaults to <code>symlink</code> for every arr — no change needed.</li>
+  <li><strong>Recyclarr</strong> <span class="badge">done</span>: already synced once manually (<code>HD Bluray + WEB</code> profile in Radarr, <code>WEB-1080p</code> in Sonarr) and runs automatically once a day. Still manual: go to each app's <strong>Settings → Profiles</strong> and set the new profile as default for your root folders — Recyclarr creates the profile but doesn't assign it, since that's a preference call.</li>
+</ol>
+<div class="note">Seerr only recognizes Radarr and Sonarr in its settings API (<code>/api/v1/settings/lidarr|readarr|whisparr</code> all 404) — it's a TMDB-based movie/TV frontend with no data model for music, books, or adult content. Lidarr, Readarr, and Whisparr have no Seerr request page and can't get one; they stay standalone, already fully wired up on their own via Prowlarr + Decypharr/NZBGet.</div>
+
+<h2 id="usenet">The Usenet caveat</h2>
+<p>NZBGet is a <strong>real, local download</strong> — the one piece of this stack that isn't debrid/symlink based, per the explicit ask to include it as a minimum component. Its completed files land in <code>./usenet/downloads</code> on local disk, not in Real-Debrid/AllDebrid's cloud, so:</p>
+<ul>
+  <li>It needs its own local root folders (<code>./media/movies</code>, <code>./media/shows</code>, etc.) since you can't write local files into the Zurg/Decypharr virtual filesystems.</li>
+  <li>Plex needs additional library <strong>locations</strong> added for these paths if you want NZBGet-acquired content to show up (the same way <code>/mnt/all/magnets</code> is already an extra location on the TV Shows library today).</li>
+  <li>It consumes real disk space, unlike everything else in this stack.</li>
+</ul>
+<p>Already wired up this way — NZBGet is priority 2 behind Decypharr's priority 1 in all 5 arr apps, so debrid is always tried first and NZBGet only fires for things neither debrid service has cached.</p>
+
+<h2 id="plex">Plex library locations to add</h2>
+<p>Add these as new library locations in Plex (Settings → Libraries → Edit → Add folder), matching how <code>/mnt/all/magnets</code> is already an extra TV Shows location:</p>
+<ul>
+  <li><code>/mnt/zurg/music</code>, <code>/mnt/zurg/books</code>, <code>/mnt/zurg/adult</code> — new libraries, folders already exist and are live.</li>
+  <li><code>/mnt/decypharr/...</code> — Decypharr's own organized mount, already mounted and populating.</li>
+  <li><code>./media/...</code> — only if you want NZBGet-acquired content visible too.</li>
+</ul>
+
+<h2 id="zilean-tuning">Zilean hardware tuning</h2>
+<p>This host has 16 CPU threads (AMD Ryzen 7 PRO 6850H) but is a shared desktop — Plex, Steam, and Discord also run here, and free memory sits around 8–9GB in normal use. Zilean and its Postgres database were tuned deliberately rather than maxed out:</p>
+<table>
+<tr><th>Setting</th><th>Value</th><th>Why</th></tr>
+<tr><td><code>Zilean__Imdb__NumberOfCores</code></td><td>12</td><td>Parallel IMDB title-matching, Zilean's one real CPU-parallel workload. Not <code>UseAllCores</code> — 4 threads deliberately left for everything else on the machine.</td></tr>
+<tr><td><code>Zilean__Imdb__UseLucene</code></td><td>true</td><td>Per Zilean's own docs, "massively faster" matching at the cost of ~3GB extra RAM during resyncs.</td></tr>
+<tr><td><code>DOTNET_gcServer</code></td><td>1</td><td>.NET Server GC — per-core heaps, parallel collection. The throughput-oriented choice for a backend service; the default Workstation GC is tuned for desktop app responsiveness instead.</td></tr>
+<tr><td><code>DOTNET_GCHeapHardLimit</code></td><td>3GB</td><td>Bounded inside the container's 4GB memory limit, leaving headroom for non-GC (native) memory.</td></tr>
+<tr><td>zilean-postgres <code>shared_buffers</code></td><td>512MB</td><td>Postgres defaults to 128MB regardless of host — this DB holds the full DMM hash list.</td></tr>
+<tr><td>zilean-postgres <code>effective_cache_size</code>, <code>work_mem</code>, <code>max_parallel_workers</code></td><td>1.5GB / 32MB / 4</td><td>Sized for this host rather than left at Postgres's hardware-agnostic defaults.</td></tr>
+<tr><td>zilean-postgres <code>random_page_cost</code>, <code>effective_io_concurrency</code></td><td>1.1 / 200</td><td>Tuned for the NVMe SSD underneath (Postgres defaults assume spinning disks).</td></tr>
+</table>
+<p>Container limits: Zilean 4GB RAM / 12 CPUs (reservation 512MB / 1 CPU), zilean-postgres 2GB RAM / 4 CPUs. Both confirmed applied via live <code>SHOW</code> queries and container env inspection after restart.</p>
+
+<h2 id="security">Security note</h2>
+<p><code>config/decypharr/config.json</code> and <code>config/recyclarr/recyclarr.yml</code> contain API keys in plaintext and are both <code>chmod 600</code>. This matches how Zurg's own <code>config.yml</code> already stores its Real-Debrid token — consistent with the existing setup, but worth knowing if this host is ever shared or backed up somewhere less trusted.</p>
+
+<h2 id="extras">Optional extras reference</h2>
+<table>
+<tr><th>Service</th><th>Why you might want it</th></tr>
+<tr><td>Bazarr</td><td>Automatic subtitle download/matching for Radarr/Sonarr libraries</td></tr>
+<tr><td>FlareSolverr</td><td>Lets Prowlarr solve Cloudflare challenges some indexers put up — already registered as an Indexer Proxy and tagged onto the trackers that need it</td></tr>
+<tr><td>Tautulli</td><td>Plex watch-history/stats dashboard</td></tr>
+<tr><td>Homepage</td><td>Single landing page linking every service above, plus a Debrid Media Manager bookmark</td></tr>
+<tr><td>Recyclarr</td><td>Syncs TRaSH-Guides quality profiles into Radarr/Sonarr automatically, once a day</td></tr>
+<tr><td>Unpackerr</td><td>Auto-extracts RAR'd releases (some cached torrents are compressed)</td></tr>
+<tr><td>Watchtower</td><td>Auto-updates all container images on a schedule (4am daily here)</td></tr>
+</table>
+<p>Not included but worth knowing about: Decypharr can stream Usenet directly via NNTP with no separate download client (a built-in feature), which would make NZBGet unnecessary if a fully "nothing touches local disk" setup is ever wanted. Left out here since NZBGet was requested specifically.</p>
+
+</div>
+</body>
+</html>

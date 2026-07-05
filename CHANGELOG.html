@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Stack — Changelog</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1c1f24; --text-dim: #5b6472;
+    --border: #e1e4e9; --accent: #3b6fe0; --accent-dim: #eaf0fd;
+    --code-bg: #f0f2f5; --code-border: #dde1e7;
+    --fix-bg: #fdecec; --fix-text: #b3261e;
+    --add-bg: #e6f4ea; --add-text: #1a7f37;
+    --shadow: 0 1px 2px rgba(20,20,30,.04), 0 4px 14px rgba(20,20,30,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --panel: #1b1e24; --text: #e7e9ed; --text-dim: #9aa2b1;
+      --border: #2a2e36; --accent: #7fa2f7; --accent-dim: #1f2942;
+      --code-bg: #101317; --code-border: #262b33;
+      --fix-bg: #3a1f1e; --fix-text: #ef7a72;
+      --add-bg: #16311f; --add-text: #6fce8c;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161a; --panel: #1b1e24; --text: #e7e9ed; --text-dim: #9aa2b1;
+    --border: #2a2e36; --accent: #7fa2f7; --accent-dim: #1f2942;
+    --code-bg: #101317; --code-border: #262b33;
+    --fix-bg: #3a1f1e; --fix-text: #ef7a72;
+    --add-bg: #16311f; --add-text: #6fce8c;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 20px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1c1f24; --text-dim: #5b6472;
+    --border: #e1e4e9; --accent: #3b6fe0; --accent-dim: #eaf0fd;
+    --code-bg: #f0f2f5; --code-border: #dde1e7;
+    --fix-bg: #fdecec; --fix-text: #b3261e;
+    --add-bg: #e6f4ea; --add-text: #1a7f37;
+    --shadow: 0 1px 2px rgba(20,20,30,.04), 0 4px 14px rgba(20,20,30,.05);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 24px 90px; }
+  a { color: var(--accent); }
+  h1 { font-size: 1.9rem; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--text-dim); font-size: 1rem; margin-bottom: 28px; }
+  h2 {
+    font-size: 1.1rem; margin: 34px 0 4px; display: flex; align-items: baseline; gap: 10px;
+  }
+  .date { color: var(--text-dim); font-size: .82rem; font-weight: 500; }
+  .entry {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 20px; margin: 10px 0; box-shadow: var(--shadow);
+  }
+  .entry h3 { margin: 0 0 8px; font-size: .98rem; }
+  .entry ul { margin: 6px 0 0; padding-left: 20px; }
+  .entry li { margin: 4px 0; font-size: .92rem; }
+  code {
+    font-family: ui-monospace, "SFMono-Regular", "Courier New", Consolas, Menlo, monospace;
+    background: var(--code-bg); border: 1px solid var(--code-border);
+    border-radius: 4px; padding: 1px 6px; font-size: .88em;
+  }
+  .tag {
+    display: inline-block; font-size: .7rem; font-weight: 700; padding: 2px 8px;
+    border-radius: 999px; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .tag.fix { background: var(--fix-bg); color: var(--fix-text); }
+  .tag.add { background: var(--add-bg); color: var(--add-text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Changelog</h1>
+<div class="sub">Everything done to build and stabilize <a href="README.html">The Stack</a>, in order. All entries so far are from a single build session.</div>
+
+<h2>2026-07-05 <span class="date">initial build</span></h2>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Core stack scaffolded</h3>
+  <ul>
+    <li>Created <code>/home/bear/Stack</code> with <code>docker-compose.yml</code>: 11 core services (Prowlarr, Zilean + Postgres, Decypharr, Radarr, Sonarr, Lidarr, Readarr, Whisparr, NZBGet, Seerr) plus 7 optional services behind <code>--profile extras</code> (Bazarr, FlareSolverr, Tautulli, Homepage, Recyclarr, Unpackerr, Watchtower).</li>
+    <li>Verified every image reference against its live registry rather than trusting memory — caught several wrong assumptions along the way: LinuxServer doesn't publish a Whisparr image (hotio does), Overseerr and Jellyseerr merged into a single <code>seerr-team/seerr</code> project, and Decypharr's image is still published as <code>cy01/blackhole</code>.</li>
+    <li>Seeded <code>config/decypharr/config.json</code> with Real-Debrid and AllDebrid API keys, <code>chmod 600</code>.</li>
+    <li>Generated <code>.env</code> with PUID/PGID, timezone, and a random Zilean Postgres password + API key.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Zurg extended for new media types</h3>
+  <ul>
+    <li>Backed up the live <code>/home/bear/zurg/config.yml</code> before editing.</li>
+    <li>Added <code>music</code>, <code>books</code>, and <code>adult</code> directory groups (regex-based heuristics) ahead of the existing <code>movies</code> catch-all, so Lidarr/Readarr/Whisparr have Zurg-organized folders to use as root folders.</li>
+    <li>Restarted <code>zurg.service</code> — confirmed the rclone child mount respawned cleanly and the new folders appeared under <code>/mnt/zurg</code>.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag fix">Fixed</span> Three issues hit bringing the core stack online</h3>
+  <ul>
+    <li><strong>Dead Readarr tag</strong> — <code>lscr.io/linuxserver/readarr:nightly</code> resolved but pulled an empty/inactive manifest (<code>tag_status: inactive</code>, <code>full_size: 0</code> upstream). Repinned to <code>0.4.19-nightly</code>, which has real content.</li>
+    <li><strong>Wrong AllDebrid key</strong> — the password field from <code>rclone.conf</code> (used for the <code>webdav.debrid.it</code> bridge) was not accepted by AllDebrid's native API (<code>"auth apikey is invalid"</code>). Replaced with the correct AllDebrid API key.</li>
+    <li><strong>Decypharr's DFS mount failed to start</strong> — <code>fusermount3: failed to access mountpoint /mnt/decypharr: No such file or directory</code>. FUSE requires the mountpoint directory to exist first, and the container (uid 1000) couldn't create it since host <code>/mnt</code> is owned by <code>plex:plex</code> mode 755. Created <code>/mnt/decypharr</code> manually via <code>sudo mkdir</code> + <code>chown</code>; mount succeeded immediately after.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Full stack online</h3>
+  <ul>
+    <li>All 11 core containers confirmed healthy, no crash-loops, every web UI smoke-tested with a real HTTP request.</li>
+    <li>Decypharr's initial full sync confirmed progressing (thousands of existing Real-Debrid torrents populating under <code>/mnt/decypharr/Real-Debrid</code>).</li>
+    <li>Brought up all 7 <code>extras</code>-profile containers; confirmed healthy and responsive.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Homepage configured</h3>
+  <ul>
+    <li><code>config/homepage/services.yaml</code> — every service grouped (Requests, Acquisition, Libraries, Media Server, Monitoring &amp; Tools).</li>
+    <li><code>config/homepage/bookmarks.yaml</code> — Debrid Media Manager library bookmark (<code>debridmediamanager.com/library</code>).</li>
+    <li>Verified both loaded correctly via Homepage's internal <code>/api/services</code> and <code>/api/bookmarks</code> endpoints.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Recyclarr configured with TRaSH Guide profiles</h3>
+  <ul>
+    <li>Pulled live Radarr/Sonarr API keys from their <code>config.xml</code> files.</li>
+    <li><code>config/recyclarr/recyclarr.yml</code> — Radarr set to the <code>HD Bluray + WEB</code> template, Sonarr set to <code>WEB-1080p</code> (TRaSH's standard recommended defaults; easy to swap for remux/2160p variants later), <code>chmod 600</code>.</li>
+  </ul>
+  <h3 style="margin-top:14px"><span class="tag fix">Fixed</span> Dead Recyclarr image tag</h3>
+  <ul>
+    <li><code>ghcr.io/recyclarr/recyclarr:latest</code> is explicitly called out in Recyclarr's own README as no longer published. Repinned to the current major version tag, <code>:7</code>.</li>
+    <li>Verified end-to-end with a manual <code>recyclarr sync</code> run: 34 custom formats + 1 quality profile synced to Radarr, 31 custom formats + 1 quality profile synced to Sonarr.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Documentation converted to HTML</h3>
+  <ul>
+    <li><code>README.md</code> converted to <code>README.html</code> (removed the markdown version), updated to reflect the finished/live state rather than a pending plan.</li>
+    <li>This changelog added as <code>CHANGELOG.html</code>.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Prowlarr populated with indexers</h3>
+  <ul>
+    <li>Created a <code>flaresolverr</code> tag and registered the running FlareSolverr container as a Prowlarr Indexer Proxy, so Cloudflare-protected public trackers resolve instead of failing outright.</li>
+    <li>Bulk-added all 88 <code>public</code>-privacy indexer definitions Prowlarr ships with via its API (private/semi-private trackers need per-user account credentials that aren't available to automate, so those were left out) — tagged the ones needing Cloudflare bypass with <code>flaresolverr</code>, used <code>forceSave</code> so temporarily-slow sites didn't block the batch.</li>
+    <li>Result: <strong>70 indexers live</strong> (69 public trackers + Zilean, verified via a live API query, not just the script's own tally). The dozen that failed even with <code>forceSave</code> — <code>52BT</code>, <code>AniSource</code>, <code>btstate</code>, <code>EBookBay</code>, <code>ExtraTorrent.st</code>, <code>kickasstorrents.to</code>, <code>Magnet Cat</code>, <code>Postman</code>, <code>torrent.by</code>, <code>Torrent[CORE]</code>, <code>showRSS</code>, <code>Torrent RSS Feed</code> — are genuinely unreachable/blocked right now, not a config error.</li>
+    <li>Added <strong>Zilean</strong> as a Generic Torznab indexer (<code>http://zilean:8181/torznab</code>). Hit and fixed a path error along the way — Zilean's real endpoint is <code>/torznab/api</code>, so <code>baseUrl</code> needed the <code>/torznab</code> segment with <code>apiPath</code> left at the default <code>/api</code>, not the full path crammed into <code>baseUrl</code> alone. Connection verified — Prowlarr parsed Zilean's full category list (Movies/TV/XXX) back successfully.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Decypharr wired up as the download client everywhere</h3>
+  <ul>
+    <li>Added Decypharr as a qBittorrent-type download client in Radarr, Sonarr, Lidarr, Readarr, and Whisparr — host <code>decypharr:8282</code>, username/password set to each arr's own URL/API key per Decypharr's documented pattern. All 5 connected and passed their live connection test on the first try.</li>
+    <li>Confirmed via Decypharr's own <code>/api/arrs</code> endpoint that it auto-detected all 5 apps (<code>"source": "auto"</code>) with correct hosts/tokens — no manual <code>config.json</code> editing needed.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Root folders configured</h3>
+  <ul>
+    <li>Radarr → <code>/mnt/zurg/movies</code>, Sonarr → <code>/mnt/zurg/shows</code>, Whisparr → <code>/mnt/zurg/adult</code> — straightforward, v3 API only needs a path.</li>
+    <li>Lidarr → <code>/mnt/zurg/music</code>, Readarr → <code>/mnt/zurg/books</code> — their v1 API additionally requires <code>name</code>, <code>defaultMetadataProfileId</code>, and <code>defaultQualityProfileId</code>; used each app's shipped "Standard" defaults (Readarr's quality profile set to <code>eBook</code> specifically).</li>
+    <li>All 5 confirmed <code>accessible: true</code> from inside their respective containers before adding.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> NZBGet wired up as a fallback download client</h3>
+  <ul>
+    <li>Added NZBGet (priority 2, behind Decypharr's priority 1) to all 5 arr apps, and separately as Prowlarr's own global download client for interactive search.</li>
+  </ul>
+  <h3 style="margin-top:14px"><span class="tag fix">Fixed</span> NZBGet category requirement</h3>
+  <ul>
+    <li>Unlike Decypharr's qBittorrent-style API, NZBGet rejects any category that doesn't already exist server-side (<code>"Category does not exist"</code>) — arbitrary category names can't just be passed through. Renamed NZBGet's 4 default categories and added 2 more directly in <code>nzbget.conf</code> (<code>radarr</code>, <code>sonarr</code>, <code>lidarr</code>, <code>readarr</code>, <code>whisparr</code>, <code>prowlarr</code>), restarted to apply, then all 6 download-client registrations succeeded.</li>
+  </ul>
+  <div class="note" style="margin-top:10px; font-size:.88rem; color:var(--text-dim)">Note: NZBGet is still on its default credentials (<code>nzbget</code> / <code>tegbzn6789</code>), used here to wire things up. Worth changing since it's reachable on the LAN.</div>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Zilean tuned for the actual host hardware</h3>
+  <ul>
+    <li><strong>Zilean</strong>: <code>Imdb.NumberOfCores=12</code> (of 16 threads — deliberately not <code>UseAllCores</code>, leaving 4 for Plex/desktop/other containers on this shared machine) for parallel IMDB title-matching; <code>Imdb.UseLucene=true</code> for much faster matching at the cost of ~3GB extra RAM during resyncs; <code>DOTNET_gcServer=1</code> for per-core heaps/parallel GC (the throughput-oriented choice vs the default desktop-tuned Workstation GC); <code>DOTNET_GCHeapHardLimit</code> capped at 3GB inside a 4GB container limit.</li>
+    <li><strong>zilean-postgres</strong>: Postgres ships with defaults sized for a machine with a few hundred MB of RAM regardless of host. Tuned <code>shared_buffers</code> (512MB), <code>effective_cache_size</code> (1.5GB), <code>work_mem</code> (32MB), <code>max_parallel_workers</code> (4), <code>random_page_cost=1.1</code> + <code>effective_io_concurrency=200</code> for the NVMe underneath. Container capped at 2GB / 4 CPUs.</li>
+    <li>Verified via live <code>SHOW</code> queries and container env inspection after restart — both came up clean with no errors.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3><span class="tag add">Added</span> Seerr connected to Radarr and Sonarr</h3>
+  <ul>
+    <li>Seerr hadn't completed initial setup (<code>"initialized": false</code>) — normally requires an interactive Plex OAuth login. Signed in instead via <code>POST /api/v1/auth/plex</code> using the Plex token already sitting in Zurg's <code>config.yml</code>, which authenticated cleanly as the account owner and auto-detected the Plex server + both libraries. Called the initialize endpoint directly afterward.</li>
+    <li>Connected Radarr (<code>HD Bluray + WEB</code> profile, <code>/mnt/zurg/movies</code>) and Sonarr (<code>WEB-1080p</code> profile, <code>/mnt/zurg/shows</code>) as default servers — both using the quality profiles Recyclarr created earlier.</li>
+  </ul>
+  <h3 style="margin-top:14px"><span class="tag fix">Fixed</span> Sonarr required an extra field</h3>
+  <ul>
+    <li>Seerr's Sonarr endpoint rejected the first attempt: <code>must have required property 'enableSeasonFolders'</code>. Added it, succeeded on retry.</li>
+  </ul>
+</div>
+
+<div class="entry">
+  <h3 style="margin:0">Investigated, no change made: Seerr ↔ Whisparr</h3>
+  <ul>
+    <li>Checked whether Whisparr (or Lidarr/Readarr) could be connected to Seerr the same way — Seerr's settings API only recognizes <code>radarr</code> and <code>sonarr</code> (confirmed via a live 404 on the other three). Seerr is a TMDB-based movie/TV frontend with no adult-content data model, so there's no coherent connection to make — misusing the Radarr slot for Whisparr would have broken real movie requests instead. Left standalone by design, not oversight.</li>
+  </ul>
+</div>
+
+</div>
+</body>
+</html>
