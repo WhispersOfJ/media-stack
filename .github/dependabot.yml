@@ -5,7 +5,7 @@ updates:
   # recyclarr:7, readarr:0.4.19-nightly) - services pinned to :latest have nothing
   # to bump since latest is already floating; those still get pulled fresh on every
   # `docker compose pull` regardless of Dependabot.
-  - package-ecosystem: "docker"
+  - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
