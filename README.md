@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.0.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.1.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -66,6 +66,7 @@ Stack/
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
 ├── config/homepage/{services,bookmarks}.yaml
 ├── config/recyclarr/recyclarr.yml  # TRaSH profiles for Radarr/Sonarr (chmod 600)
+├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
 └── media/{movies,shows,music,books}  # local root folders for NZBGet-acquired content
 ```
@@ -108,6 +109,11 @@ verified live against the running stack before being marked done.*
   aggregator/group releases in every Radarr and Sonarr quality profile — see
   [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
   below for an important quirk around Recyclarr.
+- **Every arr app can now actually import from Decypharr.** All 5 containers share
+  `config/decypharr/downloads` at the identical path Decypharr uses internally
+  (`/app/downloads`) — until this was fixed, no app could see the files Decypharr symlinked
+  for it, so imports silently failed. Verified with a controlled write/read test across
+  containers, not assumed. See CHANGELOG.md v2.1.0 for the full story.
 
 ## One prerequisite: extend Zurg for new media types (done)
 
@@ -340,5 +346,5 @@ requested specifically.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.0.1**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.1.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

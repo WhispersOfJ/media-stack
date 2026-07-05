@@ -136,6 +136,10 @@ services:
       - ./config/radarr:/config
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
+      # Same path Decypharr uses internally for its qBittorrent-emulated category
+      # folders (/app/downloads/<category>) - identical path avoids needing Remote
+      # Path Mappings, per Decypharr's own documented best practice.
+      - ./config/decypharr/downloads:/app/downloads:rslave
 
   sonarr:
     <<: *common
@@ -148,6 +152,7 @@ services:
       - ./config/sonarr:/config
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
+      - ./config/decypharr/downloads:/app/downloads:rslave
 
   lidarr:
     <<: *common
@@ -160,6 +165,7 @@ services:
       - ./config/lidarr:/config
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
+      - ./config/decypharr/downloads:/app/downloads:rslave
 
   readarr:
     <<: *common
@@ -172,6 +178,7 @@ services:
       - ./config/readarr:/config
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
+      - ./config/decypharr/downloads:/app/downloads:rslave
 
   whisparr:
     <<: *common
@@ -184,6 +191,7 @@ services:
       - ./config/whisparr:/config
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
+      - ./config/decypharr/downloads:/app/downloads:rslave
 
   # ---------------------------------------------------------------------
   # Usenet (real local downloads - only path that isn't debrid/symlink based)
