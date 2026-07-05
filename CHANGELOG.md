@@ -228,3 +228,11 @@ are from a single build session.
   the two Recyclarr-managed profiles. Scheduled via host crontab at `00:20` daily — 20 minutes
   after Recyclarr's own `@daily` (midnight) sync, so it always runs after and wins. Verified
   the script correctly detects and fixes the reset score.
+
+### Added: Passwordless sudo configured on the host
+
+- Not a Stack-specific change, but resolves a friction point noted earlier in this log —
+  the Decypharr `/mnt/decypharr` mountpoint fix needed a manual `sudo mkdir` because Claude
+  had no sudo access. Added `/etc/sudoers.d/bear-nopasswd` (`bear ALL=(ALL) NOPASSWD: ALL`),
+  validated with `visudo -c`, confirmed working. Any future host-level fixes like that one
+  no longer need a manual hand-off.
