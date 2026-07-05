@@ -25,7 +25,7 @@ services:
 
   zilean-postgres:
     restart: unless-stopped
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: zilean-postgres
     networks: [stacknet]
     environment:
@@ -33,7 +33,9 @@ services:
       POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
       POSTGRES_DB: zilean
     volumes:
-      - ./config/zilean-postgres:/var/lib/postgresql/data
+      # postgres 18+ changed the expected mount point up one level (was /var/lib/postgresql/data);
+      # PGDATA is now a version-specific subdir it manages itself (/var/lib/postgresql/18/docker).
+      - ./config/zilean-postgres:/var/lib/postgresql
     # Postgres's own defaults are hardware-agnostic (128MB shared_buffers etc)
     # regardless of host. Sized for this host's NVMe + shared-desktop memory
     # budget, not maxed out since Plex/desktop apps also run here.
@@ -267,7 +269,7 @@ services:
 
   recyclarr:
     restart: unless-stopped
-    image: ghcr.io/recyclarr/recyclarr:7
+    image: ghcr.io/recyclarr/recyclarr:8
     container_name: recyclarr
     profiles: [extras]
     networks: [stacknet]
