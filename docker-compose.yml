@@ -140,6 +140,10 @@ services:
       # folders (/app/downloads/<category>) - identical path avoids needing Remote
       # Path Mappings, per Decypharr's own documented best practice.
       - ./config/decypharr/downloads:/app/downloads:rslave
+      # Genuinely writable root folder on regular disk - /mnt/zurg is Zurg's own
+      # rclone FUSE mount and does not support having files written into it
+      # (confirmed: symlink/hardlink/copy all fail there with I/O errors).
+      - ./media/movies:/data/movies
 
   sonarr:
     <<: *common
@@ -153,6 +157,7 @@ services:
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
       - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./media/shows:/data/shows
 
   lidarr:
     <<: *common
@@ -166,6 +171,7 @@ services:
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
       - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./media/music:/data/music
 
   readarr:
     <<: *common
@@ -179,6 +185,7 @@ services:
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
       - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./media/books:/data/books
 
   whisparr:
     <<: *common
@@ -192,6 +199,7 @@ services:
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
       - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./media/adult:/data/adult
 
   # ---------------------------------------------------------------------
   # Usenet (real local downloads - only path that isn't debrid/symlink based)
