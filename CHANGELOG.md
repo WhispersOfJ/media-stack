@@ -4,9 +4,40 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.2.0**.
+features, **PATCH** for fixes. Current version: **v2.3.0**.
 
 ---
+
+## [2.3.0] — Homepage replaced with Heimdall; Watchtower's stale Docker client fixed
+
+### Changed
+- Swapped `homepage` (ghcr.io/gethomepage/homepage) for `lscr.io/linuxserver/heimdall` as the
+  stack's dashboard. Populated Heimdall directly via its SQLite database (`app.sqlite`) with
+  all 14 apps from the stack, grouped into the same five categories Homepage used: Requests
+  (Seerr), Acquisition (Prowlarr, Zilean, Decypharr, NZBGet), Libraries (Radarr, Sonarr,
+  Lidarr, Readarr, Whisparr, Bazarr), Media Server (Plex), and Monitoring & Tools (Tautulli,
+  FlareSolverr). Fetched matching icons from the community dashboard-icons set for 12 of the
+  14 apps; Zilean and Decypharr have no icon available there (Homepage worked around this the
+  same way, falling back to generic MDI icons).
+- Hit two real bugs while wiring this up, not just config: (1) the newly created `heimdall`
+  container came up with a broken `/etc/resolv.conf` (raw `127.0.0.53` instead of Docker's
+  embedded `127.0.0.11` DNS), breaking every outbound request from inside it — fixed by force-
+  recreating the container, after which Docker rewrote resolv.conf correctly. (2) Populated
+  each app's description into Heimdall's `description` column, which is actually reserved for
+  enhanced-app JSON config and gets `json_decode`'d on every page load — plain text there
+  caused `json_decode` to return `null`, and the next line's `$config->url = ...` threw
+  "Attempt to assign property on null", 500ing every category page. Fixed by moving
+  descriptions to the correct `appdescription` column and re-verified all five category pages
+  and the root dashboard return 200 with the right apps listed.
+
+### Fixed
+- `watchtower` was crash-looping: `containrrr/watchtower:latest` (now an archived/deprecated
+  repo) bundles a Docker client capped at API 1.25, but the host's Docker Engine (29.6.1) has
+  dropped support for anything below API 1.40. Moved to the actively maintained
+  `nickfedor/watchtower` fork — same env vars, drop-in replacement. Confirmed stable post-
+  switch: `Watchtower 1.19.0 using Docker API v1.55`, no more restarts.
+
+*Built with Claude AI.*
 
 ## [2.2.0] — Root folders moved off Zurg's read-only FUSE mount, verified end-to-end
 
