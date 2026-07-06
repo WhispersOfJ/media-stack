@@ -31,6 +31,9 @@ features, **PATCH** for fixes. Current version: **v2.5.0**.
     time fully breaking the debrid gateway (unmounted `/mnt/decypharr`, zero configured
     debrids) until manually reconstructed and POSTed back as one complete document. Anyone
     touching this API in the future: always send the full config, never a partial patch.
+    Root-caused in the actual source (`handleUpdateConfig` decodes into a zero-value struct;
+    `Config.Save()` overwrites `config.json` with no merge logic) and filed upstream as
+    [sirrobot01/decypharr#343](https://github.com/sirrobot01/decypharr/issues/343).
   - Getting one clean, verifiable live example of a fresh strm-mode grab flowing through to
     Jellyfin took longer than expected — indexer availability for the specific titles being
     tested, not a stack bug, but it meant the "how fast does this actually work" question
