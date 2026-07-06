@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.5.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.5.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -129,10 +129,9 @@ verified live against the running stack before being marked done.*
   the way through Prowlarr → Sonarr → Decypharr → import, confirmed on disk as a working,
   readable symlink with `hasFile: true`. See [CHANGELOG.md](CHANGELOG.md) v2.1.0 and v2.2.0 for
   the full story.
-- **Bazarr**'s Radarr and Sonarr connections were found silently broken (`ip: 127.0.0.1`,
-  unreachable from inside its own container) and fixed — see [CHANGELOG.md](CHANGELOG.md)
-  v2.4.0. Its Plex connection has the same bug and is still open, tracked in
-  [TODO.md](TODO.md).
+- **Bazarr**'s Radarr, Sonarr, and Plex connections were all found silently broken
+  (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
+  [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.1. All three are now genuinely live.
 
 ## One prerequisite: extend Zurg for new media types (done)
 
@@ -248,10 +247,9 @@ noted as **done** where complete. What's left is a preference call, not a techni
    `WEB-1080p` in Sonarr) and runs automatically once a day. Still manual: go to each app's
    **Settings → Profiles** and set the new profile as default for your root folders —
    Recyclarr creates the profile but doesn't assign it, since that's a preference call.
-6. **Bazarr** (done): its Radarr and Sonarr connections were found silently broken
+6. **Bazarr** (done): its Radarr, Sonarr, and Plex connections were all found silently broken
    (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
-   [CHANGELOG.md](CHANGELOG.md) v2.4.0. Its Plex connection has the identical bug and is
-   **not yet fixed** — needs a Plex API token; tracked in [TODO.md](TODO.md).
+   [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.1.
 
 > Seerr only recognizes Radarr and Sonarr in its settings API
 > (`/api/v1/settings/lidarr|readarr|whisparr` all 404) — it's a TMDB-based movie/TV frontend
@@ -378,5 +376,5 @@ requested specifically.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.5.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.5.1**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
