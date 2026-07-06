@@ -205,6 +205,33 @@ Watchtower):
 docker compose --profile extras up -d
 ```
 
+### Starting at boot
+
+`systemd/media-stack.service` brings the whole stack (extras included) up automatically on
+boot, in the order it actually needs:
+
+1. `zurg.service` mounts `/mnt/zurg` (its own embedded rclone process does this — not a
+   separate rclone unit) and `rclone-all.service` mounts `/mnt/all`. Both are bind-mounted
+   `rslave` into every arr container's `/mnt`, so they must be live *before* compose starts,
+   or containers see empty directories instead of the debrid content.
+2. Docker itself starts on demand via `docker.socket` (socket-activated, so `docker.service`
+   doesn't need to be enabled separately — the first `docker` command triggers it).
+3. `docker compose --profile extras up -d` runs once the above are ready.
+
+Install it as a user unit (it needs to run in the same systemd scope as `zurg.service` and
+`rclone-all.service` so the ordering above actually applies):
+
+```bash
+loginctl enable-linger $USER   # let user services start at boot without a login session
+ln -s /home/bear/Stack/systemd/media-stack.service ~/.config/systemd/user/media-stack.service
+systemctl --user daemon-reload
+systemctl --user enable --now media-stack.service
+```
+
+`systemctl --user stop media-stack.service` tears the whole stack back down cleanly
+(`docker compose --profile extras down`); `systemctl --user restart media-stack.service` to
+recreate it after a compose file change.
+
 | Service | URL | Notes |
 |---|---|---|
 | Prowlarr | http://192.168.4.105:9696 | indexer manager |

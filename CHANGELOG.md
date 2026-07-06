@@ -4,7 +4,31 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.5.1**.
+features, **PATCH** for fixes. Current version: **v2.6.0**.
+
+---
+
+## [2.6.0] — Boot automation via systemd
+
+### Added
+- `systemd/media-stack.service`: a user-scope systemd unit that brings the whole stack
+  (extras profile included) up automatically on boot, correctly ordered after the two host
+  mounts every arr container's `/mnt` bind-mount depends on: `zurg.service` (mounts
+  `/mnt/zurg` via its own embedded rclone process) and `rclone-all.service` (mounts
+  `/mnt/all`). Docker itself needs no explicit ordering — `docker.socket` is already
+  socket-activated, so the unit's first `docker` invocation starts `docker.service` on
+  demand. `RemainAfterExit=yes` + `ExecStop=docker compose --profile extras down` means
+  `systemctl --user stop media-stack.service` tears the stack back down cleanly too.
+  Installing it requires `loginctl enable-linger` for the user, since the mount units it
+  orders against are user-scope services that otherwise only start on interactive login.
+  See [README.md](README.md#starting-at-boot).
+
+### Fixed
+- Found `rclone-zurg.service` enabled but permanently failing (`didn't find section in
+  config file`) while auditing the boot dependency chain above — a leftover duplicate of
+  the mount `zurg.service` already manages internally via its own embedded rclone process.
+  Disabled it; it provided no function and would have been a false lead in the new unit's
+  dependency chain.
 
 ---
 
