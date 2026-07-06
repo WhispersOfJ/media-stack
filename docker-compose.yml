@@ -245,6 +245,11 @@ services:
     volumes:
       - ./config/bazarr:/config
       - /mnt:/mnt:rslave
+      # Identical paths to Radarr/Sonarr's own root folders - avoids needing
+      # Bazarr's Path Mappings feature, same reasoning as the *arr apps'
+      # shared /app/downloads path above.
+      - ./media/movies:/data/movies
+      - ./media/shows:/data/shows
 
   flaresolverr:
     restart: unless-stopped

@@ -4,9 +4,73 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.6.0**.
+features, **PATCH** for fixes. Current version: **v2.7.1**.
 
 ---
+
+## [2.7.1] — Bazarr couldn't see Sonarr/Radarr's actual libraries
+
+### Fixed
+- Bazarr's `docker-compose.yml` volumes only had `/config` and `/mnt` - never the actual
+  `/data/movies`/`/data/shows` paths Radarr and Sonarr use as their root folders. Bazarr asks
+  each app for its root folder over the API, gets back a path that simply didn't exist inside
+  Bazarr's own container, and surfaced it as "This Sonarr root directory does not seem to be
+  accessible by Bazarr." Added `./media/movies:/data/movies` and `./media/shows:/data/shows`
+  to Bazarr's volumes - identical paths to Radarr/Sonarr's own mounts, so no Path Mappings
+  needed (same reasoning as the shared `/app/downloads` path elsewhere in this file). Verified
+  via `docker exec bazarr ls /data/shows` and `/data/movies` (both populated, correct
+  ownership) and Bazarr's own `/api/series` and `/api/movies` returning real data post-fix.
+
+*Built with Claude AI.*
+
+## [2.7.0] — Live dashboard (Homepage) + automated config backups
+
+### Added
+- **Homepage** (`ghcr.io/gethomepage/homepage`), `extras` profile, port 3001, alongside
+  Heimdall rather than replacing it (v2.3.0 removed a prior Homepage instance in favor of
+  Heimdall - this time the ask was specifically live per-service data, which Heimdall's
+  static links can't provide). Live widgets wired up for Prowlarr, Radarr, Sonarr, Lidarr,
+  Readarr, Bazarr, NZBGet, Seerr (its Overseerr-compatible `/api/v1/status` confirmed
+  working), and Tautulli, using each app's real API key pulled from its own config. Docker
+  integration (read-only `docker.sock` mount) covers every other service with a live
+  running/health badge instead. Dedicated "Zilean Watch" group: link to Zilean's own
+  dashboard, a ping check, and container status for `zilean` + `zilean-postgres` - no custom
+  API widget, since Zilean's actual stats API isn't documented (`/health`, `/api/stats`,
+  `/dmm/status` all confirmed 404) and guessing risked a broken widget for no real gain over
+  linking its own UI directly.
+- Custom dark/black + red-accent theme (`config/homepage/custom.css`) - Homepage's built-in
+  `color: red` tints entire card surfaces red rather than just accenting, so base color is
+  `slate` with black backgrounds/red borders/headings layered on top via CSS.
+- Automated config backup: `scripts/backup-config.sh` (restic, `~/backups/stack-restic-repo`,
+  `--keep-daily 7 --keep-weekly 4 --keep-monthly 6`) run daily at 03:30 by
+  `systemd/stack-backup.{service,timer}` (same tracked+symlinked pattern as
+  `media-stack.service`), scheduled before Watchtower's 4am updates.
+
+### Fixed (found wiring this up, not pre-existing)
+- Homepage's Next.js layer rejects any request with a non-allow-listed `Host` header -
+  every page load failed with "Host validation failed" and nothing else. Needed
+  `HOMEPAGE_ALLOWED_HOSTS` set to the exact `host:port` combinations (bare hostname without
+  the port was not sufficient).
+- Whisparr's fork doesn't expose Radarr's `/movie` endpoint (confirmed 404 directly against
+  its API) even though `/queue/status` and `/queue/details` work fine - the borrowed "radarr"
+  widget type half-broke on it. Dropped to a container-status-only card instead of a
+  partially-erroring widget.
+- First backup run exited non-zero: restic's own exit code 3 ("some source files could not
+  be read") from `config/zilean-postgres`'s live data files, combined with `set -e`, aborted
+  the script before the retention/prune step ran (backup itself had still succeeded). Fixed
+  two ways: excluded `zilean-postgres` from the backup entirely - not just to dodge the
+  permission error, but because file-level copying a *running* Postgres data directory can
+  produce an inconsistent restore, and Zilean's index is a rebuildable DMM-scrape cache, not
+  data worth that risk - and made the script tolerate exit code 3 generally rather than
+  treating any non-zero restic exit as fatal.
+
+### Known limitation
+- Backup repo is local-only (`~/backups/`, same single NVMe as everything else) - protects
+  against config corruption, accidental deletion, and repeats of the Decypharr config-wipe
+  bug below, not physical disk failure. No cloud remote configured since no cloud storage
+  account exists on this host; restic supports one natively if that's ever wanted.
+
+*Built with Claude AI.*
 
 ## [2.6.0] — Boot automation via systemd
 

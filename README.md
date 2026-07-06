@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.5.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.7.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -27,8 +27,10 @@ Nothing here downloads by default except the explicit NZBGet fallback.
 - [Zilean hardware tuning](#zilean-hardware-tuning)
 - [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
 - [Security note](#security-note)
+- [Automated config backups](#automated-config-backups)
 - [CI: validation and dependency updates](#ci-validation-and-dependency-updates)
 - [Optional extras reference](#optional-extras-reference)
+- [Dashboard (Homepage)](#dashboard-homepage)
 
 ## Architecture
 
@@ -367,6 +369,35 @@ plaintext and are both `chmod 600`. This matches how Zurg's own `config.yml` alr
 its Real-Debrid token — consistent with the existing setup, but worth knowing if this host is
 ever shared or backed up somewhere less trusted.
 
+## Automated config backups
+
+`./config` holds every app's settings, database, and the plaintext API keys mentioned above -
+none of it is in git (see `.gitignore`), and it's the one part of this stack that isn't
+reproducible by re-running `docker compose up` or re-pulling images. A known Decypharr bug
+(see the changelog) has already wiped its own config once; this exists so that's a non-event
+next time instead of a rebuild.
+
+- **`scripts/backup-config.sh`** — runs `restic backup ./config`, then `restic forget --prune`
+  with `--keep-daily 7 --keep-weekly 4 --keep-monthly 6`. Repo lives at
+  `~/backups/stack-restic-repo`, restic-encrypted, password in `~/backups/.restic-password`
+  (`chmod 600`, outside git).
+- **`systemd/stack-backup.{service,timer}`** — same tracked-in-repo-then-symlinked-into
+  `~/.config/systemd/user/` pattern as `media-stack.service`. Runs daily at 03:30, before
+  Watchtower's 4am image updates so a bad update never lands ahead of that day's backup.
+- **Excluded from the backup:** `decypharr/cache` and `recyclarr/resources` (both fully
+  regenerable - a FUSE cache and a cloned trash-guides repo respectively), every app's
+  `logs`/`log` directory, and `zilean-postgres` entirely. That last one isn't just size -
+  file-level copying a *running* Postgres data directory can produce an inconsistent restore;
+  Zilean's index is a rebuildable DMM-scrape cache, not something that needs point-in-time
+  correctness, so it's simpler to exclude than to add pg_dump machinery for it.
+- **Known limitation:** this host has a single physical disk (btrfs, one NVMe), so the repo
+  protects against config corruption/accidental deletion/a repeat of the Decypharr bug, *not*
+  disk failure. Snapper's `root` config doesn't cover `/home` either. A cloud remote (restic
+  supports S3/B2/etc. natively) would close that gap if it's ever wanted - not set up here
+  since no cloud storage account exists on this host yet.
+- Verify anytime with `restic -r ~/backups/stack-restic-repo snapshots` (needs
+  `RESTIC_PASSWORD_FILE=~/backups/.restic-password` in the environment).
+
 ## CI: validation and dependency updates
 
 Two things run on GitHub, not on this host:
@@ -391,6 +422,7 @@ Two things run on GitHub, not on this host:
 | FlareSolverr | Lets Prowlarr solve Cloudflare challenges some indexers put up — already registered as an Indexer Proxy and tagged onto the trackers that need it |
 | Tautulli | Plex watch-history/stats dashboard |
 | Heimdall | Single landing page linking every service above, grouped into 5 categories |
+| Homepage | Broader live dashboard - per-service widgets, docker container health, dedicated Zilean panel. Kept alongside Heimdall, not a replacement - see below |
 | Recyclarr | Syncs TRaSH-Guides quality profiles into Radarr/Sonarr automatically, once a day |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
 | Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
@@ -400,8 +432,40 @@ separate download client (a built-in feature), which would make NZBGet unnecessa
 fully "nothing touches local disk" setup is ever wanted. Left out here since NZBGet was
 requested specifically.
 
+## Dashboard (Homepage)
+
+Note: v2.3.0 replaced an earlier Homepage instance with Heimdall. This isn't a reversal of
+that decision - the ask this time was specifically live per-service data (queue depth, grab
+counts, health), which Heimdall's static links don't provide, so Homepage is back
+*alongside* Heimdall rather than instead of it.
+
+- **Every service gets a live widget** where one exists (Radarr/Sonarr/Lidarr/Readarr grab
+  and queue counts, Prowlarr indexer stats, Bazarr missing-subtitle counts, NZBGet
+  rate/remaining, Seerr request counts via its Overseerr-compatible API, Tautulli active
+  streams). Whisparr does *not* get the borrowed "radarr" widget type - its fork doesn't
+  expose Radarr's `/movie` endpoint (confirmed 404), so it's a container-status card only
+  rather than a half-broken widget.
+- **Docker integration** (`config/homepage/docker.yaml`, read-only `docker.sock` mount) gives
+  every service a live running/health badge and start/stop/restart controls, including the
+  services with no widget of their own (Decypharr, Unpackerr, Watchtower, Recyclarr,
+  Heimdall).
+- **Zilean Watch** is its own group: a direct link to Zilean's own built-in dashboard (the
+  thing `Zilean__EnableDashboard` was already turned on for), a ping health check, and
+  container status for both `zilean` and `zilean-postgres`. No custom API widget - Zilean's
+  actual stats API isn't documented and guessing at endpoints (tried `/health`, `/api/stats`,
+  `/dmm/status`, all 404) risked a broken widget for no real benefit over its own dashboard.
+- **Theme:** `color: slate` (not Homepage's built-in `color: red`, which tints entire card
+  surfaces red - reads as "all red" rather than "dark with red accents"). Actual black
+  background + red borders/headings/search-bar come from `config/homepage/custom.css`.
+- **Real gotcha hit wiring this up:** newer Homepage versions (Next.js-based) reject any
+  request whose `Host` header isn't explicitly allow-listed, failing every page load with
+  "Host validation failed" and no other symptom. Fixed via `HOMEPAGE_ALLOWED_HOSTS` in the
+  compose environment - needs the exact `host:port` combination(s) it'll be reached by
+  (`localhost:3001`, `127.0.0.1:3001`, `${HOST_IP}:3001`), not just the bare hostname.
+- Runs on port **3001** (Heimdall already had 3000).
+
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.5.1**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.7.1**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
