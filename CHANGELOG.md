@@ -4,9 +4,41 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.4.1**.
+features, **PATCH** for fixes. Current version: **v2.5.0**.
 
 ---
+
+## [2.5.0] — Jellyfin removed; reverted to symlinks, experience judged not worth it
+
+### Changed — BREAKING
+- **Removed Jellyfin, Jellyseerr, Jellystat, and jfa-go entirely** — all four containers,
+  their `docker-compose.yml` service definitions, their config directories (~170MB), the
+  `JELLYSTAT_POSTGRES_PASSWORD`/`JELLYSTAT_JWT_SECRET` env vars, their 4 Heimdall tiles and
+  icons, and the `JELLYFIN-PLUGINS.md` reference doc. Bazarr's Jellyfin connection was
+  disabled and cleared; its Radarr/Sonarr connections (fixed in [2.4.0](CHANGELOG.md)) were
+  left alone since that bug was real and independent of Jellyfin.
+- **Decypharr reverted from `strm` back to `symlink`** for `default_download_action`. The
+  strm experiment ([2.4.1](CHANGELOG.md) territory, never actually versioned on its own) was
+  tried, tested, and judged not worth keeping:
+  - **Plex doesn't support `.strm` files at all** (removed years ago) — since Plex is this
+    stack's primary, native, pre-existing media server, strm mode meant every new grab was
+    invisible to Plex and only playable through Jellyfin. That's a real regression, not a
+    minor caveat.
+  - **A serious, reproducible bug** in Decypharr's `POST /api/config`: any *partial* JSON
+    patch (e.g. just `{"default_download_action": "strm"}`) causes it to silently drop the
+    `debrids`, `mount`, and sometimes `arrs` sections entirely on the next save/restart —
+    hit this **twice** in one session (once switching to strm, once switching back), each
+    time fully breaking the debrid gateway (unmounted `/mnt/decypharr`, zero configured
+    debrids) until manually reconstructed and POSTed back as one complete document. Anyone
+    touching this API in the future: always send the full config, never a partial patch.
+  - Getting one clean, verifiable live example of a fresh strm-mode grab flowing through to
+    Jellyfin took longer than expected — indexer availability for the specific titles being
+    tested, not a stack bug, but it meant the "how fast does this actually work" question
+    never got a clean answer before the decision to revert was made.
+- Real-Debrid token was rotated mid-session after an unrelated accidental transcript exposure
+  ([2.4.1](CHANGELOG.md)) — unaffected by this revert, still current.
+
+*Built with Claude AI.*
 
 ## [2.4.1] — Real-Debrid token rotated
 
