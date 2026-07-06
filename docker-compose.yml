@@ -281,6 +281,31 @@ services:
     volumes:
       - ./config/heimdall:/config
 
+  # Broad-featured live dashboard: per-service widgets (queue/health/stats),
+  # docker container status for everything below, and a dedicated Zilean
+  # Watch panel. Kept alongside Heimdall rather than replacing it - Heimdall
+  # is a simple link launcher, this one talks to each app's API.
+  homepage:
+    restart: unless-stopped
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "3001:3000"
+    environment:
+      TZ: ${TZ}
+      HOMEPAGE_VAR_HOST_IP: ${HOST_IP}
+      HOMEPAGE_VAR_PLEX_URL: ${PLEX_URL}
+      # Next.js host-header validation - without this, every request 404s
+      # with "Host validation failed" unless the Host header exactly matches.
+      HOMEPAGE_ALLOWED_HOSTS: localhost:3001,127.0.0.1:3001,${HOST_IP}:3001
+    volumes:
+      - ./config/homepage:/app/config
+      # Read-only: only used so service cards can show live container
+      # status/health and expose start/stop/restart controls.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
   recyclarr:
     restart: unless-stopped
     image: ghcr.io/recyclarr/recyclarr:8
