@@ -4,9 +4,22 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.4.0**.
+features, **PATCH** for fixes. Current version: **v2.4.1**.
 
 ---
+
+## [2.4.1] — Real-Debrid token rotated
+
+### Fixed
+- While fetching a Plex API token from Zurg's `config.yml` to fix Bazarr's Plex connection, a
+  broad `grep` also matched and printed the Real-Debrid token to the session transcript — a
+  genuine accidental exposure, not a hypothetical one. Rotated the token in the Real-Debrid
+  account settings and updated both places it lives on this host: `zurg`'s `config.yml` and
+  `config/decypharr/config.json`. Restarted both, confirmed no auth errors and a clean initial
+  sync from both debrid clients on the new key. Neither file is tracked by git (both are
+  gitignored), so no repo history needed scrubbing — the exposure was transcript-only.
+
+*Built with Claude AI.*
 
 ## [2.4.0] — Jellyfin + companion apps added, wired to every existing app, two live bugs found and fixed
 
