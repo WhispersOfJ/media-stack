@@ -4,9 +4,71 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.7.1**.
+features, **PATCH** for fixes. Current version: **v2.8.0**.
 
 ---
+
+## [2.8.0] — Kometa added and configured (Plex collections/metadata/overlays)
+
+### Added
+- **Kometa** (`kometateam/kometa:latest` - the official image's stable channel, explicitly
+  not `:nightly`/`:develop`), `extras` profile, for automated Plex collections, metadata, and
+  overlay art. Only volume is `./config/kometa:/config` - Kometa applies overlays/posters
+  through Plex's own API rather than touching media files directly, so unlike every *arr app
+  it needs no `/mnt` or `./media/*` mount at all. On `stacknet` alongside everything else, so
+  it can reach Radarr/Sonarr/Plex/Tautulli the same way every other service already does.
+  Deliberately did *not* use the LinuxServer fork (`linuxserver/kometa`): it resets `/config`
+  ownership to `PUID`/`PGID` (or `911:911` unset) on every start, which the official image
+  doesn't do, and the wiki's own examples assume the official image.
+- Added to **Heimdall** (new `items`/`item_tag` rows in `app.sqlite`, under the "Media Server"
+  category alongside Plex) and **Homepage** (`config/homepage/services.yaml`, next to
+  Recyclarr - same "no widget, container-status only" treatment). Both link to
+  `https://kometa.wiki/` instead of a local URL: Kometa has no web UI of its own (it's a
+  scheduled batch job, not a running service with a page to load), so its own docs are the
+  only destination that goes anywhere - matches how Recyclarr/Unpackerr/Watchtower were
+  already handled in both dashboards.
+- Fetched a matching icon from the same community dashboard-icons set already used for the
+  other Heimdall/Homepage entries.
+- Ran the container once to let it complete its own documented first-run behavior
+  (auto-downloads the stock default `config.yml` and exits/restarts once before settling into
+  its normal idle-until-5AM state). Confirmed no restart loop (`RestartCount` stayed at 1).
+
+### Configured (`./config/kometa/config.yml` - gitignored like the rest of `config/`, never committed)
+- **Connections:** Plex (token reused from `~/zurg/config.yml` - same server), TMDb, Radarr,
+  Sonarr, and Tautulli all wired up with real URLs/keys and validated via Kometa's own
+  `--validate --validate-level full` (connects to every configured service without touching
+  real collections/overlays/operations). Radarr/Sonarr `quality_profile` set to match whatever
+  Recyclarr actively manages (`HD Bluray + WEB` / `WEB-1080p`) so the two stay in sync;
+  `root_folder_path` pulled from each app's own `/api/v3/rootfolder` rather than the stub's
+  fictional `S:/Movies` placeholder.
+- **Trakt and MyAnimeList OAuth completed.** Both need a one-time interactive authorization
+  (Trakt: visit a URL, get a short PIN; MAL: visit a URL, get redirected to a broken
+  `localhost/?code=...` page) that a non-interactive container can't do on its own. Trakt's
+  PIN flow worked through `--validate-level full` directly. MAL's did not - a `docker exec -i`
+  session piped through a named pipe hit a Python `EOFError` on the input prompt every time
+  rather than actually blocking for input, even after working around the FIFO's own
+  read-blocks-until-writer gotcha. Completed it manually instead: read `modules/mal.py` in
+  Kometa's own source to find the exact OAuth exchange it performs (`POST
+  https://myanimelist.net/v1/oauth2/token` with `client_id`/`client_secret`/`code`/
+  `code_verifier`/`grant_type=authorization_code`, where `code_verifier` must equal the
+  `code_challenge` MAL's "plain" PKCE method logged in the authorize URL), then made that
+  exact request directly and wrote the resulting `access_token`/`refresh_token` straight into
+  `config.yml`. Both tokens auto-refresh via Kometa's own renewal logic going forward.
+- **`libraries:`** trimmed to the two that actually exist on this Plex server (`Movies`,
+  `TV Shows` - confirmed via a real `Plex Library 'Anime' not found. Options: ['Movies', 'TV
+  Shows']` error from the stub's placeholder `Anime`/`Music` blocks, which were removed).
+  Added the most commonly-used zero-config Kometa defaults on top of the stub's
+  `basic`/`imdb`/`ribbon`: `genre`/`studio`/`decade` collections and a `resolution` overlay.
+  Deliberately did *not* add the `ratings` overlay or any of the dozen other available
+  defaults (streaming, franchise, awards, per-country content ratings, etc.) - `ratings`
+  specifically needs you to choose which rating sources to display or it silently does
+  nothing, and Kometa's own docs explicitly warn against enabling everything at once before
+  understanding what each default does.
+- **`add_missing: true` and `search: true`** enabled for both Radarr and Sonarr - Kometa will
+  now add collection items missing from the library and trigger an immediate search rather
+  than waiting for Radarr/Sonarr's own scheduled search cycle.
+
+*Built with Claude AI.*
 
 ## [2.7.1] — Bazarr couldn't see Sonarr/Radarr's actual libraries
 
