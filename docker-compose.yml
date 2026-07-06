@@ -269,19 +269,17 @@ services:
     volumes:
       - ./config/tautulli:/config
 
-  homepage:
-    restart: unless-stopped
-    image: ghcr.io/gethomepage/homepage:latest
-    container_name: homepage
+  heimdall:
+    <<: *common
+    image: lscr.io/linuxserver/heimdall:latest
+    container_name: heimdall
     profiles: [extras]
     networks: [stacknet]
     ports:
-      - "3000:3000"
-    environment:
-      TZ: ${TZ}
-      HOMEPAGE_ALLOWED_HOSTS: "*"
+      - "3000:80"
+      - "3443:443"
     volumes:
-      - ./config/homepage:/app/config
+      - ./config/heimdall:/config
 
   recyclarr:
     restart: unless-stopped
@@ -311,7 +309,7 @@ services:
 
   watchtower:
     restart: unless-stopped
-    image: containrrr/watchtower:latest
+    image: nickfedor/watchtower:latest
     container_name: watchtower
     profiles: [extras]
     networks: [stacknet]
