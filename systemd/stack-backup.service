@@ -1,0 +1,8 @@
+[Unit]
+Description=Stack config backup (restic)
+After=media-stack.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Stack
+ExecStart=%h/Stack/scripts/backup-config.sh
