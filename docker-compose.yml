@@ -311,6 +311,27 @@ services:
       # status/health and expose start/stop/restart controls.
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
+  # Real host-level CPU/memory/disk/uptime for Homepage's top-of-page widget
+  # (the "resources" widget only reports the *container's own* usage - this
+  # is what actually shows host stats). pid: host + the read-only rootfs
+  # mount are both required for it to see the host rather than itself.
+  # Also has its own decent web UI, so it gets a real service card too.
+  glances:
+    restart: unless-stopped
+    image: nicolargo/glances:latest
+    container_name: glances
+    profiles: [extras]
+    networks: [stacknet]
+    pid: host
+    ports:
+      - "61208:61208"
+    environment:
+      TZ: ${TZ}
+      GLANCES_OPT: "-w"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/rootfs:ro
+
   recyclarr:
     restart: unless-stopped
     image: ghcr.io/recyclarr/recyclarr:8

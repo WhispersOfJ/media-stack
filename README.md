@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.8.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.9.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -423,9 +423,10 @@ Two things run on GitHub, not on this host:
 | FlareSolverr | Lets Prowlarr solve Cloudflare challenges some indexers put up — already registered as an Indexer Proxy and tagged onto the trackers that need it |
 | Tautulli | Plex watch-history/stats dashboard |
 | Heimdall | Single landing page linking every service above, grouped into 5 categories |
-| Homepage | Broader live dashboard - per-service widgets, docker container health, dedicated Zilean panel. Kept alongside Heimdall, not a replacement - see below |
+| Homepage | Broader live dashboard - per-service widgets, docker container health, dedicated Zilean panel, real host stats via Glances - see below |
+| Glances | Real host CPU/memory/disk/uptime stats, feeds Homepage's top-of-page widget and Glances' own card |
 | Recyclarr | Syncs TRaSH-Guides quality profiles into Radarr/Sonarr automatically, once a day |
-| Kometa | Automated Plex collections, metadata, and overlays. Infrastructure only for now - see below |
+| Kometa | Automated Plex collections, metadata, and overlays - configured and running, see below |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
 | Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
 
@@ -465,6 +466,22 @@ counts, health), which Heimdall's static links don't provide, so Homepage is bac
   compose environment - needs the exact `host:port` combination(s) it'll be reached by
   (`localhost:3001`, `127.0.0.1:3001`, `${HOST_IP}:3001`), not just the bare hostname.
 - Runs on port **3001** (Heimdall already had 3000).
+- **Kometa progress:** it's a batch job with no API of its own, so rather than fake a
+  progress bar, `showStats: true` (global, `settings.yaml`) surfaces its container's live
+  CPU/memory - idle near-0% normally, visibly spikes while a scheduled run is actually
+  processing collections/overlays. Genuine signal, not a decorative one.
+- **Glances** (`nicolargo/glances`, `pid: host` + read-only `/:/rootfs` mount) gives real
+  *host*-level CPU/memory/disk/uptime, both as a top-of-page widget and its own service card
+  with a working web UI at port **61208**. Worth knowing: Homepage's built-in `resources`
+  widget only ever reports the *container's own* usage, not the host's - Glances is what
+  actually closes that gap, which is the whole reason it's here as a separate service rather
+  than a config tweak.
+- **Visual polish pass:** `custom.css` grew past the base black/red palette - card surfaces
+  now get a subtle gradient + drop shadow with a red glow and lift on hover, section headings
+  got a short gradient underline instead of just colored text, stat/progress bars render with
+  a red gradient fill, and "up" status indicators get a slow pulse instead of a static dot.
+  `blockHighlights` in `settings.yaml` was also re-themed so widget good/warn/danger states
+  lean into the same red/black palette instead of Homepage's default green/amber/red.
 
 ## Kometa (Plex collections/metadata/overlays)
 
@@ -500,5 +517,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.8.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.9.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
