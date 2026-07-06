@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.7.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.8.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -31,6 +31,7 @@ Nothing here downloads by default except the explicit NZBGet fallback.
 - [CI: validation and dependency updates](#ci-validation-and-dependency-updates)
 - [Optional extras reference](#optional-extras-reference)
 - [Dashboard (Homepage)](#dashboard-homepage)
+- [Kometa (Plex collections/metadata/overlays)](#kometa-plex-collectionsmetadataoverlays)
 
 ## Architecture
 
@@ -424,6 +425,7 @@ Two things run on GitHub, not on this host:
 | Heimdall | Single landing page linking every service above, grouped into 5 categories |
 | Homepage | Broader live dashboard - per-service widgets, docker container health, dedicated Zilean panel. Kept alongside Heimdall, not a replacement - see below |
 | Recyclarr | Syncs TRaSH-Guides quality profiles into Radarr/Sonarr automatically, once a day |
+| Kometa | Automated Plex collections, metadata, and overlays. Infrastructure only for now - see below |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
 | Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
 
@@ -464,8 +466,39 @@ counts, health), which Heimdall's static links don't provide, so Homepage is bac
   (`localhost:3001`, `127.0.0.1:3001`, `${HOST_IP}:3001`), not just the bare hostname.
 - Runs on port **3001** (Heimdall already had 3000).
 
+## Kometa (Plex collections/metadata/overlays)
+
+Automates the stuff that makes a Plex library feel curated instead of just a folder list:
+collections, trailers/metadata, poster/overlay art (resolution badges, ratings, etc.), all
+driven by a `config.yml` you write.
+
+- **Official image only** (`kometateam/kometa`), **`:latest` tag** (the stable channel) - not
+  `:nightly` or `:develop`, per instruction. The LinuxServer fork was deliberately avoided too:
+  it resets `/config`'s ownership to `PUID`/`PGID` (or `911:911` if unset) on every container
+  start, which the official image doesn't do, and most of Kometa's own wiki examples assume
+  you're on the official image anyway.
+- **No web UI** - Kometa is a scheduled batch job (wakes at 5AM by default, processes the
+  config, goes back to sleep; `KOMETA_RUN`/`KOMETA_TIMES` env vars can change that), not a
+  service with a page to load. No port is published. In Heimdall and Homepage it's linked to
+  its own wiki (`https://kometa.wiki/`) instead of a local URL, since that's the only
+  destination that actually goes somewhere - same treatment Recyclarr/Unpackerr/Watchtower
+  already got for the same reason.
+- **Talks to Plex over its API, not the filesystem** - overlays/posters are uploaded through
+  Plex's API, so unlike the *arr apps, Kometa's container doesn't need `/mnt` or
+  `./media/*` mounted at all. Only volume is `./config/kometa:/config`.
+- **Reaches Radarr/Sonarr/Plex/Tautulli over the same `stacknet` network and `${HOST_IP}`**
+  every other service already uses - no new networking needed, just config content.
+- **Configured and validated.** `config.yml` connects to Plex, TMDb, Radarr, Sonarr, and
+  Tautulli, plus Trakt and MyAnimeList (both needed a one-time interactive OAuth step - see
+  CHANGELOG.md v2.8.0 for how MAL's was completed manually after the standard interactive flow
+  didn't work non-interactively). `libraries:` covers the two libraries that actually exist on
+  this Plex server (`Movies`, `TV Shows`) with a deliberately small set of common defaults
+  (`genre`/`studio`/`decade` collections, a `resolution` overlay) rather than enabling
+  everything available at once. `add_missing`/`search` are both on for Radarr and Sonarr.
+  Verified end-to-end with Kometa's own `--validate --validate-level full`.
+
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.7.1**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.8.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

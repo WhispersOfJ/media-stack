@@ -322,6 +322,25 @@ services:
     volumes:
       - ./config/recyclarr:/config
 
+  # Automated Plex collections/metadata/overlays. Official image only - the
+  # LinuxServer fork resets /config ownership to PUID/PGID (or 911:911 if
+  # unset) on every start, which the official image doesn't do and most of
+  # the wiki's examples assume you're not using anyway. Pinned to :latest
+  # (the stable channel) rather than :nightly/:develop on purpose.
+  # No web UI of its own - runs as a scheduled batch job against Plex's API,
+  # so no port is published; see Homepage/Heimdall entries for how it's
+  # surfaced there instead.
+  kometa:
+    restart: unless-stopped
+    image: kometateam/kometa:latest
+    container_name: kometa
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/kometa:/config
+
   unpackerr:
     restart: unless-stopped
     image: golift/unpackerr:latest
