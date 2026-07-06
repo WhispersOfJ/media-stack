@@ -4,9 +4,72 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.3.0**.
+features, **PATCH** for fixes. Current version: **v2.4.0**.
 
 ---
+
+## [2.4.0] — Jellyfin + companion apps added, wired to every existing app, two live bugs found and fixed
+
+### Added
+- **Jellyfin** (`lscr.io/linuxserver/jellyfin`) as a second media server alongside the existing
+  native Plex install. VAAPI hardware transcoding passed through from the host's AMD Radeon
+  680M iGPU (`/dev/dri`, world-writable `renderD128`, no `group_add` needed) — confirmed via
+  `System/Configuration/encoding` (`HardwareAccelerationType: vaapi`). Scripted through the
+  entire startup wizard via its REST API (server name, admin account, remote access, a
+  permanent API key for the other apps below) rather than the interactive UI. 5 libraries
+  created against `/data/{movies,shows,music,books,adult}` — the same regular-disk root
+  folders every arr app already writes into, not `/mnt/zurg`. Also enabled native
+  hardware-accelerated trickplay generation (`TrickplayOptions.EnableHwAcceleration`).
+- **Jellyseerr** — a second instance of the same `seerr` image, configured for a Jellyfin
+  backend instead of Plex. Confirmed empirically (querying the existing Seerr's own
+  `/api/v1/settings/public`) that **one Seerr instance is Plex or Jellyfin, never both at
+  once** (`mediaServerType` is a single enum field) — this answers the question left open in
+  the TODO about whether the existing `seerr` container could just grow a second backend; it
+  can't, hence the second container. Signed in against Jellyfin
+  (`POST /api/v1/auth/jellyfin` with `serverType: 2`), which both validated admin access and
+  created Jellyseerr's own admin user in one step, then connected Radarr + Sonarr the same way
+  the original Seerr was connected in [1.11.0].
+- **Jellystat** (`cyfershepard/jellystat`) + its own Postgres database, following the same
+  pattern as Zilean's dedicated DB. Connected to Jellyfin via its API key. Syncs on its own
+  schedule (60 min partial / 24h full).
+- **jfa-go** (`hrfee/jfa-go`) for Jellyfin user invites/account management, authenticated
+  directly against the Jellyfin admin account. Password-reset watching pointed at the same
+  `/config` volume Jellyfin itself uses (mounted read-only at `/jf`).
+- Connected **Bazarr** to Jellyfin (it already supports multiple media servers natively — no
+  new container). Selected the Movies + Adult libraries as Bazarr's movie scope and Shows as
+  its series scope.
+- Installed the 30-plugin curated shortlist from `JELLYFIN-PLUGINS.md` via Jellyfin's
+  `/Repositories` and `/Packages/Installed` APIs (11 community repos registered, 31 packages
+  installed in one pass). 30 came up `Active`; **Jellyscrub** came up `NotSupported` and was
+  removed — this Jellyfin version's native trickplay (now hardware-accelerated, see above)
+  covers the same job, exactly the caveat noted against that plugin in the shortlist.
+  `jellyfin-rpc`, also on the shortlist, turned out not to be a Jellyfin plugin at all (it's a
+  standalone client-side Discord Rich Presence daemon with nothing to install server-side) —
+  left out of the install, noted here rather than silently dropped.
+
+### Fixed
+- **Bazarr's Radarr, Sonarr, and Plex connections were all completely non-functional** —
+  discovered while wiring up its new Jellyfin connection, not something anyone had reported.
+  All three were configured with `ip: 127.0.0.1`, which from inside Bazarr's own container
+  resolves to Bazarr itself, never to another container or to the native-host Plex install.
+  `use_radarr`/`use_sonarr`/`use_plex` were all `false` too. Net effect: Bazarr had never
+  actually synced a movie or series list from anything since it was added, regardless of
+  anything configured in its own subtitle settings. Fixed Radarr → `radarr:7878` and
+  Sonarr → `sonarr:8989` (both now on `stacknet` like every other container) and enabled both
+  — confirmed live via Bazarr's own logs, SignalR feeds connected to both, and `/api/series`
+  now returning real data for the first time. Plex's `127.0.0.1` is left unfixed for now — it
+  needs a Plex API token this session didn't have on hand; noted, not silently ignored.
+- **Both Seerr instances' Radarr/Sonarr root folders were stale**, pointing at
+  `/mnt/zurg/{movies,shows}` — the FUSE-mount paths [2.2.0] moved every root folder off of,
+  months ago. Found while copying the existing Seerr's connection settings as a template for
+  Jellyseerr's: `activeDirectory` in `config/seerr/settings.json` still said `/mnt/zurg/movies`
+  / `/mnt/zurg/shows`, and Radarr/Sonarr's own `/api/v3/rootfolder` confirmed those paths were
+  `"accessible": false`. This meant any request made through the Plex-backed Seerr since
+  [2.2.0] would have been handed a dead root folder. Patched `settings.json` directly to
+  `/data/movies`/`/data/shows`, restarted Seerr, confirmed the fix persisted, and deleted the
+  now-dead root folder entries from both Radarr and Sonarr entirely.
+
+*Built with Claude AI.*
 
 ## [2.3.0] — Homepage replaced with Heimdall; Watchtower's stale Docker client fixed
 

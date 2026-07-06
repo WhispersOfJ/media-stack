@@ -319,3 +319,88 @@ services:
       WATCHTOWER_SCHEDULE: "0 0 4 * * *"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
+  # ---------------------------------------------------------------------
+  # Jellyfin + companion apps - second media server alongside native Plex.
+  # All under `extras`, same as the other Plex companions above.
+  # ---------------------------------------------------------------------
+  jellyfin:
+    <<: *common
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "8096:8096"
+    volumes:
+      - ./config/jellyfin:/config
+      - /mnt:/mnt:rslave
+      - ./media/movies:/data/movies
+      - ./media/shows:/data/shows
+      - ./media/music:/data/music
+      - ./media/books:/data/books
+      - ./media/adult:/data/adult
+    # AMD Radeon 680M (Rembrandt) iGPU, VAAPI hardware transcoding.
+    # renderD128 is world read-write (0666) on this host, no group_add needed.
+    devices:
+      - /dev/dri:/dev/dri
+
+  jellyseerr:
+    restart: unless-stopped
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: jellyseerr
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "5056:5055"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/jellyseerr:/app/config
+
+  jellystat-postgres:
+    restart: unless-stopped
+    image: postgres:18-alpine
+    container_name: jellystat-postgres
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${JELLYSTAT_POSTGRES_PASSWORD}
+      POSTGRES_DB: jellystat
+    volumes:
+      - ./config/jellystat-postgres:/var/lib/postgresql
+
+  jellystat:
+    restart: unless-stopped
+    image: cyfershepard/jellystat:latest
+    container_name: jellystat
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "3001:3000"
+    depends_on:
+      - jellystat-postgres
+    environment:
+      TZ: ${TZ}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${JELLYSTAT_POSTGRES_PASSWORD}
+      POSTGRES_IP: jellystat-postgres
+      POSTGRES_PORT: 5432
+      JWT_SECRET: ${JELLYSTAT_JWT_SECRET}
+    volumes:
+      - ./config/jellystat/backup-data:/app/backend/backup-data
+
+  jfa-go:
+    restart: unless-stopped
+    image: hrfee/jfa-go:latest
+    container_name: jfa-go
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "8056:8056"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/jfa-go:/data
+      - ./config/jellyfin:/jf
