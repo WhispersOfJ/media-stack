@@ -4,9 +4,28 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.9.0**.
+features, **PATCH** for fixes. Current version: **v2.9.1**.
 
 ---
+
+## [2.9.1] — Glances service-card widget crashed the whole Homepage page
+
+### Fixed
+- The Glances card added in v2.9.0 used the wrong config schema: `cpu: true`/`mem: true` are
+  the *info-widget's* (`widgets.yaml`, top-of-page) option flags, but the *service-widget*
+  (`services.yaml`, individual cards) uses a completely different schema requiring a single
+  `metric:` field (`info`, `cpu`, `memory`, `process`, `containers`, or a parameterized one
+  like `network:eth0`). Neither `cpu` nor `mem` map to anything the service-widget component
+  understands, so its internal `widget.metric` ended up `undefined`, and a `.match()` call on
+  that undefined value crashed the entire page for every visitor - not a contained per-card
+  error, the whole dashboard. Root-caused by reading Homepage's actual
+  `src/widgets/glances/component.jsx` source (the failing `.match()` line) and its docs
+  (`docs/widgets/services/glances.md`) to find the real schema, rather than guessing further.
+  Fixed to `metric: info`, which shows a general hostname/OS/CPU/RAM/SWAP overview card -
+  verified via `docker exec homepage` log monitoring showing no errors once idle, versus
+  errors appearing only during manual (and initially also malformed) API probing.
+
+*Built with Claude AI.*
 
 ## [2.9.0] — Real Kometa progress signal, Glances host stats, dashboard visual polish
 

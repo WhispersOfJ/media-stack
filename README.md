@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.9.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.9.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -517,5 +517,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.9.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.9.1**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
