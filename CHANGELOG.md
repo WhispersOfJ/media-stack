@@ -4,9 +4,35 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.8.0**.
+features, **PATCH** for fixes. Current version: **v2.9.0**.
 
 ---
+
+## [2.9.0] — Real Kometa progress signal, Glances host stats, dashboard visual polish
+
+### Added
+- **Glances** (`nicolargo/glances:latest`), `extras` profile, `pid: host` + read-only
+  `/:/rootfs` mount so it reports genuine *host* CPU/memory/disk/uptime rather than its own
+  container's usage - confirmed via its API (`/api/4/cpu`, `/api/4/mem`, `/api/4/fs`) matching
+  this host's real 16-core/24GB/~1TB NVMe specs. Run in "web server" mode (`GLANCES_OPT: "-w"`)
+  so its API and web UI (port **61208**) are both available. Added to Homepage as a
+  top-of-page `glances` info-widget (cpu/mem/disk/uptime) and as its own service card with a
+  working `href` (unlike Kometa, Glances has a real web UI).
+- **Kometa "is it doing something" signal:** `showStats: true` set globally in
+  `settings.yaml` (Homepage), surfacing live container CPU/memory on every docker-integrated
+  card, not just on click. For a batch job with no API of its own, this is the one honest
+  progress signal available - idle near-0% normally, visibly spikes while a scheduled run is
+  actually processing. Didn't fabricate a fake progress bar for something that has no
+  meaningful "percent complete" concept.
+- **Dashboard visual pass** (`config/homepage/custom.css`, `settings.yaml`): card surfaces
+  now render with a subtle gradient + drop shadow, gain a red glow and lift on hover; section
+  headings got a short gradient underline instead of flat colored text; stat/progress bars
+  (docker stats, Glances, resources widgets) render with a red gradient fill instead of the
+  theme default; "up"/healthy status indicators pulse slowly instead of sitting static;
+  `blockHighlights` re-themed so widget good/warn/danger states use the site's own red/black
+  palette instead of Homepage's default green/amber/red.
+
+*Built with Claude AI.*
 
 ## [2.8.0] — Kometa added and configured (Plex collections/metadata/overlays)
 
