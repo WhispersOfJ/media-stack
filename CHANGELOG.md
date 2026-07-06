@@ -4,9 +4,25 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.5.0**.
+features, **PATCH** for fixes. Current version: **v2.5.1**.
 
 ---
+
+## [2.5.1] — Bazarr's Plex connection fixed (last piece of the v2.4.0 bug)
+
+### Fixed
+- Plex Media Server itself was found stopped on the host (`systemctl status` showed
+  `inactive (dead)`, unrelated to anything in this stack) — started it back up first.
+- With Plex reachable, finished the fix noted as outstanding in [2.4.0](CHANGELOG.md):
+  Bazarr's Plex connection had the identical `ip: 127.0.0.1` bug as its Radarr/Sonarr
+  connections. Pointed it at the host's real LAN IP with the Plex token already on this host
+  (from Zurg's config), selected the Movies/TV Shows libraries, and enabled `use_plex`.
+  Bazarr's own OAuth migration then ran automatically, converting the API-key config to its
+  newer OAuth-token storage and validating the connection live against the real server
+  (confirmed by server name/machine ID coming back correctly in the logs). All three of
+  Bazarr's media-source connections (Plex, Radarr, Sonarr) are now genuinely live.
+
+*Built with Claude AI.*
 
 ## [2.5.0] — Jellyfin removed; reverted to symlinks, experience judged not worth it
 
