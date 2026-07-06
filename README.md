@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.2.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.3.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -72,7 +72,7 @@ Stack/
 ├── README.md, CHANGELOG.md
 ├── config/<app>/                 # each app's persistent config
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
-├── config/homepage/{services,bookmarks}.yaml
+├── config/heimdall/www/app.sqlite  # dashboard tiles, populated directly via SQLite
 ├── config/recyclarr/recyclarr.yml  # TRaSH profiles for Radarr/Sonarr (chmod 600)
 ├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
@@ -93,8 +93,9 @@ verified live against the running stack before being marked done.*
 - **Recyclarr** is on v8, **zilean-postgres** is on Postgres 18 — both migrated from
   Dependabot's initial version-bump PRs, which needed real accompanying changes beyond the
   image tag (see [CHANGELOG.md](CHANGELOG.md) for what each required).
-- Homepage is configured with grouped service links, a Debrid Media Manager bookmark, and
-  links to this README/CHANGELOG (GitHub-hosted, rendered).
+- Heimdall is configured with all 14 apps from the stack, grouped into five categories
+  (Requests, Acquisition, Libraries, Media Server, Monitoring & Tools) — see
+  [CHANGELOG.md](CHANGELOG.md) v2.3.0.
 - `docker-compose.yml` validates clean (`docker compose config`), all image references
   verified against live registries rather than assumed.
 - Full stack (core + extras) is live and healthy — see [CHANGELOG.md](CHANGELOG.md) for the
@@ -194,7 +195,7 @@ cd /home/bear/Stack
 docker compose up -d
 ```
 
-Core + optional extras (Bazarr, FlareSolverr, Tautulli, Homepage, Recyclarr, Unpackerr,
+Core + optional extras (Bazarr, FlareSolverr, Tautulli, Heimdall, Recyclarr, Unpackerr,
 Watchtower):
 
 ```bash
@@ -216,7 +217,7 @@ docker compose --profile extras up -d
 | Bazarr *(extras)* | http://192.168.4.105:6767 | subtitles |
 | FlareSolverr *(extras)* | http://192.168.4.105:8191 | Cloudflare-protected indexers |
 | Tautulli *(extras)* | http://192.168.4.105:8182 | Plex stats |
-| Homepage *(extras)* | http://192.168.4.105:3000 | dashboard linking every service + DMM library bookmark |
+| Heimdall *(extras)* | http://192.168.4.105:3000 | dashboard linking every service, grouped into 5 categories |
 
 ## Configuration status
 
@@ -356,10 +357,10 @@ Two things run on GitHub, not on this host:
 | Bazarr | Automatic subtitle download/matching for Radarr/Sonarr libraries |
 | FlareSolverr | Lets Prowlarr solve Cloudflare challenges some indexers put up — already registered as an Indexer Proxy and tagged onto the trackers that need it |
 | Tautulli | Plex watch-history/stats dashboard |
-| Homepage | Single landing page linking every service above, plus a Debrid Media Manager bookmark |
+| Heimdall | Single landing page linking every service above, grouped into 5 categories |
 | Recyclarr | Syncs TRaSH-Guides quality profiles into Radarr/Sonarr automatically, once a day |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
-| Watchtower | Auto-updates all container images on a schedule (4am daily here) |
+| Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
 
 Not included but worth knowing about: Decypharr can stream Usenet directly via NNTP with no
 separate download client (a built-in feature), which would make NZBGet unnecessary if a
@@ -369,5 +370,5 @@ requested specifically.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.2.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.3.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
