@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.4.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.5.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -49,13 +49,7 @@ Radarr / Sonarr / Lidarr / Readarr / Whisparr ──grab──> Decypharr (qBitt
 Zurg (native, already running)  → /mnt/zurg/{movies,shows,...}  → read by Plex directly (existing content)
 Decypharr DFS mount             → /mnt/decypharr/{...}          → symlink target, add as Plex location
 rclone AllDebrid (native)       → /mnt/all/{magnets,links,...}  → already a Plex location
-./media/{movies,shows,...}      → /data/{movies,shows,...}      → every app's writable root folder (add as Plex/Jellyfin location)
-
-Jellyfin (containerized)  → second media server reading the same ./media/{type} libraries as Plex
-   ├─ Jellyseerr  → requests, connected to Radarr + Sonarr (own Seerr instance — one Seerr is Plex OR Jellyfin, never both)
-   ├─ Jellystat   → watch stats/history (own Postgres, same pattern as Zilean's)
-   └─ jfa-go      → user invites/account management
-Bazarr  → subtitles for both Plex-adjacent and Jellyfin libraries (multi-server support, no second container)
+./media/{movies,shows,...}      → /data/{movies,shows,...}      → every app's writable root folder (add as Plex location)
 ```
 
 Root folders live on regular host disk (`./media/<type>`), not on Zurg's rclone FUSE mount —
@@ -63,10 +57,7 @@ that mount doesn't support having new files/symlinks written into it. See
 [CHANGELOG.md v2.2.0](CHANGELOG.md) for why this changed.
 
 Seerr (formerly Overseerr/Jellyseerr — the projects merged) is the user-facing request page,
-talking to Plex + Radarr/Sonarr. Jellyseerr is a second instance of the identical image,
-talking to Jellyfin + the same Radarr/Sonarr instead — one Seerr instance can only be
-configured for one media server type at a time, confirmed against its own settings API rather
-than assumed (see [CHANGELOG.md v2.4.0](CHANGELOG.md)).
+talking to Plex + Radarr/Sonarr.
 
 Zilean specifically searches [DebridMediaManager](https://debridmediamanager.com)'s shared
 hash-list of content already known to be cached on Real-Debrid/AllDebrid, so grabs from it
@@ -83,10 +74,6 @@ Stack/
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
 ├── config/heimdall/www/app.sqlite  # dashboard tiles, populated directly via SQLite
 ├── config/recyclarr/recyclarr.yml  # TRaSH profiles for Radarr/Sonarr (chmod 600)
-├── config/jellyfin/                # Jellyfin's own config/data dir; jfa-go also mounts this (read) at /jf
-├── config/jfa-go/config.ini        # Jellyfin connection details for user management
-├── config/jellyseerr/               # second Seerr instance, configured for the Jellyfin backend
-├── config/jellystat-postgres/, config/jellystat/backup-data/
 ├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
 └── media/{movies,shows,music,books,adult}  # every arr app's writable root folder (mounted at /data/<type>)
@@ -142,15 +129,10 @@ verified live against the running stack before being marked done.*
   the way through Prowlarr → Sonarr → Decypharr → import, confirmed on disk as a working,
   readable symlink with `hasFile: true`. See [CHANGELOG.md](CHANGELOG.md) v2.1.0 and v2.2.0 for
   the full story.
-- **Jellyfin** is live as a second media server (VAAPI hardware transcoding passed through
-  from the host iGPU), with 5 libraries against the same `/data/<type>` root folders every arr
-  app uses, and the [30-plugin curated shortlist](JELLYFIN-PLUGINS.md) installed. **Jellyseerr**
-  (a second Seerr instance — one instance is Plex *or* Jellyfin, never both), **Jellystat**,
-  and **jfa-go** are all connected to it. **Bazarr** now also points at Jellyfin alongside its
-  Radarr/Sonarr connections. See [CHANGELOG.md](CHANGELOG.md) v2.4.0 for the two real,
-  previously-undetected bugs found and fixed along the way (Bazarr's Radarr/Sonarr/Plex
-  connections were all silently broken; both Seerr instances' root folders were stale,
-  pointing at paths [2.2.0] removed).
+- **Bazarr**'s Radarr and Sonarr connections were found silently broken (`ip: 127.0.0.1`,
+  unreachable from inside its own container) and fixed — see [CHANGELOG.md](CHANGELOG.md)
+  v2.4.0. Its Plex connection has the same bug and is still open, tracked in
+  [TODO.md](TODO.md).
 
 ## One prerequisite: extend Zurg for new media types (done)
 
@@ -218,7 +200,7 @@ docker compose up -d
 ```
 
 Core + optional extras (Bazarr, FlareSolverr, Tautulli, Heimdall, Recyclarr, Unpackerr,
-Watchtower, Jellyfin, Jellyseerr, Jellystat, jfa-go):
+Watchtower):
 
 ```bash
 docker compose --profile extras up -d
@@ -240,10 +222,6 @@ docker compose --profile extras up -d
 | FlareSolverr *(extras)* | http://192.168.4.105:8191 | Cloudflare-protected indexers |
 | Tautulli *(extras)* | http://192.168.4.105:8182 | Plex stats |
 | Heimdall *(extras)* | http://192.168.4.105:3000 | dashboard linking every service, grouped into 5 categories |
-| Jellyfin *(extras)* | http://192.168.4.105:8096 | second media server, VAAPI hardware transcoding |
-| Jellyseerr *(extras)* | http://192.168.4.105:5056 | request frontend for Jellyfin (Radarr + Sonarr) |
-| Jellystat *(extras)* | http://192.168.4.105:3001 | Jellyfin watch stats |
-| jfa-go *(extras)* | http://192.168.4.105:8056 | Jellyfin user invites/account management |
 
 ## Configuration status
 
@@ -270,20 +248,10 @@ noted as **done** where complete. What's left is a preference call, not a techni
    `WEB-1080p` in Sonarr) and runs automatically once a day. Still manual: go to each app's
    **Settings → Profiles** and set the new profile as default for your root folders —
    Recyclarr creates the profile but doesn't assign it, since that's a preference call.
-6. **Jellyfin** (done): startup wizard, admin account, and a permanent API key all created via
-   its REST API rather than the UI; 5 libraries against `/data/<type>`; VAAPI hardware
-   transcoding and hardware-accelerated native trickplay both enabled and confirmed against
-   the running config.
-7. **Jellyseerr** (done): signed in against Jellyfin (this both validates admin access and
-   creates its own admin user in one call), connected to Radarr + Sonarr the same way the
-   original Seerr was.
-8. **Jellystat** (done): connected to Jellyfin via its API key; syncs on its own schedule.
-9. **jfa-go** (done): authenticated against the Jellyfin admin account; password-reset
-   watching pointed at the same config volume Jellyfin uses.
-10. **Bazarr** (done): connected to Jellyfin (Movies + Adult libraries as its movie scope,
-    Shows as its series scope). Its Radarr and Sonarr connections were also fixed in the same
-    pass — see [CHANGELOG.md](CHANGELOG.md) v2.4.0, they'd never actually worked. Its Plex
-    connection has the identical bug and is **not yet fixed** — needs a Plex API token.
+6. **Bazarr** (done): its Radarr and Sonarr connections were found silently broken
+   (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
+   [CHANGELOG.md](CHANGELOG.md) v2.4.0. Its Plex connection has the identical bug and is
+   **not yet fixed** — needs a Plex API token; tracked in [TODO.md](TODO.md).
 
 > Seerr only recognizes Radarr and Sonarr in its settings API
 > (`/api/v1/settings/lidarr|readarr|whisparr` all 404) — it's a TMDB-based movie/TV frontend
@@ -325,12 +293,6 @@ matching how `/mnt/all/magnets` is already an extra TV Shows location:
   predates v2.2.0's root folder migration; folders already exist and are live.
 - `/mnt/decypharr/...` — Decypharr's own organized mount; the symlinks under `./media/<type>`
   point here, so Plex needs to be able to resolve through to it either way.
-
-Jellyfin's 5 libraries (Movies, Shows, Music, Books, Adult) are already created against the
-same `/data/<type>` paths, since those are bind-mounted directly into the Jellyfin container
-in `docker-compose.yml` — no manual add needed there, unlike Plex. `/mnt/zurg/*` and
-`/mnt/decypharr/*` aren't added as Jellyfin locations yet (Zurg was stopped for this session's
-work) — see [TODO.md](TODO.md).
 
 ## Zilean hardware tuning
 
@@ -407,10 +369,6 @@ Two things run on GitHub, not on this host:
 | Recyclarr | Syncs TRaSH-Guides quality profiles into Radarr/Sonarr automatically, once a day |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
 | Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
-| Jellyfin | Second media server alongside Plex, with hardware transcoding and 30 curated plugins ([JELLYFIN-PLUGINS.md](JELLYFIN-PLUGINS.md)) |
-| Jellyseerr | Request frontend for Jellyfin, same image as Seerr but its own instance |
-| Jellystat | Watch stats/history for Jellyfin |
-| jfa-go | User invites and account management for Jellyfin |
 
 Not included but worth knowing about: Decypharr can stream Usenet directly via NNTP with no
 separate download client (a built-in feature), which would make NZBGet unnecessary if a
@@ -420,5 +378,5 @@ requested specifically.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.4.1**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.5.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
