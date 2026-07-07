@@ -13,7 +13,6 @@ cd "$(dirname "$0")/.."
 
 restic backup ./config \
   --exclude "config/decypharr/cache" \
-  --exclude "config/recyclarr/resources" \
   --exclude "config/*/logs" \
   --exclude "config/*/log" \
   --exclude "config/zilean-postgres"

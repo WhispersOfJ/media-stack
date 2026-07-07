@@ -4,7 +4,82 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.12.0**.
+features, **PATCH** for fixes. Current version: **v3.1.0**.
+
+---
+
+## [3.1.0] — Caddy reverse-proxy/Basic-Auth layer removed
+
+Decided to drop the Caddy front-end added in v2.10.0 — every web UI publishes its host port
+directly again, with no auth gate in front. A partial removal (Caddyfile deleted, Basic Auth env
+vars dropped from `.env`/`.env.example`) had already been done by hand but left the `caddy`
+service block still in `docker-compose.yml` and every other service still pointed at Caddy with
+no port published — the stack was effectively unreachable until this was finished.
+
+### Removed
+- **Caddy** — container stopped and removed, `caddy:` service block removed from
+  `docker-compose.yml`, `CADDY_BASIC_AUTH_USER`/`CADDY_BASIC_AUTH_HASH` env vars gone,
+  `caddy/Caddyfile` gone, all doc references removed (README's "Reverse proxy / Basic Auth"
+  section, TOC entry, healthcheck bullet, installer-image file list).
+
+### Changed
+- **All 16 previously-proxied services** (Prowlarr, Zilean, Decypharr, Radarr, Sonarr, Lidarr,
+  Readarr, Whisparr, NZBGet, Seerr, Bazarr, FlareSolverr, Tautulli, Heimdall, Homepage, Glances)
+  publish their host port directly again, same port numbers as before Caddy — no URL/bookmark
+  changes needed.
+- README's Security note now documents the no-auth-gate state explicitly (LAN-only threat model,
+  same as originally justified Caddy's plain-HTTP-not-HTTPS tradeoff).
+
+### Known follow-up
+- Two stray root-owned directories from Docker auto-creating bind-mount targets for the missing
+  Caddyfile (`caddy/Caddyfile`, `config/caddy/{data,config}`) need manual `sudo rm -rf` — blocked
+  by the auto-mode classifier since the user's instruction didn't name these specific paths.
+
+## [3.0.0] — Recyclarr removed; custom formats consolidated into one blocked-releases format
+
+Decided to stop relying on Recyclarr's TRaSH-Guides sync entirely rather than keep maintaining
+around its quirks (see the v8 migration notes below and the earlier v7 `reset_unmatched_scores`
+workaround) — quality selection is simple enough here (`HD Bluray + WEB` / `WEB-1080p`, both
+already hand-tuned) that the daily sync and its 40+ per-quality-tier custom formats per app were
+more moving parts than value.
+
+### Removed
+- **Recyclarr** — container stopped and removed, all three of its images
+  (`ghcr.io/recyclarr/recyclarr:8`/`:7`/`:latest`) deleted, `config/recyclarr/` deleted
+  (gitignored, held both apps' API keys), service block removed from `docker-compose.yml`,
+  and every doc/script/dashboard reference removed (README, `scripts/backup-config.sh`'s
+  `recyclarr/resources` backup exclusion, its Homepage service card).
+- **Every custom format Recyclarr had synced** — 41 in Radarr, 40 in Sonarr, deleted via each
+  app's API (`DELETE /api/v3/customformat/{id}`), including the TRaSH-Guides scoring catalog
+  (per-quality tiers, streaming-service tags, repack/proper handling, etc.) and the two
+  manually-added ones that predated this change (`Low Quality Sources/Groups` in both apps,
+  plus a Sonarr-only `FUCK RD` that turned out to carry an identical regex to
+  `Low Quality Sources/Groups` - effectively a duplicate).
+
+### Added
+- **One custom format per app, "Blocked Releases (All Qualities)"** — replaces all of the
+  above. Two OR'd Release Title conditions (`required: false` on both, so either one matching
+  is enough to reject), scored `-10000` in every quality profile in both apps
+  (`minFormatScore` stays `0`, so this is a hard reject as before):
+  1. Low quality / legacy encodes / low-trust groups - carries the old
+     `Low Quality Sources/Groups` regex forward as-is, plus a Real-Debrid-motivated addition:
+     since Decypharr symlinks a debrid-cached file straight into the library, an older
+     x264/XviD re-encode of a source that also exists as a native WEB-DL/remux buys nothing
+     and just burns debrid cache slots, so `BluRay.x264`, `HDTV.x264`, `HDTV.XviD`, `WEB.x264`,
+     and `WEB.h264` are rejected outright.
+  2. BR-DISK / disc-based releases - the TRaSH-Guides `BR-DISK` regex, reused verbatim (not
+     rewritten) so disc-image/folder releases (`ISO`, `BDMV`, `COMPLETE BLURAY`, etc.), which
+     don't symlink into a single playable file the way the debrid mount expects, keep getting
+     rejected the same way they already were.
+  - Verified live against each app's own `/api/v3/parse` endpoint (real regex evaluation, not
+    assumed correct): a plain `WEB-DL` release and a `BluRay.x264` release both come back
+    rejected; a `BluRay.x265` release and a full `REMUX` release both come back clean.
+
+### Changed
+- Quality profiles (`HD Bluray + WEB` in Radarr, `WEB-1080p` in Sonarr) are now maintained by
+  hand in each app directly - nothing re-syncs or can silently overwrite them anymore.
+
+*Built with Claude AI.*
 
 ---
 
