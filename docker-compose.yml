@@ -168,6 +168,8 @@ services:
     image: ghcr.io/debridmediamanager/zurg@sha256:924f1737814a72fddc87f90b2cb3056a0d25ecad4e8789d3d5294cf4e1aa0d07
     container_name: zurg
     networks: [stacknet]
+    ports:
+      - "9999:9999"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9999/ || exit 1"]
       interval: 30s

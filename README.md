@@ -241,6 +241,7 @@ recreate it after a compose file change.
 | Prowlarr | http://192.168.4.105:9696 | indexer manager |
 | Zilean | http://192.168.4.105:8181 | DMM cache-hash indexer + dashboard |
 | Decypharr | http://192.168.4.105:8282 | debrid gateway UI |
+| Zurg | http://192.168.4.105:9999 | Real-Debrid FUSE mount dashboard |
 | Radarr | http://192.168.4.105:7878 | movies |
 | Sonarr | http://192.168.4.105:8989 | TV |
 | Lidarr | http://192.168.4.105:8686 | music |
