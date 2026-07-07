@@ -1,0 +1,7 @@
+[Unit]
+Description=Discord alert for failed unit %i
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Stack
+ExecStart=%h/Stack/scripts/notify-discord.sh "systemd unit failed: %i" error

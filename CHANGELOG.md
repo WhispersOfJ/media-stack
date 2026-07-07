@@ -4,9 +4,64 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.9.1**.
+features, **PATCH** for fixes. Current version: **v2.10.0**.
 
 ---
+
+## [2.10.0] — Reverse-proxy auth, image pinning, healthchecks, log rotation, Discord alerting
+
+A self-audit of the running stack (no prior bug report driving this one) surfaced five gaps:
+every one of ~20 web UIs was exposed on the LAN with no auth in front of it; 20 of 21 images
+floated on `:latest` with Watchtower silently auto-updating them daily; no container had a
+`healthcheck:`, so `docker compose ps` only ever proved a process had started, never that it
+was actually responding; nothing rotated container logs, daemon-level or per-service; and
+nothing in the stack could tell you it was broken - a failed backup, a bad Watchtower update,
+or a crash-looping container were all silent. All five fixed in one pass.
+
+### Added
+- **Caddy** reverse proxy in front of all 16 web UIs, on the exact same host ports each
+  service published directly before, gated behind HTTP Basic Auth. `caddy/Caddyfile` (tracked
+  in git - no secrets, just routing) has one site block per port; the auth hash lives in
+  `.env` as `CADDY_BASIC_AUTH_HASH` (bcrypt, plaintext never stored). `ports:` removed from
+  all 16 gated services - they're `stacknet`-internal only now, reached through Caddy.
+  Heimdall's HTTPS port (3443, self-signed, no real value once Caddy is the front door) was
+  dropped rather than gated. Plain HTTP, not HTTPS - see the README's Security section for
+  what this does and doesn't defend against.
+- **`healthcheck:`** on all 21 containers. Most use each app's own unauthenticated `/ping` (or
+  equivalent); `zilean-postgres` uses `pg_isready`; NZBGet's gated web UI treats 401 as healthy
+  (still proof the server's alive); Caddy checks its own local admin API rather than proxying
+  through to an upstream (so a gated 401 downstream doesn't misreport as Caddy being
+  unhealthy); Recyclarr/Kometa/Unpackerr (no web UI, and none of these minimal images ship
+  `ps`/`pgrep`) check their main process is alive via `/proc`; Watchtower (no shell in its
+  image at all) uses its own documented `--health-check` flag.
+- **Docker daemon-level log rotation** - `/etc/docker/daemon.json` (host-level, not tracked in
+  this repo), `max-size: 10m` / `max-file: 3` per container. Required a Docker daemon restart
+  plus a `--force-recreate` of every container to actually take effect (a running container's
+  log config is fixed at creation time, not re-read from the daemon's current defaults).
+- **Discord alerting**, three independent paths sharing one webhook
+  (`scripts/notify-discord.sh`, no-ops silently if unconfigured): backup success/failure
+  (`backup-config.sh`, plus an `OnFailure=` systemd hook on `stack-backup.service` as a second
+  layer for failures the script itself can't self-report); Watchtower's native Shoutrrr
+  Discord notifications (every image update, or a failed one, posts instead of happening
+  silently at 4am); and a new `scripts/check-container-health.sh` (run every 5 minutes by
+  `systemd/stack-health-check.{service,timer}`) that diffs the unhealthy/restarting container
+  set against its last poll and only posts on an actual change, not every poll.
+
+### Changed
+- **Every image pinned**, previously 20 of 21 floated on `:latest`. hotio images (8 of them)
+  pinned to their `:release` channel tag - verified identical digest to `:latest` at pin time,
+  so a no-op today, but now an explicit, intentional channel choice rather than an ambiguous
+  `latest` that (per the v1.4.1 Recyclarr incident) can simply stop being published. Images
+  with real upstream version tags matching what's currently running (Zilean, Decypharr,
+  FlareSolverr, Watchtower) got version tags. Everything else (Whisparr, Seerr, Homepage,
+  Glances, Kometa, Unpackerr, Heimdall) had its `:latest` running *ahead* of the newest tag
+  upstream had actually cut - pinning to that tag would have been a silent downgrade, so these
+  are digest-pinned instead, freezing exactly what's running today. Full reasoning and the
+  exact tag/digest chosen for each image is in the README's new "Image pinning policy"
+  section. Watchtower still updates every one of these going forward; the only change is that
+  every update now posts to Discord first instead of happening silently.
+
+*Built with Claude AI.*
 
 ## [2.9.1] — Glances service-card widget crashed the whole Homepage page
 

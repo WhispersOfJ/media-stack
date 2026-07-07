@@ -24,7 +24,19 @@ backup_status=$?
 # good, so don't let that block retention pruning below. Anything else
 # (1 = fatal error) should stop the script and surface as a failed run.
 if [ "$backup_status" -ne 0 ] && [ "$backup_status" -ne 3 ]; then
+  ./scripts/notify-discord.sh "Backup failed (restic exit $backup_status) - check \`journalctl --user -u stack-backup.service\`" error
   exit "$backup_status"
 fi
 
-restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
+if ! restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune; then
+  ./scripts/notify-discord.sh "Backup snapshot succeeded but retention pruning failed - check \`journalctl --user -u stack-backup.service\`" warn
+  exit 1
+fi
+
+# Exit code 3 during the backup itself is worth a heads-up (not fatal, but
+# something was skipped) even though the run overall succeeded.
+if [ "$backup_status" -eq 3 ]; then
+  ./scripts/notify-discord.sh "Backup completed with some files unreadable (exit 3 - likely a live/locked file, snapshot is still good)" warn
+else
+  ./scripts/notify-discord.sh "Backup completed successfully" info
+fi
