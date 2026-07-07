@@ -4,7 +4,22 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.10.0**.
+features, **PATCH** for fixes. Current version: **v2.10.1**.
+
+---
+
+## [2.10.1] — Removed leftover Jellyfin artifacts
+
+### Removed
+- `config/NEW-ADMIN-CREDENTIALS.txt` — a stale plaintext credentials file (Jellyfin/Jellystat
+  admin logins) left behind from the v2.x Jellyfin trial that was fully stood up and then
+  entirely torn back out in an earlier session. The compose file, Homepage, and Heimdall were
+  already clean; this file was simply never deleted when the rest of that work was reverted.
+- Three unused Docker images still sitting on disk from the same trial
+  (`lscr.io/linuxserver/jellyfin`, `cyfershepard/jellystat`, `hrfee/jfa-go`) — not referenced
+  by any container or compose service, ~3.5GB reclaimed.
+
+*Built with Claude AI.*
 
 ---
 

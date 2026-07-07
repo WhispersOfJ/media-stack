@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.10.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.10.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
