@@ -58,8 +58,11 @@ or a crash-looping container were all silent. All five fixed in one pass.
   upstream had actually cut - pinning to that tag would have been a silent downgrade, so these
   are digest-pinned instead, freezing exactly what's running today. Full reasoning and the
   exact tag/digest chosen for each image is in the README's new "Image pinning policy"
-  section. Watchtower still updates every one of these going forward; the only change is that
-  every update now posts to Discord first instead of happening silently.
+  section. Watchtower still auto-updates the 14 channel/version-tag-pinned images going
+  forward (with every update now posting to Discord first instead of happening silently); the
+  7 digest-pinned images are no longer auto-updated at all - a digest is immutable, so
+  Watchtower re-pulling it always resolves to the same content. Those need a manual digest
+  bump when someone checks upstream again.
 
 *Built with Claude AI.*
 
