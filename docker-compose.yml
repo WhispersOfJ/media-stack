@@ -155,6 +155,77 @@ services:
       - apparmor:unconfined
 
   # ---------------------------------------------------------------------
+  # Native-companion containerization (Phase 1 of 2 - see CHANGELOG for the
+  # full plan). Zurg mounts pre-existing Real-Debrid content directly at
+  # /mnt/zurg for Plex; rclone-alldebrid does the same for AllDebrid at
+  # /mnt/all. /mnt:rshared on both means the FUSE mount lands at the literal
+  # host path Plex's own library already expects - no path remapping needed.
+  # Sponsor image (ghcr.io/debridmediamanager/zurg), not the public
+  # zurg-testing image.
+  # ---------------------------------------------------------------------
+  zurg:
+    <<: *common
+    image: ghcr.io/debridmediamanager/zurg@sha256:924f1737814a72fddc87f90b2cb3056a0d25ecad4e8789d3d5294cf4e1aa0d07
+    container_name: zurg
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9999/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/zurg/config.yml:/app/config.yml
+      - ./config/zurg/data:/app/data
+      - ./config/zurg/logs:/app/logs
+      - /mnt:/mnt:rshared
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+
+  rclone-alldebrid:
+    restart: unless-stopped
+    image: rclone/rclone:1.74.3
+    container_name: rclone-alldebrid
+    networks: [stacknet]
+    environment:
+      <<: *common-env
+      XDG_CONFIG_HOME: /config
+    entrypoint: ["rclone"]
+    command:
+      - "mount"
+      - "all:"
+      - "/mnt/all"
+      - "--config=/config/rclone/rclone.conf"
+      - "--dir-cache-time=10s"
+      - "--multi-thread-streams=0"
+      - "--cutoff-mode=cautious"
+      - "--vfs-cache-mode=minimal"
+      - "--network-mode"
+      - "--buffer-size=0"
+      - "--read-only"
+      - "--allow-other"
+      - "--allow-non-empty"
+    healthcheck:
+      test: ["CMD-SHELL", "mountpoint -q /mnt/all && [ -n \"$$(ls -A /mnt/all 2>/dev/null)\" ] || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/rclone/rclone.conf:/config/rclone/rclone.conf:ro
+      - /mnt:/mnt:rshared
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+
+  # ---------------------------------------------------------------------
   # *arr apps
   # ---------------------------------------------------------------------
   radarr:

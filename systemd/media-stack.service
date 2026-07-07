@@ -1,12 +1,11 @@
 [Unit]
 Description=Media Stack (Docker Compose, extras profile)
-# zurg.service mounts /mnt/zurg itself (via its own embedded rclone process);
-# rclone-all.service mounts /mnt/all separately. Both are bind-mounted rslave
-# into every arr container's /mnt, so they must be live before compose starts
-# or the containers see empty directories instead of the debrid content.
-After=network-online.target zurg.service rclone-all.service
+# Zurg and rclone-AllDebrid are containerized (zurg/rclone-alldebrid services
+# in docker-compose.yml) as of the Phase 1 containerization - no host-level
+# zurg.service/rclone-all.service dependency needed anymore; compose brings
+# them up itself, in the same tier as every other container.
+After=network-online.target
 Wants=network-online.target
-Requires=zurg.service rclone-all.service
 
 [Service]
 Type=oneshot
