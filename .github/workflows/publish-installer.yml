@@ -1,6 +1,6 @@
 name: Publish installer image
 
-# Builds the Dockerfile (bundles docker-compose.yml, caddy/, scripts/,
+# Builds the Dockerfile (bundles docker-compose.yml, scripts/,
 # systemd/, and docs into a run-to-extract installer image - see
 # entrypoint.sh) and publishes it to GHCR whenever any of those tracked
 # files change. Private package by default, matching this repo's visibility.
@@ -14,7 +14,6 @@ on:
       - "README.md"
       - "CHANGELOG.md"
       - "TODO.md"
-      - "caddy/**"
       - "scripts/**"
       - "systemd/**"
       - "Dockerfile"

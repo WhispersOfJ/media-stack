@@ -11,55 +11,6 @@ networks:
 
 services:
   # ---------------------------------------------------------------------
-  # Reverse proxy / auth gate - single entry point for every web UI below.
-  # Publishes the exact same host ports each service used to publish
-  # directly, now behind HTTP Basic Auth. See caddy/Caddyfile and the
-  # README's Security section for what this does and doesn't cover.
-  # ---------------------------------------------------------------------
-  caddy:
-    restart: unless-stopped
-    image: caddy:2.11.4-alpine
-    container_name: caddy
-    networks: [stacknet]
-    ports:
-      - "9696:9696"   # prowlarr
-      - "8181:8181"   # zilean
-      - "8282:8282"   # decypharr
-      - "7878:7878"   # radarr
-      - "8989:8989"   # sonarr
-      - "8686:8686"   # lidarr
-      - "8787:8787"   # readarr
-      - "6969:6969"   # whisparr
-      - "6789:6789"   # nzbget
-      - "5055:5055"   # seerr
-      - "6767:6767"   # bazarr (extras)
-      - "8191:8191"   # flaresolverr (extras)
-      - "8182:8182"   # tautulli (extras)
-      - "3000:3000"   # heimdall (extras)
-      - "3001:3001"   # homepage (extras)
-      - "61208:61208" # glances (extras)
-    environment:
-      CADDY_BASIC_AUTH_USER: ${CADDY_BASIC_AUTH_USER}
-      CADDY_BASIC_AUTH_HASH: ${CADDY_BASIC_AUTH_HASH}
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./config/caddy/data:/data
-      - ./config/caddy/config:/config
-    # Checks Caddy's own admin API (localhost:2019, not exposed outside the
-    # container) rather than proxying through to an upstream - a 401 from a
-    # gated site would falsely read as "unhealthy" even when Caddy itself is
-    # fine, so this only tests that Caddy itself is alive and serving.
-    # 127.0.0.1 explicitly, not localhost - Caddy's admin API only binds
-    # IPv4 loopback, and busybox wget tries ::1 first inside this container,
-    # which was misreporting Caddy as unhealthy despite working fine.
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-
-  # ---------------------------------------------------------------------
   # Indexing
   # ---------------------------------------------------------------------
   prowlarr:
@@ -71,8 +22,8 @@ services:
     image: ghcr.io/hotio/prowlarr:release
     container_name: prowlarr
     networks: [stacknet]
-    # No ports: published directly anymore - reached through Caddy (see the
-    # caddy service) on the same host port as before, now behind Basic Auth.
+    ports:
+      - "9696:9696"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9696/ping || exit 1"]
       interval: 30s
@@ -137,7 +88,8 @@ services:
     image: ipromknight/zilean:v3.5.0
     container_name: zilean
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "8181:8181"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
       interval: 30s
@@ -183,7 +135,8 @@ services:
     image: cy01/blackhole:v2.3
     container_name: decypharr
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "8282:8282"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8282/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -209,7 +162,8 @@ services:
     image: ghcr.io/hotio/radarr:release
     container_name: radarr
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "7878:7878"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:7878/ping || exit 1"]
       interval: 30s
@@ -234,7 +188,8 @@ services:
     image: ghcr.io/hotio/sonarr:release
     container_name: sonarr
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "8989:8989"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8989/ping || exit 1"]
       interval: 30s
@@ -253,7 +208,8 @@ services:
     image: ghcr.io/hotio/lidarr:release
     container_name: lidarr
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "8686:8686"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8686/ping || exit 1"]
       interval: 30s
@@ -272,7 +228,8 @@ services:
     image: lscr.io/linuxserver/readarr:0.4.19-nightly
     container_name: readarr
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "8787:8787"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8787/ping || exit 1"]
       interval: 30s
@@ -297,7 +254,8 @@ services:
     image: ghcr.io/hotio/whisparr@sha256:29a5c76302bc691d97982d42a4c8f6b0c001299ffe9e88015075e73cf879c1f9
     container_name: whisparr
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "6969:6969"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:6969/ping || exit 1"]
       interval: 30s
@@ -319,7 +277,8 @@ services:
     image: ghcr.io/hotio/nzbget:release
     container_name: nzbget
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "6789:6789"
     # NZBGet's web UI requires its own auth, so a plain request 401s - that's
     # still proof the server is alive and responding, so 401 counts as healthy.
     healthcheck:
@@ -345,7 +304,8 @@ services:
     image: ghcr.io/seerr-team/seerr@sha256:c92d2dc117f62185e7bcb88cd56efd374ea79210eaf433275449e8d5988eb5a8
     container_name: seerr
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "5055:5055"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:5055/api/v1/status >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -367,7 +327,8 @@ services:
     container_name: bazarr
     profiles: [extras]
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "6767:6767"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:6767/ping || exit 1"]
       interval: 30s
@@ -391,7 +352,8 @@ services:
     container_name: flaresolverr
     profiles: [extras]
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "8191:8191"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8191/ || exit 1"]
       interval: 30s
@@ -408,7 +370,10 @@ services:
     container_name: tautulli
     profiles: [extras]
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    # Container's own web UI listens internally on Tautulli's default 8181;
+    # public port stays 8182.
+    ports:
+      - "8182:8181"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
       interval: 30s
@@ -429,9 +394,10 @@ services:
     container_name: heimdall
     profiles: [extras]
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy
-    # service), HTTP (3000) only - the HTTPS port (3443) used a self-signed
-    # cert with no real value once Caddy is the front door, so it's dropped.
+    # HTTP (internal 80) only - the HTTPS port (3443) uses a self-signed cert
+    # with no real value on a LAN-only setup, so it's not published.
+    ports:
+      - "3000:80"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
       interval: 30s
@@ -455,7 +421,9 @@ services:
     container_name: homepage
     profiles: [extras]
     networks: [stacknet]
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    # Container's Next.js server listens internally on 3000; public port stays 3001.
+    ports:
+      - "3001:3000"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -491,7 +459,8 @@ services:
     profiles: [extras]
     networks: [stacknet]
     pid: host
-    # No ports: published directly - reached through Caddy now (see caddy service).
+    ports:
+      - "61208:61208"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:61208/api/4/status || exit 1"]
       interval: 30s
@@ -504,26 +473,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /:/rootfs:ro
-
-  recyclarr:
-    restart: unless-stopped
-    image: ghcr.io/recyclarr/recyclarr:8
-    container_name: recyclarr
-    profiles: [extras]
-    networks: [stacknet]
-    # No web UI/API - runs supercronic internally as a persistent scheduler
-    # between triggered syncs, so "the scheduler process is still alive" is
-    # the meaningful liveness signal here.
-    healthcheck:
-      test: ["CMD-SHELL", "grep -aq supercronic /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/recyclarr:/config
 
   # Automated Plex collections/metadata/overlays. Official image only - the
   # LinuxServer fork resets /config ownership to PUID/PGID (or 911:911 if

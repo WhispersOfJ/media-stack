@@ -9,10 +9,10 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Deliberately not `source .env` - some values (the Caddy bcrypt hash) contain
-# literal `$` characters that bash's normal assignment expansion would try to
-# interpret as parameter references (broke with "unbound variable" under
-# set -u). grep+cut sidesteps that entirely since neither touches `$`.
+# Deliberately not `source .env` - some values contain literal `$` characters
+# that bash's normal assignment expansion would try to interpret as parameter
+# references (broke with "unbound variable" under set -u). grep+cut sidesteps
+# that entirely since neither touches `$`.
 env_get() { [ -f .env ] && grep -E "^${1}=" .env | head -1 | cut -d'=' -f2-; }
 DISCORD_WEBHOOK_URL="$(env_get DISCORD_WEBHOOK_URL)"
 HOST_IP="$(env_get HOST_IP)"

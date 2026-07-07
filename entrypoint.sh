@@ -2,7 +2,7 @@
 # Extracts (or updates) the Stack's tracked files into a mounted host
 # directory. Safe to re-run after every image update - it only ever
 # overwrites files this image actually contains (docker-compose.yml,
-# caddy/, scripts/, systemd/, docs, .env.example), and those are the only
+# scripts/, systemd/, docs, .env.example), and those are the only
 # files ever baked into this image in the first place. .env and config/
 # aren't in this image at all, so a real deployment's secrets/state are
 # never at risk from re-running this.
@@ -17,7 +17,7 @@ Mount a target directory at /out:
   docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
 
 First run scaffolds a fresh install; re-running later pulls in whatever
-changed upstream (compose file, Caddy config, scripts, systemd units, docs)
+changed upstream (compose file, scripts, systemd units, docs)
 without touching your .env or config/ - neither is ever baked into this
 image.
 USAGE
@@ -51,7 +51,7 @@ EOF
 else
   cat <<EOF
 Updated in place. Your .env and config/ were not touched (this image never
-contains them). If docker-compose.yml, caddy/Caddyfile, or systemd/ changed,
+contains them). If docker-compose.yml or systemd/ changed,
 re-apply with:
   cd $TARGET
   docker compose up -d --force-recreate
