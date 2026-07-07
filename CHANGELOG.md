@@ -4,7 +4,43 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v3.1.0**.
+features, **PATCH** for fixes. Current version: **v3.2.0**.
+
+---
+
+## [3.2.0] — Zurg/rclone-AllDebrid containerization (Phase 1) actually finished
+
+A prior session stood up `zurg`/`rclone-alldebrid` containers and disabled-in-spirit the native
+`zurg.service`/`rclone-all.service`, but two things never actually landed: the native units were
+only stopped, not disabled, so a reboot brought both native and containerized mounts up at once;
+and the new `docker-compose.yml` service blocks were never committed (a separate uncommitted
+change clobbered the file first), so the containers were only running because they predated the
+gap and would have vanished on the next `docker compose up`. Closed both out.
+
+### Fixed
+- **`zurg`/`rclone-alldebrid` service blocks added to `docker-compose.yml`** — reconstructed
+  directly from the live containers' actual runtime config (`docker inspect`), not from memory,
+  so they're byte-accurate to what's actually been running. Placed next to Decypharr (same
+  FUSE/`SYS_ADMIN`/`apparmor:unconfined` recipe). `zurg`'s reconstructed block hashes identically
+  to the live container (no recreate needed); `rclone-alldebrid`'s hashed differently for reasons
+  that didn't turn out to matter functionally, so it was recreated deliberately under
+  supervision.
+- **Native `zurg.service`/`rclone-all.service` disabled and stopped** — both were still
+  `enabled` and actively crash-looping (fighting the containers for `/mnt/zurg`/`/mnt/all`).
+  `systemctl --user disable --now` on both.
+- **`media-stack.service`'s `Requires=zurg.service rclone-all.service`removed** — this would have
+  made the *entire* stack fail to start on the next boot, since it required two units that are
+  now intentionally disabled. Compose brings `zurg`/`rclone-alldebrid` up itself now, same tier
+  as every other container.
+- **A stale, double-stacked `/mnt/all` FUSE mount from the native/container overlap window
+  cleaned up** — recreating `rclone-alldebrid` briefly broke `/mnt/all` entirely (the old
+  container's mount wasn't cleanly unmounted before removal, leaving a dead "Transport endpoint
+  is not connected" endpoint); fixed with a manual `umount` and container restart, verified
+  healthy and readable again afterward. `/mnt/zurg` never had this problem (single clean layer
+  throughout).
+- README updated to stop describing Zurg/rclone-AllDebrid as native (architecture diagram, boot
+  section, config-restart instructions now say `docker compose restart zurg` instead of
+  `systemctl --user restart zurg.service`).
 
 ---
 

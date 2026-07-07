@@ -54,9 +54,9 @@ Radarr / Sonarr / Lidarr / Readarr / Whisparr ──grab──> Decypharr (qBitt
    │
    └──(secondary/fallback)──> NZBGet ──real local download──> ./usenet/downloads ──imported into──> same /data/<type>
 
-Zurg (native, already running)  → /mnt/zurg/{movies,shows,...}  → read by Plex directly (existing content)
+Zurg (containerized)            → /mnt/zurg/{movies,shows,...}  → read by Plex directly (existing content)
 Decypharr DFS mount             → /mnt/decypharr/{...}          → symlink target, add as Plex location
-rclone AllDebrid (native)       → /mnt/all/{magnets,links,...}  → already a Plex location
+rclone AllDebrid (containerized) → /mnt/all/{magnets,links,...} → already a Plex location
 ./media/{movies,shows,...}      → /data/{movies,shows,...}      → every app's writable root folder (add as Plex location)
 ```
 
@@ -182,16 +182,16 @@ These regexes are a starting heuristic based on common release-naming convention
 guarantee — anything that doesn't match just falls through to `movies` as it did before, so a
 miscategorized item is a quick fix later, not data loss.
 
-Restart command, if the config ever needs tuning again — `zurg.service` runs the `zurg`
-binary directly, which spawns its own rclone mount as a child process, so one restart
-handles both:
+Restart command, if the config ever needs tuning again — the `zurg` container runs the
+binary directly and spawns its own rclone mount as a child process, so one restart handles
+both:
 
 ```bash
-systemctl --user restart zurg.service
+docker compose restart zurg
 ```
 
 > This briefly interrupts `/mnt/zurg` for a few seconds. Do it when nothing's actively
-> streaming from Plex. (`rclone-all.service` and `/mnt/all` are unrelated and untouched by
+> streaming from Plex. (`rclone-alldebrid` and `/mnt/all` are unrelated and untouched by
 > this.)
 
 ## Bringing the stack up
@@ -213,18 +213,17 @@ docker compose --profile extras up -d
 ### Starting at boot
 
 `systemd/media-stack.service` brings the whole stack (extras included) up automatically on
-boot, in the order it actually needs:
+boot:
 
-1. `zurg.service` mounts `/mnt/zurg` (its own embedded rclone process does this — not a
-   separate rclone unit) and `rclone-all.service` mounts `/mnt/all`. Both are bind-mounted
-   `rslave` into every arr container's `/mnt`, so they must be live *before* compose starts,
-   or containers see empty directories instead of the debrid content.
-2. Docker itself starts on demand via `docker.socket` (socket-activated, so `docker.service`
+1. Docker itself starts on demand via `docker.socket` (socket-activated, so `docker.service`
    doesn't need to be enabled separately — the first `docker` command triggers it).
-3. `docker compose --profile extras up -d` runs once the above are ready.
+2. `docker compose --profile extras up -d` brings up every container, including `zurg` and
+   `rclone-alldebrid` (containerized as of the Phase 1 containerization — no separate
+   host-level `zurg.service`/`rclone-all.service` prerequisite anymore; compose starts them
+   in the same tier as everything else, `/mnt:rshared` on both puts their FUSE mounts at the
+   literal `/mnt/zurg`/`/mnt/all` host paths Plex already expects).
 
-Install it as a user unit (it needs to run in the same systemd scope as `zurg.service` and
-`rclone-all.service` so the ordering above actually applies):
+Install it as a user unit:
 
 ```bash
 loginctl enable-linger $USER   # let user services start at boot without a login session
