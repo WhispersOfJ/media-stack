@@ -36,6 +36,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Scoped to Dependabot specifically (not '*') - this repo is private so the
+          # wildcard's "external Apps on public repos" risk doesn't strictly apply, but
+          # there's no reason to trust every bot when only one actually needs to trigger
+          # this. Dependabot's own PRs (opening a version-bump PR) were failing with
+          # "Workflow initiated by non-human actor" before this was added.
+          allowed_bots: 'dependabot[bot]'
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
