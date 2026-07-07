@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.9.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.10.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -26,8 +26,13 @@ Nothing here downloads by default except the explicit NZBGet fallback.
 - [Plex library locations to add](#plex-library-locations-to-add)
 - [Zilean hardware tuning](#zilean-hardware-tuning)
 - [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
+- [Reverse proxy / Basic Auth (Caddy)](#reverse-proxy--basic-auth-caddy)
 - [Security note](#security-note)
+- [Image pinning policy](#image-pinning-policy)
+- [Container healthchecks](#container-healthchecks)
+- [Docker log rotation](#docker-log-rotation)
 - [Automated config backups](#automated-config-backups)
+- [Alerting (Discord)](#alerting-discord)
 - [CI: validation and dependency updates](#ci-validation-and-dependency-updates)
 - [Optional extras reference](#optional-extras-reference)
 - [Dashboard (Homepage)](#dashboard-homepage)
@@ -194,15 +199,16 @@ systemctl --user restart zurg.service
 
 ## Bringing the stack up
 
-Core services only:
+Core services only (Caddy, the reverse-proxy/auth gate, comes up with core - it fronts the
+core services too, not just extras):
 
 ```bash
 cd /home/bear/Stack
 docker compose up -d
 ```
 
-Core + optional extras (Bazarr, FlareSolverr, Tautulli, Heimdall, Recyclarr, Unpackerr,
-Watchtower):
+Core + optional extras (Bazarr, FlareSolverr, Tautulli, Heimdall, Homepage, Glances, Recyclarr,
+Kometa, Unpackerr, Watchtower):
 
 ```bash
 docker compose --profile extras up -d
@@ -235,6 +241,10 @@ systemctl --user enable --now media-stack.service
 (`docker compose --profile extras down`); `systemctl --user restart media-stack.service` to
 recreate it after a compose file change.
 
+All URLs below are gated behind Caddy's Basic Auth (see
+[Reverse proxy / Basic Auth](#reverse-proxy--basic-auth-caddy)) - same ports as always, just
+prompt for the `CADDY_BASIC_AUTH_USER`/password now.
+
 | Service | URL | Notes |
 |---|---|---|
 | Prowlarr | http://192.168.4.105:9696 | indexer manager |
@@ -251,6 +261,8 @@ recreate it after a compose file change.
 | FlareSolverr *(extras)* | http://192.168.4.105:8191 | Cloudflare-protected indexers |
 | Tautulli *(extras)* | http://192.168.4.105:8182 | Plex stats |
 | Heimdall *(extras)* | http://192.168.4.105:3000 | dashboard linking every service, grouped into 5 categories |
+| Homepage *(extras)* | http://192.168.4.105:3001 | live per-service dashboard, see [Dashboard](#dashboard-homepage) |
+| Glances *(extras)* | http://192.168.4.105:61208 | host CPU/mem/disk/uptime |
 
 ## Configuration status
 
@@ -363,12 +375,97 @@ purpose. Verified by running `recyclarr sync` twice in a row and confirming the 
 `-10000` both times with no intervention needed. The old enforcement script and its cron job
 have been removed.
 
+## Reverse proxy / Basic Auth (Caddy)
+
+Every service's web UI used to publish its port directly on the host (`0.0.0.0:9696`, etc.) —
+anything on the LAN could open Prowlarr, Decypharr's config API, or any other app with no
+credential at all. **Caddy** now sits in front of all 16 web UIs, on the exact same host ports
+each service published before (so bookmarks/URLs are unchanged), gated behind HTTP Basic Auth.
+Config lives at `caddy/Caddyfile` (tracked in git — it holds no secrets, just routing; the
+actual credential is an env var). Username/password hash live in `.env` as
+`CADDY_BASIC_AUTH_USER`/`CADDY_BASIC_AUTH_HASH` (bcrypt, never the plaintext). Regenerate the
+hash with:
+
+```
+docker run --rm caddy:2.11.4-alpine caddy hash-password --plaintext 'yourpassword'
+```
+
+Services with no web UI (Recyclarr, Kometa, Unpackerr, Watchtower) were never exposed and
+don't need gating. `zilean-postgres` was never exposed either (internal-only on `stacknet`).
+
+**What this doesn't cover:** this is plain HTTP, not HTTPS — Basic Auth credentials cross the
+LAN in cleartext-equivalent (base64) form, so this defends against "any device on the LAN can
+freely open these dashboards," not against a device already capable of sniffing LAN traffic
+(ARP spoofing, a compromised router, etc.). Caddy could add `tls internal` for opportunistic
+self-signed HTTPS if that threat matters here later — not done now to keep the browser
+experience clean (no per-service certificate warnings to click through).
+
 ## Security note
 
 `config/decypharr/config.json` and `config/recyclarr/recyclarr.yml` contain API keys in
 plaintext and are both `chmod 600`. This matches how Zurg's own `config.yml` already stores
 its Real-Debrid token — consistent with the existing setup, but worth knowing if this host is
 ever shared or backed up somewhere less trusted.
+
+## Image pinning policy
+
+Every image was `:latest` except Recyclarr (`:8`, pinned back in v1.4.1 after `:latest` was
+pulled from that registry entirely) and Readarr (an exact nightly build, since it has no other
+stable channel). Combined with Watchtower auto-updating daily, that meant every image could
+silently change overnight with no record of what changed or an easy way back.
+
+Every image is now pinned, using whichever approach doesn't change what's actually running
+today:
+
+- **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the 8 hotio images — verified
+  each channel tag resolves to the exact same digest as `:latest` at pin time, so this is a
+  no-op today. hotio's whole model is rolling channels (`release`/`testing`/`nightly`)
+  identified by git-hash, not semver, so this is as close to "pin to the stable channel,
+  explicitly" as that upstream supports. Whisparr is digest-pinned instead - it only publishes
+  `:nightly` (no `:release` channel exists yet) and the running build didn't match the newest
+  nightly push, so a tag pin would have silently jumped forward.
+- **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
+  `flaresolverr/flaresolverr:v3.5.0`, `nickfedor/watchtower:1.19.0`) where the upstream project
+  tags real releases and the current running image matches the newest one.
+- **Digest pins** (`@sha256:...`) for Seerr, Homepage, Glances, Kometa, Unpackerr, and
+  Heimdall - in every one of these cases the currently-running `:latest` build is *ahead* of
+  the newest tagged release upstream has cut, so no tag exists that wouldn't be a downgrade.
+  These freeze exactly what's running today; bumping to a newer build is a deliberate, visible
+  change to this file going forward, not something that happens silently at 4am.
+
+Watchtower still runs daily and still updates every one of these (channel tags and digest
+pins both resolve to a specific target it can compare against upstream) - the difference is
+every actual update now posts to Discord first (see [Alerting](#alerting-discord)) instead of
+just happening.
+
+## Container healthchecks
+
+All 21 containers now have a `healthcheck:` — before this, `docker compose ps` only ever
+reported "the process started," never "the app is actually responding" (a hung API would show
+green forever). Most use each app's own unauthenticated liveness endpoint (Servarr apps ship
+`/ping` specifically for this); a few needed something else:
+
+- **`zilean-postgres`** — `pg_isready`.
+- **NZBGet** — its web UI requires auth, so a plain request 401s; that's still proof the
+  server is alive and responding, so 401 counts as healthy alongside 2xx/3xx.
+- **Caddy** — checks its own local admin API (`localhost:2019`, not exposed outside the
+  container) rather than proxying through to an upstream, since a gated site returning 401
+  would otherwise misreport as "Caddy is unhealthy" when Caddy itself is fine.
+- **Recyclarr, Kometa, Unpackerr** — no web UI or API at all. These check that the actual
+  long-running process (`supercronic`, `kometa.py`, `unpackerr`) is still present under
+  `/proc`, since none of these minimal images ship `ps`/`pgrep`.
+- **Watchtower** — no shell in its image at all (distroless-style); uses its own documented
+  `/watchtower --health-check` flag instead of a shell probe.
+
+## Docker log rotation
+
+`/etc/docker/daemon.json` (host-level, not tracked in this repo) sets
+`"max-size": "10m", "max-file": "3"` for every container's `json-file` logs - previously there
+was no rotation at all, daemon-level or per-container, on a stack with 21 always-on containers
+sharing this host's single disk with the (already-local-only) backup repo. Applies to every
+container going forward; existing containers needed a `docker compose up -d --force-recreate`
+once after the daemon restart to actually pick it up (a running container's log config is
+fixed at creation time, not re-read from the daemon's current defaults on a plain restart).
 
 ## Automated config backups
 
@@ -398,6 +495,31 @@ next time instead of a rebuild.
   since no cloud storage account exists on this host yet.
 - Verify anytime with `restic -r ~/backups/stack-restic-repo snapshots` (needs
   `RESTIC_PASSWORD_FILE=~/backups/.restic-password` in the environment).
+
+## Alerting (Discord)
+
+Previously nothing in this stack could tell you it was broken except looking at Homepage - no
+signal at all for a failed backup, a Watchtower update that broke something, or a container
+stuck crash-looping at 3am. A single Discord webhook (`DISCORD_WEBHOOK_URL` in `.env`) now
+backs three independent alert paths:
+
+- **`scripts/notify-discord.sh`** — the shared sender every other piece below calls. No-ops
+  silently (exit 0) if `DISCORD_WEBHOOK_URL` isn't set to a real URL yet, so nothing breaks
+  for anyone running this stack without alerting configured.
+- **Backups** — `scripts/backup-config.sh` posts on every run: success, a soft warning if
+  restic's exit-3 "some files unreadable" case was hit, or an error if the backup or the
+  retention prune actually failed. `systemd/stack-backup.service` also has `OnFailure=` wired
+  to a small `notify-failure@.service` template unit, as a second layer that catches failures
+  the script itself can't self-report (OOM-killed, systemd timeout, etc.).
+- **Watchtower** — `WATCHTOWER_NOTIFICATIONS`/`WATCHTOWER_NOTIFICATION_URL` (Shoutrrr's
+  Discord format, `discord://<token>@<id>` — different URL shape than the plain webhook URL
+  the other two use, set separately as `DISCORD_WATCHTOWER_SHOUTRRR_URL`). Every actual image
+  update - or a failed one - now posts before it would otherwise happen silently.
+- **Container health** — `scripts/check-container-health.sh`, run every 5 minutes by
+  `systemd/stack-health-check.{service,timer}`, diffs the current unhealthy/restarting
+  container set against the last poll (state kept in `~/.cache/stack-unhealthy-containers`)
+  and only posts on an actual *change* - a new failure, or a recovery - not on every poll, so
+  a container stuck unhealthy for hours doesn't spam the channel.
 
 ## CI: validation and dependency updates
 

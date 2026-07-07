@@ -11,15 +11,74 @@ networks:
 
 services:
   # ---------------------------------------------------------------------
+  # Reverse proxy / auth gate - single entry point for every web UI below.
+  # Publishes the exact same host ports each service used to publish
+  # directly, now behind HTTP Basic Auth. See caddy/Caddyfile and the
+  # README's Security section for what this does and doesn't cover.
+  # ---------------------------------------------------------------------
+  caddy:
+    restart: unless-stopped
+    image: caddy:2.11.4-alpine
+    container_name: caddy
+    networks: [stacknet]
+    ports:
+      - "9696:9696"   # prowlarr
+      - "8181:8181"   # zilean
+      - "8282:8282"   # decypharr
+      - "7878:7878"   # radarr
+      - "8989:8989"   # sonarr
+      - "8686:8686"   # lidarr
+      - "8787:8787"   # readarr
+      - "6969:6969"   # whisparr
+      - "6789:6789"   # nzbget
+      - "5055:5055"   # seerr
+      - "6767:6767"   # bazarr (extras)
+      - "8191:8191"   # flaresolverr (extras)
+      - "8182:8182"   # tautulli (extras)
+      - "3000:3000"   # heimdall (extras)
+      - "3001:3001"   # homepage (extras)
+      - "61208:61208" # glances (extras)
+    environment:
+      CADDY_BASIC_AUTH_USER: ${CADDY_BASIC_AUTH_USER}
+      CADDY_BASIC_AUTH_HASH: ${CADDY_BASIC_AUTH_HASH}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./config/caddy/data:/data
+      - ./config/caddy/config:/config
+    # Checks Caddy's own admin API (localhost:2019, not exposed outside the
+    # container) rather than proxying through to an upstream - a 401 from a
+    # gated site would falsely read as "unhealthy" even when Caddy itself is
+    # fine, so this only tests that Caddy itself is alive and serving.
+    # 127.0.0.1 explicitly, not localhost - Caddy's admin API only binds
+    # IPv4 loopback, and busybox wget tries ::1 first inside this container,
+    # which was misreporting Caddy as unhealthy despite working fine.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------
   # Indexing
   # ---------------------------------------------------------------------
   prowlarr:
     <<: *common
-    image: ghcr.io/hotio/prowlarr:latest
+    # Pinned to hotio's "release" channel tag rather than :latest - verified
+    # equivalent to whatever :latest currently resolves to (same digest), so
+    # this is a no-op today; going forward, Watchtower still tracks this
+    # channel but the choice is explicit rather than an ambiguous "latest".
+    image: ghcr.io/hotio/prowlarr:release
     container_name: prowlarr
     networks: [stacknet]
-    ports:
-      - "9696:9696"
+    # No ports: published directly anymore - reached through Caddy (see the
+    # caddy service) on the same host port as before, now behind Basic Auth.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9696/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/prowlarr:/config
 
@@ -32,6 +91,12 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
       POSTGRES_DB: zilean
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       # postgres 18+ changed the expected mount point up one level (was /var/lib/postgresql/data);
       # PGDATA is now a version-specific subdir it manages itself (/var/lib/postgresql/18/docker).
@@ -67,11 +132,18 @@ services:
 
   zilean:
     restart: unless-stopped
-    image: ipromknight/zilean:latest
+    # Pinned to the exact version currently running (verified same digest as
+    # :latest at pin time) rather than :latest.
+    image: ipromknight/zilean:v3.5.0
     container_name: zilean
     networks: [stacknet]
-    ports:
-      - "8181:8181"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       - zilean-postgres
     environment:
@@ -106,11 +178,18 @@ services:
   # ---------------------------------------------------------------------
   decypharr:
     <<: *common
-    image: cy01/blackhole:latest
+    # Pinned to the exact version currently running (verified same digest as
+    # :latest at pin time) rather than :latest.
+    image: cy01/blackhole:v2.3
     container_name: decypharr
     networks: [stacknet]
-    ports:
-      - "8282:8282"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8282/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - /mnt:/mnt:rshared
       - ./config/decypharr:/app
@@ -127,11 +206,16 @@ services:
   # ---------------------------------------------------------------------
   radarr:
     <<: *common
-    image: ghcr.io/hotio/radarr:latest
+    image: ghcr.io/hotio/radarr:release
     container_name: radarr
     networks: [stacknet]
-    ports:
-      - "7878:7878"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7878/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/radarr:/config
       - /mnt:/mnt:rslave
@@ -147,11 +231,16 @@ services:
 
   sonarr:
     <<: *common
-    image: ghcr.io/hotio/sonarr:latest
+    image: ghcr.io/hotio/sonarr:release
     container_name: sonarr
     networks: [stacknet]
-    ports:
-      - "8989:8989"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8989/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/sonarr:/config
       - /mnt:/mnt:rslave
@@ -161,11 +250,16 @@ services:
 
   lidarr:
     <<: *common
-    image: ghcr.io/hotio/lidarr:latest
+    image: ghcr.io/hotio/lidarr:release
     container_name: lidarr
     networks: [stacknet]
-    ports:
-      - "8686:8686"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8686/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/lidarr:/config
       - /mnt:/mnt:rslave
@@ -178,8 +272,13 @@ services:
     image: lscr.io/linuxserver/readarr:0.4.19-nightly
     container_name: readarr
     networks: [stacknet]
-    ports:
-      - "8787:8787"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8787/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/readarr:/config
       - /mnt:/mnt:rslave
@@ -189,11 +288,22 @@ services:
 
   whisparr:
     <<: *common
-    image: ghcr.io/hotio/whisparr:latest
+    # Digest-pinned rather than a channel tag: whisparr only publishes
+    # :nightly (no :release channel exists upstream yet), and the currently
+    # running build doesn't match the newest :nightly push - pinning to
+    # :nightly here would silently jump forward instead of just freezing
+    # what's already running. Bump this digest deliberately when ready to
+    # take a newer nightly.
+    image: ghcr.io/hotio/whisparr@sha256:29a5c76302bc691d97982d42a4c8f6b0c001299ffe9e88015075e73cf879c1f9
     container_name: whisparr
     networks: [stacknet]
-    ports:
-      - "6969:6969"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6969/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/whisparr:/config
       - /mnt:/mnt:rslave
@@ -206,11 +316,18 @@ services:
   # ---------------------------------------------------------------------
   nzbget:
     <<: *common
-    image: ghcr.io/hotio/nzbget:latest
+    image: ghcr.io/hotio/nzbget:release
     container_name: nzbget
     networks: [stacknet]
-    ports:
-      - "6789:6789"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    # NZBGet's web UI requires its own auth, so a plain request 401s - that's
+    # still proof the server is alive and responding, so 401 counts as healthy.
+    healthcheck:
+      test: ["CMD-SHELL", "code=$$(curl -s -o /dev/null -w '%{http_code}' http://localhost:6789/); echo \"$$code\" | grep -qE '^(2|3|401)' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/nzbget:/config
       - ./usenet:/usenet
@@ -220,11 +337,21 @@ services:
   # ---------------------------------------------------------------------
   seerr:
     restart: unless-stopped
-    image: ghcr.io/seerr-team/seerr:latest
+    # Digest-pinned rather than a version tag: upstream's last tagged
+    # release (v3.0.1) is behind what's actually shipped as :latest (running
+    # version reports 3.3.0 via its own API) - no matching tag exists to pin
+    # to without downgrading, so this freezes exactly what's running today.
+    # Bump this digest deliberately when upstream cuts a new tagged release.
+    image: ghcr.io/seerr-team/seerr@sha256:c92d2dc117f62185e7bcb88cd56efd374ea79210eaf433275449e8d5988eb5a8
     container_name: seerr
     networks: [stacknet]
-    ports:
-      - "5055:5055"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5055/api/v1/status >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       TZ: ${TZ}
     volumes:
@@ -236,12 +363,17 @@ services:
   # =======================================================================
   bazarr:
     <<: *common
-    image: ghcr.io/hotio/bazarr:latest
+    image: ghcr.io/hotio/bazarr:release
     container_name: bazarr
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "6767:6767"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6767/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/bazarr:/config
       - /mnt:/mnt:rslave
@@ -253,36 +385,59 @@ services:
 
   flaresolverr:
     restart: unless-stopped
-    image: flaresolverr/flaresolverr:latest
+    # Pinned to the exact version currently running (verified same digest as
+    # :latest at pin time) rather than :latest.
+    image: flaresolverr/flaresolverr:v3.5.0
     container_name: flaresolverr
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "8191:8191"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8191/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       TZ: ${TZ}
       LOG_LEVEL: info
 
   tautulli:
     <<: *common
-    image: ghcr.io/hotio/tautulli:latest
+    image: ghcr.io/hotio/tautulli:release
     container_name: tautulli
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "8182:8181"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/tautulli:/config
 
   heimdall:
     <<: *common
-    image: lscr.io/linuxserver/heimdall:latest
+    # Digest-pinned: LinuxServer doesn't publish real version tags for
+    # Heimdall (only opaque version-<hash> build tags), and the newest one
+    # available doesn't match what's currently running - pinning to it would
+    # be an unplanned update, not a neutral pin. Freezes exactly what's
+    # running today; bump deliberately when ready to take a newer build.
+    image: lscr.io/linuxserver/heimdall@sha256:536eb14f068fe3f052b92f94ca606db689d1d1b79b5408d1242c12e882e4ed66
     container_name: heimdall
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "3000:80"
-      - "3443:443"
+    # No ports: published directly - reached through Caddy now (see caddy
+    # service), HTTP (3000) only - the HTTPS port (3443) used a self-signed
+    # cert with no real value once Caddy is the front door, so it's dropped.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./config/heimdall:/config
 
@@ -292,12 +447,21 @@ services:
   # is a simple link launcher, this one talks to each app's API.
   homepage:
     restart: unless-stopped
-    image: ghcr.io/gethomepage/homepage:latest
+    # Digest-pinned: upstream's last tagged release (v1.4.5) is behind
+    # what's actually shipped as :latest - no matching tag exists to pin to
+    # without downgrading, so this freezes exactly what's running today.
+    # Bump this digest deliberately when upstream cuts a new tagged release.
+    image: ghcr.io/gethomepage/homepage@sha256:a0b71c8e757298d02560186bab9fbe3fc2d375c523a62cc1019177b37e48aa28
     container_name: homepage
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "3001:3000"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       TZ: ${TZ}
       HOMEPAGE_VAR_HOST_IP: ${HOST_IP}
@@ -318,13 +482,22 @@ services:
   # Also has its own decent web UI, so it gets a real service card too.
   glances:
     restart: unless-stopped
-    image: nicolargo/glances:latest
+    # Digest-pinned: upstream's newest tagged release (4.5.5) doesn't match
+    # what's actually shipped as :latest - no matching tag exists to pin to
+    # without downgrading, so this freezes exactly what's running today.
+    # Bump this digest deliberately when ready to take a newer release.
+    image: nicolargo/glances@sha256:5bc5b6cf2e7b992910cfd9e19799a540d8460e9356bc506c2f1af58f3bd9cb0e
     container_name: glances
     profiles: [extras]
     networks: [stacknet]
     pid: host
-    ports:
-      - "61208:61208"
+    # No ports: published directly - reached through Caddy now (see caddy service).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:61208/api/4/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       TZ: ${TZ}
       GLANCES_OPT: "-w"
@@ -338,6 +511,15 @@ services:
     container_name: recyclarr
     profiles: [extras]
     networks: [stacknet]
+    # No web UI/API - runs supercronic internally as a persistent scheduler
+    # between triggered syncs, so "the scheduler process is still alive" is
+    # the meaningful liveness signal here.
+    healthcheck:
+      test: ["CMD-SHELL", "grep -aq supercronic /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       TZ: ${TZ}
     volumes:
@@ -346,17 +528,28 @@ services:
   # Automated Plex collections/metadata/overlays. Official image only - the
   # LinuxServer fork resets /config ownership to PUID/PGID (or 911:911 if
   # unset) on every start, which the official image doesn't do and most of
-  # the wiki's examples assume you're not using anyway. Pinned to :latest
-  # (the stable channel) rather than :nightly/:develop on purpose.
+  # the wiki's examples assume you're not using anyway. The stable channel is
+  # still :latest (not :nightly/:develop) - now digest-pinned since upstream's
+  # newest tagged release (v2.4.4) doesn't match what :latest actually ships,
+  # so a tag pin would silently jump forward instead of freezing what's
+  # running. Bump this digest deliberately when ready to take a newer build.
   # No web UI of its own - runs as a scheduled batch job against Plex's API,
   # so no port is published; see Homepage/Heimdall entries for how it's
   # surfaced there instead.
   kometa:
     restart: unless-stopped
-    image: kometateam/kometa:latest
+    image: kometateam/kometa@sha256:98a0df2694edea467ac8870bcecddea3ec0bc14a071721372fb9fa811a829902
     container_name: kometa
     profiles: [extras]
     networks: [stacknet]
+    # No web UI/API - checks that the main kometa.py process is still alive
+    # via /proc rather than an HTTP probe.
+    healthcheck:
+      test: ["CMD-SHELL", "grep -aq kometa.py /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     environment:
       TZ: ${TZ}
     volumes:
@@ -364,10 +557,22 @@ services:
 
   unpackerr:
     restart: unless-stopped
-    image: golift/unpackerr:latest
+    # Digest-pinned: upstream's newest tagged release (0.15.2) doesn't match
+    # what's actually shipped as :latest - no matching tag exists to pin to
+    # without downgrading, so this freezes exactly what's running today.
+    # Bump this digest deliberately when ready to take a newer release.
+    image: golift/unpackerr@sha256:4ec141eeb0cb2f971d7c92f21cc40b0d2d50d7920eb7a0557443cca52270c0b0
     container_name: unpackerr
     profiles: [extras]
     networks: [stacknet]
+    # No web UI/API - checks that the main unpackerr process is still alive
+    # via /proc rather than an HTTP probe.
+    healthcheck:
+      test: ["CMD-SHELL", "grep -aq unpackerr /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       TZ: ${TZ}
       UN_RADARR_0_URL: http://radarr:7878
@@ -379,13 +584,27 @@ services:
 
   watchtower:
     restart: unless-stopped
-    image: nickfedor/watchtower:latest
+    image: nickfedor/watchtower:1.19.0
     container_name: watchtower
     profiles: [extras]
     networks: [stacknet]
+    # No shell in this image (distroless-style) - uses Watchtower's own
+    # built-in --health-check flag rather than a wget/curl probe.
+    healthcheck:
+      test: ["CMD", "/watchtower", "--health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     environment:
       TZ: ${TZ}
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_SCHEDULE: "0 0 4 * * *"
+      # TODO(alerting): uncomment once DISCORD_WATCHTOWER_SHOUTRRR_URL in
+      # .env is a real webhook - Shoutrrr fails fast (fatal, crash-loops the
+      # container) on a placeholder/invalid URL, so this stays off until then.
+      # WATCHTOWER_NOTIFICATIONS: "shoutrrr"
+      # WATCHTOWER_NOTIFICATION_URL: ${DISCORD_WATCHTOWER_SHOUTRRR_URL}
+      # WATCHTOWER_NOTIFICATIONS_HOSTNAME: ${HOST_IP}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
