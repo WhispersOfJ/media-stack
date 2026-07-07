@@ -433,10 +433,15 @@ today:
   These freeze exactly what's running today; bumping to a newer build is a deliberate, visible
   change to this file going forward, not something that happens silently at 4am.
 
-Watchtower still runs daily and still updates every one of these (channel tags and digest
-pins both resolve to a specific target it can compare against upstream) - the difference is
-every actual update now posts to Discord first (see [Alerting](#alerting-discord)) instead of
-just happening.
+Watchtower still auto-updates the 14 channel/version-tag-pinned images daily - the difference
+is every actual update now posts to Discord first (see [Alerting](#alerting-discord)) instead
+of just happening. The 7 digest-pinned images (Whisparr, Seerr, Homepage, Glances, Kometa,
+Unpackerr, Heimdall) are *not* auto-updated anymore: a digest is immutable by definition, so
+Watchtower re-pulling that exact reference always resolves to the same content and never sees
+anything new. That's the deliberate tradeoff for these specific images (no tag existed that
+wouldn't have been a downgrade or an unplanned jump), but it means they're now frozen until
+someone manually re-checks upstream and bumps the digest in this file - worth a periodic
+manual look rather than assuming Watchtower has them covered.
 
 ## Container healthchecks
 
