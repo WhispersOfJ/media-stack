@@ -505,26 +505,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /:/rootfs:ro
 
-  recyclarr:
-    restart: unless-stopped
-    image: ghcr.io/recyclarr/recyclarr:8
-    container_name: recyclarr
-    profiles: [extras]
-    networks: [stacknet]
-    # No web UI/API - runs supercronic internally as a persistent scheduler
-    # between triggered syncs, so "the scheduler process is still alive" is
-    # the meaningful liveness signal here.
-    healthcheck:
-      test: ["CMD-SHELL", "grep -aq supercronic /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/recyclarr:/config
-
   # Automated Plex collections/metadata/overlays. Official image only - the
   # LinuxServer fork resets /config ownership to PUID/PGID (or 911:911 if
   # unset) on every start, which the official image doesn't do and most of

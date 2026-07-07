@@ -82,7 +82,6 @@ Stack/
 ├── config/<app>/                 # each app's persistent config
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
 ├── config/heimdall/www/app.sqlite  # dashboard tiles, populated directly via SQLite
-├── config/recyclarr/recyclarr.yml  # TRaSH profiles for Radarr/Sonarr (chmod 600)
 ├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
 └── media/{movies,shows,music,books,adult}  # every arr app's writable root folder (mounted at /data/<type>)
@@ -97,11 +96,9 @@ verified live against the running stack before being marked done.*
   password + API key.
 - `config/decypharr/config.json` has your Real-Debrid and AllDebrid API keys filled in,
   `chmod 600`.
-- `config/recyclarr/recyclarr.yml` has Radarr + Sonarr API keys and TRaSH guide-backed
-  `quality_profiles` (v8 format — see below), `chmod 600`.
-- **Recyclarr** is on v8, **zilean-postgres** is on Postgres 18 — both migrated from
-  Dependabot's initial version-bump PRs, which needed real accompanying changes beyond the
-  image tag (see [CHANGELOG.md](CHANGELOG.md) for what each required).
+- **zilean-postgres** is on Postgres 18 — migrated from Dependabot's initial version-bump PR,
+  which needed real accompanying changes beyond the image tag (see [CHANGELOG.md](CHANGELOG.md)
+  for what it required).
 - Heimdall is configured with all 14 apps from the stack, grouped into five categories
   (Requests, Acquisition, Libraries, Media Server, Monitoring & Tools) — see
   [CHANGELOG.md](CHANGELOG.md) v2.3.0.
@@ -125,10 +122,10 @@ verified live against the running stack before being marked done.*
   servers.
 - **Prowlarr** is connected to all 5 *arr apps under Settings → Apps (`fullSync`), so
   indexers propagate down automatically instead of needing to be configured per-app.
-- A **custom format** ("Low Quality Sources/Groups") blocks known low-trust
-  aggregator/group releases in every Radarr and Sonarr quality profile — see
-  [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
-  below for an important quirk around Recyclarr.
+- A single **custom format** ("Blocked Releases (All Qualities)") hard-rejects low-quality
+  sources, legacy codec encodes, disc-based releases, and known low-trust groups across every
+  Radarr and Sonarr quality profile, at every quality tier — see
+  [Custom format: blocked releases](#custom-format-blocked-releases) below.
 - **Every arr app can now actually import from Decypharr, end-to-end.** v2.1.0 fixed path
   *visibility* (all 5 containers share `config/decypharr/downloads` at the identical path
   Decypharr uses internally, `/app/downloads`). v2.2.0 fixed the deeper issue underneath it —
@@ -208,8 +205,8 @@ cd /home/bear/Stack
 docker compose up -d
 ```
 
-Core + optional extras (Bazarr, FlareSolverr, Tautulli, Heimdall, Homepage, Glances, Recyclarr,
-Kometa, Unpackerr, Watchtower):
+Core + optional extras (Bazarr, FlareSolverr, Tautulli, Heimdall, Homepage, Glances, Kometa,
+Unpackerr, Watchtower):
 
 ```bash
 docker compose --profile extras up -d
@@ -286,10 +283,11 @@ noted as **done** where complete. What's left is a preference call, not a techni
    and Sonarr (`WEB-1080p` profile, `/data/shows`) as default servers.
 4. **Decypharr** (done): debrid API keys set, all 5 arr apps auto-detected. `download_action`
    defaults to `symlink` for every arr — no change needed.
-5. **Recyclarr** (done): already synced once manually (`HD Bluray + WEB` profile in Radarr,
-   `WEB-1080p` in Sonarr) and runs automatically once a day. Still manual: go to each app's
-   **Settings → Profiles** and set the new profile as default for your root folders —
-   Recyclarr creates the profile but doesn't assign it, since that's a preference call.
+5. **Quality profiles** (done): `HD Bluray + WEB` in Radarr and `WEB-1080p` in Sonarr, both
+   maintained directly in each app now — Recyclarr and its TRaSH-Guides sync were removed
+   entirely (see [Custom format: blocked releases](#custom-format-blocked-releases) below for
+   what replaced its per-quality custom-format scoring). Still manual: go to each app's
+   **Settings → Profiles** and set the profile as default for your root folders.
 6. **Bazarr** (done): its Radarr, Sonarr, and Plex connections were all found silently broken
    (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
    [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.1.
@@ -355,26 +353,42 @@ Container limits: Zilean 4GB RAM / 12 CPUs (reservation 512MB / 1 CPU), zilean-p
 RAM / 4 CPUs. Both confirmed applied via live `SHOW` queries and container env inspection
 after restart.
 
-## Custom format: blocking low-quality sources
+## Custom format: blocked releases
 
-Both Radarr and Sonarr have a custom format, **"Low Quality Sources/Groups"**, matching a
-regex against generic low-tier source tags and known low-trust aggregator/group names (YTS,
-TGX, RARBG, EZTV, FGT, LOL, KILLERS, and similar). It's scored `-10000` in every quality
-profile in both apps — since `minFormatScore` is `0` everywhere, this is a hard reject, not
-just deprioritization.
+**Recyclarr and every TRaSH-Guides-synced custom format have been removed entirely** — Radarr
+and Sonarr each went from 41/40 custom formats (the full TRaSH per-quality-tier scoring
+catalog) down to a single one, added directly via each app's API. Quality selection is handled
+purely by each app's native quality profile (`HD Bluray + WEB` in Radarr, `WEB-1080p` in
+Sonarr, both now maintained by hand); custom formats exist only to hard-reject specific naming
+patterns, not to score/rank between qualities.
 
-This custom format isn't managed by Recyclarr (its config schema requires a `trash_ids`
-reference to the TRaSH-Guides catalog — there's no way to declare an arbitrary regex format
-inline), so it was added directly via each app's API instead.
+Both apps now have exactly one custom format, **"Blocked Releases (All Qualities)"**, scored
+`-10000` in every quality profile — since `minFormatScore` is `0` everywhere, this is a hard
+reject, not just deprioritization. It applies uniformly across every quality tier (there's no
+per-quality variant) and has two OR'd Release Title conditions (both `required: false`, so
+either one matching is enough to reject):
 
-On Recyclarr v7, this required a workaround: v7's sync implicitly reset any score it didn't
-recognize back to `0`, but only on the one profile it actively manages per app — meaning this
-custom format kept getting silently zeroed out daily on exactly the profile that matters.
-**As of the v8 migration, this is no longer an issue** — v8's `reset_unmatched_scores` is an
-explicit opt-in (default: leave unrecognized scores alone), and it's left unset here on
-purpose. Verified by running `recyclarr sync` twice in a row and confirming the score held at
-`-10000` both times with no intervention needed. The old enforcement script and its cron job
-have been removed.
+1. **Low quality / legacy encodes / low-trust groups** — carried over from the old
+   `Low Quality Sources/Groups` / `FUCK RD` formats plus a Real-Debrid-motivated addition: since
+   Decypharr symlinks a debrid-cached file straight into the arr apps' library folder, an
+   older x264/XviD re-encode of a source that also exists as a native WEB-DL/remux buys
+   nothing and just wastes debrid cache slots, so those specific encode/source combinations are
+   rejected outright rather than merely down-scored:
+   ```
+   (?i)\b(WEB-DL|WEBRip|BDRip|HDRip|DVDRip|HDTV|AMZN|NF|DSNP|CR|YTS|TGX|TorrentGalaxy|FGT|LOL|KILLERS|EPSiLON|Erai-raws)\b|rartv|rarbg|eztv|BluRay\.x264|HDTV\.x264|HDTV\.XviD|WEB\.x264|WEB\.h264
+   ```
+2. **BR-DISK / disc-based releases** — the exact TRaSH-Guides `BR-DISK` regex, reused verbatim
+   rather than rewritten. Disc-image/folder releases (`ISO`, `BDMV`, `COMPLETE BLURAY`, etc.)
+   don't symlink into a single playable file the way Decypharr's debrid mount expects, so
+   they're rejected the same way TRaSH already recommends, just folded into this one format
+   instead of a separate one.
+
+Verified live against each app's own `/api/v3/parse` endpoint (real regex evaluation, not a
+guess): a plain `WEB-DL` release and a `BluRay.x264` release are both rejected; a `BluRay.x265`
+release and a full `REMUX` release are both left alone.
+
+Since Recyclarr is gone, nothing re-syncs or overwrites this format automatically anymore —
+any future change to it is a manual API/UI edit in both apps.
 
 ## Reverse proxy / Basic Auth (Caddy)
 
@@ -391,8 +405,8 @@ hash with:
 docker run --rm caddy:2.11.4-alpine caddy hash-password --plaintext 'yourpassword'
 ```
 
-Services with no web UI (Recyclarr, Kometa, Unpackerr, Watchtower) were never exposed and
-don't need gating. `zilean-postgres` was never exposed either (internal-only on `stacknet`).
+Services with no web UI (Kometa, Unpackerr, Watchtower) were never exposed and don't need
+gating. `zilean-postgres` was never exposed either (internal-only on `stacknet`).
 
 **What this doesn't cover:** this is plain HTTP, not HTTPS — Basic Auth credentials cross the
 LAN in cleartext-equivalent (base64) form, so this defends against "any device on the LAN can
@@ -403,10 +417,9 @@ experience clean (no per-service certificate warnings to click through).
 
 ## Security note
 
-`config/decypharr/config.json` and `config/recyclarr/recyclarr.yml` contain API keys in
-plaintext and are both `chmod 600`. This matches how Zurg's own `config.yml` already stores
-its Real-Debrid token — consistent with the existing setup, but worth knowing if this host is
-ever shared or backed up somewhere less trusted.
+`config/decypharr/config.json` contains API keys in plaintext and is `chmod 600`. This matches
+how Zurg's own `config.yml` already stores its Real-Debrid token — consistent with the existing
+setup, but worth knowing if this host is ever shared or backed up somewhere less trusted.
 
 ## Image pinning policy
 
@@ -457,9 +470,9 @@ green forever). Most use each app's own unauthenticated liveness endpoint (Serva
 - **Caddy** — checks its own local admin API (`localhost:2019`, not exposed outside the
   container) rather than proxying through to an upstream, since a gated site returning 401
   would otherwise misreport as "Caddy is unhealthy" when Caddy itself is fine.
-- **Recyclarr, Kometa, Unpackerr** — no web UI or API at all. These check that the actual
-  long-running process (`supercronic`, `kometa.py`, `unpackerr`) is still present under
-  `/proc`, since none of these minimal images ship `ps`/`pgrep`.
+- **Kometa, Unpackerr** — no web UI or API at all. These check that the actual long-running
+  process (`kometa.py`, `unpackerr`) is still present under `/proc`, since neither of these
+  minimal images ship `ps`/`pgrep`.
 - **Watchtower** — no shell in its image at all (distroless-style); uses its own documented
   `/watchtower --health-check` flag instead of a shell probe.
 
@@ -488,9 +501,8 @@ next time instead of a rebuild.
 - **`systemd/stack-backup.{service,timer}`** — same tracked-in-repo-then-symlinked-into
   `~/.config/systemd/user/` pattern as `media-stack.service`. Runs daily at 03:30, before
   Watchtower's 4am image updates so a bad update never lands ahead of that day's backup.
-- **Excluded from the backup:** `decypharr/cache` and `recyclarr/resources` (both fully
-  regenerable - a FUSE cache and a cloned trash-guides repo respectively), every app's
-  `logs`/`log` directory, and `zilean-postgres` entirely. That last one isn't just size -
+- **Excluded from the backup:** `decypharr/cache` (fully regenerable - a FUSE cache), every
+  app's `logs`/`log` directory, and `zilean-postgres` entirely. That last one isn't just size -
   file-level copying a *running* Postgres data directory can produce an inconsistent restore;
   Zilean's index is a rebuildable DMM-scrape cache, not something that needs point-in-time
   correctness, so it's simpler to exclude than to add pg_dump machinery for it.
@@ -594,7 +606,6 @@ double-checking rather than just trusting.
 | Heimdall | Single landing page linking every service above, grouped into 5 categories |
 | Homepage | Broader live dashboard - per-service widgets, docker container health, dedicated Zilean panel, real host stats via Glances - see below |
 | Glances | Real host CPU/memory/disk/uptime stats, feeds Homepage's top-of-page widget and Glances' own card |
-| Recyclarr | Syncs TRaSH-Guides quality profiles into Radarr/Sonarr automatically, once a day |
 | Kometa | Automated Plex collections, metadata, and overlays - configured and running, see below |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
 | Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
@@ -619,8 +630,7 @@ counts, health), which Heimdall's static links don't provide, so Homepage is bac
   rather than a half-broken widget.
 - **Docker integration** (`config/homepage/docker.yaml`, read-only `docker.sock` mount) gives
   every service a live running/health badge and start/stop/restart controls, including the
-  services with no widget of their own (Decypharr, Unpackerr, Watchtower, Recyclarr,
-  Heimdall).
+  services with no widget of their own (Decypharr, Unpackerr, Watchtower, Heimdall).
 - **Zilean Watch** is its own group: a direct link to Zilean's own built-in dashboard (the
   thing `Zilean__EnableDashboard` was already turned on for), a ping health check, and
   container status for both `zilean` and `zilean-postgres`. No custom API widget - Zilean's
@@ -667,8 +677,8 @@ driven by a `config.yml` you write.
   config, goes back to sleep; `KOMETA_RUN`/`KOMETA_TIMES` env vars can change that), not a
   service with a page to load. No port is published. In Heimdall and Homepage it's linked to
   its own wiki (`https://kometa.wiki/`) instead of a local URL, since that's the only
-  destination that actually goes somewhere - same treatment Recyclarr/Unpackerr/Watchtower
-  already got for the same reason.
+  destination that actually goes somewhere - same treatment Unpackerr/Watchtower already got
+  for the same reason.
 - **Talks to Plex over its API, not the filesystem** - overlays/posters are uploaded through
   Plex's API, so unlike the *arr apps, Kometa's container doesn't need `/mnt` or
   `./media/*` mounted at all. Only volume is `./config/kometa:/config`.
