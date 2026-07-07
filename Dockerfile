@@ -8,7 +8,7 @@
 #
 # Usage:
 #   docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
-FROM alpine:3.20
+FROM alpine:3.24
 
 LABEL org.opencontainers.image.source="https://github.com/WhispersOfJ/media-stack"
 LABEL org.opencontainers.image.description="Installer/updater for the media-stack repo's tracked files (compose file, Caddy config, scripts, systemd units, docs). Never contains .env, config/, media/, or usenet/ - those stay host-only."
