@@ -600,11 +600,10 @@ services:
       TZ: ${TZ}
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_SCHEDULE: "0 0 4 * * *"
-      # TODO(alerting): uncomment once DISCORD_WATCHTOWER_SHOUTRRR_URL in
-      # .env is a real webhook - Shoutrrr fails fast (fatal, crash-loops the
-      # container) on a placeholder/invalid URL, so this stays off until then.
-      # WATCHTOWER_NOTIFICATIONS: "shoutrrr"
-      # WATCHTOWER_NOTIFICATION_URL: ${DISCORD_WATCHTOWER_SHOUTRRR_URL}
-      # WATCHTOWER_NOTIFICATIONS_HOSTNAME: ${HOST_IP}
+      # Every actual update (or update failure) now posts to Discord instead
+      # of happening silently overnight.
+      WATCHTOWER_NOTIFICATIONS: "shoutrrr"
+      WATCHTOWER_NOTIFICATION_URL: ${DISCORD_WATCHTOWER_SHOUTRRR_URL}
+      WATCHTOWER_NOTIFICATIONS_HOSTNAME: ${HOST_IP}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
