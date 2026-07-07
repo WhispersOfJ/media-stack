@@ -4,7 +4,17 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v3.2.0**.
+features, **PATCH** for fixes. Current version: **v3.2.1**.
+
+---
+
+## [3.2.1] — Publish Zurg's dashboard port
+
+`zurg`'s own web dashboard (port 9999 internally) was never published to the host - the only
+way to reach it was the container's Docker bridge IP, which isn't stable across recreates.
+Added `ports: ["9999:9999"]` to the `zurg` service; container recreated cleanly, `/mnt/zurg`
+verified intact and readable afterward, dashboard confirmed reachable at
+`http://192.168.4.105:9999`.
 
 ---
 
