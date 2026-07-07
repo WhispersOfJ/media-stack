@@ -4,7 +4,36 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.11.0**.
+features, **PATCH** for fixes. Current version: **v2.12.0**.
+
+---
+
+## [2.12.0] — Plex library added/removed report, every 12 hours
+
+### Added
+- **`scripts/plex-library-report.py`** — snapshots every item across every movie/show Plex
+  library, diffs against the previous snapshot, and posts an embed to Discord listing what was
+  added and removed since the last run. Run by `systemd/stack-plex-report.{service,timer}`
+  every 12 hours (`OnBootSec=5min` + `OnUnitActiveSec=12h`). Unlike the other three alert
+  paths, this one posts on every run regardless of whether anything changed - a periodic
+  digest, not an anomaly alert - showing "No changes in the last 12 hours" when nothing did.
+  First run establishes a baseline (nothing to diff against yet) instead of reporting the
+  entire library as newly added; state lives in `~/.cache/plex-library-snapshot.json`. Diffs
+  on Plex's `guid` rather than `ratingKey` - the latter isn't stable across a re-match (this
+  library's own WCW-PPV matching cleanup reassigned one earlier the same day this shipped),
+  which would otherwise show up as a false removed-then-added pair for content that never
+  actually left. Long added/removed lists are truncated to 20 titles per library with a count
+  of the rest, staying under Discord's embed field limits. Added `PLEX_TOKEN` to `.env`/
+  `.env.example` alongside the existing `PLEX_URL` - needed for API access, wasn't required by
+  anything in the stack until now.
+- Real bug hit and fixed while building this: Discord's edge (Cloudflare) 403s Python's
+  default `urllib` User-Agent (`Python-urllib/x.y`) outright, even though the exact same
+  webhook works fine from curl or `notify-discord.sh`. Set a real `User-Agent` header on the
+  POST request to fix it - would've been a confusing silent failure otherwise, since the
+  Plex-side snapshot/diff logic itself has no way to know the *notification* step is what
+  broke.
+
+*Built with Claude AI.*
 
 ---
 
