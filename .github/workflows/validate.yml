@@ -23,3 +23,9 @@ jobs:
 
       - name: Validate extras profile
         run: docker compose --profile extras config --quiet
+
+      - name: Build installer image
+        # Build-only, no push (no registry credentials here) - just catches a
+        # broken Dockerfile/entrypoint before merge. Actual publish happens
+        # in publish-installer.yml on push to main.
+        run: docker build -t media-stack-installer:ci .

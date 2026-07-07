@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.10.1** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.11.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -34,6 +34,7 @@ Nothing here downloads by default except the explicit NZBGet fallback.
 - [Automated config backups](#automated-config-backups)
 - [Alerting (Discord)](#alerting-discord)
 - [CI: validation and dependency updates](#ci-validation-and-dependency-updates)
+- [Installer image](#installer-image)
 - [Optional extras reference](#optional-extras-reference)
 - [Dashboard (Homepage)](#dashboard-homepage)
 - [Kometa (Plex collections/metadata/overlays)](#kometa-plex-collectionsmetadataoverlays)
@@ -528,19 +529,49 @@ backs three independent alert paths:
 
 ## CI: validation and dependency updates
 
-Two things run on GitHub, not on this host:
+Three things run on GitHub, not on this host:
 
 - **`.github/workflows/validate.yml`** — on every push/PR to `main`, copies `.env.example` to
-  `.env` (just to resolve the variables compose references — no real secrets involved) and
-  runs `docker compose config` for both the default and `extras` profiles. Catches YAML/schema
-  errors before they'd bite at deploy time.
-- **`.github/dependabot.yml`** — checks weekly for newer Docker image versions and opens a PR
-  when it finds one. This only does something useful for images pinned to an actual version —
-  `postgres:18-alpine`, `recyclarr:8`, `readarr:0.4.19-nightly`. Everything else in this stack
-  is pinned to `:latest`, which has no "newer version" for Dependabot to bump to; those get
-  whatever's current on every `docker compose pull` regardless. Its first two PRs (Recyclarr
-  7→8, Postgres 16→18) both needed real migration work beyond the version bump — see the
-  changelog for what that involved before merging any future major-version PR it opens.
+  `.env` (just to resolve the variables compose references — no real secrets involved), runs
+  `docker compose config` for both the default and `extras` profiles, and builds the installer
+  image (build-only, no push — see below). Catches YAML/schema errors and a broken Dockerfile
+  before they'd bite at deploy time.
+- **`.github/dependabot.yml`** — checks weekly for newer image tags/digests across both the
+  `docker-compose` ecosystem (every service in `docker-compose.yml`) and the `docker` ecosystem
+  (the installer image's own `alpine` base), opening a PR for each. Every service is pinned now
+  (see [Image pinning policy](#image-pinning-policy)), so this has something real to bump for
+  all 22 — though digest-pinned images won't get PRs the same way channel/version tags do,
+  since Dependabot can't propose "this digest should be newer," only track a tag it's already
+  watching. Its first two PRs (Recyclarr 7→8, Postgres 16→18) both needed real migration work
+  beyond the version bump — see the changelog for what that involved before merging any future
+  major-version PR it opens.
+- **`.github/workflows/publish-installer.yml`** — see [Installer image](#installer-image)
+  below.
+
+## Installer image
+
+`Dockerfile` + `entrypoint.sh` bundle this repo's own tracked, portable files —
+`docker-compose.yml`, `caddy/`, `scripts/`, `systemd/`, and the docs — into a small image that
+extracts (or updates) them onto a host with one command, instead of a git clone. **Never**
+contains `.env`, `config/`, `media/`, or `usenet/` — those are excluded by `.dockerignore` and
+never baked into the image, so re-running it later to pick up changes can't touch your real
+secrets or app state.
+
+```bash
+docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
+```
+
+First run scaffolds a fresh checkout (then `cp .env.example .env`, fill in real values, `docker
+compose up -d`). Re-running later after a new push updates `docker-compose.yml`,
+`caddy/Caddyfile`, `scripts/`, `systemd/`, and the docs in place — apply with `docker compose up
+-d --force-recreate` and `systemctl --user daemon-reload` if any systemd unit changed.
+
+`.github/workflows/publish-installer.yml` rebuilds and republishes this to GHCR automatically
+on every push to `main` that touches any of the bundled files, tagged both `:latest` and
+`:vX.Y.Z` (version read straight from `CHANGELOG.md`). The package inherits this repo's
+visibility (private) on first publish via `GITHUB_TOKEN` — worth a manual check in GitHub's
+package settings after the first run, since visibility is the one thing here actually worth
+double-checking rather than just trusting.
 
 ## Optional extras reference
 
@@ -644,5 +675,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.9.1**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.11.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
