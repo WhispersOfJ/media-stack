@@ -1,11 +1,27 @@
 version: 2
 updates:
-  # Checks docker-compose.yml for newer image tags and opens a PR when found.
-  # Only meaningfully bumps images pinned to an actual version (postgres:16-alpine,
-  # recyclarr:7, readarr:0.4.19-nightly) - services pinned to :latest have nothing
-  # to bump since latest is already floating; those still get pulled fresh on every
-  # `docker compose pull` regardless of Dependabot.
+  # Checks docker-compose.yml for newer image tags/digests and opens a PR when
+  # found. Every service is pinned now (v2.10.0) - channel tags (:release),
+  # version tags, or exact digests - so this actually has something to bump
+  # for all 22 services, not just the few that used to have real version
+  # pins. Digest-pinned images (see README's Image pinning policy) won't get
+  # PRs the same way channel/version tags do - Dependabot can't tell a
+  # digest "should" change, only that a newer one exists for a tag it's
+  # already watching.
   - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # Watches the installer image's own Dockerfile (alpine base) - separate
+  # from the docker-compose ecosystem above since Dependabot treats
+  # Dockerfiles and compose files as distinct ecosystems.
+  - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"

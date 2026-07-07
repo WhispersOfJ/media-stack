@@ -4,7 +4,36 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v2.10.1**.
+features, **PATCH** for fixes. Current version: **v2.11.0**.
+
+---
+
+## [2.11.0] — Installer image published to GHCR
+
+### Added
+- **`Dockerfile` + `entrypoint.sh`** — bundles this repo's own tracked, portable files
+  (`docker-compose.yml`, `caddy/`, `scripts/`, `systemd/`, docs) into a small installer image.
+  `docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest` extracts them onto
+  a host in one command instead of a git clone. Deliberately never contains `.env`, `config/`,
+  `media/`, or `usenet/` (excluded via the new `.dockerignore`) - re-running the same command
+  after a later image update overwrites only the files the image actually contains, so it
+  doubles as a safe "pull the latest compose/scripts/systemd changes" update path that can
+  never touch real secrets or app state. The container runs as root (plain `alpine:3.20`), so
+  the entrypoint `chown`s the extracted tree to match whatever UID/GID already owns the mount
+  point - otherwise everything would land owned by root on the host.
+- **`.github/workflows/publish-installer.yml`** — builds and pushes the image to GHCR
+  (`ghcr.io/whispersofj/media-stack`) on every push to `main` that touches any bundled file,
+  tagged `:latest` and `:vX.Y.Z` (version parsed straight from `CHANGELOG.md`). Lowercases the
+  repo path for the image name - GHCR rejects the actual `WhispersOfJ` casing. Package
+  visibility inherits the repo's (private) on first publish via the built-in `GITHUB_TOKEN`.
+- **`.github/workflows/validate.yml`** — now also builds the installer image (no push, no
+  registry credentials in this workflow) on every push/PR, so a broken Dockerfile fails CI
+  before merge instead of only failing silently when the publish workflow runs on `main`.
+- **`.github/dependabot.yml`** — added a `docker` ecosystem entry watching the installer
+  image's own `alpine` base tag, alongside the existing `docker-compose` ecosystem entry for
+  every service in the stack itself.
+
+*Built with Claude AI.*
 
 ---
 
