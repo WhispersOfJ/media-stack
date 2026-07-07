@@ -1,0 +1,9 @@
+[Unit]
+Description=Run the Plex library report every 12 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=12h
+
+[Install]
+WantedBy=timers.target

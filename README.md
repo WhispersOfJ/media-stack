@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 2.11.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 2.12.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -507,7 +507,7 @@ next time instead of a rebuild.
 Previously nothing in this stack could tell you it was broken except looking at Homepage - no
 signal at all for a failed backup, a Watchtower update that broke something, or a container
 stuck crash-looping at 3am. A single Discord webhook (`DISCORD_WEBHOOK_URL` in `.env`) now
-backs three independent alert paths:
+backs four independent alert paths:
 
 - **`scripts/notify-discord.sh`** — the shared sender every other piece below calls. No-ops
   silently (exit 0) if `DISCORD_WEBHOOK_URL` isn't set to a real URL yet, so nothing breaks
@@ -526,8 +526,19 @@ backs three independent alert paths:
   container set against the last poll (state kept in `~/.cache/stack-unhealthy-containers`)
   and only posts on an actual *change* - a new failure, or a recovery - not on every poll, so
   a container stuck unhealthy for hours doesn't spam the channel.
-
-## CI: validation and dependency updates
+- **Plex library report** — `scripts/plex-library-report.py`, run every 12 hours by
+  `systemd/stack-plex-report.{service,timer}`. Snapshots every item across every movie/show
+  library (`PLEX_URL`/`PLEX_TOKEN` in `.env`), diffs against the previous snapshot
+  (`~/.cache/plex-library-snapshot.json`), and posts an embed listing what was added and
+  removed since the last run - unlike the other three, this one posts on a fixed schedule
+  regardless of whether anything changed ("No changes in the last 12 hours" when nothing did),
+  since the point is a periodic digest, not an anomaly alert. Diffs on Plex's `guid`, not
+  `ratingKey` - the latter can get reassigned when an item is re-matched (observed firsthand
+  during the WCW-PPV metadata cleanup), which would otherwise show up as a false
+  removed-then-added pair for content that never actually left the library. First run just
+  establishes a baseline (nothing to diff against yet) rather than reporting the entire
+  library as newly "added". Long added/removed lists are truncated to 20 titles per library
+  with a count of the rest, to stay under Discord's embed field limits.
 
 Three things run on GitHub, not on this host:
 
@@ -675,5 +686,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.11.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.12.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
