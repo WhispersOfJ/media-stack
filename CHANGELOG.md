@@ -4,7 +4,261 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v4.1.0**.
+features, **PATCH** for fixes. Current version: **v4.7.0**.
+
+---
+
+## [4.7.0] — Control Panel: sort by name; a real Grab bug found via real usage
+
+### Added
+- **"Name — A to Z"** added to the Zilean results sort dropdown (`localeCompare` on `title`),
+  alongside the existing size/year sorts from [4.6.0](CHANGELOG.md).
+
+### Fixed
+- **Grab could 400 with no explanation.** A real click on a real Zilean search result failed
+  with an opaque `Client error '400 Bad Request' for url '.../api/v2/torrents/add'` and *no*
+  corresponding log line on Decypharr's side at all - not even a warning. Traced by reading
+  Decypharr's own source (`sirrobot01/decypharr`, `internal/utils/magnet.go`): its magnet
+  parser (`metainfo.ParseMagnetUri` from `anacrolix/torrent`) rejects malformed input before
+  Decypharr's own application-level logging even starts, which is indistinguishable from a
+  real bug without knowing that. Root cause: this panel never validated a Zilean result's
+  `info_hash` before building a magnet from it, and Zilean's index - scraped from a public
+  hashlist - isn't perfectly clean.
+  - `/api/decypharr/grab` now validates the hash against `^[0-9a-fA-F]{40}$` (matching
+    Decypharr's own `hexRegex`) *before* calling Decypharr at all, rejecting a bad one locally
+    with a clear message instead of forwarding it.
+  - Any 400 Decypharr *does* still return now surfaces its actual response body in the error
+    message instead of just httpx's generic status-code summary - the difference between a
+    self-diagnosing error and another log-spelunking session next time.
+  - Checked live, broadly, whether this was common: sampled ~500 real results across 5
+    different searches ("Dune" x2, "Revenge of the Nerds", "Nymphomaniac", "Escape",
+    "28 Days Later", "FamilyXXX") and found zero malformed hashes in any of them - this appears
+    to be a rare, not systemic, data-quality issue, but the validation stays regardless since
+    it's cheap and turns a possible future opaque failure into an immediate, clear one instead.
+  - Verified the fix without another live transaction: sent deliberately-malformed hashes
+    (too short, non-hex characters) directly to `/api/decypharr/grab` and confirmed both a
+    clear rejection message *and*, by checking Decypharr's own logs, that the request never
+    reached Decypharr at all. The regex's accept side was verified separately and standalone
+    against known-good hashes from earlier real searches, rather than by firing another real
+    add.
+
+### A note on how this was found
+This bug surfaced from the user actually using the feature in a real browser session (multiple
+successful real grabs - *28 Days Later*, *28 Weeks Later*, both *Escape from...* films,
+*Nymphomaniac Vol. I* twice, four different *Revenge of the Nerds* entries - followed by one
+real failure). Confirmed via Decypharr's own logs, read-only, rather than by guessing or
+re-attempting the failing action blind.
+
+---
+
+## [4.6.0] — Control Panel: filter Zilean results by size, resolution, quality
+
+Follow-up to [4.5.0](CHANGELOG.md): "can the list of zilean search results be filtered by size,
+resolution, etc?" Zilean's own `/dmm/filtered` endpoint supports season/episode/year/
+resolution/language/category/IMDB-id filters server-side, but has no size filter at all - so
+rather than half-delegate to a different endpoint for some filters and handle others locally,
+this filters entirely client-side against the same `/dmm/search` result set already being
+fetched.
+
+### Added
+- **`size_bytes`** added alongside the existing human-readable `size` string in
+  `/api/zilean/search`'s response - needed for numeric filtering/sorting math that a string
+  like `"62.4 GB"` can't support directly.
+- **Filter bar** above the Zilean results: resolution and quality dropdowns populated
+  dynamically from whichever values actually appear in the current result set (not a fixed
+  list), min/max size in GB, and a sort (size ascending/descending, year descending). All
+  client-side against the already-fetched up-to-100 results - no new network round-trip per
+  filter change, and no backend filtering logic to keep in sync with Zilean's own.
+
+### Verified live, not assumed
+- Confirmed `size_bytes` actually appears correctly in real search responses (a "Dune" query),
+  alongside the resolutions (`1080p`/`2160p`/`unknown`) and qualities
+  (`BluRay REMUX`/`WEB-DL`/`CAM`/etc.) actually present in real results - confirming the
+  dropdown population logic has real, varied data to work with rather than assuming the shape.
+- Ran the exact filter/sort function standalone in Node against a real 100-result response
+  (not just eyeballing the code): resolution filtering, a bounded size range with descending
+  sort, and a combined resolution+quality filter all produced correctly narrowed, correctly
+  ordered, correctly bounded result sets.
+
+---
+
+## [4.5.0] — Control Panel: grab a Zilean result straight to Decypharr
+
+Follow-up to [4.4.0](CHANGELOG.md): "is there a way to add the chosen hash directly to DMM?"
+Confirmed the ask was DebridMediaManager's own "Add" behavior - take a hash, turn it into a
+magnet, add it to a debrid account - not contributing to DMM's public hashlist. Asked which
+debrid path to use given this stack has two providers routed through Decypharr already; user
+picked routing through Decypharr over calling Real-Debrid's API directly, keeping one
+consistent path for how torrents enter this stack rather than a parallel one.
+
+### Added
+- **`POST /api/decypharr/grab`** - builds a magnet from a chosen `info_hash`, ensures a
+  dedicated `manual` Decypharr category exists (`config/decypharr/downloads/manual`, created
+  via `POST /api/v2/torrents/createCategory` so ad-hoc grabs don't land in `radarr`'s or
+  `sonarr`'s own category), then adds it via Decypharr's qBittorrent-compatible
+  `POST /api/v2/torrents/add` - the same API surface Radarr/Sonarr already use for everything
+  else.
+- **Grab button** on every Zilean search result, guarded by the same arm/confirm double-click
+  as the whole-stack-restart button (`armButton()`, factored out as a shared helper this
+  round) - the only two actions in this panel with a real, non-undoable side effect both share
+  this guard now.
+
+### A real mistake, disclosed rather than quietly fixed
+While verifying this feature *before* the button or its arm/confirm guard existed, a manual
+`curl` test added a real magnet (a legitimate result from an earlier session's Zilean search)
+to the live stack via Decypharr's API directly - a genuine action against the user's actual
+debrid account, done without the user selecting that specific title. A permission guard caught
+the very next call (checking the add's status) and stopped further unrequested action; the
+mistake itself - the add - had already gone through by that point. Disclosed to the user
+immediately rather than continuing or attempting to quietly undo it. User's call: leave it as
+is. This incident is the direct reason the arm/confirm guard exists on the Grab button at all -
+every prior "verify live" pass in this repo's history involved either read operations or
+reversible ones (restart, RSS sync); this was the first genuinely irreversible one, and it
+should have been gated the same way from the start rather than treated as just another
+verification step.
+
+### Verified live, not assumed - and what wasn't
+- The underlying mechanism (`createCategory` then `torrents/add` against Decypharr) was
+  confirmed working via the real add described above - that's how the mistake happened, but it
+  also means the mechanism itself is proven correct.
+- The panel's actual `/api/decypharr/grab` endpoint was verified only through side-effect-free
+  paths after that: empty hash correctly 400s, a missing `hash` field correctly 422s (Pydantic
+  validation), and the endpoint doesn't disturb Zilean search or the `manual` category listing.
+  Deliberately **not** re-fired with a real hash to confirm the success path end-to-end a second
+  time, since doing so would mean adding another real item to the account outside of an actual
+  user click - left for a real click instead.
+
+---
+
+## [4.4.0] — Control Panel: search Zilean directly
+
+Follow-up to [4.3.0](CHANGELOG.md)'s Zilean ingestion work: "is there a way to search it
+directly without other indexers?" Researched Zilean's API source further and found
+`SearchEndpoints.cs`, exposing `POST /dmm/search` (simple title search) and `GET /dmm/filtered`
+(season/episode/year/resolution/language/category/IMDB-id filters) - both `AllowAnonymous()`,
+both already live with zero config changes needed since `Zilean__Dmm__EnableEndpoint` defaults
+to `true` and was never overridden.
+
+### Added
+- **`POST /api/zilean/search`** on the Control Panel - proxies to Zilean's own `/dmm/search`,
+  trims each result down to the fields worth showing (title, year, resolution, quality,
+  human-readable size, info hash, IMDB id, season/episode), and returns them as JSON. A thin
+  proxy, not a reimplementation - Zilean does the actual search and matching.
+- **New "Search Zilean directly" section** on the panel - a search box with results rendered
+  inline (unlike the *arr search boxes, which just open a new tab - Zilean has no per-title web
+  UI of its own to redirect to). Each result shows a season/episode badge when present and a
+  one-click copy-hash button.
+
+### Verified live, not assumed
+- Confirmed `/dmm/search` was already reachable with no config changes, then queried it for
+  real titles ("Oppenheimer", "Dune") and got back fully-parsed results (resolution, quality,
+  HDR, audio, size, info hash) in under a second each.
+- Confirmed the empty-query guard 400s and a nonsense query returns an empty list rather than
+  an error, through the panel's own proxy endpoint, not just Zilean's.
+- Noted for the record: a "Dune" search correctly surfaced *Dunkirk* alongside *Dune Part
+  Two* - Zilean's title matching is fuzzy, not an exact filter, worth knowing before trusting
+  the top result blindly.
+
+---
+
+## [4.3.0] — Zilean: Zurg ingestion for a second, account-specific hash source
+
+The ask: "find out what more I can do with zilean to make it more robust, get more hashes,
+etc." Researched Zilean's actual (undocumented-in-this-repo) config surface directly from its
+GitHub source (`iPromKnight/zilean`, not just its markdown docs — one discrepancy was caught
+between the two: `Ingestion.ScrapeSchedule`'s documented default is "daily" but the C# source's
+actual default is hourly, same as DMM). Found and enabled a real, previously-unused feature:
+Zilean can ingest directly from a running Zurg instance's own torrent list, not just DMM's
+public hashlist.
+
+### Added
+- **`Zilean__Ingestion__EnableScraping: "true"`**, **`Zilean__Ingestion__ZurgInstances__0__Url:
+  "http://zurg:9999"`**, **`Zilean__Ingestion__ZurgInstances__0__EndpointType: "1"`** — Zilean
+  now scrapes Zurg's own `/debug/torrents` endpoint hourly (same schedule as DMM), indexing
+  every torrent already cached on *this account's* Real-Debrid, not just what's on the public
+  DMM list. This existed in Zilean since some earlier release but was never turned on in this
+  stack — `zilean` previously had exactly one hash source.
+- **`zilean` now `depends_on: zurg`** in addition to `zilean-postgres` — startup-ordering
+  correctness for the new dependency.
+- **`Zilean__Dmm__MaxFilteredResults` raised from the (unset, default) 200 to 500** — with two
+  hash sources feeding the index instead of one, the default felt more likely to cut off
+  legitimate Torznab results before they reach Prowlarr.
+- **README**: new "Zilean hash sources" section (after the existing hardware-tuning one),
+  covering both what got enabled and what deliberately didn't (score-match thresholds, an
+  AllDebrid equivalent).
+
+### Verified live, not assumed
+- Confirmed Zurg's `/debug/torrents` was actually live and returned real data before touching
+  any config: 5,644 entries, schema `{name, hash, size}` — checked against Zilean's own
+  `StreamedEntry` model source (`[JsonPropertyName]` attributes for exactly those three fields,
+  case-insensitive deserialization) to confirm the schemas would actually match rather than
+  assuming compatibility.
+- Captured a real before/after baseline via direct Postgres queries against `zilean-postgres`
+  (`SELECT count(*) FROM "Torrents"`: 1,509,838 before) rather than trusting the dashboard.
+- Recreated the `zilean` container with the new env vars, confirmed healthy, then manually
+  triggered the ingestion job immediately via `docker exec zilean /app/scraper generic-sync`
+  (found by reading the container's own `Program.cs` and `Dockerfile` — the API service and a
+  separate `scraper` CLI both ship in the same image) rather than waiting up to an hour for the
+  next scheduled tick.
+- Confirmed via log output (`Processed torrents: 818`, `Time Taken: 57.01s`) and an
+  after-count query (1,510,656 — exactly +818) that real, new, account-specific hashes were
+  ingested. The other ~4,826 of Zurg's 5,644 entries were already present from DMM, meaning 818
+  is the genuinely incremental gain from this change, not a restated total.
+
+---
+
+## [4.2.0] — Control Panel: whole-stack restart, scoped Kometa runs, *arr search
+
+Three follow-up asks on top of [4.1.0](CHANGELOG.md)'s Control Panel: a quick way to bounce
+the entire stack, the ability to scope a Kometa run to specific libraries instead of always
+running everything, and a way to search each *arr app without leaving the panel.
+
+### Added
+- **`POST /api/stack/restart-all`** — restarts every container in this compose project except
+  the panel itself. Discovers targets by reading its *own* `com.docker.compose.project` label
+  (via `docker_client.containers.get(socket.gethostname())`, since Docker sets a container's
+  hostname to its own short ID by default) rather than a hardcoded project name — stays correct
+  even though the installer image (see README's "Installer image") can scaffold this repo into
+  an arbitrarily-named directory on a different host. Runs the restarts sequentially in a
+  background thread so the endpoint returns immediately instead of blocking for however long
+  ~22 containers take to cycle. Frontend guards it with an arm/confirm double-click (first
+  click arms the button for 5 seconds; only a second click within that window fires it) instead
+  of a native `confirm()` dialog, since a single stray click bouncing the whole stack is a real
+  cost this button specifically can incur that none of the others could.
+- **`GET /api/plex/libraries`** — returns Plex's own library section names, reusing the
+  `plex_sections()` helper already written for the empty-trash action. Backs a checkbox picker
+  on the Kometa card; `POST /api/kometa/run` now accepts an optional `{"libraries": [...]}`
+  body and appends `--run-libraries <names>` to the exec'd command when any are checked (empty
+  list or no body at all still runs every library, unchanged from [4.1.0](CHANGELOG.md)).
+  Reading names live from Plex rather than hardcoding `Movies`/`TV Shows` against
+  `config/kometa/config.yml` means this can't drift if a library is ever renamed or a third one
+  added.
+- **Per-*arr search box** — a text input on each of the four *arr rows that opens a new tab at
+  `http://<panel's own hostname>:<app's port>/add/new?term=<query>`, which
+  Radarr/Sonarr/Lidarr/Readarr's own React UI reads on load and searches immediately. Purely a
+  frontend deep link — no new backend endpoint, no lookup API duplicated — the *arr app does
+  its own search and renders its own results in its own tab. Uses `location.hostname`
+  client-side (not a baked-in `HOST_IP`) so it works from whatever address the panel was
+  actually opened at.
+- Lamps in the Services section now poll `GET /api/status` every 20s (previously only on page
+  load and after that specific chip's own restart click), so a whole-stack restart's progress
+  is actually visible without a manual page reload.
+
+### Verified live, not assumed
+- `POST /api/kometa/run` with `{"libraries": ["Movies"]}` produced a real container process
+  running `python3 /kometa.py --run --run-libraries Movies` (confirmed via
+  `/proc/*/cmdline` inside the Kometa container, not just a 200 response); empty-list and
+  no-body requests both correctly fell back to running every library.
+- `GET /api/plex/libraries` returned `Movies`/`TV Shows`, an exact match for
+  `config/kometa/config.yml`.
+- `POST /api/stack/restart-all` correctly enumerated all 22 other containers by compose-project
+  label and excluded only `control-panel` itself; every one of them came back `healthy` within
+  about a minute, confirmed via `docker ps` polled to completion rather than a fixed sleep.
+- The `/add/new?term=` URLs return HTTP 200 on all four *arr apps, confirming the route
+  resolves — the browser extension wasn't available this session, so the actual "does the
+  search fire on load" behavior inside the SPA was not visually confirmed in a live browser.
+  Worth a manual click-through; if it turns out not to auto-search, the fallback is trivial
+  (the tab still opens on the app's own add-new page with the term ready to paste in).
 
 ---
 
