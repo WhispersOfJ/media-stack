@@ -117,6 +117,35 @@ Follow-up to v3.2.2. Two things:
 
 ---
 
+## [Unversioned, 2026-07-07] — Discord alerting activated (retroactive entry)
+
+Commit `84efed2` shipped this directly without a version bump or a CHANGELOG entry, so
+`TODO.md` kept listing it as not-started for a full day even though it was live. Logged here
+now, out of the normal version sequence, purely to close that documentation gap — found while
+auditing `TODO.md`/memory for genuinely open work and confirming this was actually already done
+rather than still pending.
+
+### Changed
+- **Watchtower's Shoutrrr Discord notifications turned on for real** — the three
+  `WATCHTOWER_NOTIFICATION*` lines added commented-out in [2.10.0](CHANGELOG.md) were
+  uncommented in `docker-compose.yml` now that `DISCORD_WATCHTOWER_SHOUTRRR_URL` in `.env` is a
+  real webhook, not a placeholder. Verified live: Watchtower's own logs report
+  `Using notifications: discord` and it stayed healthy (no crash-loop, which Shoutrrr does
+  immediately on an invalid URL) - confirmed for real again just now, it actually posted for
+  this morning's `zilean-postgres` auto-update.
+- **Fixed a real bug in `scripts/notify-discord.sh`** found while wiring this up: it used
+  `source .env`, which executes the file as bash and chokes (`unbound variable` under `set -u`)
+  on the literal `$` characters in the old Caddy bcrypt hash line. Replaced with grep+cut
+  extraction of just the two variables it actually needs, sidestepping shell expansion of the
+  rest of the file entirely. Verified with a live test message at the time.
+- This also means the backup script's and container-health watcher's Discord paths (both
+  already built in [2.10.0](CHANGELOG.md), previously just no-op-silent without a real webhook)
+  have been live since 2026-07-07 too - confirmed via `journalctl` that both
+  `stack-backup.service` and `stack-health-check.service` have been running cleanly on their
+  normal schedule since.
+
+---
+
 ## [3.2.2] — Radarr import backlog: the v2.2.0 root-folder fix had silently regressed
 
 Radarr's queue had grown to 261 stuck `importPending` items with zero successful imports for
