@@ -4,7 +4,59 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v3.3.0**.
+features, **PATCH** for fixes. Current version: **v3.4.0**.
+
+---
+
+## [3.4.0] — FlareSolverr replaced with Byparr
+
+Researched as an option, then swapped in the same session at the user's request. FlareSolverr
+itself turned out not to be abandoned (still actively maintained, latest release v3.5.0/May
+2026 - exactly what was already pinned here), so this wasn't a "your tool is dead" migration;
+it's a bet that Byparr's Camoufox-based approach (a Firefox-based anti-detect browser that
+patches fingerprints in C++, vs. FlareSolverr's Selenium + undetected-chromedriver) keeps up
+with Cloudflare's evolving detection signals better, backed by a faster, weekly-ish patch
+cadence upstream.
+
+### Changed — BREAKING (drop-in swap, but a different service)
+- **`flaresolverr` service replaced with `byparr`** in `docker-compose.yml` - same port
+  (8191), same FlareSolverr-compatible `/v1` API, `profiles: [extras]` unchanged. New:
+  `shm_size: 512m`, which Byparr's own docs call out as needed to avoid a
+  `multiprocessing.synchronize` startup error in some environments.
+- **Image**: `ghcr.io/thephaseless/byparr@sha256:01a46a2865d9a6db5eb8ead04ec0dd33b8fbe233e8565ae70b50d4cc0af4cfb0`
+  (confirmed via the running container's own log line, "Using version 2.1.0"). Digest-pinned,
+  not version-tag-pinned like most of this file's other pins - Byparr's GHCR registry doesn't
+  actually publish clean `vX.Y.Z` tags (only `:latest`, `:main`, and commit-sha/arch-specific
+  tags resolved at pin time, despite GitHub Releases suggesting otherwise), so a digest was the
+  only way to freeze a specific build. Manually bumped, not on Watchtower's train, for the same
+  reason as Plex's pin above - this is a security/anti-bot component several indexers depend
+  on.
+- **Prowlarr's existing Indexer Proxy entry updated via API**, not recreated - same `id: 1`,
+  same tag (`1`, already applied to the 16 indexers that need it), `implementation` stays
+  `FlareSolverr` (that's Prowlarr's internal protocol/type name, not tied to which actual
+  service answers it), only the `host` field changed from `http://flaresolverr:8191/` to
+  `http://byparr:8191/` and the display name to `Byparr`. No per-indexer changes needed - tag
+  membership is what routes requests through the proxy, not anything on the indexer itself.
+- **`config/homepage/services.yaml`** and **Heimdall's tile** (`config/heimdall/www/app.sqlite`,
+  item id 19) both updated to the new name/container/icon. A real `byparr.png` icon was pulled
+  from the same community icon set (`dashboard-icons`) the rest of this stack's tiles already
+  use, not left as a broken image.
+- Old `flaresolverr/flaresolverr:v3.5.0` container and image removed.
+
+### Verified live
+- `byparr` container reported `healthy` within seconds of first boot.
+- Prowlarr's own "test proxy" call against the updated entry returned `200`.
+- Confirmed genuinely working end-to-end, not just reachable: Byparr's logs show it organically
+  solved a real Cloudflare/anti-bot challenge for an indexer (`xxxclub.to`, tag-matched to this
+  proxy) in 2.74s, returning `200 OK` back to Prowlarr - this happened on its own via Prowlarr's
+  normal background indexer-health cycle, not a synthetic test call.
+- One specific indexer (1337x, id 3) showed as temporarily backed-off in Prowlarr during
+  testing - checked `/api/v1/indexerstatus` and confirmed that indexer has had recurring
+  failures dating back to 2026-07-05, well before this swap, alongside several other indexers
+  *not* tagged to this proxy at all showing the same pattern. Pre-existing flakiness, unrelated
+  to Byparr; not chased further as part of this change.
+
+*Built with Claude AI.*
 
 ---
 

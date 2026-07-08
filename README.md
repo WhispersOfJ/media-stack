@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 3.3.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 3.4.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -118,9 +118,9 @@ verified live against the running stack before being marked done.*
   verified against live registries rather than assumed.
 - Full stack (core + extras) is live and healthy — see [CHANGELOG.md](CHANGELOG.md) for the
   issues hit and fixed along the way.
-- **Prowlarr** has 70 indexers configured (69 public trackers + Zilean), FlareSolverr wired
-  up as an Indexer Proxy for the Cloudflare-protected ones, and NZBGet added as its own
-  global download client.
+- **Prowlarr** has 70 indexers configured (69 public trackers + Zilean), Byparr wired
+  up as an Indexer Proxy for the Cloudflare-protected ones (FlareSolverr originally, replaced
+  in [3.4.0](CHANGELOG.md)), and NZBGet added as its own global download client.
 - **Decypharr** and **NZBGet** are both added as download clients (priority 1 and 2
   respectively) in Radarr, Sonarr, Lidarr, Readarr, and Whisparr — Decypharr auto-detected
   all 5 apps.
@@ -216,7 +216,7 @@ cd /home/bear/Stack
 docker compose up -d
 ```
 
-Core + optional extras (Bazarr, FlareSolverr, Tautulli, Heimdall, Homepage, Glances, Kometa,
+Core + optional extras (Bazarr, Byparr, Tautulli, Heimdall, Homepage, Glances, Kometa,
 Unpackerr, Watchtower):
 
 ```bash
@@ -264,7 +264,7 @@ recreate it after a compose file change.
 | NZBGet | http://192.168.4.105:6789 | usenet, real local downloads, fallback path |
 | Seerr | http://192.168.4.105:5055 | request frontend |
 | Bazarr *(extras)* | http://192.168.4.105:6767 | subtitles |
-| FlareSolverr *(extras)* | http://192.168.4.105:8191 | Cloudflare-protected indexers |
+| Byparr *(extras)* | http://192.168.4.105:8191 | Cloudflare-protected indexers (replaced FlareSolverr in [3.4.0](CHANGELOG.md)) |
 | Tautulli *(extras)* | http://192.168.4.105:8182 | Plex stats |
 | Heimdall *(extras)* | http://192.168.4.105:3000 | dashboard linking every service, grouped into 5 categories |
 | Homepage *(extras)* | http://192.168.4.105:3001 | live per-service dashboard, see [Dashboard](#dashboard-homepage) |
@@ -277,7 +277,7 @@ noted as **done** where complete. What's left is a preference call, not a techni
 (which quality profile to assign where).
 
 1. **Prowlarr** (done): 69 public trackers + Zilean added (see
-   [What's already done](#whats-already-done)), FlareSolverr proxy wired up, NZBGet added as
+   [What's already done](#whats-already-done)), Byparr proxy wired up, NZBGet added as
    Prowlarr's own download client. Private/semi-private trackers need your own account
    credentials per-site if you want to add any — those weren't and can't be automated.
 2. **Each *arr app** (Radarr/Sonarr/Lidarr/Readarr/Whisparr) (done): Decypharr (priority 1)
@@ -427,13 +427,16 @@ today:
   `:nightly` (no `:release` channel exists yet) and the running build didn't match the newest
   nightly push, so a tag pin would have silently jumped forward.
 - **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
-  `flaresolverr/flaresolverr:v3.5.0`, `nickfedor/watchtower:1.19.0`) where the upstream project
-  tags real releases and the current running image matches the newest one.
+  `nickfedor/watchtower:1.19.0`) where the upstream project tags real releases and the current
+  running image matches the newest one.
 - **Digest pins** (`@sha256:...`) for Seerr, Homepage, Glances, Kometa, Unpackerr, and
   Heimdall - in every one of these cases the currently-running `:latest` build is *ahead* of
   the newest tagged release upstream has cut, so no tag exists that wouldn't be a downgrade.
   These freeze exactly what's running today; bumping to a newer build is a deliberate, visible
-  change to this file going forward, not something that happens silently at 4am.
+  change to this file going forward, not something that happens silently at 4am. **Byparr** is
+  also digest-pinned, for a related but distinct reason - its GHCR registry doesn't publish
+  clean `vX.Y.Z` tags at all (only `:latest`, `:main`, and commit-sha/arch-specific tags were
+  actually resolvable at pin time), so a digest was the only way to freeze a specific build.
 - **Version tag, manually bumped** for Plex (`plexinc/pms-docker:1.43.2.10687-563d026ea`) -
   same "not on Watchtower's train" treatment as the digest-pinned group above, but a real tag
   exists here so it's tag-pinned rather than digest-pinned. See
@@ -443,8 +446,8 @@ today:
 Watchtower still auto-updates the channel-tag-pinned images (hotio's rolling `:release`
 channels) daily - the difference is every actual update now posts to Discord first (see
 [Alerting](#alerting-discord)) instead of just happening. The digest-pinned images (Whisparr,
-Seerr, Homepage, Glances, Kometa, Unpackerr, Heimdall) and the exact-version-tag-pinned ones
-(Zilean, Decypharr, FlareSolverr, Watchtower itself, and now Plex) are *not* meaningfully
+Seerr, Homepage, Glances, Kometa, Unpackerr, Heimdall, Byparr) and the exact-version-tag-pinned
+ones (Zilean, Decypharr, Watchtower itself, and now Plex) are *not* meaningfully
 auto-updated either: an exact version tag is immutable once published the same way a digest
 is, so Watchtower never finds a new digest to pull at that specific reference. Plex rides on
 that same property deliberately - no special-case label needed, just the same "pin to an exact
@@ -594,7 +597,7 @@ double-checking rather than just trusting.
 | Service | Why you might want it |
 |---|---|
 | Bazarr | Automatic subtitle download/matching for Radarr/Sonarr libraries |
-| FlareSolverr | Lets Prowlarr solve Cloudflare challenges some indexers put up — already registered as an Indexer Proxy and tagged onto the trackers that need it |
+| Byparr | Lets Prowlarr solve Cloudflare challenges some indexers put up — already registered as an Indexer Proxy and tagged onto the trackers that need it (replaced FlareSolverr in [3.4.0](CHANGELOG.md)) |
 | Tautulli | Plex watch-history/stats dashboard |
 | Heimdall | Single landing page linking every service above, grouped into 5 categories |
 | Homepage | Broader live dashboard - per-service widgets, docker container health, dedicated Zilean panel, real host stats via Glances - see below |
@@ -739,5 +742,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.3.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.4.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
