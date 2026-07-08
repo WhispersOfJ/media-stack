@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Control Panel — The Stack</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>Control Panel</h1>
+        <p class="brand-sub">The Stack — operations</p>
+      </div>
+    </div>
+    <div class="clock" id="clock" aria-live="off"></div>
+  </div>
+</header>
+
+<main>
+
+  <section class="group" aria-labelledby="h-primary">
+    <h2 id="h-primary">Primary actions</h2>
+    <div class="grid primary-grid" id="primary-grid"></div>
+  </section>
+
+  <section class="group" aria-labelledby="h-arr">
+    <h2 id="h-arr">*arr apps</h2>
+    <div class="arr-list" id="arr-list"></div>
+  </section>
+
+  <section class="group" aria-labelledby="h-services">
+    <h2 id="h-services">Services</h2>
+    <p class="group-note">Restart any container. Lamps reflect live status, checked on load.</p>
+    <div class="chip-grid" id="chip-grid"></div>
+  </section>
+
+</main>
+
+<footer class="log-panel">
+  <div class="log-head">
+    <span class="log-title">Activity log</span>
+    <span class="log-hint">LAN-only · no auth, matching the rest of the stack</span>
+  </div>
+  <div class="log-body" id="log-body"></div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -615,6 +615,43 @@ services:
       # status/health and expose start/stop/restart controls.
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
+  # One-click operational actions Homepage can't do on its own - it can show
+  # status and start/stop/restart a container, but it has no concept of
+  # "run this command inside a container" or "call this app's API". Custom
+  # build (control-panel/), not a pulled image. Linked from Homepage's
+  # Extras & Monitoring group as a service card rather than replacing
+  # anything there.
+  control-panel:
+    build: ./control-panel
+    restart: unless-stopped
+    container_name: control-panel
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "8420:8420"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8420/healthz')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    environment:
+      PLEX_URL: ${PLEX_URL}
+      PLEX_TOKEN: ${PLEX_TOKEN}
+      RADARR_API_KEY: ${RADARR_API_KEY}
+      SONARR_API_KEY: ${SONARR_API_KEY}
+      LIDARR_API_KEY: ${LIDARR_API_KEY}
+      READARR_API_KEY: ${READARR_API_KEY}
+    volumes:
+      # Read-write, unlike Homepage's docker.sock mount above - this one
+      # actually execs into containers (Kometa's on-demand run) and issues
+      # restarts, not just reads status. Runs as root in-container (no
+      # PUID/PGID) since root is what the socket needs; no other privilege
+      # escalation beyond that. LAN-only, no auth in front - same threat
+      # model as every other service in this stack (see README's Security
+      # note), acknowledged as a deliberately higher-blast-radius exception.
+      - /var/run/docker.sock:/var/run/docker.sock
+
   # Real host-level CPU/memory/disk/uptime for Homepage's top-of-page widget
   # (the "resources" widget only reports the *container's own* usage - this
   # is what actually shows host stats). pid: host + the read-only rootfs
