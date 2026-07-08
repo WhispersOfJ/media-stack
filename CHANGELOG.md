@@ -4,7 +4,63 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v4.0.1**.
+features, **PATCH** for fixes. Current version: **v4.1.0**.
+
+---
+
+## [4.1.0] — Control Panel: one-click ops actions
+
+The ask: buttons to actually *do* things (run Kometa now, scan Plex, restart a service) rather
+than just look at status. Homepage already covers status/start/stop/restart on existing
+service cards, but its config schema has no concept of "exec a command in a container" or
+"call this app's API on click" — there was no way to add this as more Homepage YAML.
+
+### Added
+- **New `control-panel/` service** — custom-built (`Dockerfile` + FastAPI, not a pulled image),
+  `build:` not `image:` in `docker-compose.yml`, under `profiles: [extras]` like the rest of
+  the optional tier. Runs on port **8420**.
+- **Actions wired up and verified live** against the running stack (each one actually fired,
+  not just built): Kometa run-now (`docker exec kometa python3 /kometa.py --run`, detached);
+  Plex scan-all-libraries, empty-trash (looped per-section), optimize-database and
+  clean-old-bundles (both Butler tasks) via Plex's own HTTP API; RSS sync and search-missing
+  on Radarr/Sonarr/Lidarr/Readarr via each app's `/api/v3|v1/command` endpoint; restart buttons
+  for an allow-listed set of containers, including Radarr specifically called out as the fix
+  for [4.0.1](CHANGELOG.md)'s stale-Zurg-mount issue.
+- **`RADARR_API_KEY`/`SONARR_API_KEY`/`LIDARR_API_KEY`/`READARR_API_KEY`** added to
+  `.env`/`.env.example` — Control Panel talks to each *arr app's API directly rather than
+  through Homepage, so it needed its own copy of keys already present in
+  `config/homepage/services.yaml`.
+- **Read-write `docker.sock` mount** (`/var/run/docker.sock:/var/run/docker.sock`, no `:ro`) —
+  a deliberate, higher-blast-radius exception to how Homepage mounts the same socket read-only.
+  Needed since this container execs into others and issues restarts, not just reads status.
+  No auth in front, LAN-only — same threat model as the rest of the stack (see README's
+  Security note), acknowledged as the biggest single privilege bump in this repo so far.
+- **Styled to match Homepage's existing black/red identity** (`config/homepage/custom.css`
+  palette reused, not reinvented) rather than looking like an unrelated bolt-on tool. Signature
+  element: a persistent terminal-style activity log pinned to the bottom of the page, logging
+  every action fired anywhere on the page with a timestamp — built as a genuine audit trail,
+  not decoration.
+- **Linked from both existing dashboards** — a new service card in
+  `config/homepage/services.yaml` (Extras & Monitoring group), and a new tile in Heimdall's
+  Monitoring & Tools group, inserted directly into `config/heimdall/www/app.sqlite`'s `items` +
+  `item_tag` tables (same approach used to *remove* Whisparr's tile in
+  [4.0.0](CHANGELOG.md), now used to add one instead) — a SQLite backup was taken first.
+- **README**: new "Control Panel" section, `control-panel/` added to the directory layout tree,
+  a new row in the Optional extras reference table, version bumped to 4.1.0 throughout.
+
+### Verified live, not assumed
+Every action was actually clicked/curled against the real stack before being called done: a
+real Kometa `--run` produced genuine log output mid-pass (not just "started" with no follow-
+through); all four *arr command names (`RssSync`, `MissingMoviesSearch`,
+`MissingEpisodeSearch`, `MissingAlbumSearch`, `MissingBookSearch`) were accepted on the first
+try with no casing guesses; all four Plex endpoints returned success including Butler task
+names (`OptimizeDatabase`, `CleanOldBundles`) that aren't formally documented anywhere and were
+only confirmed by calling them; a real `docker restart radarr` round-tripped and came back
+healthy; both allow-list rejections (unknown *arr app, non-allow-listed container name) were
+confirmed to actually 404 rather than silently succeeding; Homepage's own internal
+`/api/services` and `/api/docker/status/control-panel` endpoints were queried directly to
+confirm the new tile and container status actually appear, since the browser extension wasn't
+available this session to check visually.
 
 ---
 

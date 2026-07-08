@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 3.5.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 4.1.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -41,6 +41,7 @@ explicit NZBGet fallback.
 - [Dashboard (Homepage)](#dashboard-homepage)
 - [Plex (containerized)](#plex-containerized)
 - [Kometa (Plex collections/metadata/overlays)](#kometa-plex-collectionsmetadataoverlays)
+- [Control Panel](#control-panel)
 
 ## Architecture
 
@@ -115,6 +116,7 @@ Stack/
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
 ├── config/heimdall/www/app.sqlite  # dashboard tiles, populated directly via SQLite
 ├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
+├── control-panel/                # custom-built one-click ops app (own Dockerfile, see below)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
 └── media/{movies,shows,music,books,adult}  # every arr app's writable root folder (mounted at /data/<type>)
 ```
@@ -659,6 +661,7 @@ double-checking rather than just trusting.
 | Kometa | Automated Plex collections, metadata, and overlays - configured and running, see below |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
 | Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
+| Control Panel | One-click operational actions Homepage/Heimdall can't do themselves - run Kometa now, Plex scan/empty-trash/optimize, *arr RSS sync + search, service restarts - see below |
 
 Not included but worth knowing about: Decypharr can stream Usenet directly via NNTP with no
 separate download client (a built-in feature), which would make NZBGet unnecessary if a
@@ -791,8 +794,55 @@ driven by a `config.yml` you write.
   everything available at once. `add_missing`/`search` are both on for Radarr and Sonarr.
   Verified end-to-end with Kometa's own `--validate --validate-level full`.
 
+## Control Panel
+
+Homepage (above) shows live status and can start/stop/restart a container, but it has no
+concept of "run this command inside a container" or "call this app's API" - there's no button
+config for that in its YAML schema. Control Panel is a small custom-built app (`control-panel/`,
+its own `Dockerfile`, not a pulled image) that fills that specific gap with one-click actions,
+styled to match Homepage's own black/red theme. Runs on port **8420**, linked from both
+Homepage and Heimdall's Monitoring & Tools group.
+
+- **Kometa: Run now** - `docker exec`s `python3 /kometa.py --run` inside the running Kometa
+  container, bypassing its 05:00 schedule. Detached, so the button returns immediately instead
+  of blocking on however long the full pass takes; watch progress via Homepage's Kometa card
+  (`showStats: true` already surfaces its live CPU while a run is active).
+- **Plex actions**, all via Plex's own HTTP API using `PLEX_URL`/`PLEX_TOKEN`: scan every
+  library for new files (`/library/sections/all/refresh`), empty trash per-library
+  (`/library/sections/{id}/emptyTrash`, looped over every section), and two Butler tasks -
+  optimize database (`/butler/OptimizeDatabase`) and clean old bundles
+  (`/butler/CleanOldBundles`).
+- ***arr actions*** - RSS sync and search-for-missing on Radarr, Sonarr, Lidarr, and Readarr,
+  each via `POST /api/v3|v1/command` with that app's own command name (`RssSync`, plus
+  `MissingMoviesSearch`/`MissingEpisodeSearch`/`MissingAlbumSearch`/`MissingBookSearch`
+  respectively). Needs its own copy of each app's API key (`RADARR_API_KEY` etc. in `.env`,
+  mirroring the values already in `config/homepage/services.yaml`) since it talks to these
+  APIs directly rather than through Homepage.
+- **Service restarts** - an allow-listed set of containers (never an arbitrary name from the
+  client), each with a live status lamp checked via `GET /api/status` on page load. Radarr's
+  restart button is called out specifically as the fix for the stale-Zurg-mount issue
+  documented in [4.0.1](CHANGELOG.md).
+- **Docker socket is read-write** (`/var/run/docker.sock:/var/run/docker.sock`, no `:ro`) -
+  unlike Homepage's read-only mount, this one actually execs into containers and issues
+  restarts, not just reads status. Runs as root in-container (no `PUID`/`PGID`) since that's
+  what talking to the socket needs.
+- **No auth, LAN-only** - same threat model as every other service in this stack (see
+  [Security note](#security-note)), a deliberate choice given the read-write docker socket is
+  a genuinely higher blast radius than anything else here: anyone on the LAN could restart a
+  container or trigger a Kometa run. Consistent with how the rest of the stack is exposed
+  rather than a new exception.
+- **Activity log** - every action fired from the page (not just the one you're looking at)
+  logs a timestamped line to a persistent console strip at the bottom of the page, so you can
+  see what's actually happened rather than trusting a single button's own status line.
+- Verified live against the running stack, not just built: every action below was actually
+  fired once and confirmed - Kometa's `--run` produced real log output mid-pass, all four
+  *arr command names were accepted on the first try, all four Plex endpoints (scan/empty-trash/
+  optimize-db/clean-bundles) returned success, a real Radarr restart round-tripped through
+  Docker, and both the allow-list 404s (unknown *arr app, non-allow-listed container) were
+  confirmed to actually reject.
+
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.5.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **4.1.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
