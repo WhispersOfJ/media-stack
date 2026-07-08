@@ -4,7 +4,96 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v3.2.3**.
+features, **PATCH** for fixes. Current version: **v3.3.0**.
+
+---
+
+## [3.3.0] — Plex containerized (migrated from the native Arch install)
+
+Plex was the last piece of this stack still running natively. Brought it into
+`docker-compose.yml`, following the plan written up in `PLEX_MIGRATION_PLAN.md` ahead of time
+and paused for a few hours before execution at the user's request. User stopped the native
+service themselves before this session resumed.
+
+### Added
+- **`plex` service** in `docker-compose.yml` — official `plexinc/pms-docker` image (not a
+  LinuxServer-style fork; see rationale below), `network_mode: host`, `PLEX_UID`/`PLEX_GID` set
+  to `955` to match the native install's user exactly, `/dev/dri/renderD128` passed through for
+  VAAPI hardware transcoding (Plex Pass confirmed active on this account), healthcheck against
+  the unauthenticated `/identity` endpoint. Pinned to `1.43.2.10687-563d026ea`.
+
+### Changed — BREAKING (native → containerized)
+- **Data migrated, not recreated.** The entire native `/var/lib/plex/Plex Media Server`
+  directory (~33GB, 113,382 files) was copied byte-for-byte into `./config/plex`, ownership
+  preserved at uid/gid 955 throughout (`rsync -aHAX`, then `chown -R 955:955` for good measure).
+  Verified: a full `find`-based file listing diffed identical between source and destination
+  before the native service was touched further.
+- **`PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR=/config`** set explicitly in the container
+  environment — the native Arch install used this same env var to keep its data flat
+  (`/var/lib/plex/Plex Media Server`, no `Library/Application Support` nesting), and the
+  official Docker image respects the same variable, so the copied directory could be bind-mounted
+  in as-is with no restructuring.
+- **Path parity confirmed against the live database, not assumed.** Queried the migrated
+  library DB's own `section_locations` table before cutover: exactly two library sections
+  exist (Movies → `/mnt/zurg/movies`; TV Shows → `/mnt/zurg/shows` and `/mnt/all/magnets`), both
+  entirely under `/mnt`. A single `/mnt:/mnt:rslave` bind mount is therefore full path parity
+  for everything actually in the database today — no relinking needed. (`./media` is also
+  mounted at its identical host absolute path even though it isn't an active library location
+  yet, per the [README's long-standing recommendation](README.md#plex-library-locations-to-add).)
+- **Native `plexmediaserver.service` disabled** (`systemctl disable`, was already stopped by the
+  user before this session), not removed — kept as a rollback fallback, same pattern as the
+  Zurg/rclone-AllDebrid native units in [3.2.0](CHANGELOG.md). A fresh full tar backup of the
+  original native data dir was also taken first (`~/PlexBackup_2026-07-08_pre-docker-migration.tar`,
+  outside git), on top of the byte-identical copy now living in `./config/plex`.
+- **Image choice: official over LinuxServer.** LinuxServer discontinued their own Plex image;
+  more importantly, a PUID/PGID-forcing image would have recursively chowned the ~33GB library
+  to `PUID`/`PGID` (1000/1000) on first boot, clobbering the existing 955/955 ownership for no
+  reason. The official image's `PLEX_UID`/`PLEX_GID` env vars do the same job without that side
+  effect.
+- **`network_mode: host`**, a deliberate first-of-its-kind exception to this stack's `stacknet`
+  bridge + published-port pattern. Plex's own guidance for Docker deployments: GDM
+  auto-discovery, DLNA, and remote-access NAT-PMP/UPnP negotiation are unreliable on bridge
+  networking. Every other service already publishes directly to `0.0.0.0` with no reverse
+  proxy in front, so nothing else in the stack is affected by this exception.
+- **Image pinned to an exact version tag, not `:latest` and not on Watchtower's rolling-update
+  train** — same reasoning as the digest-pinned image group (Seerr/Homepage/Kometa/etc.): an
+  unattended PMS version change on a live library is higher blast radius here than anywhere
+  else in this stack. The native install ran the Plex Pass (beta) channel at `1.43.3.10793`;
+  the official Docker image only ships the public channel, whose newest published tag
+  (`1.43.2.10687-563d026ea`) is slightly behind that — a deliberate, acceptable step down from
+  a beta channel to the more conservative public one, not an oversight.
+- **Transcode temp directory** (`./config/plex-transcode`) is a plain disk bind mount, not a
+  RAM-backed tmpfs — the user reported transcoding is rarely used in practice (mostly direct
+  play), so the added complexity of a bounded RAM budget wasn't worth it here.
+
+### Verified live
+- Container reached `healthy` within 23 seconds of first boot.
+- `/library/sections` reports both libraries present (`Movies`, `TV Shows`) with their exact
+  pre-migration item counts: 3,826 movies, 774 shows.
+- A real file path (`/mnt/zurg/movies/IT 1, 2, Stephen King 1990.../...mp4`) pulled live from
+  `/library/sections/5/all` via the Plex API was confirmed to actually resolve inside the
+  running container — proof the path-parity mount is correct, not just that the container
+  started and the DB has rows in it.
+- `/identity` reports `claimed="1"` with the same machine identifier as before migration — the
+  server's claimed identity/auth token survived the move intact (carried over inside
+  `Preferences.xml`, never re-claimed).
+- `/dev/dri/renderD128` confirmed visible and group-accessible (`video`/`render`, gids 983/987)
+  inside the running container.
+
+### Also
+- `scripts/backup-config.sh` now excludes `config/plex/Plex Media Server/{Metadata,Cache,
+  Codecs,Logs,Crash Reports}` (all regenerable, `Metadata` alone is 28GB) and the sibling
+  `config/plex-transcode`, while keeping `Plug-in Support/Databases` (~2.5GB, the actual
+  library DB) and `Preferences.xml` in scope — the only two things here that are genuinely
+  irreplaceable.
+- README updated throughout: architecture diagram, service URL table, image pinning policy,
+  and a new [Plex (containerized)](README.md#plex-containerized) section. Version header
+  corrected from a stale `2.12.0` to match the CHANGELOG's actual current version at the same
+  time (pre-existing drift, unrelated to this change, fixed while already editing the file).
+- `PLEX_MIGRATION_PLAN.md` removed now that it's shipped, per this repo's usual
+  TODO-to-CHANGELOG convention.
+
+*Built with Claude AI.*
 
 ---
 

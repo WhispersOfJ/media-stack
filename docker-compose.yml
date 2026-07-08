@@ -393,6 +393,73 @@ services:
     volumes:
       - ./config/seerr:/app/config
 
+  # ---------------------------------------------------------------------
+  # Media server (containerized from a native install - see
+  # PLEX_MIGRATION_PLAN.md / CHANGELOG for the migration itself)
+  # ---------------------------------------------------------------------
+  plex:
+    restart: unless-stopped
+    # Official image, not a LinuxServer-style fork - a PUID/PGID-forcing
+    # image would recursively chown the ~33GB library to PUID/PGID on first
+    # boot (same reason the Kometa entry below avoids the LinuxServer fork).
+    # The native install ran the Plex Pass (beta) channel at 1.43.3.10793;
+    # the official image only publishes the public channel, whose newest
+    # tag (1.43.2.10687) is slightly behind that. Deliberate, not an
+    # oversight - public channel on the official image is the more
+    # conservative choice for a containerized production library anyway.
+    # Bump this tag deliberately, not via Watchtower (see below).
+    image: plexinc/pms-docker:1.43.2.10687-563d026ea
+    container_name: plex
+    # Plex's own guidance for Docker: GDM auto-discovery, DLNA, and
+    # remote-access NAT-PMP/UPnP negotiation are all unreliable on bridge
+    # networking. Every other service in this stack already publishes
+    # directly to 0.0.0.0 with no reverse proxy, so this is a deliberate,
+    # documented exception to the stacknet/published-port pattern rather
+    # than an inconsistency - no networks:/ports: block, both are invalid
+    # alongside network_mode: host.
+    network_mode: host
+    environment:
+      TZ: ${TZ}
+      # Matches the native install's uid/gid exactly (see
+      # /etc/conf.d/plexmediaserver on the host) so the migrated ~33GB
+      # library needed zero chown.
+      PLEX_UID: "955"
+      PLEX_GID: "955"
+      # Native Arch install set this to a flat directory (no
+      # Library/Application Support nesting); set it the same way here so
+      # config/plex/Plex Media Server could be copied over verbatim from
+      # /var/lib/plex without restructuring it.
+      PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR: /config
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:32400/identity || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - ./config/plex:/config
+      - ./config/plex-transcode:/transcode
+      # Both existing library sections (Movies at /mnt/zurg/movies; TV
+      # Shows at /mnt/zurg/shows and /mnt/all/magnets - confirmed via the
+      # migrated library DB's own section_locations table) resolve under
+      # /mnt, so this one mount is exact path parity with what's already in
+      # the database - no relinking, no "fix missing files".
+      - /mnt:/mnt:rslave
+      # Not yet an actual library location in Plex today (verified against
+      # the DB), but every arr app's writable root folder lives here and
+      # the README has long recommended adding it - mounted now so it's
+      # available the moment that's done, at the same absolute path the
+      # arr apps themselves use it at.
+      - ./media:/home/bear/Stack/media
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    # video/render host GIDs - renderD128 is already world-writable
+    # (confirmed: crw-rw-rw-), so this is a defensive fallback rather than
+    # strictly required for VAAPI hardware transcoding to work.
+    group_add:
+      - "983"
+      - "987"
+
   # =======================================================================
   # Optional / recommended extras - start with:
   #   docker compose --profile extras up -d
