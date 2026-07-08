@@ -4,7 +4,52 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v4.9.0**.
+features, **PATCH** for fixes. Current version: **v4.10.0**.
+
+---
+
+## [4.10.0] — README: introduction, "why use this," and real screenshots
+
+User asked for the README to actually sell the project, not just document it: an
+introduction, a reason someone would want to run this, code examples, and graphics — on top
+of what [4.9.0](CHANGELOG.md)'s setup wizard already made possible.
+
+### Added
+- **`## Introduction` and `## Why use this`**, placed right after the existing opening
+  paragraph/disclaimer, before the table of contents — what the stack actually does (23
+  services, one compose file, debrid-first so cached content plays instantly instead of
+  downloading), and why you'd want it over stitching guides together yourself, with an
+  explicit "what this isn't" callout (not a beginner Docker tutorial, LAN-only/no-auth by
+  design).
+- **`## Quick start`**, a single fenced code block covering the whole bring-up sequence
+  (scaffold → `--setup` wizard → `docker compose up -d` → optional extras profile) plus a
+  Mermaid flowchart of the same sequence, laid out as two explicit phases (`Pass 1 - before
+  first boot` / `Pass 2 - after first boot`) to make the *arr-key two-pass constraint from
+  [4.9.0](CHANGELOG.md) visually obvious rather than something you only find by reading. First
+  Mermaid diagram in this README — validated by actually rendering it (`@mermaid-js/mermaid-cli`
+  via `npx`, pointed at the locally-installed `brave` browser as its headless renderer) before
+  committing it, not just trusted to be syntactically correct.
+- **Setup wizard section fleshed out**: why hand-editing 12 keys across 6 sections is
+  error-prone in the first place, what re-running the wizard actually does under the hood
+  (loads the real `.env` as defaults, blank fields keep their existing value), and the 4-step
+  two-pass flow spelled out as a numbered list rather than prose.
+- **A real screenshot** (`docs/images/setup-wizard-form.png`) of the actual running wizard
+  form — not a mockup. Captured by scaffolding a scratch install, running `--setup` for real,
+  and driving `brave --headless --screenshot` against `localhost:8090` (Claude Code's own
+  Chrome extension wasn't connected this session, so this was the fallback rather than the
+  first choice). The scratch `.env` behind it has no real secrets in it — Zilean fields show
+  the wizard's own auto-generated tokens, everything else is still `changeme`, so the masked
+  password fields in the image are placeholders, not anything sensitive. Cropped to content
+  (pixel-scanned for the actual bottom of the rendered page rather than guessed) so it doesn't
+  carry a few hundred pixels of dead space.
+- Version banner at the top of the README (was still reading "4.7.0") corrected to match
+  `CHANGELOG.md`'s actual current version — stale since before [4.8.0](CHANGELOG.md).
+
+### Fixed
+- The Setup wizard section briefly had two versions of the same "two-pass constraint /
+  `config/homepage/services.yaml` isn't touched" explanation back to back — the new prose was
+  written as an addition without removing the equivalent paragraph [4.9.0](CHANGELOG.md)
+  already committed. Caught on a full diff review before commit, not left in.
 
 ---
 
