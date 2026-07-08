@@ -4,7 +4,159 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v3.5.0**.
+features, **PATCH** for fixes. Current version: **v4.0.1**.
+
+---
+
+## [4.0.1] — Radarr stale FUSE handle on /mnt/zurg (surfaced by Kometa, unrelated to 4.0.0)
+
+Kometa's scheduled run reported "Missing root folder: /mnt/zurg/movies" for essentially every
+movie collection. Not caused by the Whisparr removal in [4.0.0](CHANGELOG.md) — coincidental
+timing only.
+
+### Fixed
+- **Root cause: a mount-topology difference, not staleness-by-time.** Sonarr/Lidarr/Readarr/
+  Plex all bind-mount the *parent* directory (`/mnt:/mnt:rslave`), which keeps working across a
+  child FUSE remount. Radarr instead bind-mounts `/mnt/zurg` directly
+  (`/mnt/zurg:/mnt/zurg:rslave`, from [3.2.3](CHANGELOG.md)'s AllDebrid-scoping change) — and a
+  direct bind of a FUSE mountpoint doesn't reliably follow when that FUSE process gets
+  recreated underneath it. Zurg was recreated ~3h earlier as part of [3.5.0](CHANGELOG.md)'s
+  resource-limit work; every other app survived that because of the parent-mount difference,
+  Radarr didn't. Confirmed directly: `docker exec radarr ls /mnt/zurg/movies` returned `Socket
+  not connected` (classic dead-FUSE-handle error) while the same check from the host and from
+  every other container succeeded.
+- **Fix: `docker restart radarr`** — re-establishes the bind mount against the live FUSE
+  instance. Verified via Radarr's own `/api/v3/rootfolder`: `/mnt/zurg/movies` flipped from
+  `accessible: false` to `accessible: true`, and the in-container `ls` succeeded.
+
+### Why this will happen again
+- Any future Zurg recreation (image update, another resource-limit tweak, etc.) will silently
+  re-break Radarr specifically, the same way, unless Radarr is restarted alongside it. The other
+  four `/mnt`-mounting apps are structurally immune to this because of how their bind mount is
+  scoped; Radarr isn't, and changing that would mean re-widening its mount back toward the
+  blanket `/mnt` bind [3.2.3](CHANGELOG.md) deliberately narrowed for unrelated reasons (scoping
+  `/mnt/all` out of it). Noted in README.md rather than silently fixed-and-forgotten.
+
+---
+
+## [4.0.0] — Whisparr removed entirely
+
+User call, not a bug-driven removal: "Whisparr is simply too problematic moving forward" after
+[3.5.1](CHANGELOG.md) surfaced a real bug in this Whisparr build (`DownloadedEpisodesScan`
+throwing `System.ArgumentException` when called with no `path`) on top of the root-folder
+regression and a queue that needed manual per-item nudging to actually import. A full removal,
+not a disable — user explicitly asked to strip every trace from both the stack and disk, and
+confirmed a full wipe of already-imported content rather than keeping it as unmanaged library
+data.
+
+### Removed
+- **`whisparr` service block deleted from `docker-compose.yml`** — container stopped and
+  removed via `docker stop`/`docker rm` first, then the compose definition (image, healthcheck,
+  volumes) deleted outright.
+- **`config/whisparr/`** (its full config + database) **and `./media/adult/`** (its root
+  folder) **deleted from disk** — `rm -rf`, per explicit user confirmation of a full wipe.
+  Actual content was tiny (1.6MB) despite [3.5.1](CHANGELOG.md)'s bulk-import pass having
+  gotten through 134 of 259 stuck queue items before being stopped mid-run for this removal —
+  Decypharr's symlink-based `default_download_action` meant those imports never duplicated
+  real bytes locally in the first place, consistent with the disk-usage distinction
+  [3.5.1](CHANGELOG.md) documented.
+- **`config/decypharr/downloads/whisparr/`** (staged-download symlink farm) deleted.
+- **Whisparr's entry removed from `config/decypharr/config.json`**'s `arrs` array — Decypharr
+  no longer auto-syncs it as a download-client target.
+- **`Category5.Name=whisparr` removed from `config/nzbget/nzbget.conf`** — NZBGet no longer
+  has a whisparr category (categories 1-4/6 untouched, no renumbering needed).
+- **Whisparr's Prowlarr application-sync connection deleted** via
+  `DELETE /api/v1/applications/5` (confirmed via `GET /api/v1/applications` this was
+  Whisparr's own entry before deleting) — Prowlarr no longer pushes indexer changes to it.
+- **Whisparr tile removed from `config/homepage/services.yaml`.**
+- **Whisparr bookmark removed from Heimdall** — deleted directly from its live
+  `config/heimdall/www/app.sqlite` (`items` + `item_tag` tables) rather than left for manual
+  UI cleanup, since SQLite handles concurrent access from an external writer safely and this
+  was a single scoped delete by row ID.
+- **Checked Plex for a matching library section — none existed.** Whisparr/adult content was
+  never added as its own Plex library (only `Movies` → `/mnt/zurg/movies` and `TV Shows` →
+  `/mnt/zurg/shows` + `/mnt/all/magnets` exist), so nothing to remove there.
+- **README.md scrubbed**: architecture diagram, quick-reference table, the "5 arr apps"
+  phrasing throughout (now correctly "4 arr apps" everywhere it appears), the Seerr
+  no-data-model blockquote, the Homepage widget note explaining Whisparr's missing `/movie`
+  endpoint, and the digest-pinning explanation specific to Whisparr's nightly-only release
+  channel. The Zurg `config.yml` `adult` directory group was deliberately **left alone** on
+  live Zurg config rather than edited to match — it's now unfed by any app but removing it
+  means another live Zurg restart (a few seconds of `/mnt/zurg` downtime) for zero practical
+  benefit; the README now says so explicitly instead of silently going stale. Historical
+  mentions of Whisparr in CHANGELOG.md and in [3.5.1](CHANGELOG.md)'s still-accurate "564
+  Sonarr series + 6 Whisparr series" regression count were left untouched — those describe
+  what happened at the time, not current state.
+
+### Not touched
+- **`/mnt/zurg/adult`** (Real-Debrid content Zurg already organized into an `adult` folder
+  before this removal) was left as-is on the read-only Zurg mount — removing an app doesn't
+  imply deleting debrid-side content that was never local in the first place, and nothing
+  currently points a root folder there to make it a live concern.
+- **Prowlarr's 70 indexers, custom formats, and the other 4 arr apps' configuration** —
+  unaffected; this was a single-app removal, not a stack-wide change.
+
+---
+
+## [3.5.1] — Sonarr/Whisparr root-folder regression fixed again; AllDebrid bulk-import explored and declined
+
+Started from "why isn't Sonarr letting me add `/mnt/all/magnets` as an import folder?" and ended
+up finding (and partially fixing) the same root-folder regression [3.2.2](CHANGELOG.md)/
+[3.2.3](CHANGELOG.md) already fixed twice before, plus scoping and then explicitly rejecting a
+bulk-import idea once the real cost became clear. No `docker-compose.yml` changes — everything
+here is Sonarr/Whisparr application state via their APIs.
+
+### Fixed
+- **564 of 717 Sonarr series were rooted at `/mnt/zurg/shows`** (Zurg's read-only rclone FUSE
+  mount) instead of `/data/shows`, despite [3.2.3](CHANGELOG.md) recording Sonarr as "already
+  clean — 0 series rooted on `/mnt/zurg/shows`" at the time. This is the exact regression the
+  README's own "Regression risk" callout warns about — a library rescan can silently reset a
+  series' root folder back to Zurg's mount — it just recurred at much larger scale than either
+  prior fix caught. 556 of the 564 had **zero tracked episode files**, meaning nothing had ever
+  successfully imported for them since being added. Bulk-repointed all 564 to `/data/shows` via
+  `PUT /api/v3/series/editor` (`moveFiles: false`) after confirming with the user. Verified
+  716/717 immediately; the last (I, Claudius) landed once Sonarr's own `RefreshSeries` queue
+  drained. The 8 series that already had real files (0.46TB: The Office (US), For All Mankind,
+  Dragon Ball Kai, Lost in Space (2018), Star Wars: Skeleton Crew, The Acolyte, .hack//Roots,
+  Assassination Classroom) were deliberately left untouched on disk — same reasoning as
+  [3.2.3](CHANGELOG.md)'s movies, no point forcing a real copy of already-fine content.
+- **Same bug, Whisparr:** 6 of 12 series rooted at `/mnt/zurg/adult`, accounting for 259 of 260
+  permanently-stuck queue items (`trackedDownloadState: importing` forever, no visible error —
+  Decypharr stages the file fine, Whisparr's write into the read-only root just silently fails).
+  Bulk-repointed the same way (`rootFolderPath: /data/adult`, `moveFiles: false`) — all 6 had
+  zero tracked files, so nothing to move. **Not fully verified live**: manual import now matches
+  cleanly with zero rejections for a spot-checked item, but `CheckForFinishedDownload` and
+  `DownloadedEpisodesScan` (the latter needed an explicit `path` param — calling it with none
+  throws `System.ArgumentException: A path must be provided`, a real bug in this Whisparr build)
+  both ran clean without draining the queue. Likely just waiting on Whisparr's own scheduled
+  import task rather than still broken, but that's an assumption, not a confirmed fact — check
+  the queue count next time this comes up before assuming it's resolved.
+
+### Explicitly not done
+- **Bulk-importing `/mnt/all/magnets` into Sonarr, scrapped.** Scoped it first rather than
+  guessing: 1,801 folders, 26,008 video files, 29.8TB total. Estimated at ~10.2 days sequential
+  (measured, not guessed — 6.31s/file Sonarr manual-import scan rate from a real API call, ~45.9
+  MB/s real `cp` throughput off `/mnt/all`), which was already enough to make bulk import
+  impractical. Decided against it entirely once the disk-space angle was clear: local disk has
+  686GB free against 29.8TB source. A size/time-estimate HTML report was generated to scope
+  this, then deleted at the user's request once the idea was dropped — the numbers aren't
+  reproduced here since the decision, not the specific figures, is what's worth keeping.
+
+### Why this matters going forward (disk usage — the actual point of confusion this session)
+- **Everyday operation costs ~zero local disk**, regardless of whether content comes via Zurg or
+  AllDebrid: Plex reads `/mnt/zurg/*` and `/mnt/all/magnets` directly as read-only library
+  locations (streamed on demand, nothing duplicated), and Sonarr/Whisparr's normal
+  grab-then-import pipeline (search → grab → Decypharr → **symlink** into `/data/<type>`) never
+  copies real video bytes either — a symlink costs a few bytes no matter the file size.
+- **The one operation that does cost real, permanent local disk is manually importing
+  pre-existing content that's sitting directly on a read-only FUSE mount (`/mnt/zurg` or
+  `/mnt/all`) into an app's own tracked library.** Sonarr's manual import only offers `Hardlink`
+  or `Copy` as import modes; `Hardlink` requires the same filesystem, which is impossible from a
+  remote rclone mount onto local disk, so `Copy` is the only option — and `Copy` writes a full,
+  permanent duplicate of the file, not a temp file, not bandwidth-only. This is exactly the
+  distinction that caused a real misunderstanding mid-session (assumed "bandwidth heavy" =
+  no real disk cost) and is worth remembering next time a bulk import from either mount comes
+  up: scope the *disk* cost, not just the time cost, before starting.
 
 ---
 
