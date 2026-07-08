@@ -245,7 +245,10 @@ services:
       start_period: 30s
     volumes:
       - ./config/radarr:/config
-      - /mnt:/mnt:rslave
+      # Not the blanket /mnt:/mnt bind Sonarr uses - AllDebrid (/mnt/all) is
+      # TV-only, so Radarr only gets the two mounts it actually needs.
+      - /mnt/zurg:/mnt/zurg:rslave
+      - /mnt/decypharr:/mnt/decypharr:rslave
       - ./usenet:/usenet:rslave
       # Same path Decypharr uses internally for its qBittorrent-emulated category
       # folders (/app/downloads/<category>) - identical path avoids needing Remote
