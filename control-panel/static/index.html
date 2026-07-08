@@ -33,10 +33,54 @@
     <div class="arr-list" id="arr-list"></div>
   </section>
 
+  <section class="group" aria-labelledby="h-zilean">
+    <h2 id="h-zilean">Search Zilean directly</h2>
+    <p class="group-note">Queries Zilean's own index straight up — bypasses Prowlarr and every *arr app. Good for checking whether something's actually cached before grabbing it.</p>
+    <form class="zilean-search" id="zilean-search-form">
+      <input type="search" id="zilean-search-input" placeholder="Search title…" aria-label="Search Zilean" required>
+      <button class="btn-primary" type="submit">Search</button>
+    </form>
+    <div class="zilean-filters" id="zilean-filters" hidden>
+      <label>Resolution
+        <select id="zilean-filter-resolution"><option value="">All</option></select>
+      </label>
+      <label>Quality
+        <select id="zilean-filter-quality"><option value="">All</option></select>
+      </label>
+      <label>Min size (GB)
+        <input type="number" id="zilean-filter-min-size" min="0" step="0.5" placeholder="0">
+      </label>
+      <label>Max size (GB)
+        <input type="number" id="zilean-filter-max-size" min="0" step="0.5" placeholder="any">
+      </label>
+      <label>Sort by
+        <select id="zilean-filter-sort">
+          <option value="default">Relevance</option>
+          <option value="size-desc">Size — largest first</option>
+          <option value="size-asc">Size — smallest first</option>
+          <option value="year-desc">Year — newest first</option>
+          <option value="name-asc">Name — A to Z</option>
+        </select>
+      </label>
+      <span class="zilean-filter-count" id="zilean-filter-count"></span>
+    </div>
+    <div class="zilean-results" id="zilean-results"></div>
+  </section>
+
   <section class="group" aria-labelledby="h-services">
     <h2 id="h-services">Services</h2>
-    <p class="group-note">Restart any container. Lamps reflect live status, checked on load.</p>
+    <p class="group-note">Restart any container. Lamps reflect live status, checked on load and refreshed periodically.</p>
     <div class="chip-grid" id="chip-grid"></div>
+  </section>
+
+  <section class="group" aria-labelledby="h-danger">
+    <h2 id="h-danger">Danger zone</h2>
+    <div class="card danger-card">
+      <div class="card-title">Restart entire stack</div>
+      <div class="card-desc">Restarts every container in this compose project except this panel itself. Brief outage across the whole stack while everything comes back up - watch the lamps above.</div>
+      <button class="btn-danger" id="restart-all-btn" type="button">Restart everything</button>
+      <div class="status-line" id="status-restart-all">—</div>
+    </div>
   </section>
 
 </main>

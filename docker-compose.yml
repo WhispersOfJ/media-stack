@@ -98,13 +98,31 @@ services:
       start_period: 30s
     depends_on:
       - zilean-postgres
+      - zurg
     environment:
       TZ: ${TZ}
       Zilean__ApiKey: ${ZILEAN_API_KEY}
       Zilean__Database__ConnectionString: "Host=zilean-postgres;Database=zilean;Username=postgres;Password=${ZILEAN_POSTGRES_PASSWORD};Include Error Detail=true;Timeout=30;CommandTimeout=3600;"
       Zilean__Dmm__EnableScraping: "true"
+      # Default is 200 - raised so Torznab searches (Prowlarr -> Radarr/
+      # Sonarr) surface more cached candidates per query instead of getting
+      # cut off, now that Zurg ingestion below adds a second hash source on
+      # top of DMM's public hashlist.
+      Zilean__Dmm__MaxFilteredResults: "500"
       Zilean__Torrents__EnableEndpoint: "true"
       Zilean__EnableDashboard: "true"
+      # Ingests this account's own already-cached Real-Debrid torrents
+      # directly from Zurg's /debug/torrents (5,644 entries at time of
+      # writing) into Zilean's index - a second hash source alongside DMM's
+      # public hashlist, scoped to hashes actually proven cached on this
+      # account. Verified live: schema match confirmed against Zilean's own
+      # StreamedEntry model (name/hash/size, case-insensitive), and a manual
+      # `zilean-scraper generic-sync` run actually ingested them. No
+      # equivalent exists for AllDebrid/rclone - Zurg is a purpose-built app
+      # with this debug endpoint, rclone's RC API has no matching schema.
+      Zilean__Ingestion__EnableScraping: "true"
+      Zilean__Ingestion__ZurgInstances__0__Url: "http://zurg:9999"
+      Zilean__Ingestion__ZurgInstances__0__EndpointType: "1"
       # Hardware tuning: 16 threads available on this host. Reserve 4 for
       # Plex/desktop/other containers rather than pinning all cores to IMDB
       # title-matching (Zilean's one real CPU-parallel workload).
