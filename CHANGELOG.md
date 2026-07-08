@@ -4,7 +4,67 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v3.4.0**.
+features, **PATCH** for fixes. Current version: **v3.5.0**.
+
+---
+
+## [3.5.0] — Resource limits for six more containers
+
+Asked whether any containers could be optimized for RAM/CPU. Answered with real data first
+(`docker stats` snapshots, two samples 5s apart, plus a longer investigation into what was
+actually driving the numbers) rather than guessing, then applied ceilings where the data
+actually supported one.
+
+### Added
+- **`mem_limit`/`mem_reservation`/`cpus` added to `plex`, `zurg`, `decypharr`, `byparr`,
+  `kometa`, and `bazarr`** in `docker-compose.yml` — the same pattern Zilean/zilean-postgres
+  already used, extended to the six containers whose observed behavior actually justified it:
+  - **`plex`**: 6GB/512MB/12 cpus. Caught live during this investigation - a library scan with
+    zero active playback sessions briefly pushed it to 100% CPU (confirmed via `/activities`:
+    "Scanning TV Shows", not a transcode). Hardware transcoding covers playback decode, not
+    scan/analysis/thumbnail passes, so this can spike on its own. 12 of 16 threads leaves the
+    same 4-thread desktop headroom Zilean's tuning already reserves.
+  - **`zurg`**: 1GB/128MB/6 cpus. Sustained ~20-25% CPU across two 5s-apart samples - a real
+    baseline, not a blip, likely its own 10s Real-Debrid poll interval plus serving reads for
+    Plex/the arr apps.
+  - **`decypharr`**: 1.5GB/256MB/4 cpus. Highest steady RAM baseline (~540-580MB) of any
+    container besides Postgres/Zilean.
+  - **`byparr`**: 2GB/256MB/4 cpus. Defensive rather than reactive - idle footprint is modest
+    (~130MB) but each Cloudflare solve spins up a real Camoufox browser instance, and
+    concurrent solves under real load haven't been tested yet.
+  - **`kometa`**: 2GB/256MB/4 cpus. 642MB observed resident even while "sleeping" between
+    scheduled runs - the largest idle footprint of any non-Postgres/Zilean container, mostly
+    inherent to its dependency stack (image processing, several metadata-agent SDKs) rather
+    than misconfiguration, plus real spikes during actual overlay/poster generation runs.
+  - **`bazarr`**: 1GB/128MB/2 cpus. 141 PIDs observed at rest - far more threads/processes than
+    any other container in this stack, likely per-provider subtitle-search workers. Not
+    obviously a leak (RAM stayed modest), but nothing was capping it before.
+- New **Resource limits** README section documenting the table above and, just as
+  importantly, what was deliberately left alone: Heimdall, Homepage, Glances, Tautulli,
+  Unpackerr, Watchtower, Seerr, NZBGet, rclone-alldebrid, and five of the six `*arr` apps were
+  all comfortably under 250MB/low CPU% in the same observation pass - adding ceilings there
+  would be pure overhead for no real protection.
+
+### Explicitly not done
+- **`.NET Server GC` was not copied from Zilean to the `*arr` apps.** They run .NET's default
+  Workstation GC, which is actually correct for their light, low-parallelism workload -
+  Server GC's per-core-heap model would waste more RAM than it would ever recover for apps this
+  size. Considered and rejected, not overlooked.
+- **Zurg's `--poll-interval 10s` and Decypharr's `refresh_interval: 30s` were identified as
+  possible further CPU/responsiveness tradeoffs but left unchanged** - relaxing either would
+  reduce baseline load at the cost of slower detection of new Real-Debrid content, and that
+  tradeoff wasn't asked for.
+
+### Verified live
+- All six containers recreated via `docker compose --profile extras up -d`, reached `healthy`
+  within seconds.
+- `docker inspect` on all six confirmed the exact byte/nanocpu values actually took effect
+  (e.g. `plex`: `6442450944` bytes = 6GiB, `12000000000` nanocpus = 12 cpus), not just that the
+  compose file changed.
+- Plex's library re-checked post-recreate (`/library/sections/5/all`) - count unchanged
+  modulo normal library activity, confirming the recreate didn't disturb the migrated data.
+
+*Built with Claude AI.*
 
 ---
 
