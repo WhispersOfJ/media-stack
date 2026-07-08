@@ -487,16 +487,32 @@ services:
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
 
-  flaresolverr:
+  # Replaced FlareSolverr in 3.4.0 - same role (Cloudflare challenge solver,
+  # registered as Prowlarr's Indexer Proxy), same port, same FlareSolverr-
+  # compatible /v1 API (Prowlarr's proxy type is still literally named
+  # "FlareSolverr" - only the host URL changed). Uses Camoufox (a
+  # Firefox-based anti-detect browser) instead of Selenium +
+  # undetected-chromedriver, with a faster patch cadence against Cloudflare's
+  # evolving detection signals. See CHANGELOG for the swap and live
+  # verification.
+  byparr:
     restart: unless-stopped
-    # Pinned to the exact version currently running (verified same digest as
-    # :latest at pin time) rather than :latest.
-    image: flaresolverr/flaresolverr:v3.5.0
-    container_name: flaresolverr
+    # Digest-pinned rather than a version tag - the project doesn't publish
+    # clean vX.Y.Z tags on its GHCR registry the way its GitHub releases
+    # suggest (only :latest, :main, and commit-sha/arch-specific tags were
+    # actually resolvable at pin time). Same "manually bumped, not on
+    # Watchtower's train" reasoning as Plex above either way: this is a
+    # security/anti-bot component other indexers depend on, an unattended
+    # breaking update is worth avoiding.
+    image: ghcr.io/thephaseless/byparr@sha256:01a46a2865d9a6db5eb8ead04ec0dd33b8fbe233e8565ae70b50d4cc0af4cfb0
+    container_name: byparr
     profiles: [extras]
     networks: [stacknet]
     ports:
       - "8191:8191"
+    # Byparr's own docs: without this, some environments hit a
+    # multiprocessing.synchronize error on startup.
+    shm_size: 512m
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8191/ || exit 1"]
       interval: 30s
@@ -505,7 +521,6 @@ services:
       start_period: 30s
     environment:
       TZ: ${TZ}
-      LOG_LEVEL: info
 
   tautulli:
     <<: *common
