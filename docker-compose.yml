@@ -336,32 +336,6 @@ services:
       - ./config/decypharr/downloads:/app/downloads:rslave
       - ./media/books:/data/books
 
-  whisparr:
-    <<: *common
-    # Digest-pinned rather than a channel tag: whisparr only publishes
-    # :nightly (no :release channel exists upstream yet), and the currently
-    # running build doesn't match the newest :nightly push - pinning to
-    # :nightly here would silently jump forward instead of just freezing
-    # what's already running. Bump this digest deliberately when ready to
-    # take a newer nightly.
-    image: ghcr.io/hotio/whisparr@sha256:29a5c76302bc691d97982d42a4c8f6b0c001299ffe9e88015075e73cf879c1f9
-    container_name: whisparr
-    networks: [stacknet]
-    ports:
-      - "6969:6969"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6969/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/whisparr:/config
-      - /mnt:/mnt:rslave
-      - ./usenet:/usenet:rslave
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      - ./media/adult:/data/adult
-
   # ---------------------------------------------------------------------
   # Usenet (real local downloads - only path that isn't debrid/symlink based)
   # ---------------------------------------------------------------------

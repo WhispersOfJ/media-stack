@@ -48,7 +48,7 @@ explicit NZBGet fallback.
 Prowlarr ──indexes──> (your trackers + Zilean's DMM cache-hash list)
    │
    ▼
-Radarr / Sonarr / Lidarr / Readarr / Whisparr ──grab──> Decypharr (qBittorrent-compatible API)
+Radarr / Sonarr / Lidarr / Readarr ──grab──> Decypharr (qBittorrent-compatible API)
    │                                                        │
    │                                                        ├─> Real-Debrid API  (add magnet)
    │                                                        └─> AllDebrid API    (add magnet)
@@ -75,8 +75,27 @@ that mount doesn't support having new files/symlinks written into it. See
 > **Regression risk:** a library-import/rescan that registers pre-existing Zurg content can set
 > that movie/show's root folder back to `/mnt/zurg/<type>` in Radarr/Sonarr's own database —
 > invisible here since it isn't stack config — silently reintroducing this exact import failure
-> per-item. Hit and fixed again in [CHANGELOG.md v3.2.2](CHANGELOG.md); if imports stall,
-> check root folders before assuming a mount/container problem.
+> per-item. Hit and fixed in [CHANGELOG.md v3.2.2](CHANGELOG.md), [v3.2.3](CHANGELOG.md), and
+> [v3.5.1](CHANGELOG.md) (564 Sonarr series + 6 Whisparr series, largest recurrence yet); if
+> imports stall, check root folders before assuming a mount/container problem.
+
+> **Disk usage, not just bandwidth:** everyday use of Zurg/AllDebrid costs ~zero local disk —
+> Plex streams `/mnt/zurg/*` and `/mnt/all/*` directly as read-only library locations, and the
+> normal grab pipeline (Decypharr → **symlink** into `/data/<type>`) never copies real video
+> bytes. The exception is manually importing content that's already sitting on one of those
+> read-only mounts into an app's own tracked library (e.g. Sonarr manual-import from
+> `/mnt/all/magnets`): `Hardlink` needs the same filesystem, which is impossible from a remote
+> FUSE mount onto local disk, so `Copy` is the only option — and `Copy` writes a full permanent
+> duplicate, not a temp file. Scope disk space, not just time, before doing this in bulk. See
+> [CHANGELOG.md v3.5.1](CHANGELOG.md).
+
+> **Radarr-specific mount fragility:** Radarr bind-mounts `/mnt/zurg` and `/mnt/decypharr`
+> directly (`/mnt/zurg:/mnt/zurg:rslave`) rather than the parent `/mnt` like Sonarr/Lidarr/
+> Readarr/Plex do. A direct bind of a FUSE mountpoint doesn't reliably survive that FUSE
+> process being recreated underneath it (Zurg image update, resource-limit change, etc.) — only
+> Radarr breaks, with `Socket not connected` inside the container and `accessible: false` from
+> `/api/v3/rootfolder`, while every other app keeps working fine. Fix is just `docker restart
+> radarr` after any Zurg recreation. See [CHANGELOG.md v4.0.1](CHANGELOG.md).
 
 Seerr (formerly Overseerr/Jellyseerr — the projects merged) is the user-facing request page,
 talking to Plex + Radarr/Sonarr.
@@ -123,9 +142,9 @@ verified live against the running stack before being marked done.*
   up as an Indexer Proxy for the Cloudflare-protected ones (FlareSolverr originally, replaced
   in [3.4.0](CHANGELOG.md)), and NZBGet added as its own global download client.
 - **Decypharr** and **NZBGet** are both added as download clients (priority 1 and 2
-  respectively) in Radarr, Sonarr, Lidarr, Readarr, and Whisparr — Decypharr auto-detected
-  all 5 apps.
-- **Root folders** are set in all 5 arr apps, pointed at `/data/<type>` (backed by
+  respectively) in Radarr, Sonarr, Lidarr, and Readarr — Decypharr auto-detected
+  all 4 apps.
+- **Root folders** are set in all 4 arr apps, pointed at `/data/<type>` (backed by
   `./media/<type>` on regular host disk) — not `/mnt/zurg/<type>`, since Zurg's rclone FUSE
   mount can't have new files written into it. See the v2.2.0 fix below.
 - **Zilean** is tuned for this host's actual hardware (16-thread CPU, NVMe) rather than left
@@ -133,14 +152,14 @@ verified live against the running stack before being marked done.*
   [Zilean hardware tuning](#zilean-hardware-tuning) below.
 - **Seerr** is initialized, signed in to Plex, and connected to Radarr + Sonarr as default
   servers.
-- **Prowlarr** is connected to all 5 *arr apps under Settings → Apps (`fullSync`), so
+- **Prowlarr** is connected to all 4 *arr apps under Settings → Apps (`fullSync`), so
   indexers propagate down automatically instead of needing to be configured per-app.
 - A single **custom format** ("Blocked Releases (All Qualities)") hard-rejects low-quality
   sources, legacy codec encodes, disc-based releases, and known low-trust groups across every
   Radarr and Sonarr quality profile, at every quality tier — see
   [Custom format: blocked releases](#custom-format-blocked-releases) below.
 - **Every arr app can now actually import from Decypharr, end-to-end.** v2.1.0 fixed path
-  *visibility* (all 5 containers share `config/decypharr/downloads` at the identical path
+  *visibility* (all 4 containers share `config/decypharr/downloads` at the identical path
   Decypharr uses internally, `/app/downloads`). v2.2.0 fixed the deeper issue underneath it —
   root folders were still on Zurg's read-only FUSE mount, so the final import write always
   failed even after visibility was fixed. Root folders now live on regular disk (`/data/<type>`,
@@ -154,11 +173,17 @@ verified live against the running stack before being marked done.*
 
 ## One prerequisite: extend Zurg for new media types (done)
 
-Music/books/adult are routed through Zurg rather than a separate AllDebrid path, so
-Lidarr/Readarr/Whisparr need Zurg to organize those into their own folders. This meant
+Music/books are routed through Zurg rather than a separate AllDebrid path, so
+Lidarr/Readarr need Zurg to organize those into their own folders. This meant
 editing the **live** `config.yml` for a service actively serving the Plex library — this has
-already been applied and the service restarted cleanly, confirmed by the `music`/`books`/
-`adult` folders appearing under `/mnt/zurg`.
+already been applied and the service restarted cleanly, confirmed by the `music`/`books`
+folders appearing under `/mnt/zurg`.
+
+> The `adult` directory group below is a leftover from Whisparr, removed in
+> [CHANGELOG.md v3.5.1](CHANGELOG.md) — no app roots there anymore, so it's unused. Left as-is
+> in Zurg's live `config.yml` rather than editing it here too: it doesn't hurt anything sitting
+> idle, and touching it means another live restart for a service actively serving Plex with no
+> real benefit.
 
 For reference, the change made to `/home/bear/zurg/config.yml` (backup kept at
 `config.yml.bak`):
@@ -261,7 +286,6 @@ recreate it after a compose file change.
 | Sonarr | http://192.168.4.105:8989 | TV |
 | Lidarr | http://192.168.4.105:8686 | music |
 | Readarr | http://192.168.4.105:8787 | books — pinned to `0.4.19-nightly` (LinuxServer's generic `nightly` tag is dead upstream) |
-| Whisparr | http://192.168.4.105:6969 | adult |
 | NZBGet | http://192.168.4.105:6789 | usenet, real local downloads, fallback path |
 | Seerr | http://192.168.4.105:5055 | request frontend |
 | Bazarr *(extras)* | http://192.168.4.105:6767 | subtitles |
@@ -281,16 +305,16 @@ noted as **done** where complete. What's left is a preference call, not a techni
    [What's already done](#whats-already-done)), Byparr proxy wired up, NZBGet added as
    Prowlarr's own download client. Private/semi-private trackers need your own account
    credentials per-site if you want to add any — those weren't and can't be automated.
-2. **Each *arr app** (Radarr/Sonarr/Lidarr/Readarr/Whisparr) (done): Decypharr (priority 1)
+2. **Each *arr app** (Radarr/Sonarr/Lidarr/Readarr) (done): Decypharr (priority 1)
    and NZBGet (priority 2, fallback) both added as download clients; root folders set to
-   `/data/movies`, `/data/shows`, `/data/music`, `/data/books`, `/data/adult` respectively
+   `/data/movies`, `/data/shows`, `/data/music`, `/data/books` respectively
    (regular disk, backed by `./media/<type>` — not Zurg's read-only FUSE mount; see
    [CHANGELOG.md](CHANGELOG.md) v2.2.0).
 3. **Seerr** (done): initialized and signed in to Plex using the existing Plex token already
    on this host (from Zurg's config) rather than the interactive OAuth flow, so it turned out
    scriptable after all. Connected to Radarr (`HD Bluray + WEB` profile, `/data/movies`)
    and Sonarr (`WEB-1080p` profile, `/data/shows`) as default servers.
-4. **Decypharr** (done): debrid API keys set, all 5 arr apps auto-detected. `download_action`
+4. **Decypharr** (done): debrid API keys set, all 4 arr apps auto-detected. `download_action`
    defaults to `symlink` for every arr — no change needed.
 5. **Quality profiles** (done): `HD Bluray + WEB` in Radarr and `WEB-1080p` in Sonarr, both
    maintained directly in each app now — Recyclarr and its TRaSH-Guides sync were removed
@@ -302,8 +326,8 @@ noted as **done** where complete. What's left is a preference call, not a techni
    [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.1.
 
 > Seerr only recognizes Radarr and Sonarr in its settings API
-> (`/api/v1/settings/lidarr|readarr|whisparr` all 404) — it's a TMDB-based movie/TV frontend
-> with no data model for music, books, or adult content. Lidarr, Readarr, and Whisparr have
+> (`/api/v1/settings/lidarr|readarr` both 404) — it's a TMDB-based movie/TV frontend
+> with no data model for music or books. Lidarr and Readarr have
 > no Seerr request page and can't get one; they stay standalone, already fully wired up on
 > their own via Prowlarr + Decypharr/NZBGet.
 
@@ -322,7 +346,7 @@ in `./usenet/downloads` on local disk, not in Real-Debrid/AllDebrid's cloud, so:
   *all* newly-imported content, not just NZBGet's.
 - It consumes real disk space, unlike everything else in this stack.
 
-Already wired up this way — NZBGet is priority 2 behind Decypharr's priority 1 in all 5 arr
+Already wired up this way — NZBGet is priority 2 behind Decypharr's priority 1 in all 4 arr
 apps, so debrid is always tried first and NZBGet only fires for things neither debrid
 service has cached.
 
@@ -455,9 +479,7 @@ today:
   each channel tag resolves to the exact same digest as `:latest` at pin time, so this is a
   no-op today. hotio's whole model is rolling channels (`release`/`testing`/`nightly`)
   identified by git-hash, not semver, so this is as close to "pin to the stable channel,
-  explicitly" as that upstream supports. Whisparr is digest-pinned instead - it only publishes
-  `:nightly` (no `:release` channel exists yet) and the running build didn't match the newest
-  nightly push, so a tag pin would have silently jumped forward.
+  explicitly" as that upstream supports.
 - **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
   `nickfedor/watchtower:1.19.0`) where the upstream project tags real releases and the current
   running image matches the newest one.
@@ -477,8 +499,8 @@ today:
 
 Watchtower still auto-updates the channel-tag-pinned images (hotio's rolling `:release`
 channels) daily - the difference is every actual update now posts to Discord first (see
-[Alerting](#alerting-discord)) instead of just happening. The digest-pinned images (Whisparr,
-Seerr, Homepage, Glances, Kometa, Unpackerr, Heimdall, Byparr) and the exact-version-tag-pinned
+[Alerting](#alerting-discord)) instead of just happening. The digest-pinned images (Seerr,
+Homepage, Glances, Kometa, Unpackerr, Heimdall, Byparr) and the exact-version-tag-pinned
 ones (Zilean, Decypharr, Watchtower itself, and now Plex) are *not* meaningfully
 auto-updated either: an exact version tag is immutable once published the same way a digest
 is, so Watchtower never finds a new digest to pull at that specific reference. Plex rides on
@@ -653,9 +675,7 @@ counts, health), which Heimdall's static links don't provide, so Homepage is bac
 - **Every service gets a live widget** where one exists (Radarr/Sonarr/Lidarr/Readarr grab
   and queue counts, Prowlarr indexer stats, Bazarr missing-subtitle counts, NZBGet
   rate/remaining, Seerr request counts via its Overseerr-compatible API, Tautulli active
-  streams). Whisparr does *not* get the borrowed "radarr" widget type - its fork doesn't
-  expose Radarr's `/movie` endpoint (confirmed 404), so it's a container-status card only
-  rather than a half-broken widget.
+  streams).
 - **Docker integration** (`config/homepage/docker.yaml`, read-only `docker.sock` mount) gives
   every service a live running/health badge and start/stop/restart controls, including the
   services with no widget of their own (Decypharr, Unpackerr, Watchtower, Heimdall).
