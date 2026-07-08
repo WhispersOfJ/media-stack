@@ -4,7 +4,72 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v4.8.0**.
+features, **PATCH** for fixes. Current version: **v4.9.0**.
+
+---
+
+## [4.9.0] — Setup wizard: onboarding closer to turnkey
+
+Natural next step after [4.8.0](CHANGELOG.md)'s full Plex dockerization: with no native
+fallback left anywhere, the installer image (see [Installer image](README.md#installer-image))
+is genuinely this stack's only bring-up path now, and its last manual step was hand-editing
+`.env` — 12 keys across 6 sections, several of them opaque secrets a new user has to know how
+to obtain or generate. User asked for an onboarding app instead: enter the API keys/logins,
+get a working `.env` back.
+
+Scope was deliberately kept narrow: this fills in `.env` only. It does not touch any running
+container and does not auto-wire the connections between apps (Prowlarr indexers, Radarr/
+Sonarr root folders, Seerr, etc.) — those stay exactly as manual as they've always been. Also
+deliberately **not** part of `docker-compose.yml` and **not** folded into the existing Control
+Panel — Control Panel's own `app.py` hard-requires real `.env` values just to start
+(`os.environ["PLEX_TOKEN"]` etc. at import time), so it can't be the tool that produces them.
+
+### Added
+- **`scripts/setup_wizard.py`** — stdlib-only Python (no pip dependency; `http.server` for a
+  single GET/POST HTML form), matching how lean the installer image already is and the
+  precedent set by `scripts/plex-library-report.py` (also stdlib-only). Parses `.env.example`
+  into the same sections/help-text the file already has via its `# ---- X ----` headers and
+  comment lines, so the form's structure and wording stay in sync with `.env.example`
+  automatically rather than needing separate hand-maintained copy.
+- **`--setup` mode** added to the installer image's `entrypoint.sh` — same image, same GHCR
+  tag, `docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
+  --setup` serves the wizard on port 8090 instead of scaffolding files. Single-shot: the
+  process exits itself after a successful write, no lingering container.
+- **Auto-generates the two Zilean secrets** (`ZILEAN_POSTGRES_PASSWORD`, `ZILEAN_API_KEY`) via
+  `secrets.token_hex(16)` instead of asking the user to run that command themselves and paste
+  the result in — they're self-issued with no external source anyway, so one fewer manual step
+  for a value nobody needed to see beforehand.
+- **Re-run support, doubling as an edit flow.** If a real `.env` already exists in the target
+  directory, the wizard loads *its* values as the form's defaults instead of `.env.example`'s
+  placeholders — re-running after changing your mind about a value, or after first boot (see
+  below), only means retyping what actually changed.
+- **A blank submitted field falls back to the existing value**, not an empty string — protects
+  a re-run from silently clobbering an already-real value back to blank if a field is left
+  untouched in the browser.
+
+### A hard constraint this couldn't design around
+`RADARR_API_KEY`/`SONARR_API_KEY`/`LIDARR_API_KEY`/`READARR_API_KEY` cannot be genuinely
+collected before first boot — confirmed against `docker-compose.yml`: each arr app mounts an
+empty `./config/<app>:/config` on a fresh install and generates its own random API key into
+its own config the first time the process starts. There's no external source for these ahead
+of time, and pre-seeding a plausible `config.xml` before the app ever runs was considered and
+rejected — fragile across image/schema versions and touches container state, out of this
+feature's scope (`.env` only). So this is necessarily **two-pass**: the wizard marks these 4
+fields as "fill in after first boot," defaults them to `changeme`, and the same re-run support
+above is what makes pass two painless — bring the stack up, grab each key from that app's
+Settings, re-run `--setup`, paste them in, submit.
+
+### Not touched
+- **`config/homepage/services.yaml`** has its own separate copy of the same 4 arr keys (per
+  the existing comment in `.env.example`: "mirrors config/homepage/services.yaml") and is
+  **not** sourced from `.env` at all. The wizard doesn't write to it — keeping Homepage's
+  widgets in sync with a rotated key is still exactly as manual as it was before this existed.
+  Documented explicitly in the README rather than left as a silent gap.
+- **Inter-service wiring** (Prowlarr → arr apps sync, root folders, download clients, Seerr
+  connections, Bazarr languages) — a deliberate scope decision, not an oversight. This closes
+  the "enter your secrets" gap, not the "configure every app for me" one.
+- **`docker compose up -d` itself** — the wizard's job ends at a written `.env`; bringing the
+  stack up (or back up after a `--force-recreate control-panel`) stays a command the user runs.
 
 ---
 

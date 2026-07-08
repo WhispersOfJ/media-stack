@@ -675,10 +675,10 @@ secrets or app state.
 docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
 ```
 
-First run scaffolds a fresh checkout (then `cp .env.example .env`, fill in real values, `docker
-compose up -d`). Re-running later after a new push updates `docker-compose.yml`, `scripts/`,
-`systemd/`, and the docs in place — apply with `docker compose up -d --force-recreate` and
-`systemctl --user daemon-reload` if any systemd unit changed.
+First run scaffolds a fresh checkout. Re-running later after a new push updates
+`docker-compose.yml`, `scripts/`, `systemd/`, and the docs in place — apply with `docker
+compose up -d --force-recreate` and `systemctl --user daemon-reload` if any systemd unit
+changed.
 
 `.github/workflows/publish-installer.yml` rebuilds and republishes this to GHCR automatically
 on every push to `main` that touches any of the bundled files, tagged both `:latest` and
@@ -686,6 +686,41 @@ on every push to `main` that touches any of the bundled files, tagged both `:lat
 visibility (private) on first publish via `GITHUB_TOKEN` — worth a manual check in GitHub's
 package settings after the first run, since visibility is the one thing here actually worth
 double-checking rather than just trusting.
+
+### Setup wizard (filling in `.env`)
+
+The same image also runs a one-shot onboarding wizard instead of scaffolding files, via
+`--setup` (added [4.9.0](CHANGELOG.md)):
+
+```bash
+docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest --setup
+```
+
+Open `http://<this-host>:8090` — a form built straight from `.env.example`'s sections and
+comments, grouped the same way. Submitting it writes `.env` and the wizard process exits (it's
+not a lingering container; `--rm` cleans it up). No auth on the form, matching this stack's
+[Security note](#security-note): LAN-only by design, same as every other web UI here.
+
+**This only ever fills in `.env` — it doesn't touch any running container or wire up
+connections between apps** (Prowlarr indexers, Radarr/Sonarr root folders, Seerr, etc. all
+stay exactly as manual as they've always been). Two things worth knowing before using it:
+
+- **`RADARR_API_KEY`/`SONARR_API_KEY`/`LIDARR_API_KEY`/`READARR_API_KEY` can't be filled in on
+  a fresh install** — each arr app generates its own key itself the first time it boots, there's
+  no external source for it ahead of time. The wizard marks these fields clearly and defaults
+  them to `changeme`. Bring the stack up first (`docker compose up -d`), grab each key from that
+  app's own **Settings → General → Security → API Key**, then **re-run the same `--setup`
+  command** — it loads your existing `.env` as the new defaults (nothing else gets retyped),
+  paste the 4 keys in, submit. Then pick up the change with:
+  ```bash
+  docker compose up -d --force-recreate control-panel
+  ```
+  (`control-panel` is the only container that actually reads these from `.env` — it's read at
+  container-create time, so a plain `restart` won't pick up the new value.)
+- **`config/homepage/services.yaml` has its own separate copy of the same 4 keys** (per the
+  comment in `.env.example`) and is **not** sourced from `.env` at all — the wizard doesn't
+  touch it. Keeping Homepage's widgets in sync with a rotated key is still a manual edit to that
+  file, same as before this wizard existed.
 
 ## Optional extras reference
 

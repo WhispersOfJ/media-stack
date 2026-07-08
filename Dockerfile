@@ -13,6 +13,10 @@ FROM alpine:3.24
 LABEL org.opencontainers.image.source="https://github.com/WhispersOfJ/media-stack"
 LABEL org.opencontainers.image.description="Installer/updater for the media-stack repo's tracked files (compose file, scripts, systemd units, docs). Never contains .env, config/, media/, or usenet/ - those stay host-only."
 
+# python3 is only for scripts/setup_wizard.py (--setup mode, see
+# entrypoint.sh) - stdlib only, no pip install needed.
+RUN apk add --no-cache python3
+
 WORKDIR /stack
 COPY docker-compose.yml .env.example README.md CHANGELOG.md TODO.md ./
 COPY scripts/ ./scripts/
