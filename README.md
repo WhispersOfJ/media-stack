@@ -673,5 +673,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.2.2**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.2.3**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

@@ -4,7 +4,27 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v3.2.2**.
+features, **PATCH** for fixes. Current version: **v3.2.3**.
+
+---
+
+## [3.2.3] — Scope AllDebrid mount out of Radarr; clean up remaining zurg-rooted stragglers
+
+Follow-up to v3.2.2. Two things:
+
+- **551 more movies** turned up still rooted at `/mnt/zurg/movies` with no file yet (same
+  regression as v3.2.2, just outside that fix's original snapshot) — bulk-reassigned to
+  `/data/movies` the same way. The ~3,600 movies that already have a file on Zurg's mount were
+  deliberately left alone; their content is fine where it is, and moving them would either risk
+  Radarr losing track of an existing file or force a real local copy of remux-sized files,
+  defeating the point of the symlink setup. Sonarr was checked too and found already clean — 0
+  series rooted on `/mnt/zurg/shows`.
+- **Radarr no longer mounts `/mnt/all`** (rclone-AllDebrid) — it was only ever needed for TV,
+  via Sonarr. Radarr and Sonarr previously both used one blanket `- /mnt:/mnt:rslave` bind;
+  Radarr's was split into explicit `/mnt/zurg` and `/mnt/decypharr` mounts only, dropping
+  `/mnt/all` from its surface entirely. Sonarr's mount is unchanged. Verified: `/mnt/all` no
+  longer resolves inside the `radarr` container, `/mnt/zurg` and `/data/movies` still do,
+  container healthy, queue still importing normally after recreate.
 
 ---
 
