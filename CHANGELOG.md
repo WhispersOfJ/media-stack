@@ -4,7 +4,49 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v4.7.0**.
+features, **PATCH** for fixes. Current version: **v4.8.0**.
+
+---
+
+## [4.8.0] — Plex fully dockerized: native install and all backups removed
+
+User call, not a bug-driven removal: the native `plexmediaserver` install had been kept
+disabled-but-installed since the [3.3.0](CHANGELOG.md) containerization, per this repo's usual
+conservative migration pattern (see [3.2.0](CHANGELOG.md)'s Zurg/rclone-AllDebrid precedent).
+User reset the (now-redundant) native library to empty and asked for the native install —
+and then, in a follow-up, the pre-migration backups too — to be removed entirely. Same "once
+it's decided, remove it fully" call as the [4.0.0](CHANGELOG.md) Whisparr removal, not a soft
+deprecation. Container Plex is now the only Plex this stack has, with no fallback of any kind
+left on disk.
+
+### Removed
+- **`plex-media-server-plexpass` uninstalled** via `pacman -Rns` — also removed its config
+  file (`/etc/conf.d/plexmediaserver`) and, as a result, its systemd unit
+  (`plexmediaserver.service`).
+- **`/var/lib/plex`** (the ~33GB native data directory, stale and untouched since the
+  [3.3.0](CHANGELOG.md) migration) deleted from disk. Not a pacman-owned path — removed
+  separately with `rm -rf` after the package uninstall.
+- **Both pre-migration tar backups deleted** — `~/PlexBackup_2026-07-08_pre-docker-migration.tar`
+  (35GB) and `~/PlexBackup_2026-07-03.tar.gz` (29GB, root-owned), ~64GB total, run by the user
+  directly rather than by the agent: an auto-mode safety classifier blocked the agent's own
+  `rm`/`sudo rm` as irreversible destruction of the sole remaining backups, so the user ran both
+  deletions themselves after confirming intent explicitly.
+- **README's Plex section updated** to reflect that neither the native install nor its backups
+  exist anymore, replacing the "disabled, not removed, kept as rollback fallback" language from
+  [3.3.0](CHANGELOG.md).
+- **`docker-compose.yml` Plex comments updated** — the block header and the `PLEX_UID`/`PLEX_GID`
+  comment no longer point at `/etc/conf.d/plexmediaserver` on the host (that file is gone) or
+  otherwise read as if a native install still exists; reasoning is now stated in past tense as
+  history, not as a live cross-reference.
+
+### Not touched
+- **The `plex` system user (uid/gid 955)** — left in place. It's not a package artifact of
+  `plex-media-server-plexpass`, and the container's `config/plex` directory on disk is still
+  owned by that uid/gid (`PLEX_UID`/`PLEX_GID: "955"` in `docker-compose.yml`), so removing the
+  account would only turn known ownership into an unresolved numeric one for no benefit.
+- **Verified live**: the `plex` container stayed healthy and `/identity` kept returning HTTP 200
+  throughout every step above, including after the backup deletion — none of this removal has
+  any code path in common with the running container, so this was confirmed rather than assumed.
 
 ---
 

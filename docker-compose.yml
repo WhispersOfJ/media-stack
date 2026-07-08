@@ -403,8 +403,10 @@ services:
       - ./config/seerr:/app/config
 
   # ---------------------------------------------------------------------
-  # Media server (containerized from a native install - see
-  # PLEX_MIGRATION_PLAN.md / CHANGELOG for the migration itself)
+  # Media server. Containerized from a native install in 3.3.0; the native
+  # plexmediaserver package, its systemd unit, and /var/lib/plex were fully
+  # removed in 4.8.0 - this container is the only Plex on the host now, no
+  # rollback fallback kept. See CHANGELOG for both.
   # ---------------------------------------------------------------------
   plex:
     restart: unless-stopped
@@ -429,9 +431,10 @@ services:
     network_mode: host
     environment:
       TZ: ${TZ}
-      # Matches the native install's uid/gid exactly (see
-      # /etc/conf.d/plexmediaserver on the host) so the migrated ~33GB
-      # library needed zero chown.
+      # Matches the uid/gid the native install used to own the library as,
+      # so the migrated ~33GB library needed zero chown. The native install
+      # is gone now (4.8.0), but this uid/gid still owns config/plex on
+      # disk, so it stays.
       PLEX_UID: "955"
       PLEX_GID: "955"
       # Native Arch install set this to a flat directory (no
