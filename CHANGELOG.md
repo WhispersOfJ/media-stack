@@ -4,7 +4,44 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v3.2.1**.
+features, **PATCH** for fixes. Current version: **v3.2.2**.
+
+---
+
+## [3.2.2] — Radarr import backlog: the v2.2.0 root-folder fix had silently regressed
+
+Radarr's queue had grown to 261 stuck `importPending` items with zero successful imports for
+~15 hours. Root cause turned out to be a *regression* of the exact issue v2.2.0 already fixed
+once (see below): 232 movies had their Radarr root folder pointed back at `/mnt/zurg/movies` —
+Zurg's read-only-for-writes rclone FUSE mount, which cannot accept new symlinks — so every grab
+for those movies failed on import with `EIO` every single time, forever.
+
+**How it regressed:** an earlier library-import scan that registered ~3,600 pre-existing movies
+already sitting on Zurg's mount set their root folder to `/mnt/zurg/movies` directly (correct
+for movies that already have a file — Radarr's disk scanner only needs to *read* what Zurg
+already placed there). But any of those movies later getting a new grab/upgrade needs Radarr to
+*write* a fresh symlink into that same folder, which has never been possible. This is invisible
+to `docker-compose.yml`/git — it's Radarr's own database, not stack config — so nothing here
+would show up as a diff even though it silently broke imports for a huge slice of the library.
+
+### Fixed
+- Bulk-reassigned the root folder for 232 affected movies from `/mnt/zurg/movies` to
+  `/data/<type>` (metadata only — `moveFiles: false`, no physical files touched, only changes
+  where *future* grabs land) via Radarr's `/api/v3/movie/editor` endpoint.
+- Removed and blocklisted 12 dead BR-DISK queue entries (raw multi-file disc-image releases,
+  ~466GB) that had been grabbed despite already scoring `-10000` under the "Blocked Releases"
+  custom format (see v3.0.0) — these can never import as a single movie file regardless of the
+  mount issue.
+- Removed one stuck duplicate grab that Radarr itself had already correctly flagged as "not an
+  upgrade" for an existing file.
+- Verified live: queue dropped from 261 to under 160 within a couple of minutes, with imports
+  succeeding again for the first time in ~15 hours.
+
+**Watch for this again:** any future library-import/rescan that registers pre-existing Zurg
+content can silently set a movie/show's root folder back to `/mnt/zurg/<type>` and reintroduce
+this exact failure per-item, invisibly, since it's DB state rather than a tracked file. If
+imports mysteriously stall again, check for movies/shows whose root folder resolves to
+`/mnt/zurg/...` instead of `/data/...` before assuming a mount or container problem.
 
 ---
 

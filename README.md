@@ -64,6 +64,12 @@ Root folders live on regular host disk (`./media/<type>`), not on Zurg's rclone 
 that mount doesn't support having new files/symlinks written into it. See
 [CHANGELOG.md v2.2.0](CHANGELOG.md) for why this changed.
 
+> **Regression risk:** a library-import/rescan that registers pre-existing Zurg content can set
+> that movie/show's root folder back to `/mnt/zurg/<type>` in Radarr/Sonarr's own database —
+> invisible here since it isn't stack config — silently reintroducing this exact import failure
+> per-item. Hit and fixed again in [CHANGELOG.md v3.2.2](CHANGELOG.md); if imports stall,
+> check root folders before assuming a mount/container problem.
+
 Seerr (formerly Overseerr/Jellyseerr — the projects merged) is the user-facing request page,
 talking to Plex + Radarr/Sonarr.
 
@@ -667,5 +673,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **2.12.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.2.2**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
