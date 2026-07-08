@@ -1,13 +1,15 @@
 # The Stack
 
-**Version 2.12.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 3.3.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
 
-Docker Compose media-acquisition stack on `192.168.4.105` — indexes, requests, and symlinks
-already-cached content from Real-Debrid / AllDebrid into the existing native Plex library.
-Nothing here downloads by default except the explicit NZBGet fallback.
+Docker Compose media-acquisition-and-serving stack on `192.168.4.105` — indexes, requests, and
+symlinks already-cached content from Real-Debrid / AllDebrid, served by a containerized Plex
+(migrated from a native install in [3.3.0](CHANGELOG.md) — see
+[Plex (containerized)](#plex-containerized) below). Nothing here downloads by default except the
+explicit NZBGet fallback.
 
 > 🤖 **Built with Claude AI.** This isn't a one-line disclaimer — every architectural
 > decision, every registry lookup to verify an image actually exists, every live API call to
@@ -36,6 +38,7 @@ Nothing here downloads by default except the explicit NZBGet fallback.
 - [Installer image](#installer-image)
 - [Optional extras reference](#optional-extras-reference)
 - [Dashboard (Homepage)](#dashboard-homepage)
+- [Plex (containerized)](#plex-containerized)
 - [Kometa (Plex collections/metadata/overlays)](#kometa-plex-collectionsmetadataoverlays)
 
 ## Architecture
@@ -58,6 +61,10 @@ Zurg (containerized)            → /mnt/zurg/{movies,shows,...}  → read by Pl
 Decypharr DFS mount             → /mnt/decypharr/{...}          → symlink target, add as Plex location
 rclone AllDebrid (containerized) → /mnt/all/{magnets,links,...} → already a Plex location
 ./media/{movies,shows,...}      → /data/{movies,shows,...}      → every app's writable root folder (add as Plex location)
+
+Plex (containerized as of 3.3.0) → network_mode: host, /mnt mounted 1:1 with the host → serves
+                                     both existing libraries (Movies: /mnt/zurg/movies; TV Shows:
+                                     /mnt/zurg/shows + /mnt/all/magnets)
 ```
 
 Root folders live on regular host disk (`./media/<type>`), not on Zurg's rclone FUSE mount —
@@ -244,6 +251,7 @@ recreate it after a compose file change.
 
 | Service | URL | Notes |
 |---|---|---|
+| Plex | http://192.168.4.105:32400/web | media server — containerized as of 3.3.0, see [below](#plex-containerized) |
 | Prowlarr | http://192.168.4.105:9696 | indexer manager |
 | Zilean | http://192.168.4.105:8181 | DMM cache-hash indexer + dashboard |
 | Decypharr | http://192.168.4.105:8282 | debrid gateway UI |
@@ -426,16 +434,24 @@ today:
   the newest tagged release upstream has cut, so no tag exists that wouldn't be a downgrade.
   These freeze exactly what's running today; bumping to a newer build is a deliberate, visible
   change to this file going forward, not something that happens silently at 4am.
+- **Version tag, manually bumped** for Plex (`plexinc/pms-docker:1.43.2.10687-563d026ea`) -
+  same "not on Watchtower's train" treatment as the digest-pinned group above, but a real tag
+  exists here so it's tag-pinned rather than digest-pinned. See
+  [Plex (containerized)](#plex-containerized) for why an unattended update is worth avoiding
+  for this specific service.
 
-Watchtower still auto-updates the 14 channel/version-tag-pinned images daily - the difference
-is every actual update now posts to Discord first (see [Alerting](#alerting-discord)) instead
-of just happening. The 7 digest-pinned images (Whisparr, Seerr, Homepage, Glances, Kometa,
-Unpackerr, Heimdall) are *not* auto-updated anymore: a digest is immutable by definition, so
-Watchtower re-pulling that exact reference always resolves to the same content and never sees
-anything new. That's the deliberate tradeoff for these specific images (no tag existed that
-wouldn't have been a downgrade or an unplanned jump), but it means they're now frozen until
-someone manually re-checks upstream and bumps the digest in this file - worth a periodic
-manual look rather than assuming Watchtower has them covered.
+Watchtower still auto-updates the channel-tag-pinned images (hotio's rolling `:release`
+channels) daily - the difference is every actual update now posts to Discord first (see
+[Alerting](#alerting-discord)) instead of just happening. The digest-pinned images (Whisparr,
+Seerr, Homepage, Glances, Kometa, Unpackerr, Heimdall) and the exact-version-tag-pinned ones
+(Zilean, Decypharr, FlareSolverr, Watchtower itself, and now Plex) are *not* meaningfully
+auto-updated either: an exact version tag is immutable once published the same way a digest
+is, so Watchtower never finds a new digest to pull at that specific reference. Plex rides on
+that same property deliberately - no special-case label needed, just the same "pin to an exact
+version, not a rolling channel" choice already used elsewhere in this file - for the
+live-library-risk reason explained in [Plex (containerized)](#plex-containerized). All of these
+are frozen until someone manually re-checks upstream and bumps the pin in this file - worth a
+periodic manual look rather than assuming Watchtower has them covered.
 
 ## Container healthchecks
 
@@ -639,6 +655,56 @@ counts, health), which Heimdall's static links don't provide, so Homepage is bac
   `blockHighlights` in `settings.yaml` was also re-themed so widget good/warn/danger states
   lean into the same red/black palette instead of Homepage's default green/amber/red.
 
+## Plex (containerized)
+
+Migrated from a native Arch `plexmediaserver` install to `docker-compose.yml` in
+[3.3.0](CHANGELOG.md) — see that CHANGELOG entry for how the live migration actually went (the
+plan it followed, `PLEX_MIGRATION_PLAN.md`, is no longer in the tree now that it's shipped, per
+this repo's usual TODO-to-CHANGELOG convention).
+
+- **Official `plexinc/pms-docker` image**, not a LinuxServer-style fork — a PUID/PGID-forcing
+  image would have recursively chowned the ~33GB library on first boot. Same reasoning as why
+  Kometa below uses the official image over the LinuxServer fork.
+- **`PLEX_UID`/`PLEX_GID` set to 955** — the exact uid/gid the native `plex` user already owned
+  every file as, so the ~33GB `config/plex` directory needed zero chown during migration.
+- **`network_mode: host`** — the one deliberate exception to this stack's `stacknet` bridge +
+  published-port pattern. Plex's GDM auto-discovery, DLNA, and remote-access NAT-PMP/UPnP
+  negotiation are unreliable on bridge networking; every other service already publishes
+  directly to `0.0.0.0` anyway, so nothing else in the stack is affected by the exception.
+- **`/mnt:/mnt:rslave`** is the only media mount actually required for path parity — both
+  existing library sections (Movies at `/mnt/zurg/movies`; TV Shows at `/mnt/zurg/shows` and
+  `/mnt/all/magnets`) were confirmed against the live library database's own
+  `section_locations` table before cutover, and both resolve entirely under `/mnt`. `./media`
+  is also mounted at the identical host absolute path even though it's not yet an active
+  library location, so it's ready the moment the [recommended locations](#plex-library-locations-to-add)
+  below are actually added.
+- **Hardware transcoding**: `/dev/dri/renderD128` (AMD Radeon 680M iGPU, VAAPI) passed through.
+  Plex Pass is active on this account, so this is a real feature, not dead weight — though
+  transcoding is used rarely in practice (mostly direct play), so the transcode temp dir
+  (`./config/plex-transcode`) is a plain disk bind rather than a RAM-backed tmpfs.
+- **Image pin**: `plexinc/pms-docker:1.43.2.10687-563d026ea` — the native install ran the Plex
+  Pass (beta) channel at `1.43.3.10793`; the official image only publishes the public channel,
+  whose newest tag at migration time was slightly behind that. Deliberate, not an oversight —
+  treated like the manually-bumped image group (Seerr/Homepage/Kometa/Glances/Unpackerr/
+  Heimdall) rather than Watchtower's daily train, since an unattended PMS version change on a
+  live library is higher blast radius than anything else in this stack.
+- **Verified live, not assumed**: file tree between the native data dir and its
+  `config/plex` copy diffed identical (113,382 files, 0 differences) before the native service
+  was disabled; both libraries came back with their exact pre-migration item counts (3,826
+  movies, 774 shows) via the Plex API; a real file path pulled live from the migrated database
+  was confirmed to resolve correctly inside the running container — proof path parity actually
+  worked, not just that the container started.
+- **Native `plexmediaserver.service`**: disabled, not removed — kept installed as a rollback
+  fallback per this stack's existing migration pattern (see the Zurg/rclone-AllDebrid
+  containerization in [3.2.0](CHANGELOG.md), which did the same). A fresh pre-migration backup
+  of the original native data dir also exists outside git (`~/PlexBackup_*.tar`).
+- **Backups**: `config/plex/Plex Media Server/Metadata` (28GB, re-fetchable posters/art),
+  `Cache`, `Codecs`, `Logs`, `Crash Reports`, and the sibling `config/plex-transcode` are all
+  excluded from `scripts/backup-config.sh` — the same "exclude what's regenerable, keep what
+  isn't" reasoning as `decypharr/cache`/`zilean-postgres` above. `Plug-in Support/Databases`
+  (the actual library DB, ~2.5GB) and `Preferences.xml` (claimed server identity/auth token)
+  stay in scope, since those are the two things that are genuinely irreplaceable.
+
 ## Kometa (Plex collections/metadata/overlays)
 
 Automates the stuff that makes a Plex library feel curated instead of just a folder list:
@@ -673,5 +739,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.2.3**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.3.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

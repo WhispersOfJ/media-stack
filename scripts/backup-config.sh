@@ -15,7 +15,13 @@ restic backup ./config \
   --exclude "config/decypharr/cache" \
   --exclude "config/*/logs" \
   --exclude "config/*/log" \
-  --exclude "config/zilean-postgres"
+  --exclude "config/zilean-postgres" \
+  --exclude "config/plex/Plex Media Server/Metadata" \
+  --exclude "config/plex/Plex Media Server/Cache" \
+  --exclude "config/plex/Plex Media Server/Codecs" \
+  --exclude "config/plex/Plex Media Server/Logs" \
+  --exclude "config/plex/Plex Media Server/Crash Reports" \
+  --exclude "config/plex-transcode"
 backup_status=$?
 
 # Exit code 3 = "some source files could not be read" (locked/live files -
