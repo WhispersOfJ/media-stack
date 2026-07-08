@@ -153,6 +153,15 @@ services:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
+    # Soft ceiling, not a tight fit - observed steady-state is ~540-580MB,
+    # the highest baseline of any container besides Zilean/zilean-postgres.
+    # No container besides those two had any limit at all before this: one
+    # runaway process could otherwise take whatever RAM/CPU it wanted from
+    # the same shared-desktop host Zilean's own tuning above already
+    # protects for Plex/desktop use.
+    mem_limit: 1.5g
+    mem_reservation: 256m
+    cpus: 4
 
   # ---------------------------------------------------------------------
   # Native-companion containerization (Phase 1 of 2 - see CHANGELOG for the
@@ -187,6 +196,14 @@ services:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
+    # Observed a sustained ~20-25% CPU baseline (not a spike) across two
+    # samples taken 5s apart - likely its own 10s Real-Debrid poll interval
+    # plus serving reads for Plex/the arr apps. Capped well above that
+    # baseline rather than tightened, purely so it can't compete unbounded
+    # with Plex/desktop use if that baseline ever grows.
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 6
 
   rclone-alldebrid:
     restart: unless-stopped
@@ -459,6 +476,15 @@ services:
     group_add:
       - "983"
       - "987"
+    # Caught live during tuning: a library scan alone briefly pushed this to
+    # 100% CPU with zero active playback sessions (confirmed via /activities
+    # - "Scanning TV Shows", not a transcode). HW transcoding covers
+    # play/decode, not scan/analysis/thumbnail passes, so this can spike on
+    # its own. 12 of 16 threads leaves the same 4-thread desktop headroom
+    # Zilean's own tuning above already reserves.
+    mem_limit: 6g
+    mem_reservation: 512m
+    cpus: 12
 
   # =======================================================================
   # Optional / recommended extras - start with:
@@ -486,6 +512,13 @@ services:
       # shared /app/downloads path above.
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
+    # 141 PIDs observed at rest - far more threads/processes than any other
+    # container here, likely per-provider subtitle-search workers. Not
+    # obviously a leak (RAM stayed modest, ~230MB), but cheap insurance
+    # given nothing was capping it before.
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
 
   # Replaced FlareSolverr in 3.4.0 - same role (Cloudflare challenge solver,
   # registered as Prowlarr's Indexer Proxy), same port, same FlareSolverr-
@@ -521,6 +554,13 @@ services:
       start_period: 30s
     environment:
       TZ: ${TZ}
+    # Defensive, not observed - idle footprint is modest (~130MB) but each
+    # Cloudflare solve spins up a real Camoufox (Firefox-based) browser
+    # instance, and concurrent solves under real load haven't been tested
+    # yet.
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 4
 
   tautulli:
     <<: *common
@@ -661,6 +701,15 @@ services:
       TZ: ${TZ}
     volumes:
       - ./config/kometa:/config
+    # 642MB observed resident even while "sleeping" between scheduled runs -
+    # the largest idle footprint of any container besides Postgres/Zilean,
+    # mostly inherent to its dependency stack (image processing, several
+    # metadata-agent SDKs) rather than misconfiguration. Real overlay/poster
+    # generation runs can spike further, hence the ceiling rather than just
+    # accepting the idle number as the max.
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 4
 
   unpackerr:
     restart: unless-stopped

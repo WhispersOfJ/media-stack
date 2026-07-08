@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 3.4.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 3.5.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -27,6 +27,7 @@ explicit NZBGet fallback.
 - [The Usenet caveat](#the-usenet-caveat)
 - [Plex library locations to add](#plex-library-locations-to-add)
 - [Zilean hardware tuning](#zilean-hardware-tuning)
+- [Resource limits](#resource-limits)
 - [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
 - [Security note](#security-note)
 - [Image pinning policy](#image-pinning-policy)
@@ -360,6 +361,37 @@ Postgres database were tuned deliberately rather than maxed out:
 Container limits: Zilean 4GB RAM / 12 CPUs (reservation 512MB / 1 CPU), zilean-postgres 2GB
 RAM / 4 CPUs. Both confirmed applied via live `SHOW` queries and container env inspection
 after restart.
+
+## Resource limits
+
+Zilean/zilean-postgres above were the only containers with any `mem_limit`/`cpus` ceiling
+until [3.5.0](CHANGELOG.md) — everything else had unrestricted access to this host's full RAM
+and all 16 threads. Not theoretical: caught live during this tuning pass, a Plex library scan
+alone (zero active playback) briefly pushed it to 100% CPU. Six more containers got soft
+ceilings, sized from real `docker stats` observation rather than guessed, generous enough not
+to constrain normal operation:
+
+| Service | mem_limit | reservation | cpus | Why |
+|---|---|---|---|---|
+| `plex` | 6GB | 512MB | 12 | Scans/transcode/thumbnail passes spike; HW transcode covers playback decode, not analysis. Same 4-thread desktop headroom Zilean reserves above. |
+| `zurg` | 1GB | 128MB | 6 | Sustained ~20-25% CPU baseline observed across two samples (not a spike) — likely its own 10s Real-Debrid poll interval plus serving reads for Plex/the arr apps. |
+| `decypharr` | 1.5GB | 256MB | 4 | Highest steady RAM baseline (~540-580MB) of any container besides Postgres/Zilean. |
+| `byparr` | 2GB | 256MB | 4 | Defensive — idle footprint is modest, but each Cloudflare solve spins up a real Camoufox browser instance and concurrent load hasn't been tested yet. |
+| `kometa` | 2GB | 256MB | 4 | 642MB observed resident even while "sleeping" between scheduled runs — largest idle footprint of any non-Postgres/Zilean container, plus real spikes during overlay/poster generation. |
+| `bazarr` | 1GB | 128MB | 2 | 141 PIDs observed at rest, far more threads/processes than anything else here (likely per-provider subtitle-search workers) — not obviously a leak, but cheap insurance given nothing capped it before. |
+
+Deliberately left alone: Heimdall, Homepage, Glances, Tautulli, Unpackerr, Watchtower, Seerr,
+NZBGet, rclone-alldebrid, and all six `*arr` apps besides Bazarr — all comfortably under
+250MB/low CPU% at rest in the same observation pass. Adding ceilings there would be pure
+overhead for no real protection.
+
+One thing deliberately *not* copied from Zilean: `.NET Server GC` (`DOTNET_gcServer=1`) stays
+Zilean-only. The `*arr` apps run .NET's default Workstation GC, which is actually correct for
+their light, low-parallelism workload — Server GC's per-core-heap model would waste more RAM
+than it'd ever recover for apps this size.
+
+All six recreated and confirmed healthy under the new limits via `docker inspect` (exact
+byte/nanocpu values matched what was set) before this was documented.
 
 ## Custom format: blocked releases
 
@@ -742,5 +774,5 @@ driven by a `config.yml` you write.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.4.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **3.5.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
