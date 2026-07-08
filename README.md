@@ -791,10 +791,12 @@ this repo's usual TODO-to-CHANGELOG convention).
   movies, 774 shows) via the Plex API; a real file path pulled live from the migrated database
   was confirmed to resolve correctly inside the running container — proof path parity actually
   worked, not just that the container started.
-- **Native `plexmediaserver.service`**: disabled, not removed — kept installed as a rollback
-  fallback per this stack's existing migration pattern (see the Zurg/rclone-AllDebrid
-  containerization in [3.2.0](CHANGELOG.md), which did the same). A fresh pre-migration backup
-  of the original native data dir also exists outside git (`~/PlexBackup_*.tar`).
+- **Native `plexmediaserver` fully removed** in [4.8.0](CHANGELOG.md), once the user confirmed
+  the container was the sole library going forward — package uninstalled, `/var/lib/plex`
+  deleted, and the two pre-migration tar backups (`~/PlexBackup_*.tar[.gz]`, ~64GB) deleted too.
+  No native Plex, and no rollback path back to it, exists anywhere on this host anymore — the
+  container is it. The `plex` system user (uid/gid 955) stays — it's not a package artifact,
+  and `config/plex` on disk is still owned by that uid/gid.
 - **Backups**: `config/plex/Plex Media Server/Metadata` (28GB, re-fetchable posters/art),
   `Cache`, `Codecs`, `Logs`, `Crash Reports`, and the sibling `config/plex-transcode` are all
   excluded from `scripts/backup-config.sh` — the same "exclude what's regenerable, keep what
