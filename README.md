@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 4.7.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 4.9.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -16,8 +16,87 @@ explicit NZBGet fallback.
 > wire up Prowlarr/Radarr/Sonarr/Decypharr/Seerr, and every bug this changelog documents was
 > Claude's work, done and verified against the real running stack.
 
+## Introduction
+
+The Stack turns "I want a Plex library that fills itself in" into one `docker-compose.yml`.
+Point it at a Real-Debrid/AllDebrid account and it wires together an indexer
+(Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), the *arr apps that
+turn a request into an organized library (Radarr/Sonarr/Lidarr/Readarr), a debrid gateway that
+symlinks already-cached content instead of downloading it (Decypharr + Zurg), and a
+containerized Plex to actually watch it on — 23 services total, one compose file, every image
+pinned and healthchecked. Usenet (NZBGet) is there as an explicit fallback for anything
+debrid doesn't have cached, not the default path.
+
+As of [4.9.0](CHANGELOG.md) it's genuinely turnkey to stand up: an installer image scaffolds
+the tracked files onto a fresh host, a browser-based setup wizard fills in `.env`, and
+`docker compose up -d` does the rest. See [Quick start](#quick-start) below.
+
+## Why use this
+
+- **One compose file, not forty tutorials.** Every service here — indexer, request UI, four
+  *arr apps, debrid gateway, media server, dashboards, backups, alerting — is wired together
+  and documented in one place, instead of stitched from a dozen different guides that each
+  assume a different setup.
+- **Cached content plays instantly, not "in progress."** The debrid-first design (Zurg +
+  Decypharr) means anything already in Real-Debrid/AllDebrid's cache shows up as a symlink and
+  plays immediately — no waiting on a download to finish. Usenet is the fallback for genuine
+  cache misses, not how this stack works day to day.
+- **You can actually read why, not just what.** [CHANGELOG.md](CHANGELOG.md) documents the
+  reasoning behind every decision — why an image is pinned the way it is, why a migration went
+  the way it did, what broke and how it was actually root-caused — not just a list of commits.
+- **Turnkey to stand up.** [4.9.0](CHANGELOG.md)'s setup wizard means the only manual step left
+  before `docker compose up -d` is filling in a web form, not hand-editing a `.env` file field
+  by field.
+- **Not a black box.** Every image is version-pinned (see
+  [Image pinning policy](#image-pinning-policy)), every container has a real healthcheck, and
+  resource limits are set deliberately (see [Resource limits](#resource-limits)) rather than
+  left to `:latest` and hope.
+- **What this isn't:** a beginner's first Docker project — it assumes you're comfortable with
+  Compose, and (per the [Security note](#security-note)) every web UI here is LAN-only with no
+  auth in front by design. If you want hand-holding through Docker itself, or a hardened
+  multi-tenant/internet-facing setup, this isn't tuned for that.
+
+## Quick start
+
+```bash
+# 1. Scaffold this repo's tracked files onto a fresh host
+docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
+
+# 2. Fill in .env via the setup wizard - open http://<this-host>:8090 in a browser
+docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest --setup
+
+# 3. Bring the core stack up
+docker compose up -d
+
+# 4. Optional: extras too (Bazarr, Byparr, Tautulli, Heimdall, Homepage, Glances, Kometa,
+#    Unpackerr, Watchtower)
+docker compose --profile extras up -d
+```
+
+```mermaid
+flowchart TD
+    subgraph Pass1["Pass 1 - before first boot"]
+        A["docker run …\nmedia-stack"] -->|scaffold files| B["docker-compose.yml +\n.env.example"]
+        B --> C1["docker run … --setup"]
+        C1 -->|fill form at :8090| D1[".env written"]
+        D1 --> E["docker compose up -d"]
+    end
+    E --> F["*arr apps boot,\neach generates its own API key"]
+    subgraph Pass2["Pass 2 - after first boot"]
+        F -->|"grab keys from each app's\nSettings -> API Key"| C2["docker run … --setup\n(same command)"]
+        C2 -->|".env reloaded as defaults,\npaste the 4 keys in"| D2[".env updated"]
+        D2 --> G["docker compose up -d\n--force-recreate control-panel"]
+    end
+```
+
+Full details, including the *arr-key two-pass step this diagram shows, are in
+[Setup wizard](#setup-wizard-filling-in-env) below.
+
 ## Contents
 
+- [Introduction](#introduction)
+- [Why use this](#why-use-this)
+- [Quick start](#quick-start)
 - [Architecture](#architecture)
 - [Directory layout](#directory-layout)
 - [What's already done](#whats-already-done)
@@ -689,8 +768,17 @@ double-checking rather than just trusting.
 
 ### Setup wizard (filling in `.env`)
 
-The same image also runs a one-shot onboarding wizard instead of scaffolding files, via
-`--setup` (added [4.9.0](CHANGELOG.md)):
+`.env` has 12 keys across 6 sections, several of them opaque secrets (a Plex token, two
+self-issued Zilean tokens, four *arr API keys, two optional Discord webhooks) — the kind of
+thing that's easy to get subtly wrong hand-editing a file the first time (wrong key in the
+wrong `KEY=` line, an extra space, a value copied with a trailing newline). The wizard turns
+that into a browser form instead: it reads the field names, grouping, and help text straight
+out of `.env.example`, so the two never drift out of sync, and it's safe to re-run any time you
+want to change a value later — see [Two-pass note](#a-two-pass-tool-by-necessity) below for why
+that matters in practice.
+
+Added in [4.9.0](CHANGELOG.md), same image and tag as the scaffolder above, just a different
+mode:
 
 ```bash
 docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest --setup
@@ -701,26 +789,49 @@ comments, grouped the same way. Submitting it writes `.env` and the wizard proce
 not a lingering container; `--rm` cleans it up). No auth on the form, matching this stack's
 [Security note](#security-note): LAN-only by design, same as every other web UI here.
 
-**This only ever fills in `.env` — it doesn't touch any running container or wire up
-connections between apps** (Prowlarr indexers, Radarr/Sonarr root folders, Seerr, etc. all
-stay exactly as manual as they've always been). Two things worth knowing before using it:
+![Setup wizard form, showing the grouped fields read from .env.example and the "fill in after first boot" section for the *arr API keys](docs/images/setup-wizard-form.png)
 
-- **`RADARR_API_KEY`/`SONARR_API_KEY`/`LIDARR_API_KEY`/`READARR_API_KEY` can't be filled in on
-  a fresh install** — each arr app generates its own key itself the first time it boots, there's
-  no external source for it ahead of time. The wizard marks these fields clearly and defaults
-  them to `changeme`. Bring the stack up first (`docker compose up -d`), grab each key from that
-  app's own **Settings → General → Security → API Key**, then **re-run the same `--setup`
-  command** — it loads your existing `.env` as the new defaults (nothing else gets retyped),
-  paste the 4 keys in, submit. Then pick up the change with:
-  ```bash
-  docker compose up -d --force-recreate control-panel
-  ```
-  (`control-panel` is the only container that actually reads these from `.env` — it's read at
-  container-create time, so a plain `restart` won't pick up the new value.)
-- **`config/homepage/services.yaml` has its own separate copy of the same 4 keys** (per the
-  comment in `.env.example`) and is **not** sourced from `.env` at all — the wizard doesn't
-  touch it. Keeping Homepage's widgets in sync with a rotated key is still a manual edit to that
-  file, same as before this wizard existed.
+A few things worth knowing:
+
+- **The two Zilean secrets are generated for you.** `ZILEAN_POSTGRES_PASSWORD` and
+  `ZILEAN_API_KEY` are self-issued (nothing external hands them out), so the form pre-fills
+  them with a real `secrets.token_hex(16)` value instead of making you run that command
+  yourself and paste the result in.
+- **Required fields are marked `*`.** Only the handful that actually block
+  `docker compose up -d` from working at all (`PUID`, `PGID`, `TZ`, `HOST_IP`, `PLEX_URL`) are
+  enforced — everything else (optional Discord webhooks, the *arr keys below) can legitimately
+  stay `changeme` for now.
+- **Re-running it is safe and useful, not just idempotent.** If `.env` already exists, the form
+  loads its current values as defaults instead of `.env.example`'s placeholders, and a field
+  left blank on submit keeps its existing value rather than getting wiped — so a re-run only
+  means touching what actually changed.
+
+#### A two-pass tool, by necessity
+
+`RADARR_API_KEY`, `SONARR_API_KEY`, `LIDARR_API_KEY`, and `READARR_API_KEY` can't be filled in
+on a first run — each arr app generates its own key itself the first time it boots, and
+nothing hands it out ahead of time. The wizard marks these fields clearly ("fill in after
+first boot") and defaults them to `changeme`. The intended flow:
+
+1. Run `--setup`, fill in everything else, submit, `docker compose up -d`.
+2. Open each app's own **Settings → General → Security → API Key** (Radarr, Sonarr, Lidarr,
+   Readarr).
+3. Re-run the exact same `--setup` command — the form now shows your real `.env`, so only the
+   4 key fields need pasting in.
+4. Pick up the change with:
+   ```bash
+   docker compose up -d --force-recreate control-panel
+   ```
+   `control-panel` is the only container that actually reads these from `.env`, at
+   container-*create* time — a plain `restart` won't see a `.env` change, it needs
+   `--force-recreate`.
+
+**One thing this doesn't touch:** `config/homepage/services.yaml` keeps its own separate copy
+of the same 4 keys (see the comment in `.env.example`) and isn't sourced from `.env` at all —
+if you rotate a key, that file still needs the same manual edit it always has. More broadly,
+**this only ever fills in `.env` — it doesn't touch any running container or wire up
+connections between apps** (Prowlarr indexers, Radarr/Sonarr root folders, Seerr, etc. all stay
+exactly as manual as they've always been).
 
 ## Optional extras reference
 
