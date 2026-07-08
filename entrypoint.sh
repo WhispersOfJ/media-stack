@@ -24,6 +24,16 @@ USAGE
   exit 1
 fi
 
+case "${1:-}" in
+  --setup)
+    [ -f "$TARGET/.env.example" ] || {
+      echo "No .env.example in $TARGET yet - run without --setup first to scaffold files."
+      exit 1
+    }
+    exec python3 /stack/scripts/setup_wizard.py "$TARGET"
+    ;;
+esac
+
 FIRST_RUN=false
 [ -f "$TARGET/docker-compose.yml" ] || FIRST_RUN=true
 
@@ -43,8 +53,9 @@ if [ "$FIRST_RUN" = true ]; then
   cat <<EOF
 This looks like a fresh install. Next steps:
   cd $TARGET
-  cp .env.example .env
-  \$EDITOR .env                     # fill in real values
+  docker run --rm -p 8090:8090 -v "\$(pwd)":/out ghcr.io/whispersofj/media-stack:latest --setup
+                                     # opens a setup wizard at http://localhost:8090
+                                     # to fill in .env (or: cp .env.example .env && \$EDITOR .env)
   docker compose up -d              # core services
   docker compose --profile extras up -d   # + Bazarr/Homepage/Kometa/etc.
 EOF
