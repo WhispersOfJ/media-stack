@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.3.1**.
+retroactive pass) was never versioned under. Current version: **v6.3.2**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,25 @@ retroactive pass) was never versioned under. Current version: **v6.3.1**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [6.3.2] — Quality profile renamed to "Unlimited"
+
+Follow-up to [6.3.1] - user felt `720p+ (All Sources)` was a counterproductive name for the
+profile now that the 1080p WEB/HDTV size caps are lifted, and asked for one shared name across
+both apps reflecting the new setting plus the custom format already attached to it.
+
+### Changed
+- **Quality profile renamed `720p+ (All Sources)` → `Unlimited`** in both Radarr and Sonarr
+  (`PUT /api/v3/qualityprofile/7`, same profile id in both apps, name only - no other setting
+  touched).
+- **Seerr's cached `activeProfileName` updated to match** (`PUT /api/v1/settings/{radarr,
+  sonarr}/0`) - Seerr stores both the profile id and a display-name copy of it; the id (`7`)
+  was still valid and nothing was actually broken, but the cached name would have gone stale
+  and misleading otherwise. Same class of fix as [6.0.0]'s original Seerr repoint, caught
+  proactively this time instead of discovered later.
+- README's living documentation updated to describe the profile as `Unlimited` going forward;
+  historical CHANGELOG entries ([6.0.0], [6.3.1]) left as-is, describing what was true at the
+  time they were written.
 
 ---
 
