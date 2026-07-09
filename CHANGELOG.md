@@ -51,33 +51,42 @@ retroactive pass) was never versioned under. Current version: **v6.0.1**.
 
 ---
 
-## [6.0.1] — CI: Claude Code Review fixed on Dependabot PRs
+## [6.0.1] — CI: root causes found for two Dependabot-PR failures, neither fully fixed
 
-Checked GitHub Actions CI status after the [6.0.0] push and found two persistent failures.
-This entry fixes one of them.
+Checked GitHub Actions CI status after the [6.0.0] push and found two persistent failures on
+Dependabot-authored PRs. Root-caused both; genuinely fixed neither.
 
-### Fixed
-- **`claude-code-review.yml` was failing on every Dependabot-authored PR** (`ANTHROPIC_API_KEY,
-  CLAUDE_CODE_OAUTH_TOKEN... is required`, consistently, on PR #6's rclone bump) despite
-  `CLAUDE_CODE_OAUTH_TOKEN` being set as a repo secret (`gh secret set`, confirmed present via
-  `gh secret list`). Root cause: GitHub withholds repository secrets from `pull_request`-
-  triggered workflow runs when the triggering actor is `dependabot[bot]`, a hardening measure
-  against a malicious dependency bump exfiltrating them. Confirmed by testing the *other*
-  Claude workflow (`claude.yml`, comment-triggered via `issue_comment`) on the same PR with the
-  same secret — it succeeded, proving the secret itself was valid and the restriction was
-  specific to the `pull_request` trigger + Dependabot actor combination. Switched the trigger
-  to `pull_request_target`, which runs in the base branch's trust context regardless of actor.
-  Safe here: the checkout step has no `ref:` override (stays on the base branch, never the PR
-  head) and the job never executes PR code — Claude reviews the diff through GitHub's API via
-  the prompt, same as it always did.
+### Investigated: `claude-code-review.yml` failing on every Dependabot-authored PR
+- **Symptom**: `ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN... is required`, consistently, on PR
+  #6's rclone bump — despite `CLAUDE_CODE_OAUTH_TOKEN` being set as a repo secret (`gh secret
+  set`, confirmed present via `gh secret list`).
+- **Root cause confirmed**: GitHub withholds repository secrets from `pull_request`-triggered
+  workflow runs when the triggering actor is `dependabot[bot]`, a hardening measure against a
+  malicious dependency bump exfiltrating them. Confirmed by testing the *other* Claude workflow
+  (`claude.yml`, comment-triggered via `issue_comment`) on the same PR with the same secret — it
+  succeeded, proving the secret itself was valid and the restriction was specific to the
+  `pull_request` trigger + Dependabot actor combination.
+- **Attempted fix, reverted**: switched the trigger to `pull_request_target`, which runs in the
+  base branch's trust context regardless of actor - confirmed this genuinely solved the secrets
+  problem (`CLAUDE_CODE_OAUTH_TOKEN` was read correctly on the next Dependabot-actor run). But
+  `anthropics/claude-code-action`'s own OIDC-based GitHub App token exchange then failed on that
+  same run (`401 Unauthorized - Invalid OIDC token`), specific to `pull_request_target`'s token
+  claims - outside anything fixable from this repo's side, since it's Anthropic's backend
+  rejecting the token. Reverted to `pull_request` rather than leave it in a differently-broken
+  state.
+- **Net effect, unchanged from before this session**: `claude-code-review.yml` still won't
+  auto-fire on Dependabot-authored PRs. Working alternative, confirmed live: commenting
+  `@claude` on the PR triggers `claude.yml` instead, which reviews/responds correctly even on a
+  Dependabot PR - one manual comment per PR that needs it.
 
-### Known follow-up (not fixed this pass)
-- **Dependabot's own `docker_compose` update job fails checking `debridmediamanager/zurg`**
-  (`private_source_authentication_failure` against `ghcr.io`) — that image is the sponsor-gated
-  Zurg build (see `docker-compose.yml`'s own comment on it, not the public `zurg-testing`
-  image), so Dependabot needs a registry credential to check it for updates at all. Needs a
-  `registries:` entry in `.github/dependabot.yml` pointing at a GHCR token secret - not done in
-  this pass.
+### Investigated, not attempted: Dependabot's own `docker_compose` update job failing
+- **Symptom**: `private_source_authentication_failure` against `ghcr.io` when checking
+  `debridmediamanager/zurg` for updates.
+- **Root cause**: that image is the sponsor-gated Zurg build (see `docker-compose.yml`'s own
+  comment on it, not the public `zurg-testing` image) - Dependabot needs a registry credential
+  to check a gated image for updates at all, and none is configured.
+- **Fix, not done this pass**: add a `registries:` entry to `.github/dependabot.yml` pointing at
+  a GHCR token secret.
 
 ---
 

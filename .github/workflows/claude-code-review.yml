@@ -1,16 +1,16 @@
 name: Claude Code Review
 
 on:
-  # pull_request_target, not pull_request: GitHub withholds repository secrets from
-  # pull_request-triggered runs when the triggering actor is dependabot[bot], to stop a
-  # malicious dependency bump from exfiltrating them - Dependabot's own PRs (opening or
-  # auto-synchronizing) never got CLAUDE_CODE_OAUTH_TOKEN under pull_request, confirmed via
-  # a comment-triggered claude.yml run on the same PR succeeding with the same secret.
-  # pull_request_target runs in the base branch's trust context regardless of actor. Safe
-  # here since the checkout step below has no `ref:` override (stays on the base branch, not
-  # the PR head) and this job never executes PR code - Claude reviews the diff via GitHub's
-  # API through the prompt below, the same as any other PR.
-  pull_request_target:
+  # pull_request, not pull_request_target: tried pull_request_target to work around
+  # GitHub withholding secrets from pull_request runs triggered by dependabot[bot] (see
+  # CHANGELOG v6.0.1) - that part worked, CLAUDE_CODE_OAUTH_TOKEN was read correctly, but
+  # anthropics/claude-code-action's own OIDC-based GitHub App token exchange then failed
+  # ("401 Unauthorized - Invalid OIDC token") specifically under pull_request_target's
+  # token claims. Reverted rather than dig into Anthropic's backend validation. Net effect:
+  # this still won't auto-fire on Dependabot-authored PRs, same as before - the working
+  # alternative is a manual `@claude` comment on the PR (confirmed working, triggers
+  # claude.yml instead).
+  pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
     # Optional: Only run on specific file changes
     # paths:
