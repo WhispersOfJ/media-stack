@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.2.0**.
+retroactive pass) was never versioned under. Current version: **v6.2.1**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,38 @@ retroactive pass) was never versioned under. Current version: **v6.2.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+---
+
+## [6.2.1] — DMM's TMDB/OMDb/MDBList/Trakt keys reused from Kometa instead of left as changeme
+
+User asked to reuse whatever API credentials Kometa already has configured
+(`config/kometa/config.yml`) rather than sign up fresh. Kometa had real keys for exactly the
+services DMM needed: `tmdb.apikey`, `omdb.apikey`, `mdblist.apikey`, and `trakt.client_id`/
+`client_secret` all matched DMM's env vars 1:1, so they were copied into `.env` directly -
+closes the "still `changeme`" follow-up from [6.2.0].
+
+### Added
+- **`GH_PAT`** wired into `debridmediamanager`'s environment (wasn't included in 6.2.0's env
+  var list at all) - reused from Kometa's `github.token`. Genuinely optional (GitHub API
+  rate-limit relief only), not related to the OAuth-login/sponsor-tier providers deliberately
+  skipped in [6.2.0] - a distinct category that got missed in that pass.
+- `.env.example` updated to note Kometa reuse as the first option before a fresh signup.
+
+### Verified live
+- Recreated `debridmediamanager`; confirmed the real values landed inside the running
+  container (`docker exec ... echo $TMDB_KEY` etc.), not just written to `.env`.
+- **New finding, not yet actionable**: tested `GET /api/search/title?keyword=Yellowstone`
+  post-fix - still returns `{"results": []}`. Read the actual route source
+  (`api/search/title.ts`): it queries a *local* IMDB title index
+  (`db.searchImdbTitles`, backed by the `imdb_title_basics`/`Titles` tables) rather than
+  calling TMDB/MDBList live - confirmed both tables have `0` rows. `TMDB_KEY`/`MDBLIST_KEY`
+  are used *after* a title is identified (feeding `generateScrapeJobs`), not for the keyword
+  search itself. So real API keys alone don't make search return results - populating the
+  local IMDB title index (IMDB's public non-commercial dataset dumps -
+  `title.basics`/`title.akas`/`title.ratings`/`title.episode`/`name.basics`, a genuinely
+  separate, sizeable ETL task) would be needed for that, and wasn't in scope for this pass.
+  Flagging rather than silently leaving it a mystery why search still looks empty.
 
 ---
 
