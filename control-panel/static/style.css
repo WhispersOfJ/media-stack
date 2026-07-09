@@ -380,6 +380,28 @@ a:focus-visible {
 
 .arr-search button { flex: none; }
 
+.import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: -4px 0 4px;
+  padding: 10px 14px;
+  background-color: var(--card-solid);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.import-rejections {
+  font-size: 0.72rem;
+  color: var(--warn);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  cursor: help;
+}
+
 /* ---------- Zilean direct search ---------- */
 .zilean-search {
   display: flex;
