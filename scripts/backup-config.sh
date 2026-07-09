@@ -11,6 +11,17 @@ export RESTIC_PASSWORD_FILE="$HOME/backups/.restic-password"
 
 cd "$(dirname "$0")/.."
 
+# Logical dump of zilean-postgres before the restic run below - the raw
+# datadir is excluded (a live raw-file backup of postgres would be
+# inconsistent) but nothing else covered that gap, so the ~5,600-entry
+# Real-Debrid-ingested hash index had zero backup coverage. Separate
+# directory name from the excluded config/zilean-postgres path so it's
+# unambiguously not caught by that --exclude below.
+mkdir -p ./config/zilean-postgres-dump
+if ! docker exec zilean-postgres pg_dump -U postgres zilean | gzip > ./config/zilean-postgres-dump/zilean.sql.gz; then
+  ./scripts/notify-discord.sh "zilean-postgres logical dump failed - config backup below will still run, but the postgres index itself won't be covered by this snapshot" warn
+fi
+
 restic backup ./config \
   --exclude "config/decypharr/cache" \
   --exclude "config/*/logs" \

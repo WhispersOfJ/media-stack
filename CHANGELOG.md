@@ -10,7 +10,30 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v5.0.0**.
+retroactive pass) was never versioned under. Current version: **v6.0.0**.
+
+> **2026-07-09 — live state found well behind what was already documented.** Before any of the
+> work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
+> that several features this file and README.md already described as done simply weren't live:
+> Prowlarr had **0** indexers and **0** indexer proxies configured (README claimed 70 indexers
+> + Byparr wired up); Radarr and Sonarr both had **0** custom formats and only the 6 stock
+> default quality profiles (README claimed a "Blocked Releases" format at `-10000` and
+> `HD Bluray + WEB`/`WEB-1080p` profiles, see [4.12.0]); `docker-compose.yml` had no
+> `logging:` block anywhere and `/etc/docker/daemon.json` didn't exist (README's "Docker log
+> rotation" section claimed daemon-level `10m`/`3` rotation was already live — no corresponding
+> CHANGELOG entry for it exists anywhere in this file, so it's unclear it was ever actually
+> shipped rather than just documented); and `restic` wasn't
+> installed, `~/backups/stack-restic-repo` didn't exist, and `stack-backup.service` had never
+> once run successfully despite being enabled. Root cause unconfirmed — this may be the same
+> incident as the still-open [TODO.md](TODO.md) mass Radarr/Sonarr library-loss item (0.1s,
+> zero API calls logged), since a wholesale `./config` rollback would explain the Prowlarr/
+> Radarr/Sonarr side of this; it does **not** obviously explain `restic` being missing from the
+> host or `/etc/docker/daemon.json` never existing, since neither lives inside `./config` or any
+> docker volume. Flagging the correlation, not claiming it's proven. Everything below was
+> rebuilt from zero and reverified live rather than assumed still-working from the old
+> documentation — see each entry for what changed in the rebuild (notably: log rotation moved
+> from host-level `daemon.json` to a per-service `logging:` block in `docker-compose.yml`
+> itself, so it's tracked in git this time instead of living only on the host).
 
 > **2026-07-09 — versioning policy tightened, history backfilled.** Several past commits (a
 > planning doc, two CI workflow additions, a Dependabot base-image bump, a doc-only bugfix
@@ -25,6 +48,177 @@ retroactive pass) was never versioned under. Current version: **v5.0.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+---
+
+## [6.0.0] — Quality profiles and blocklist custom format rebuilt from zero
+
+**Breaking/foundational**: every pre-existing quality profile in Radarr and Sonarr was deleted
+and replaced with a single new one in each app, changing what releases either app will accept
+at all. User asked for a blocklist custom format (samples, Russian in any way, a specific
+low-quality-source/group regex) scored `-10000`, then to delete every existing quality profile
+and replace it with one profile covering all qualities 720p and up with that format attached. A
+follow-up message asked for Korean characters to be added to the same format alongside Russian.
+
+Found 0 custom formats and only the 6 stock default profiles (Any/SD/HD-720p/HD-1080p/
+Ultra-HD/HD-720p-1080p) in both apps before starting — see the 2026-07-09 note above. Confirmed
+via each app's `/api/v3/movie` and `/api/v3/series` that 0 movies and 0 series exist in either
+library before deleting anything, so no reassignment was needed and nothing could break from
+the deletion itself.
+
+### Added
+- **Custom format "Block - Sample, Russian, Low-Quality Sources"** (id 1 in both apps,
+  `POST /api/v3/customformat`), four `required: false` Release-Title/Language specifications
+  OR'd together — any one matching rejects the release:
+  1. `Sample` (`ReleaseTitleSpecification`) — `(?i)\bsample\b`.
+  2. `Russian Language` (`LanguageSpecification`) — built-in language value `11` (Russian),
+     matches on Radarr/Sonarr's own parsed-language metadata.
+  3. `Russian/Korean Text or Script` (`ReleaseTitleSpecification`) — catches Russian/Korean
+     "in any way" beyond just the declared-language field: literal `rus`/`russian`/`kor`/
+     `korean` text tags, plus the actual Cyrillic (`[Ѐ-ӿ]`) and Hangul
+     (`[가-힣ᄀ-ᇿ㄰-㆏]`) Unicode ranges, so a release with Cyrillic or
+     Hangul characters in the title matches even if nothing tagged its language metadata
+     correctly. Korean added in a same-day follow-up to the initial Russian-only version.
+  4. `Blocked Sources or Groups` (`ReleaseTitleSpecification`) — user-supplied regex:
+     `` (?i)\b(WEB-DL|WEBRip|BDRip|HDRip|DVDRip|HDTV|AMZN|NF|DSNP|CR|YTS|TGX|TorrentGalaxy|FGT|LOL|KILLERS|EPSiLON|Erai-raws)\b|rartv|rarbg|eztv ``.
+     Narrower than the old [4.12.0]/README "Blocked Releases (All Qualities)" format's
+     equivalent condition (that one also had `BluRay\.x264|HDTV\.x264|HDTV\.XviD|WEB\.x264|
+     WEB\.h264` and a separate BR-DISK-disc-release regex folded in) — this session implemented
+     exactly the regex given, not the fuller historical one. Worth revisiting if the narrower
+     coverage turns out to matter in practice.
+- **Quality profile "720p+ (All Sources)"** (id 7 in both apps, `POST /api/v3/qualityprofile`)
+  — the one profile in each app now. Allows HDTV/WEBDL/WEBRip/Bluray at 720p, 1080p, and 2160p,
+  plus Remux at 1080p and 2160p; `upgradeAllowed: true`, cutoff set to the top tier
+  (`Remux-2160p` in Radarr, `Bluray-2160p Remux` in Sonarr) so it keeps upgrading toward the
+  best available. `BR-DISK` and `Raw-HD` deliberately left disallowed despite nominally being
+  "1080p" — full disc images and raw broadcast captures are specialty formats essentially
+  nobody wants in a general-purpose profile; a judgment call, not something explicitly asked
+  for, flagged to the user at the time. Custom format id 1 wired in at `formatItems: [{"format":
+  1, "score": -10000}]`; `minFormatScore` left at its default `0`, so a `-10000` match is a hard
+  reject, not just deprioritization.
+
+### Removed
+- All 6 pre-existing quality profiles in both Radarr and Sonarr (`DELETE
+  /api/v3/qualityprofile/{1..6}`, all 200s) — Any, SD, HD-720p, HD-1080p, Ultra-HD, and
+  HD-720p/1080p in each app.
+
+### Fixed
+- **Seerr's stored Radarr/Sonarr connections** — confirmed via `config/seerr/settings.json`
+  (readable directly on disk) that both still pointed at `activeProfileId: 6`
+  (`"HD - 720p/1080p"`, one of the deleted stock profiles). The earlier unauthenticated `GET`
+  attempt (no header at all) is what hit the session-cookie requirement, not the endpoint
+  itself — `main.apiKey` from that same `settings.json` file works fine as `X-Api-Key` on the
+  same `/api/v1/settings/*` routes. Repointed both to `activeProfileId: 7` /
+  `"720p+ (All Sources)"` via `PUT /api/v1/settings/{radarr,sonarr}/0` and confirmed the change
+  persisted on a fresh `GET`.
+
+---
+
+## [5.2.0] — Prowlarr rebuilt from zero: 68 indexers, Byparr proxy, Zilean
+
+Found Prowlarr with 0 indexers and 0 indexer proxies configured — see the 2026-07-09 note
+above; README already documented 70 indexers (69 public + Zilean) and Byparr as an Indexer
+Proxy as if this were already done. Rebuilt via `/api/v1/*` directly rather than clicking
+through the UI, same approach the original setup used.
+
+### Added
+- **Byparr registered as a `FlareSolverr`-implementation Indexer Proxy** (`POST
+  /api/v1/indexerproxy`, id 1) — `host: http://byparr:8191/`, `requestTimeout: 60`. A
+  `flaresolverr` tag (id 1) was created and applied to both the proxy and every indexer added
+  below, since Prowlarr routes an indexer through a proxy by shared tag, not a per-indexer
+  proxy-id field.
+- **68 indexers added** — every `privacy: public` definition in Prowlarr's own
+  `/api/v1/indexer/schema` catalog (623 total definitions; 86 public) that didn't need
+  credentials this stack doesn't have, plus Zilean:
+  - 67 of the 86 public definitions were addable with zero extra input beyond defaults.
+    3 were deliberately skipped rather than added broken: `nekoBT` (needs a personal API key),
+    `showRSS` and `Torrent RSS Feed` (both need a personal cookie/feed URL) — none of those
+    credentials exist on this host.
+  - 16 of the remaining addable ones failed Prowlarr's live connectivity test and were **not**
+    saved — `forceSave=true` on `POST /api/v1/indexer` does not skip Prowlarr's live test the
+    way it does for some other Servarr-family endpoints, it only bypasses non-connectivity
+    validation. Failures were a mix of actually-dead/moved domains (`connection refused`,
+    `timed out`) and active Cloudflare blocks even through Byparr (`1337x`, `52BT`) — real
+    attrition against a bundled definition catalog against 2026-era sites, not a bug in the
+    approach. Full pass/fail list in the session, not reproduced here.
+  - **Zilean** added as a `Generic Torznab` indexer (`baseUrl: http://zilean:8181`, `apiPath:
+    /torznab/api`, using `ZILEAN_API_KEY`) — confirmed its Torznab `?t=caps` endpoint responds
+    correctly first, then added and live-tested with a real query (`?query=matrix`) through
+    Prowlarr's own `/api/v1/search`: 29 results including several 4K remuxes.
+
+### Verified live
+- `GET /api/v1/indexer` returns 68 entries, all `enable: true`.
+- Zilean search through Prowlarr's own search API returns real, correctly-tagged results (not
+  just a 200 on save).
+
+---
+
+## [5.1.0] — Backup pipeline actually bootstrapped; log rotation, resource ceilings, fstrim, prune timer added
+
+User asked for optimization suggestions, picked all six, asked for them applied. The most
+consequential of the six: `stack-backup.timer` had been enabled since the same day (created
+09:27, this work happened that afternoon) but had never once fired successfully — `restic`
+wasn't installed on the host at all, so every run would have failed at the first command. See
+the 2026-07-09 note above for how this intersects with README already describing a working
+backup pipeline, daemon-level log rotation, and 6 resource-capped containers that didn't
+actually match live state.
+
+### Added
+- **`restic` installed** (`pacman -S restic`, run by the user directly since `sudo` needs an
+  interactive password this session couldn't supply) — `~/backups` (`chmod 700`) and
+  `~/backups/.restic-password` (32 bytes from `openssl rand -base64 32`, `chmod 600`) created,
+  repo initialized with `restic init`. Verified end-to-end with a real
+  `./scripts/backup-config.sh` run, not just `restic init` succeeding: 742 files, 113.944 MiB
+  snapshotted, retention policy applied, exit code 0. Three Plex files (`.LocalAdminToken`,
+  `Preferences.xml`, `Setup Plex.html`) came back owned `sddm:sddm` mode `0600` from a container
+  recreate during this same pass and are unreadable by the backing-up user — restic's own exit-3
+  handling already treats this as non-fatal (warn, not fail); left alone rather than chased,
+  since `.LocalAdminToken` arguably shouldn't be backed up anyway and the other two regenerate
+  trivially.
+- **`pg_dump` step added to `scripts/backup-config.sh`**, run before the `restic backup` call —
+  `docker exec zilean-postgres pg_dump -U postgres zilean | gzip >
+  ./config/zilean-postgres-dump/zilean.sql.gz`. Closes a real gap: `zilean-postgres`'s raw
+  datadir is excluded from the restic backup (correctly — a live raw-file copy of a running
+  Postgres datadir can be inconsistent), but nothing filled that gap before, so the
+  ~5,600-entry Real-Debrid-ingested hash index had zero backup coverage. Tested live against
+  the running container: produced a real 34MB gzipped dump with valid SQL content. Failure
+  path posts a Discord warning but doesn't block the rest of the backup run.
+- **Resource ceilings added to 6 previously-uncapped containers** — `rclone-alldebrid` (512MB/
+  64MB/4 cpus), `tautulli` (512MB/64MB/2), `control-panel` (512MB/64MB/2), `glances` (512MB/
+  64MB/2), `unpackerr` (512MB/64MB/2), `watchtower` (256MB/32MB/1). All sized as defensive
+  insurance (cheap, generous headroom) rather than from observed pressure, same reasoning
+  pattern as the original 6-container pass this supplements. All 21 containers recreated
+  (`docker compose --profile extras up -d`) and confirmed `healthy` afterward.
+- **Docker log rotation** — a `logging: &common-logging` anchor (`max-size: 10m`, `max-file: 3`)
+  added directly in `docker-compose.yml` and applied to every service (via the existing
+  `x-common` anchor where already used, explicit `logging: *common-logging` added to every
+  standalone service block otherwise). Deliberately **not** `/etc/docker/daemon.json` this
+  time, even though that's what README described — a compose-level anchor is tracked in git
+  with everything else this stack manages, instead of living only on the host with no record of
+  when or why it was set. README's Docker log rotation section needs updating to match (see
+  README.md changes below).
+- **`stack-docker-prune.timer`/`.service`** (new, same tracked-in-repo-then-symlinked pattern as
+  every other `stack-*` unit) — weekly, Sundays 04:30 EDT (after the 03:30 backup and 04:00
+  Watchtower pull so it doesn't race an image pull that's about to become "in use" again).
+  `docker container prune -f`, `docker image prune -f`, `docker builder prune -f` — deliberately
+  not `docker system prune --volumes`, since this stack uses bind mounts everywhere, not named
+  volumes, so there's nothing to gain there and it's one flag away from removing something live.
+  Wired to the same `notify-failure@%n.service` defense-in-depth as every other `stack-*` unit.
+- **`fstrim.timer` enabled** (`systemctl enable --now fstrim.timer`, run by the user directly)
+  — the whole stack, including a write-heavy Postgres instance, lives on one NVMe drive with no
+  periodic TRIM previously scheduled at all.
+
+### Removed
+- Stray `hello-world` container (`awesome_perlman`, created earlier the same day, exited) —
+  `docker rm`.
+
+### Verified live
+- `restic version`, `systemctl is-enabled/is-active fstrim.timer`, and
+  `systemctl --user is-enabled/is-active stack-backup.timer` all confirmed after the user ran
+  the two `sudo`-gated commands themselves.
+- Task-tracking checklist double-checked against live state after the fact (session asked to
+  "double check your checklist") — found `fstrim.timer` and the `restic` install still marked
+  pending despite being verified live already; corrected to `completed` rather than left stale.
 
 ---
 
