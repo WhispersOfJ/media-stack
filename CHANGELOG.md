@@ -84,12 +84,16 @@ the user's current indexers.
 
 Blocklisted all 9 in Lidarr (`DELETE /api/v1/queue/{id}?blocklist=true&skipRedownload=false`),
 which triggers Lidarr's own automatic re-search. Several rounds of re-grabs landed on more `88`
--tagged releases and failed the same way, requiring repeated manual blocklisting; **72 Seasons**
-is the only one confirmed fully re-imported clean this session, from an unrelated `PMEDIA`
-release. The rest were still cycling through Lidarr's own retry logic
-(`autoRedownloadFailed: true`, already enabled) when this entry was written — Lidarr will keep
-trying on its own without further intervention, it's just a matter of whether non-`88` sources
-exist on the configured indexers for each remaining album.
+-tagged releases and failed the same way, requiring repeated manual blocklisting across roughly
+4 rounds; **72 Seasons** and **Ride the Lightning** are confirmed fully re-imported clean this
+session, from unrelated `PMEDIA` and `pea_soup` releases respectively. The remaining 7 were
+still cycling through Lidarr's own retry logic (`autoRedownloadFailed: true`, already enabled)
+when this entry was written — Lidarr will keep trying on its own without further intervention,
+it's just a matter of whether non-`88` sources exist on the configured indexers for each
+remaining album. Given how frequently re-grabs kept landing on the same tag, a Custom Format
+rejecting `88`/`vtwin88cube` release titles in Lidarr would stop this at the source instead of
+relying on failure-triggered retries - not yet added, since that's a call for the user to make
+rather than something to apply unilaterally.
 
 ### Verified live
 - Unpackerr's log: `Radarr Config: 1 server: ..., apikey:true`, same for Sonarr/Lidarr/Readarr.
