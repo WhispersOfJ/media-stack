@@ -438,9 +438,9 @@ noted as **done** where complete. What's left is a preference call, not a techni
 6. **Bazarr** (done): its Radarr, Sonarr, and Plex connections were all found silently broken
    (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
    [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.2.
-7. **DebridMediaManager** (partially done, [6.2.0](CHANGELOG.md)): all four containers live and
-   verified. `TMDB_KEY`/`MDBLIST_KEY` still need real values (free signups required, can't be
-   automated) before its search/scraper feature will do anything — see
+7. **DebridMediaManager** (partially done, [6.2.0](CHANGELOG.md)/[6.2.1](CHANGELOG.md)): all
+   four containers live and verified, real API keys reused from Kometa. Keyword search still
+   returns nothing regardless — needs a separate local IMDB dataset import, not done yet — see
    [DebridMediaManager](#debridmediamanager) below.
 
 > Seerr only recognizes Radarr and Sonarr in its settings API
@@ -1214,15 +1214,19 @@ screen, with a "no data stored on our servers" message matching that design.
 
 **Search/scrape is on-demand, not a standing crawler** - triggers per-title when you view/search
 something in the UI (`api/search/title.ts` → `api/scrapers/imdb.ts`), confirmed by reading the
-actual route source rather than assumed. This means `TMDB_KEY` and `MDBLIST_KEY` in `.env` are
-required in practice (not just "optional" like upstream's own `.env.example` implies) - the
-scraper can't identify a title without them. **Still `changeme` as of 6.2.0** - free signups at
-[themoviedb.org](https://www.themoviedb.org/settings/api) and
-[mdblist.com](https://mdblist.com/preferences); update `.env` and recreate
-`debridmediamanager` once you have real keys. `OMDB_KEY`/`TRAKT_CLIENT_ID`/
-`TRAKT_CLIENT_SECRET` are genuinely optional and can stay `changeme` indefinitely. OAuth login
-providers (Patreon/GitHub/Discord) and the Tor stream-proxy container were deliberately skipped
-- see [6.2.0](CHANGELOG.md) for why.
+actual route source rather than assumed. `TMDB_KEY`/`MDBLIST_KEY`/`OMDB_KEY`/`TRAKT_CLIENT_ID`/
+`TRAKT_CLIENT_SECRET`/`GH_PAT` are all real as of [6.2.1](CHANGELOG.md), reused directly from
+Kometa's already-configured keys (`config/kometa/config.yml`) rather than signed up fresh.
+OAuth login providers (Patreon/GitHub/Discord) and the Tor stream-proxy container were
+deliberately skipped - see [6.2.0](CHANGELOG.md) for why.
+
+> **Keyword search still returns nothing, even with real keys** - `api/search/title.ts` queries
+> a *local* IMDB title index (`imdb_title_basics`/`Titles` tables), not a live TMDB/MDBList
+> call; those tables have `0` rows. `TMDB_KEY`/`MDBLIST_KEY` are only used *after* a title is
+> identified (feeding the per-title scraper), not for the keyword search box itself. Populating
+> that local index means importing IMDB's public non-commercial dataset dumps
+> (`title.basics`/`title.akas`/`title.ratings`/`title.episode`/`name.basics`) - a genuinely
+> separate, sizeable task, not done as part of [6.2.0](CHANGELOG.md)/[6.2.1](CHANGELOG.md).
 
 Two real upstream bugs were found and worked around during setup, both without vendoring a
 modified Dockerfile (which would lose the clean pin-by-commit build and create an ongoing
@@ -1241,5 +1245,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.2.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.2.1**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

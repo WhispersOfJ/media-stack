@@ -979,6 +979,10 @@ services:
       OMDB_KEY: ${OMDB_KEY}
       TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID}
       TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET}
+      # Reused from Kometa's existing github.token (config/kometa/config.yml) rather than a
+      # new PAT - genuinely optional (GitHub API rate-limit relief only), not part of the
+      # OAuth-login/sponsor-tier decision made in 6.2.0.
+      GH_PAT: ${GH_PAT}
       REAL_DEBRID_OBSERVABILITY_SQLITE_PATH: .data/real-debrid-observability.sqlite
       DMM_MAX_UNCACHED_LINKS: "50"
       REQUEST_TIMEOUT: "5000"
