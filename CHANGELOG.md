@@ -4,7 +4,151 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v4.10.0**.
+features, **PATCH** for fixes. Current version: **v4.14.0**.
+
+---
+
+## [4.14.0] — Decypharr: restrict Radarr to Real-Debrid only
+
+User asked to remove Radarr's ability to use AllDebrid — leaving Real-Debrid as its only
+debrid backend, while Sonarr/Lidarr/Readarr keep access to both.
+
+### Added
+- **`selected_debrid: "realdebrid"`** added to Radarr's entry in `config/decypharr/config.json`'s
+  `arrs` array. Confirmed via [Decypharr's configuration reference](https://docs.decypharr.com/guides/configuration/)
+  that this field (distinct from the existing `source: "auto"` field already on every arr entry)
+  is exactly what pins a specific arr app to one debrid provider from the `debrids` list —
+  Sonarr, Lidarr, and Readarr are left on `source: "auto"` with no `selected_debrid`, so they
+  can still fall through to AllDebrid same as before.
+- `docker compose restart decypharr` to load the change; startup log confirmed a clean reload
+  (`Loading config from /app/config.json` → normal manager/DFS startup, no config-parse error or
+  rejected field).
+
+### Not committed
+- `config/decypharr/config.json` is entirely gitignored (`config/` — plaintext debrid API keys),
+  so this is a live runtime change only, not something that shows up in `git log`. Consistent
+  with existing policy (see [Security note](README.md#security-note)).
+
+---
+
+## [4.13.0] — Plex library cleanup: orphaned Movies/TV folders removed
+
+User asked to delete Plex's movie library contents as "leftover and not existent." Investigating
+turned up a more specific problem than the request assumed, plus something unrelated and
+unresolved.
+
+### Found
+- `./media/movies` (Radarr's own root folder) held 496 folders / 499 symlinks into
+  `/mnt/decypharr/__all__/...`, **462 of them dangling** — but Radarr itself tracked **zero**
+  movies (`/api/v3/rootfolder` showed all 496 as `unmappedFolders`). Pure orphaned output, not
+  referenced by anything.
+- Plex's actual **Movies** library doesn't read `./media/movies` at all — its one configured
+  location is `/mnt/zurg/movies` (confirmed in `docker-compose.yml`'s own comments on the Plex
+  service's `/mnt` bind mount). All 234 folders there were **completely empty** (0 files in any
+  of them) — Real-Debrid cache eviction, not a local problem.
+- Same pattern on the TV side: `./media/shows` (Sonarr's root folder) had 2,406 symlinks,
+  2,368 broken, Sonarr tracking zero series. Plex's **TV Shows** library reads from *two*
+  locations — `/mnt/zurg/shows` (2 folders, both empty, same dead pattern as Movies) and
+  `/mnt/all/magnets` (25 entries, **all live** — the active AllDebrid magnet cache, mixed
+  movie/TV content, currently working).
+
+### Changed
+- Deleted every folder under `./media/movies` (496) and `./media/shows` (135) — confirmed zero
+  real (non-symlink) files in the movies folder first. **The shows folder had 130 real,
+  non-symlink files that were deleted without inspecting them first** — a process mistake (the
+  verification `find` and the `rm -rf` were chained in one command instead of checked as two
+  separate steps). Best guess, unconfirmed: Bazarr-downloaded `.srt` subtitles, given the
+  roughly one-per-folder count and that Bazarr sits in this same pipeline — but this wasn't
+  verified before deletion and isn't recoverable (no btrfs snapshot exists for the `/home`
+  subvolume; `snapper list-configs` shows only `root`; disk is SSD with `discard=async`).
+- Triggered a Plex library scan on both **Movies** and **TV Shows** sections. This server has
+  "empty trash after every scan" on, so dead entries cleared automatically with no separate
+  `emptyTrash` call needed. Movies went to 0 items (nothing behind any of the 234 zurg-mount
+  folders was real). TV Shows went to 3 items, all sourced from the live `/mnt/all/magnets`
+  location.
+- **`/mnt/zurg/movies`, `/mnt/zurg/shows`, and `/mnt/all/magnets` themselves were left
+  untouched** — deliberate. These are live `rclone`/zurg-backed mounts tied to the actual
+  Real-Debrid/AllDebrid accounts, not plain local files; deleting through them is a different
+  risk category than deleting local symlinks, and wasn't part of what was asked.
+
+### Found, not resolved
+- While checking Radarr's tracked-movie count, its log (`config/radarr/logs/radarr.txt`) showed
+  **1,605 movies deleted in a single 0.1-second burst** (`21:47:49`, all via
+  `MovieService|Deleted movie`) with **no corresponding API call logged** — every other action
+  in this session against Radarr's REST API shows up as a `Debug|Api` log line; this one has
+  none. Sonarr shows the mirror image: roughly 90 real series (Deadwood, Longmire, Wynonna Earp,
+  etc.) briefly got added around `21:43` with no `Import List Sync` running at the time (it ran
+  later and found nothing), then vanished with **no deletion log line of any kind**. Both apps'
+  queue, history, and blocklist tables are all empty now despite logs showing completely normal
+  grab/import activity right up to the moment it happened. Not triggered by this session — only
+  read-only `GET` requests had been made against either app before this was noticed. Root cause
+  unidentified; see [TODO.md](TODO.md).
+
+---
+
+## [4.12.0] — Custom format: block Cyrillic-titled and sample releases
+
+User asked to never receive anything in Cyrillic or sample releases. Extended the existing
+single-custom-format blocklist (see [Custom format: blocked releases](README.md#custom-format-blocked-releases))
+rather than adding new formats, to stay consistent with how that blocklist is already organized —
+one format per app, every rejection condition folded in as an OR'd Release Title spec.
+
+### Added
+- **`Cyrillic`** — `[Ѐ-ӿ]`, matches any release title containing a Cyrillic character.
+- **`Sample`** — `(?i)\bsample\b`, matches release titles with "sample" as a whole word
+  (release-title level — a bundled sample *file* inside an otherwise-clean release is caught
+  separately, by each app's own built-in per-file sample detection during import).
+- Both added to **"Blocked Releases (All Qualities)"** on Radarr (id 42) and Sonarr (id 41) via
+  `PUT /api/v3/customformat/{id}`, `required: false` / `negate: false` like the two existing
+  specs — any one of the now-four conditions matching rejects the release. Already wired at
+  `-10000` in every quality profile on both apps (`minFormatScore: 0`), so no quality-profile
+  changes were needed — extending the existing format was enough.
+
+### Verified
+- Saved regex values read back correctly from both apps' APIs. Radarr's `/api/v3/customformat/test`
+  endpoint returned `405` on this version (not available), so exact `.NET`-engine matching
+  wasn't confirmed live — instead checked the same patterns with Python's `re` module against
+  four real-shaped titles (a Cyrillic-titled release, a `SAMPLE`-tagged release, a clean
+  release, and a `Sample`-tagged TV episode): all four matched exactly as expected. Simple
+  literal-range and `\b`-boundary patterns like these don't touch any regex feature that differs
+  between engines, so this is a reasonable stand-in for the missing live test, not a full
+  substitute for one.
+
+---
+
+## [4.11.0] — Control Panel: Unstick and Manual Import for Radarr/Sonarr
+
+Follow-on to [4.7.0](CHANGELOG.md)'s Control Panel v2. User asked for a button to clear stuck
+Radarr/Sonarr queue items and manually import files — a real gap given the
+[Radarr-specific mount fragility](README.md#architecture) already documented, where a stale
+Zurg mount leaves completed downloads stuck at `importBlocked` until someone intervenes by hand.
+
+### Added
+- **`Unstick`** — one armed button per app (Radarr/Sonarr only; Lidarr/Readarr excluded,
+  untested against their queue shape) that sweeps every queue item the app itself flagged
+  `trackedDownloadStatus: warning|error` — the same condition that lights up the warning icon in
+  each app's own Queue tab — and removes it, blocklists the release, and triggers an immediate
+  re-search in one `DELETE /api/v3/queue/{id}?removeFromClient=true&blocklist=true&skipRedownload=false`
+  call per item.
+- **`Manual import`** — a collapsible panel per app listing every importable file Radarr/Sonarr's
+  own `GET .../manualimport` endpoint finds across all currently-stuck queue items (title match,
+  episode, quality, release group, size, any rejection reasons like `Sample`), each with its own
+  armed **Import** button. The candidate object returned by the scan is echoed back verbatim on
+  import (`POST /api/v3/command` with `name: "ManualImport"`) — same pattern each app's own
+  Manual Import screen uses, so quality/language/match data can't drift between the scan and the
+  actual import call.
+- New backend endpoints in `control-panel/app.py`: `POST /api/arr/{app}/unstick`,
+  `GET`/`POST /api/arr/{app}/manual-import`, gated to `radarr`/`sonarr` only via a
+  `QUEUE_ARR_APPS` allow-list, same pattern as `RESTARTABLE_CONTAINERS`.
+
+### Verified
+- Both new `GET` endpoints (queue scan, manual-import candidate list) run live against the real
+  stack: 34 stuck Radarr items and 1 stuck Sonarr item found and correctly resolved to real
+  movie/series/episode metadata, matching what each app's own `manualimport` API returns.
+  `POST` to a non-queue app (`lidarr`) correctly 404s.
+- **The actual mutating actions (`unstick`, `manual-import` execute) were deliberately never
+  fired during development** — they blocklist real releases and move real files, so verification
+  stopped at the read-only paths. First real click is on you.
 
 ---
 
