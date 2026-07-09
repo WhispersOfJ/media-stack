@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.2.1**.
+retroactive pass) was never versioned under. Current version: **v6.3.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,73 @@ retroactive pass) was never versioned under. Current version: **v6.2.1**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+---
+
+## [6.3.0] — DMM search actually works now: local IMDB title index populated, daily sync added
+
+Closes the "keyword search still returns nothing" finding from [6.2.1] - planned first (Plan
+mode) since it involves real engineering decisions (which tables actually matter, filtering
+strategy, bulk-load mechanism, sync cadence). Full research preserved at
+`~/.claude/plans/jaunty-munching-aurora.md`.
+
+### Found by reading the actual query code, not assumed
+- `src/services/database/imdbSearch.ts` (read directly from the pinned commit) only queries 3
+  tables: `imdb_title_basics`, `imdb_title_akas`, `imdb_title_ratings`. The Prisma schema also
+  has `imdb_title_episode`/`imdb_name_basics`/`imdb_genres`/etc. - none of these are referenced
+  by any of the three search code paths (fulltext-on-basics, fulltext-on-akas fallback, LIKE
+  fallback), so they weren't imported - narrower scope, faster import, no wasted effort on
+  tables nothing reads.
+- The search query's own filters (`title_type IN ('movie','tvSeries','tvMiniSeries')`,
+  `is_adult = 0`, plus an INNER JOIN against `imdb_title_ratings` in every code path) define
+  exactly what's worth importing - filtering on import to match is strictly better than
+  importing everything unfiltered, since anything outside that filter could never surface in a
+  result regardless.
+- Real dataset sizes checked live (`curl -sI`) before committing to an approach:
+  `title.basics.tsv.gz` 224MB, `title.akas.tsv.gz` 506MB, `title.ratings.tsv.gz` 8.5MB
+  (compressed). Host had 900GB free - no space concern, filtering still saves real import time.
+
+### Added
+- **`scripts/import-imdb-data.py`** (stdlib-only Python, matching `scripts/setup_wizard.py`'s
+  existing convention) - streams each `.tsv.gz` directly from `datasets.imdbws.com`, filters
+  in-flight (no unfiltered file ever touches disk), and pipes filtered TSVs into `dmm-mysql` via
+  `docker exec` stdin rather than a direct host bind-mount write - caught live: MySQL's own
+  entrypoint chowns its `secure_file_priv` directory to a container-internal uid on every
+  startup, which blocked host-side writes to a `:ro`-mounted path entirely (also caught and
+  fixed: the mount can't be `:ro` at all, for the same chown reason). `TRUNCATE` + `LOAD DATA
+  INFILE` per table, full refresh each run (IMDB's dumps aren't diff-friendly).
+- **`./config/dmm-mysql-import` bind mount** on `dmm-mysql`, landing at
+  `/var/lib/mysql-files/import` - matches MySQL 8.4's secure default
+  (`secure_file_priv=/var/lib/mysql-files/`, confirmed live) rather than loosening
+  `local_infile` globally.
+- **`systemd/stack-imdb-sync.{service,timer}`** - same tracked-in-repo-then-symlinked pattern
+  and `notify-failure@%n.service` wiring as every other `stack-*` unit. **Daily**, 04:15 (after
+  the 03:30 backup, matching IMDB's own daily publish cadence - a deliberate choice over a
+  lighter weekly default, confirmed with the user given the recurring ~750MB/day cost).
+- **`dmm-mysql`'s resource ceiling raised** (`mem_limit` 1g→2g, `mem_reservation` 128m→256m) -
+  now holds low millions of rows with `@@fulltext` indexes to maintain, not just small
+  app-state tables.
+- **`TZ` added to all 4 DMM containers** (`dmm-mysql`, `dmm-redis`, `dmm-migrate`,
+  `debridmediamanager`) - none of them used the `<<: *common` anchor that normally sets it, so
+  all four were silently running on UTC. `debridmediamanager`'s startup command also gets
+  `tzdata` installed alongside the `openssl`/`curl` fix from [6.2.0] - `TZ` alone doesn't
+  resolve DST/offset correctly without the zoneinfo database present. Fixes DMM's "Added"
+  column showing UTC instead of local time.
+
+### Verified live
+- First manual run (before scheduling it): `basics=1,112,130 ratings=479,905 akas=6,883,614` -
+  cross-checked directly against `dmm-mysql` with `SELECT COUNT(*)`, not just the script's own
+  exit code.
+- **The real test**: `GET /api/search/title?keyword=Yellowstone%202018`, the same query that
+  returned `{"results": []}` in [6.2.1] - now returns `tt4236770` (the real 2018 show) ranked
+  first with the correct rating (8.6). Confirmed again in an actual browser at
+  `/search?query=Yellowstone+2018` - real poster art, correct title/year, not just a JSON
+  response.
+- `docker exec debridmediamanager date` now reports `EDT` (America/New_York), confirming the
+  TZ fix took effect, not just that the env var is set.
+- Checked whether the now-much-larger `dmm-mysql` changed the nightly `mysqldump` backup step's
+  cost profile ([6.2.0]'s addition): 16.5s, 124MB compressed - still perfectly reasonable, no
+  change needed.
 
 ---
 

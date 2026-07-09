@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily DebridMediaManager IMDB title index refresh
+
+[Timer]
+# Matches IMDB's own daily publish cadence for these dumps. After the
+# 03:30 backup and roughly alongside Watchtower's 04:00 pull (different
+# resources - network download vs image pull, not a real contention risk)
+# and before the Sunday 04:30 docker-prune run.
+OnCalendar=*-*-* 04:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -438,10 +438,10 @@ noted as **done** where complete. What's left is a preference call, not a techni
 6. **Bazarr** (done): its Radarr, Sonarr, and Plex connections were all found silently broken
    (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
    [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.2.
-7. **DebridMediaManager** (partially done, [6.2.0](CHANGELOG.md)/[6.2.1](CHANGELOG.md)): all
-   four containers live and verified, real API keys reused from Kometa. Keyword search still
-   returns nothing regardless — needs a separate local IMDB dataset import, not done yet — see
-   [DebridMediaManager](#debridmediamanager) below.
+7. **DebridMediaManager** (done, [6.2.0](CHANGELOG.md)/[6.2.1](CHANGELOG.md)/
+   [6.3.0](CHANGELOG.md)): all four containers live, real API keys reused from Kometa, local
+   IMDB title index populated and refreshing daily — search verified working end-to-end, not
+   just configured. See [DebridMediaManager](#debridmediamanager) below.
 
 > Seerr only recognizes Radarr and Sonarr in its settings API
 > (`/api/v1/settings/lidarr|readarr` both 404) — it's a TMDB-based movie/TV frontend
@@ -1205,7 +1205,9 @@ scoping decisions preserved in that entry and `~/.claude/plans/jaunty-munching-a
 Four services, all `profiles: [extras]`: `dmm-mysql` (dedicated database - MySQL is
 hard-required by DMM's own Prisma schema, not swappable), `dmm-redis` (rate limiting),
 `dmm-migrate` (one-shot `prisma db push` schema setup, runs once and exits), and
-`debridmediamanager` itself on port `3000`.
+`debridmediamanager` itself on port `3000`. All four run on `TZ: ${TZ}` (added in
+[6.3.0](CHANGELOG.md) - none of them used the `<<: *common` anchor that normally sets it, so
+they were silently running UTC before that, showing wrong times in DMM's "Added" column).
 
 **Real-Debrid/AllDebrid/TorBox credentials are entered in the browser** (`localStorage`), never
 a server-side secret - nothing to configure here for personal library access. Confirmed live:
@@ -1220,13 +1222,24 @@ Kometa's already-configured keys (`config/kometa/config.yml`) rather than signed
 OAuth login providers (Patreon/GitHub/Discord) and the Tor stream-proxy container were
 deliberately skipped - see [6.2.0](CHANGELOG.md) for why.
 
-> **Keyword search still returns nothing, even with real keys** - `api/search/title.ts` queries
-> a *local* IMDB title index (`imdb_title_basics`/`Titles` tables), not a live TMDB/MDBList
-> call; those tables have `0` rows. `TMDB_KEY`/`MDBLIST_KEY` are only used *after* a title is
-> identified (feeding the per-title scraper), not for the keyword search box itself. Populating
-> that local index means importing IMDB's public non-commercial dataset dumps
-> (`title.basics`/`title.akas`/`title.ratings`/`title.episode`/`name.basics`) - a genuinely
-> separate, sizeable task, not done as part of [6.2.0](CHANGELOG.md)/[6.2.1](CHANGELOG.md).
+**Keyword search needs a local IMDB title index, not a live TMDB/MDBList call** -
+`api/search/title.ts` queries `imdb_title_basics`/`imdb_title_akas`/`imdb_title_ratings`
+directly (confirmed by reading the actual query source, `src/services/database/imdbSearch.ts`,
+not assumed). `TMDB_KEY`/`MDBLIST_KEY` are only used *after* a title is identified, for the
+per-title scraper - never for the search box itself. As of [6.3.0](CHANGELOG.md), that index is
+populated and kept fresh:
+
+- **`scripts/import-imdb-data.py`** streams IMDB's public dataset dumps
+  (`title.basics`/`title.akas`/`title.ratings` - the only 3 tables the search query actually
+  touches, confirmed by reading the code, not the full schema) directly from
+  `datasets.imdbws.com`, filters to exactly what the search query itself filters on
+  (`movie`/`tvSeries`/`tvMiniSeries`, non-adult), and loads them via `LOAD DATA INFILE` into
+  `dmm-mysql`.
+- **`systemd/stack-imdb-sync.timer`** runs this daily at 04:15, matching IMDB's own publish
+  cadence - full `TRUNCATE` + reload each time (IMDB's dumps aren't diff-friendly).
+- Verified live end-to-end, not just row counts: `GET /api/search/title?keyword=Yellowstone
+  2018` returns the correct `tt4236770` ranked first, and the actual browser UI at
+  `/search?query=Yellowstone+2018` renders real poster art for it.
 
 Two real upstream bugs were found and worked around during setup, both without vendoring a
 modified Dockerfile (which would lose the clean pin-by-commit build and create an ongoing
@@ -1245,5 +1258,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.2.1**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.3.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
