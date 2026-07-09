@@ -64,24 +64,36 @@ const ARR_APPS = [
   { id: "readarr", label: "Readarr", port: 8787 },
 ];
 
-const RESTARTABLE = [
-  { id: "radarr", label: "Radarr", sub: "fixes stale Zurg mount (v4.0.1)" },
-  { id: "sonarr", label: "Sonarr" },
-  { id: "lidarr", label: "Lidarr" },
-  { id: "readarr", label: "Readarr" },
-  { id: "bazarr", label: "Bazarr" },
-  { id: "prowlarr", label: "Prowlarr" },
-  { id: "plex", label: "Plex" },
-  { id: "zurg", label: "Zurg", sub: "Real-Debrid mount" },
-  { id: "rclone-alldebrid", label: "rclone", sub: "AllDebrid mount" },
-  { id: "decypharr", label: "Decypharr" },
-  { id: "nzbget", label: "NZBGet" },
-  { id: "seerr", label: "Seerr" },
-  { id: "tautulli", label: "Tautulli" },
-  { id: "byparr", label: "Byparr" },
-  { id: "kometa", label: "Kometa" },
-  { id: "zilean", label: "Zilean" },
+/* Every service's own web UI - replaces Heimdall/Homepage as the link
+   launcher, so both were removed from docker-compose.yml. Port list
+   mirrors the "Bringing the stack up" table in README.md; `id` matches
+   the container name so status dots can reuse /api/status's data. */
+const QUICK_LINKS = [
+  { id: "plex", label: "Plex", port: 32400, path: "/web" },
+  { id: "prowlarr", label: "Prowlarr", port: 9696 },
+  { id: "zilean", label: "Zilean", port: 8181 },
+  { id: "decypharr", label: "Decypharr", port: 8282 },
+  { id: "decypharr-alldebrid", label: "Decypharr (AllDebrid)", port: 8283 },
+  { id: "zurg", label: "Zurg", port: 9999 },
+  { id: "radarr", label: "Radarr", port: 7878 },
+  { id: "sonarr", label: "Sonarr", port: 8989 },
+  { id: "lidarr", label: "Lidarr", port: 8686 },
+  { id: "readarr", label: "Readarr", port: 8787 },
+  { id: "nzbget", label: "NZBGet", port: 6789 },
+  { id: "seerr", label: "Seerr", port: 5055 },
+  { id: "bazarr", label: "Bazarr", port: 6767 },
+  { id: "byparr", label: "Byparr", port: 8191 },
+  { id: "tautulli", label: "Tautulli", port: 8182 },
+  { id: "glances", label: "Glances", port: 61208 },
 ];
+
+function buildQuickLinks() {
+  const container = document.getElementById("quicklinks");
+  container.innerHTML = QUICK_LINKS.map((svc) => {
+    const url = `${location.protocol}//${location.hostname}:${svc.port}${svc.path || ""}`;
+    return `<a class="quicklink" href="${url}" target="_blank" rel="noopener"><span class="quicklink-dot unknown" id="qdot-${svc.id}"></span>${escapeHtml(svc.label)}</a>`;
+  }).join("");
+}
 
 const MAX_LOG_LINES = 100;
 
@@ -352,35 +364,112 @@ function renderManualImportCandidates(app, panel, items) {
   });
 }
 
-/* ---------- Service restart chips ---------- */
-function buildChipGrid() {
-  const grid = document.getElementById("chip-grid");
-  for (const svc of RESTARTABLE) {
-    const chip = document.createElement("div");
-    chip.className = "chip";
-    chip.innerHTML = `
-      <span class="lamp unknown" id="lamp-${svc.id}"></span>
-      <span class="chip-name">${svc.label}${svc.sub ? `<span class="chip-sub">${svc.sub}</span>` : ""}</span>
-      <button class="btn-icon" type="button" title="Restart ${svc.label}">${svg("restart")}</button>
-    `;
-    const btn = chip.querySelector("button");
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      btn.classList.add("spinning");
-      logLine("pending", `${svc.label} — restart requested`);
-      try {
-        const data = await postAction(`/api/container/${svc.id}/restart`);
-        logLine("ok", `${svc.label} — ${data.message}`);
-        refreshStatus();
-      } catch (e) {
-        logLine("err", `${svc.label} — ${e.message}`);
-      } finally {
-        btn.disabled = false;
-        btn.classList.remove("spinning");
-      }
-    });
-    grid.appendChild(chip);
+/* ---------- Container grid: full state/health/image/CPU/mem + controls,
+   discovered live from Docker via /api/containers rather than a fixed
+   list, so a service added to compose shows up here with no code change. */
+const STOP_ICON = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+const START_ICON = '<polygon points="6 3 20 12 6 21 6 3"/>';
+ICONS.stop = STOP_ICON;
+ICONS.start = START_ICON;
+
+function fmtPercent(v) {
+  return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`;
+}
+
+function fmtMb(v) {
+  if (v === null || v === undefined) return "—";
+  return v >= 1024 ? `${(v / 1024).toFixed(2)} GB` : `${v.toFixed(0)} MB`;
+}
+
+function containerCardHtml(c) {
+  const stateClass = c.state === "running" ? (c.health === "unhealthy" ? "down" : c.health === "starting" ? "unknown" : "up") : c.state === "exited" || c.state === "created" ? "down" : "unknown";
+  const healthLabel = c.state !== "running" ? c.state : c.health ? c.health : "running";
+  const cpuPct = c.cpu_percent === null || c.cpu_percent === undefined ? null : Math.min(c.cpu_percent, 100);
+  const memPct = c.mem_percent === null || c.mem_percent === undefined ? null : Math.min(c.mem_percent, 100);
+  return `
+    <div class="container-card" data-name="${escapeHtml(c.name)}" data-state="${escapeHtml(c.state)}">
+      <div class="container-card-head">
+        <span class="lamp ${stateClass}"></span>
+        <span class="container-name">${escapeHtml(c.label)}${c.note ? `<span class="chip-sub">${escapeHtml(c.note)}</span>` : ""}</span>
+        <span class="container-health">${escapeHtml(healthLabel)}</span>
+      </div>
+      <div class="container-image" title="${escapeHtml(c.image)}">${escapeHtml(c.image)}</div>
+      <div class="container-metrics">
+        <div class="metric">
+          <span class="metric-label">CPU</span>
+          <div class="stat-bar small"><div class="stat-bar-fill" style="width:${cpuPct ?? 0}%"></div></div>
+          <span class="metric-value">${fmtPercent(c.cpu_percent)}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">MEM</span>
+          <div class="stat-bar small"><div class="stat-bar-fill" style="width:${memPct ?? 0}%"></div></div>
+          <span class="metric-value">${fmtMb(c.mem_used_mb)}</span>
+        </div>
+      </div>
+      <div class="container-actions">
+        <button class="btn-icon" type="button" data-act="start" title="Start" ${c.state === "running" ? "disabled" : ""}>${svg("start")}</button>
+        <button class="btn-icon" type="button" data-act="stop" title="Stop" ${c.is_self || c.state !== "running" ? "disabled" : ""}>${svg("stop")}</button>
+        <button class="btn-icon" type="button" data-act="restart" title="Restart" ${c.is_self ? "disabled" : ""}>${svg("restart")}</button>
+      </div>
+    </div>`;
+}
+
+function wireContainerCard(card, c) {
+  const startBtn = card.querySelector('[data-act="start"]');
+  const stopBtn = card.querySelector('[data-act="stop"]');
+  const restartBtn = card.querySelector('[data-act="restart"]');
+
+  const fire = async (btn, action, label) => {
+    btn.disabled = true;
+    btn.classList.add("spinning");
+    logLine("pending", `${c.label} — ${label} requested`);
+    try {
+      const data = await postAction(`/api/container/${c.name}/${action}`);
+      logLine("ok", `${c.label} — ${data.message}`);
+    } catch (e) {
+      logLine("err", `${c.label} — ${e.message}`);
+    } finally {
+      btn.classList.remove("spinning");
+      refreshContainerGrid();
+    }
+  };
+
+  if (!startBtn.disabled) startBtn.addEventListener("click", () => fire(startBtn, "start", "start"));
+  if (!restartBtn.disabled) restartBtn.addEventListener("click", () => fire(restartBtn, "restart", "restart"));
+  // Stop is armed/confirmed - unlike restart (self-healing) or start
+  // (harmless), stopping something leaves it down until someone notices
+  // and starts it back up, so it gets the same one-extra-click guard as
+  // the whole-stack restart and Zilean grab. Uses armIconButton (not
+  // armButton) so the SVG icon survives the armed/idle swap instead of
+  // being replaced by armButton's plain-text label.
+  if (!stopBtn.disabled) armIconButton(stopBtn, "stop", () => fire(stopBtn, "stop", "stop"));
+}
+
+let containerGridBuilt = false;
+
+async function refreshContainerGrid() {
+  const grid = document.getElementById("container-grid");
+  let data;
+  try {
+    const res = await fetch("/api/containers");
+    data = await res.json();
+    if (!res.ok) throw new Error("Could not load containers");
+  } catch (e) {
+    if (!containerGridBuilt) grid.innerHTML = `<div class="zilean-hint error">Could not load containers.</div>`;
+    return;
   }
+  const up = data.filter((c) => c.state === "running" && (c.health === "healthy" || !c.health)).length;
+  const containersValue = document.getElementById("stat-containers-value");
+  const containersSub = document.getElementById("stat-containers-sub");
+  if (containersValue) containersValue.textContent = `${up} / ${data.length}`;
+  if (containersSub) containersSub.textContent = up === data.length ? "all healthy" : `${data.length - up} need attention`;
+
+  grid.innerHTML = data.map(containerCardHtml).join("");
+  grid.querySelectorAll(".container-card").forEach((card) => {
+    const c = data.find((x) => x.name === card.dataset.name);
+    wireContainerCard(card, c);
+  });
+  containerGridBuilt = true;
 }
 
 /* ---------- Zilean direct search ---------- */
@@ -553,6 +642,105 @@ function armButton(btn, idleLabel, armedLabel, onConfirm) {
   });
 }
 
+/* ---------- Icon-button variant of armButton() - keeps the SVG icon
+   intact through the armed/idle swap instead of replacing it with a text
+   label, via a CSS class + title change only. ---------- */
+function armIconButton(btn, iconName, onConfirm) {
+  let armed = false;
+  let disarmTimer = null;
+  btn.innerHTML = svg(iconName);
+  const disarm = () => {
+    armed = false;
+    btn.classList.remove("armed");
+    btn.title = btn.dataset.idleTitle || btn.title;
+  };
+  btn.dataset.idleTitle = btn.title;
+  btn.addEventListener("click", async () => {
+    if (!armed) {
+      armed = true;
+      btn.classList.add("armed");
+      btn.title = "Click again to confirm";
+      disarmTimer = setTimeout(disarm, 5000);
+      return;
+    }
+    clearTimeout(disarmTimer);
+    disarm();
+    await onConfirm();
+  });
+}
+
+/* ---------- Overview strip: host stats, Zilean hash count, Plex version ---------- */
+async function refreshSystemStats() {
+  try {
+    const res = await fetch("/api/system/stats");
+    const d = await res.json();
+    const cpuVal = document.getElementById("stat-cpu-value");
+    const cpuBar = document.getElementById("stat-cpu-bar");
+    const memVal = document.getElementById("stat-mem-value");
+    const memBar = document.getElementById("stat-mem-bar");
+    const diskVal = document.getElementById("stat-disk-value");
+    const diskBar = document.getElementById("stat-disk-bar");
+    const uptimeVal = document.getElementById("stat-uptime-value");
+    if (!d.available) {
+      [cpuVal, memVal, diskVal].forEach((el) => (el.textContent = "unavailable"));
+      uptimeVal.textContent = "unavailable";
+      return;
+    }
+    cpuVal.textContent = fmtPercent(d.cpu_percent);
+    cpuBar.style.width = `${Math.min(d.cpu_percent ?? 0, 100)}%`;
+    memVal.textContent = d.mem_total_gb ? `${fmtPercent(d.mem_percent)} (${d.mem_used_gb}/${d.mem_total_gb} GB)` : fmtPercent(d.mem_percent);
+    memBar.style.width = `${Math.min(d.mem_percent ?? 0, 100)}%`;
+    diskVal.textContent = d.disk_total_gb ? `${fmtPercent(d.disk_percent)} (${d.disk_used_gb}/${d.disk_total_gb} GB)` : fmtPercent(d.disk_percent);
+    diskBar.style.width = `${Math.min(d.disk_percent ?? 0, 100)}%`;
+    uptimeVal.textContent = d.uptime || "—";
+  } catch (_) {
+    /* leave last-known values on screen rather than blanking on one failed poll */
+  }
+}
+
+async function refreshZileanStats() {
+  const val = document.getElementById("stat-zilean-value");
+  const sub = document.getElementById("stat-zilean-sub");
+  try {
+    const res = await fetch("/api/zilean/stats");
+    const d = await res.json();
+    if (!d.available) {
+      val.textContent = "unavailable";
+      sub.textContent = "";
+      return;
+    }
+    val.textContent = d.total_hashes.toLocaleString();
+    sub.textContent = d.imdb_matched != null ? `${d.imdb_matched.toLocaleString()} IMDB-matched` : "";
+  } catch (_) {
+    /* leave last-known value */
+  }
+}
+
+function buildPlexUpdateCheck() {
+  const btn = document.getElementById("plex-check-updates");
+  const val = document.getElementById("stat-plex-value");
+  const sub = document.getElementById("stat-plex-sub");
+  const check = async () => {
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/plex/updates");
+      const d = await res.json();
+      if (!res.ok) throw new Error(d?.detail?.message || "Could not check Plex updates.");
+      val.textContent = d.running_version || "—";
+      sub.textContent = d.update_available ? `Update available: ${d.releases[0]?.version}` : "Up to date on its current channel.";
+      sub.classList.toggle("stat-sub-warn", d.update_available);
+      logLine(d.update_available ? "pending" : "ok", `Plex updates — ${sub.textContent}`);
+    } catch (e) {
+      sub.textContent = e.message;
+      logLine("err", `Plex updates — ${e.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  btn.addEventListener("click", check);
+  check();
+}
+
 /* ---------- Danger zone: restart everything ---------- */
 function buildDangerZone() {
   const btn = document.getElementById("restart-all-btn");
@@ -586,15 +774,19 @@ async function refreshStatus() {
     return;
   }
   for (const [name, info] of Object.entries(data)) {
+    const isUp = info.state === "running" && (info.health === "healthy" || info.health == null);
+    const isStarting = info.state === "running" && info.health === "starting";
+    const stateClass = isUp ? "up" : isStarting ? "unknown" : "down";
+
     const lamp = document.getElementById(`lamp-${name}`);
-    if (!lamp) continue;
-    lamp.classList.remove("up", "down", "unknown");
-    if (info.state === "running" && (info.health === "healthy" || info.health == null)) {
-      lamp.classList.add("up");
-    } else if (info.state === "running" && info.health === "starting") {
-      lamp.classList.add("unknown");
-    } else {
-      lamp.classList.add("down");
+    if (lamp) {
+      lamp.classList.remove("up", "down", "unknown");
+      lamp.classList.add(stateClass);
+    }
+    const dot = document.getElementById(`qdot-${name}`);
+    if (dot) {
+      dot.classList.remove("up", "down", "unknown");
+      dot.classList.add(stateClass);
     }
   }
 }
@@ -611,13 +803,20 @@ function tickClock() {
   });
 }
 
+buildQuickLinks();
 buildPrimaryGrid();
 buildArrList();
 buildZileanSearch();
-buildChipGrid();
 buildDangerZone();
+buildPlexUpdateCheck();
 tickClock();
 setInterval(tickClock, 1000);
 refreshStatus();
 setInterval(refreshStatus, 20000);
+refreshContainerGrid();
+setInterval(refreshContainerGrid, 15000);
+refreshSystemStats();
+setInterval(refreshSystemStats, 10000);
+refreshZileanStats();
+setInterval(refreshZileanStats, 60000);
 logLine("ok", "Control panel ready.");

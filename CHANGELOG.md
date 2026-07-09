@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v4.14.0**.
+retroactive pass) was never versioned under. Current version: **v5.0.0**.
 
 > **2026-07-09 — versioning policy tightened, history backfilled.** Several past commits (a
 > planning doc, two CI workflow additions, a Dependabot base-image bump, a doc-only bugfix
@@ -27,6 +27,110 @@ retroactive pass) was never versioned under. Current version: **v4.14.0**.
 > lines up 1:1 with what that number refers to here now.
 
 ---
+
+## [5.0.0] — Homepage and Heimdall removed; Control Panel gets Quick Links + a Matrix theme
+
+User asked for a quick-link list to every service at the top of Control Panel's page
+specifically so Homepage and Heimdall could be removed entirely, plus a Matrix visual theme
+"to match the pc." Both requested and done in the same pass.
+
+### Removed
+- **`heimdall` and `homepage` services removed from `docker-compose.yml` entirely** (22 total
+  services now, down from 24) — both were link-launcher/widget-dashboard installs that were
+  never actually themed or populated with live data beyond their stock defaults (see
+  [4.15.0](CHANGELOG.md) below and the Dashboard section in README.md), so once Quick Links
+  covered what either was for, keeping them running was pure overhead. The live containers
+  were stopped and removed with `docker compose --profile extras up -d --force-recreate
+  control-panel --remove-orphans` rather than left dangling after the compose file change —
+  confirmed via `docker ps -a` that neither `heimdall` nor `homepage` exists in any state
+  anymore, not just that they're missing from `docker compose ps`.
+- Every remaining `heimdall`/`homepage` reference in README.md, TODO.md, `.env.example`, and
+  `control-panel/app.py`'s `CONTAINER_LABELS` dict cleaned up in the same pass — including a
+  now-moot TODO.md item investigating Heimdall's empty `app.sqlite`, which stopped being
+  worth investigating once the service itself was removed.
+
+### Added
+- **Quick Links panel** (`control-panel/static/app.js`'s `QUICK_LINKS`) — one link per service
+  with a web UI (16 total: Plex, Prowlarr, Zilean, both Decypharr instances, Zurg, all 4 arr
+  apps, NZBGet, Seerr, Bazarr, Byparr, Tautulli, Glances), each with a live up/down status dot
+  reusing the same `/api/status` polling the container grid already does — no new backend
+  endpoint needed.
+- **Matrix theme** (`control-panel/static/style.css`) — full palette swap from black/red to
+  black/phosphor-green (`--accent: #00ff41`), monospace headings, and button text color
+  switched from white to a dark green (`--accent-text-on`) since white-on-bright-green has
+  poor contrast where red-on-dark didn't. `--bad` (real errors/danger) deliberately kept red
+  rather than reworked into the green palette, so it still reads as a genuine anomaly against
+  an otherwise all-green console instead of blending in.
+- **Falling-code rain layer** (`control-panel/static/matrix-rain.js`) — a self-contained canvas
+  animation behind everything (`z-index: -1`), kept in its own file rather than folded into
+  `app.js` on purpose: a bug in a decorative effect should never be able to take the actual
+  ops dashboard down with it. Respects `prefers-reduced-motion` by skipping the render loop
+  entirely (not just hiding the canvas via CSS), and pauses via the Page Visibility API when
+  the tab isn't active, since this dashboard is meant to be left open in a tab.
+
+### Verified live
+- Rebuilt (`docker compose build control-panel`) and redeployed
+  (`--force-recreate --remove-orphans`) against the actual running stack, not just built.
+  Confirmed `heimdall`/`homepage` are gone from `docker ps -a` entirely (stopped and removed,
+  not just orphaned), confirmed the container came back `healthy`, confirmed `/api/containers`
+  now returns exactly 22 entries, and confirmed `index.html`/`style.css`/`matrix-rain.js` all
+  serve the new content (200s, quicklinks/matrix-rain markup and the new CSS palette present
+  in the response bodies).
+
+*Built with Claude AI.*
+
+## [4.15.0] — Control Panel becomes the single dashboard
+
+User asked for Homepage to gain container-graphical status/control, Plex updates, Radarr/Sonarr
+manual import, an optimize-database button, Zilean hash counts, live system specs, and a
+sortable Zilean search with grab-to-DMM. Investigating turned up that Control Panel (not
+Homepage) already had real backend code for most of this — manual import, optimize-database,
+and Zilean search+grab were already implemented and working, while Homepage's own config files
+were unconfigured stock templates with none of what README had claimed for it (see the
+Dashboard/Homepage audit earlier this session). Consolidated everything into Control Panel
+rather than building out a second, mostly-redundant dashboard.
+
+### Added
+- **Full container grid** (`GET /api/containers`) — every container in this compose project,
+  discovered live via the same `com.docker.compose.project` label lookup the whole-stack
+  restart already used (`project_containers()`, factored out and shared), not the old
+  hardcoded `RESTARTABLE_CONTAINERS` allow-list (which only covered 16 of the stack's services
+  and had already silently missed `decypharr-alldebrid`). Reports state, health, image, and
+  live CPU/memory computed the same way `docker stats` does (`cpu_stats`/`precpu_stats` delta,
+  `inactive_file` cache subtraction on memory). Added real **start**
+  (`POST /api/container/{name}/start`) and **stop** (`POST /api/container/{name}/stop`)
+  endpoints alongside the existing restart - stop is arm/confirm-guarded in the UI since it
+  leaves something down until someone notices; the panel rejects stopping/restarting itself.
+- **Host system stats** (`GET /api/system/stats`) — proxied from Glances' own REST API
+  (`http://glances:61208/api/4/all`), since this container has no host `pid` namespace of its
+  own. Degrades to `{"available": false}` rather than a 502 if Glances is unreachable.
+- **Zilean hash count** (`GET /api/zilean/stats`) — queried directly from `zilean-postgres`
+  (`SELECT COUNT(*) FROM "Torrents"`), since Zilean has no stats API of its own (every endpoint
+  guessed at previously — `/health`, `/api/stats`, `/dmm/status` — 404s, see README's "Zilean
+  hash sources"). Also attempts an IMDB-matched breakdown (`WHERE "ImdbId" IS NOT NULL`) with
+  its own nested try/except so a wrong guess at that column name can't take out the base count.
+- **Plex update check** (`GET /api/plex/updates`) — reads the running version from `/identity`
+  and checks for a newer one via `/updater/status`; a check only, never an auto-apply action
+  (Plex stays deliberately pinned, see README's Image pinning policy).
+- `ZILEAN_POSTGRES_PASSWORD` added to `control-panel`'s environment in `docker-compose.yml` and
+  `psycopg2-binary==2.9.10` to `requirements.txt` for the above.
+
+### Changed
+- `GET /api/status` and `POST /api/container/{name}/restart` now validate against the same
+  live container discovery instead of the old hardcoded list.
+
+### Verified live
+- Rebuilt and redeployed against the real running stack (not a sandbox). `/api/containers`
+  correctly reported all containers with real CPU/mem figures; `/api/system/stats` returned
+  real host numbers (22.7GB RAM, 928GB disk, live uptime); `/api/zilean/stats` returned
+  149,474 total hashes / 128,321 IMDB-matched — confirming the guessed `"ImdbId"` column name
+  was actually correct against the live schema; `/api/plex/updates` correctly read the running
+  Plex version with no update available. Safety guards confirmed: stopping/restarting the panel
+  itself → 400, an unknown container name → 404, starting an already-running container → clean
+  no-op. Fired a real restart of `unpackerr` through the new endpoint and confirmed it actually
+  cycled via a fresh `StartedAt` timestamp.
+
+*Built with Claude AI.*
 
 ## [4.14.0] — Decypharr: restrict Radarr to Real-Debrid only
 
