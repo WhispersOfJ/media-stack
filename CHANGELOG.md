@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.3.0**.
+retroactive pass) was never versioned under. Current version: **v6.3.1**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,30 @@ retroactive pass) was never versioned under. Current version: **v6.3.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+---
+
+## [6.3.1] — Sonarr: 1080p WEB/HDTV size cap raised to unlimited
+
+User hit a batch of Sonarr rejection reasons in one search and asked to stop seeing them. Most
+were Sonarr working as intended, not misconfiguration - explained rather than "fixed": a
+blocklisted release (auto-blocklisted after a prior failed grab/import, by design), "multi-season
+releases are not supported" (a hard Sonarr limitation, not a setting), "existing file meets
+custom format cutoff" (a file already on disk already satisfies the profile's upgrade
+threshold), and "episode wasn't requested"/"wrong season" (the release genuinely didn't match
+the search scope). Only the size-limit rejection was a real tunable.
+
+### Changed
+- **`HDTV-1080p`/`WEBDL-1080p`/`WEBRip-1080p` quality definitions' `maxSize` set to unlimited**
+  (`PUT /api/v3/qualitydefinition/{9,14,15}`) in Sonarr. The specific release that triggered
+  this was 91.1GB for a 270-minute pack (~337 MB/min) against a 125-130 MB/min cap that matches
+  TRaSH-Guides' own standard values - not misconfigured, but the user explicitly wants releases
+  that size to get through going forward rather than raising the cap to a still-finite ceiling.
+  Bluray-1080p and every other tier's cap were left as-is - only the three tiers actually
+  discussed were changed.
+- Live Sonarr app config only (not a `docker-compose.yml`/tracked-file change) - same category
+  as [6.0.0]'s quality profile/custom format work, documented here per this file's own policy
+  of versioning every real change regardless of whether it touches a file in this repo.
 
 ---
 
