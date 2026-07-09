@@ -31,6 +31,8 @@ ZILEAN_URL = "http://zilean:8181"
 DECYPHARR_URL = "http://decypharr:8282"
 DECYPHARR_MANUAL_CATEGORY = "manual"
 GLANCES_URL = "http://glances:61208"
+BAZARR_URL = "http://bazarr:6767"
+BAZARR_API_KEY = os.environ["BAZARR_API_KEY"]
 ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
 # Matches Decypharr's own hexRegex (pkg/internal/utils/magnet.go) - its
 # magnet parser (anacrolix/torrent's metainfo.ParseMagnetUri) 400s with no
@@ -72,10 +74,20 @@ ARR_APPS = {
     },
 }
 
-# Unstick/manual-import only make sense for apps with a download queue that
-# actually gets stuck on import matching - Lidarr/Readarr are excluded here
-# because that wasn't asked for and untested against their queue shape.
-QUEUE_ARR_APPS = ("radarr", "sonarr")
+# Unstick (remove + blocklist + re-search a stuck queue item) works against
+# any app on the same Servarr API family - verified live against Lidarr's
+# queue during the v6.5.0 Metallica investigation (identical
+# DELETE .../queue/{id}?blocklist=true&skipRedownload=false pattern as
+# Radarr/Sonarr). Readarr is left out - never exercised against its queue,
+# so no live evidence its shape matches.
+UNSTICK_ARR_APPS = ("radarr", "sonarr", "lidarr")
+
+# Manual import is narrower than unstick: arr_manual_import_candidates()'s
+# file-to-movie/series field mapping is Radarr/Sonarr-specific (movieId vs.
+# seriesId/episodeIds) - Lidarr's manualimport response uses artist/album
+# fields instead, untested here, so extending unstick to Lidarr doesn't
+# also extend this without real field-mapping work first.
+MANUAL_IMPORT_ARR_APPS = ("radarr", "sonarr")
 
 # Display-only labels/notes for the container grid - NOT an allow-list.
 # Which containers actually exist, and which actions are valid on them, is
@@ -107,6 +119,10 @@ CONTAINER_LABELS = {
     "glances": ("Glances", None),
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
+    "debridmediamanager": ("DebridMediaManager", None),
+    "dmm-mysql": ("DMM MySQL", "app database"),
+    "dmm-redis": ("DMM Redis", "rate limiting"),
+    "dmm-migrate": ("DMM Migrate", "one-shot Prisma migration - exits after running, not a bug if shown stopped"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 
@@ -470,6 +486,34 @@ def plex_updates():
 
 
 # ---------------------------------------------------------------------
+# Bazarr - runs its own "Search for Missing Series/Movies Subtitles" tasks
+# every 6 hours on a schedule; this bypasses that wait the same way Kometa's
+# run button bypasses its own 05:00 schedule. Uses Bazarr's generic
+# scheduler endpoint (POST /api/system/tasks, taskid=<job_id>) rather than a
+# per-item subtitle-search call - one click searches the whole library's
+# wanted list, matching the arr apps' own "Search missing" pattern below.
+# ---------------------------------------------------------------------
+def bazarr_headers():
+    return {"X-API-KEY": BAZARR_API_KEY}
+
+
+@app.post("/api/bazarr/search-wanted")
+def bazarr_search_wanted():
+    for task_id in ("wanted_search_missing_subtitles_series", "wanted_search_missing_subtitles_movies"):
+        try:
+            r = httpx.post(
+                f"{BAZARR_URL}/api/system/tasks",
+                data={"taskid": task_id},
+                headers=bazarr_headers(),
+                timeout=15,
+            )
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"Bazarr search-wanted ({task_id}) failed: {e}")
+    return ok("Bazarr is searching for every missing series and movie subtitle now.")
+
+
+# ---------------------------------------------------------------------
 # Zilean - direct search against its own index, bypassing Prowlarr/*arr
 # entirely. Talks to Zilean's own /dmm/search endpoint (AllowAnonymous,
 # no API key needed - only /dmm/on-demand-scrape requires one).
@@ -599,9 +643,15 @@ def arr_search_missing(app_name: str):
 # (see CONTAINER_LABELS' Radarr note) or a release that doesn't
 # actually match what was expected.
 # ---------------------------------------------------------------------
-def require_queue_app(app_name: str) -> dict:
-    if app_name not in QUEUE_ARR_APPS:
-        fail(f"'{app_name}' isn't supported here - only radarr and sonarr have a queue.", status_code=404)
+def require_unstick_app(app_name: str) -> dict:
+    if app_name not in UNSTICK_ARR_APPS:
+        fail(f"'{app_name}' isn't supported here - unstick works on radarr, sonarr, and lidarr.", status_code=404)
+    return ARR_APPS[app_name]
+
+
+def require_manual_import_app(app_name: str) -> dict:
+    if app_name not in MANUAL_IMPORT_ARR_APPS:
+        fail(f"'{app_name}' isn't supported here - manual import works on radarr and sonarr.", status_code=404)
     return ARR_APPS[app_name]
 
 
@@ -629,7 +679,7 @@ def stuck_queue_items(app_name: str) -> list[dict]:
 
 @app.post("/api/arr/{app_name}/unstick")
 def arr_unstick(app_name: str):
-    cfg = require_queue_app(app_name)
+    cfg = require_unstick_app(app_name)
     items = stuck_queue_items(app_name)
     if not items:
         return ok(f"No stuck downloads in {cfg['label']}.")
@@ -662,7 +712,7 @@ def arr_manual_import_candidates(app_name: str):
     would show - each candidate is echoed straight back on import so the
     quality/language/match info can't drift from what the arr app itself
     reported."""
-    cfg = require_queue_app(app_name)
+    cfg = require_manual_import_app(app_name)
     candidates = []
     for q in stuck_queue_items(app_name):
         folder, download_id = q.get("outputPath"), q.get("downloadId")
@@ -717,7 +767,7 @@ def arr_manual_import_candidates(app_name: str):
 
 @app.post("/api/arr/{app_name}/manual-import")
 def arr_manual_import_execute(app_name: str, payload: ManualImportFile):
-    cfg = require_queue_app(app_name)
+    cfg = require_manual_import_app(app_name)
     body = {"name": "ManualImport", "files": [payload.model_dump(exclude_none=True)]}
     try:
         r = httpx.post(f"{cfg['url']}/api/{cfg['api']}/command", json=body, headers={"X-Api-Key": cfg["key"]}, timeout=30)

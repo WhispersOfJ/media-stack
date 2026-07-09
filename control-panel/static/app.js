@@ -55,12 +55,23 @@ const PRIMARY_ACTIONS = [
     endpoint: "/api/plex/clean-bundles",
     icon: "broom",
   },
+  {
+    id: "bazarr-search-wanted",
+    title: "Search all wanted subtitles",
+    desc: "Runs Bazarr's missing-subtitle search for every series and movie now, bypassing the 6-hour schedule.",
+    endpoint: "/api/bazarr/search-wanted",
+    icon: "search",
+  },
 ];
 
 const ARR_APPS = [
-  { id: "radarr", label: "Radarr", port: 7878, queue: true },
-  { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
-  { id: "lidarr", label: "Lidarr", port: 8686 },
+  { id: "radarr", label: "Radarr", port: 7878, unstick: true, manualImport: true },
+  { id: "sonarr", label: "Sonarr", port: 8989, unstick: true, manualImport: true },
+  // Unstick-only: verified live against Lidarr's queue during the v6.5.0
+  // Metallica investigation, but manual-import's file-to-item field mapping
+  // is Radarr/Sonarr-specific and was never adapted/tested for Lidarr's
+  // artist/album shape - see app.py's MANUAL_IMPORT_ARR_APPS comment.
+  { id: "lidarr", label: "Lidarr", port: 8686, unstick: true },
   { id: "readarr", label: "Readarr", port: 8787 },
 ];
 
@@ -85,6 +96,7 @@ const QUICK_LINKS = [
   { id: "byparr", label: "Byparr", port: 8191 },
   { id: "tautulli", label: "Tautulli", port: 8182 },
   { id: "glances", label: "Glances", port: 61208 },
+  { id: "debridmediamanager", label: "DebridMediaManager", port: 3000 },
 ];
 
 function buildQuickLinks() {
@@ -223,8 +235,8 @@ function buildArrList() {
       <div class="arr-actions">
         <button class="btn-ghost" data-action="rss-sync" type="button">RSS sync</button>
         <button class="btn-ghost" data-action="search-missing" type="button">Search missing</button>
-        ${app.queue ? `<button class="btn-ghost" data-unstick type="button">Unstick</button>` : ""}
-        ${app.queue ? `<button class="btn-ghost" data-import-toggle type="button">Manual import</button>` : ""}
+        ${app.unstick ? `<button class="btn-ghost" data-unstick type="button">Unstick</button>` : ""}
+        ${app.manualImport ? `<button class="btn-ghost" data-import-toggle type="button">Manual import</button>` : ""}
       </div>
     `;
     const status = row.querySelector(".arr-status");
@@ -260,12 +272,12 @@ function buildArrList() {
     });
     list.appendChild(row);
 
-    if (app.queue) {
+    if (app.unstick) setupUnstick(app, row, status);
+    if (app.manualImport) {
       const panel = document.createElement("div");
       panel.className = "import-panel";
       panel.hidden = true;
       list.appendChild(panel);
-      setupUnstick(app, row, status);
       setupManualImportToggle(app, row, panel);
     }
   }
