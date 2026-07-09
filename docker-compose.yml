@@ -849,6 +849,7 @@ services:
     profiles: [extras]
     networks: [stacknet]
     environment:
+      TZ: ${TZ}
       MYSQL_ROOT_PASSWORD: ${DMM_MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: dmm
       MYSQL_USER: dmm
@@ -861,11 +862,21 @@ services:
       start_period: 30s
     volumes:
       - ./config/dmm-mysql:/var/lib/mysql
-    # Personal-scale usage, not debridmediamanager.com's own traffic - sized
-    # down from zilean-postgres's tuning above (same reasoning pattern, much
-    # lighter per-title on-demand load instead of IMDB-scale ingestion).
-    mem_limit: 1g
-    mem_reservation: 128m
+      # Not :ro - caught live: MySQL's own entrypoint chowns this directory
+      # to the mysql user on every startup and crash-loops if it can't.
+      # LOAD DATA INFILE itself only reads from here regardless. Matches
+      # MySQL 8.4's secure default (secure_file_priv=/var/lib/mysql-files/,
+      # confirmed live) rather than loosening local_infile globally.
+      # scripts/import-imdb-data.py writes filtered TSVs here from the host.
+      - ./config/dmm-mysql-import:/var/lib/mysql-files/import
+    # Bumped from the original personal-scale sizing - stack-imdb-sync.timer
+    # now LOAD DATA INFILEs low millions of rows into this instance daily
+    # (imdb_title_basics/akas/ratings, filtered to movie/tvSeries/
+    # tvMiniSeries - see CHANGELOG), with @@fulltext indexes to maintain on
+    # top of that. Still far short of zilean-postgres's own IMDB-scale
+    # tuning, but no longer "personal-scale app state only" either.
+    mem_limit: 2g
+    mem_reservation: 256m
     cpus: 2
 
   dmm-redis:
@@ -875,6 +886,8 @@ services:
     container_name: dmm-redis
     profiles: [extras]
     networks: [stacknet]
+    environment:
+      TZ: ${TZ}
     # Matches upstream's own reference docker-compose.yml exactly (rate
     # limiting - DMM falls back to in-memory without it, but this is tiny).
     command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
@@ -911,6 +924,7 @@ services:
     networks: [stacknet]
     command: ["npx", "prisma", "db", "push", "--accept-data-loss"]
     environment:
+      TZ: ${TZ}
       DATABASE_URL: mysql://dmm:${DMM_MYSQL_PASSWORD}@dmm-mysql:3306/dmm
     depends_on:
       dmm-mysql:
@@ -953,8 +967,11 @@ services:
     # against the actual runtime, then start via the ordinary `next start`
     # (not the standalone server) since this stage has the regular,
     # non-pruned `.next` build output from its own build step.
+    # tzdata added alongside openssl/curl - TZ alone doesn't correctly
+    # resolve DST/offset without the zoneinfo database present, needed so
+    # the "Added" column in DMM's UI shows local time instead of UTC.
     command: >
-      sh -c "apt-get update && apt-get install -y -q openssl curl &&
+      sh -c "apt-get update && apt-get install -y -q openssl curl tzdata &&
       rm -rf /var/lib/apt/lists/* && npx prisma generate &&
       npx next start -H 0.0.0.0 -p 3000"
     healthcheck:
@@ -966,6 +983,7 @@ services:
       retries: 3
       start_period: 45s
     environment:
+      TZ: ${TZ}
       DATABASE_URL: mysql://dmm:${DMM_MYSQL_PASSWORD}@dmm-mysql:3306/dmm
       REDIS_URL: redis://dmm-redis:6379
       DMM_ORIGIN: ${DMM_ORIGIN}

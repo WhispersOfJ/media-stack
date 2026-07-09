@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh DebridMediaManager's local IMDB title index
+After=media-stack.service
+# Same defense-in-depth as every other stack-*.service unit.
+OnFailure=notify-failure@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Stack
+ExecStart=/usr/bin/python3 %h/Stack/scripts/import-imdb-data.py
