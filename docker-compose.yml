@@ -4,6 +4,11 @@ x-common: &common
     PUID: ${PUID}
     PGID: ${PGID}
     TZ: ${TZ}
+  logging: &common-logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 networks:
   stacknet:
@@ -35,6 +40,7 @@ services:
 
   zilean-postgres:
     restart: unless-stopped
+    logging: *common-logging
     image: postgres:18-alpine
     container_name: zilean-postgres
     networks: [stacknet]
@@ -83,6 +89,7 @@ services:
 
   zilean:
     restart: unless-stopped
+    logging: *common-logging
     # Pinned to the exact version currently running (verified same digest as
     # :latest at pin time) rather than :latest.
     image: ipromknight/zilean:v3.5.0
@@ -181,6 +188,39 @@ services:
     mem_reservation: 256m
     cpus: 4
 
+  # Second, isolated Decypharr instance for AllDebrid only. Decypharr has no
+  # per-provider category scoping (a single instance's debrids[] are all
+  # available to every category), so the only way to keep AllDebrid
+  # exclusive to Sonarr rather than shared with Radarr/Lidarr/Readarr is a
+  # fully separate instance - own port, own config/mount, wired into Sonarr
+  # only as a download client.
+  decypharr-alldebrid:
+    <<: *common
+    image: cy01/blackhole:v2.3
+    container_name: decypharr-alldebrid
+    networks: [stacknet]
+    ports:
+      - "8283:8282"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8282/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - /mnt:/mnt:rshared
+      - ./config/decypharr-alldebrid:/app
+      - ./config/decypharr-alldebrid/cache:/cache
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    mem_limit: 1.5g
+    mem_reservation: 256m
+    cpus: 4
+
   # ---------------------------------------------------------------------
   # Native-companion containerization (Phase 1 of 2 - see CHANGELOG for the
   # full plan). Zurg mounts pre-existing Real-Debrid content directly at
@@ -225,6 +265,7 @@ services:
 
   rclone-alldebrid:
     restart: unless-stopped
+    logging: *common-logging
     image: rclone/rclone:1.74.3
     container_name: rclone-alldebrid
     networks: [stacknet]
@@ -261,6 +302,11 @@ services:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
+    # Same reasoning as zurg above (own FUSE mount, no prior ceiling) but
+    # lighter - read-only mount, no Real-Debrid polling of its own.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 4
 
   # ---------------------------------------------------------------------
   # *arr apps
@@ -381,6 +427,7 @@ services:
   # ---------------------------------------------------------------------
   seerr:
     restart: unless-stopped
+    logging: *common-logging
     # Digest-pinned rather than a version tag: upstream's last tagged
     # release (v3.0.1) is behind what's actually shipped as :latest (running
     # version reports 3.3.0 via its own API) - no matching tag exists to pin
@@ -410,6 +457,7 @@ services:
   # ---------------------------------------------------------------------
   plex:
     restart: unless-stopped
+    logging: *common-logging
     # Official image, not a LinuxServer-style fork - a PUID/PGID-forcing
     # image would recursively chown the ~33GB library to PUID/PGID on first
     # boot (same reason the Kometa entry below avoids the LinuxServer fork).
@@ -525,6 +573,7 @@ services:
   # verification.
   byparr:
     restart: unless-stopped
+    logging: *common-logging
     # Digest-pinned rather than a version tag - the project doesn't publish
     # clean vX.Y.Z tags on its GHCR registry the way its GitHub releases
     # suggest (only :latest, :main, and commit-sha/arch-specific tags were
@@ -575,76 +624,23 @@ services:
       start_period: 30s
     volumes:
       - ./config/tautulli:/config
+    # No prior ceiling - same defensive reasoning as Bazarr above (simple
+    # companion app, modest observed footprint, cheap insurance).
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
 
-  heimdall:
-    <<: *common
-    # Digest-pinned: LinuxServer doesn't publish real version tags for
-    # Heimdall (only opaque version-<hash> build tags), and the newest one
-    # available doesn't match what's currently running - pinning to it would
-    # be an unplanned update, not a neutral pin. Freezes exactly what's
-    # running today; bump deliberately when ready to take a newer build.
-    image: lscr.io/linuxserver/heimdall@sha256:536eb14f068fe3f052b92f94ca606db689d1d1b79b5408d1242c12e882e4ed66
-    container_name: heimdall
-    profiles: [extras]
-    networks: [stacknet]
-    # HTTP (internal 80) only - the HTTPS port (3443) uses a self-signed cert
-    # with no real value on a LAN-only setup, so it's not published.
-    ports:
-      - "3000:80"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/heimdall:/config
-
-  # Broad-featured live dashboard: per-service widgets (queue/health/stats),
-  # docker container status for everything below, and a dedicated Zilean
-  # Watch panel. Kept alongside Heimdall rather than replacing it - Heimdall
-  # is a simple link launcher, this one talks to each app's API.
-  homepage:
-    restart: unless-stopped
-    # Digest-pinned: upstream's last tagged release (v1.4.5) is behind
-    # what's actually shipped as :latest - no matching tag exists to pin to
-    # without downgrading, so this freezes exactly what's running today.
-    # Bump this digest deliberately when upstream cuts a new tagged release.
-    image: ghcr.io/gethomepage/homepage@sha256:a0b71c8e757298d02560186bab9fbe3fc2d375c523a62cc1019177b37e48aa28
-    container_name: homepage
-    profiles: [extras]
-    networks: [stacknet]
-    # Container's Next.js server listens internally on 3000; public port stays 3001.
-    ports:
-      - "3001:3000"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-      HOMEPAGE_VAR_HOST_IP: ${HOST_IP}
-      HOMEPAGE_VAR_PLEX_URL: ${PLEX_URL}
-      # Next.js host-header validation - without this, every request 404s
-      # with "Host validation failed" unless the Host header exactly matches.
-      HOMEPAGE_ALLOWED_HOSTS: localhost:3001,127.0.0.1:3001,${HOST_IP}:3001
-    volumes:
-      - ./config/homepage:/app/config
-      # Read-only: only used so service cards can show live container
-      # status/health and expose start/stop/restart controls.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
-  # One-click operational actions Homepage can't do on its own - it can show
-  # status and start/stop/restart a container, but it has no concept of
-  # "run this command inside a container" or "call this app's API". Custom
-  # build (control-panel/), not a pulled image. Linked from Homepage's
-  # Extras & Monitoring group as a service card rather than replacing
-  # anything there.
+  # Single dashboard for this stack: live container status/control, host
+  # stats, Zilean hash count, one-click ops actions, and a Quick Links panel
+  # to every service's own web UI. That last part is what let Heimdall and
+  # Homepage (both simple link launchers/widget dashboards, never this
+  # stack's ops tool) be removed entirely rather than kept alongside it -
+  # see README.md's Dashboard section. Custom build (control-panel/), not a
+  # pulled image.
   control-panel:
     build: ./control-panel
     restart: unless-stopped
+    logging: *common-logging
     container_name: control-panel
     profiles: [extras]
     networks: [stacknet]
@@ -663,6 +659,9 @@ services:
       SONARR_API_KEY: ${SONARR_API_KEY}
       LIDARR_API_KEY: ${LIDARR_API_KEY}
       READARR_API_KEY: ${READARR_API_KEY}
+      # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
+      # the same credential Zilean itself already has, no new secret.
+      ZILEAN_POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # actually execs into containers (Kometa's on-demand run) and issues
@@ -672,14 +671,20 @@ services:
       # model as every other service in this stack (see README's Security
       # note), acknowledged as a deliberately higher-blast-radius exception.
       - /var/run/docker.sock:/var/run/docker.sock
+    # No prior ceiling despite having docker.sock exec/restart access - a
+    # light Flask app, but cheap insurance given its elevated blast radius.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
 
-  # Real host-level CPU/memory/disk/uptime for Homepage's top-of-page widget
-  # (the "resources" widget only reports the *container's own* usage - this
-  # is what actually shows host stats). pid: host + the read-only rootfs
+  # Real host-level CPU/memory/disk/uptime, proxied into Control Panel's
+  # overview strip (a container's own /proc only reports its own usage -
+  # this is what actually sees the host). pid: host + the read-only rootfs
   # mount are both required for it to see the host rather than itself.
-  # Also has its own decent web UI, so it gets a real service card too.
+  # Also has its own web UI, so it's linked directly in Quick Links too.
   glances:
     restart: unless-stopped
+    logging: *common-logging
     # Digest-pinned: upstream's newest tagged release (4.5.5) doesn't match
     # what's actually shipped as :latest - no matching tag exists to pin to
     # without downgrading, so this freezes exactly what's running today.
@@ -703,6 +708,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /:/rootfs:ro
+    # No prior ceiling - lightweight monitoring agent, cheap insurance.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
 
   # Automated Plex collections/metadata/overlays. Official image only - the
   # LinuxServer fork resets /config ownership to PUID/PGID (or 911:911 if
@@ -717,6 +726,7 @@ services:
   # surfaced there instead.
   kometa:
     restart: unless-stopped
+    logging: *common-logging
     image: kometateam/kometa@sha256:98a0df2694edea467ac8870bcecddea3ec0bc14a071721372fb9fa811a829902
     container_name: kometa
     profiles: [extras]
@@ -745,6 +755,7 @@ services:
 
   unpackerr:
     restart: unless-stopped
+    logging: *common-logging
     # Digest-pinned: upstream's newest tagged release (0.15.2) doesn't match
     # what's actually shipped as :latest - no matching tag exists to pin to
     # without downgrading, so this freezes exactly what's running today.
@@ -769,9 +780,15 @@ services:
     volumes:
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
+    # No prior ceiling - extraction (unzip/unrar) can spike CPU briefly on
+    # large archives, cheap insurance same as the other companion apps above.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
 
   watchtower:
     restart: unless-stopped
+    logging: *common-logging
     image: nickfedor/watchtower:1.19.0
     container_name: watchtower
     profiles: [extras]
@@ -795,3 +812,8 @@ services:
       WATCHTOWER_NOTIFICATIONS_HOSTNAME: ${HOST_IP}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    # No prior ceiling - idle daemon most of the time, cheap insurance
+    # despite the docker.sock access it needs to do its job.
+    mem_limit: 256m
+    mem_reservation: 32m
+    cpus: 1

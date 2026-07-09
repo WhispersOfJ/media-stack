@@ -1,6 +1,6 @@
 # The Stack
 
-**Version 4.9.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
+**Version 5.0.0** — built entirely by [Claude AI](https://www.anthropic.com/claude). Every
 service in this compose file, every bug fix, every migration, and this documentation itself
 was designed, written, and verified by Claude. See [CHANGELOG.md](CHANGELOG.md) for the full
 versioned history.
@@ -23,7 +23,7 @@ Point it at a Real-Debrid/AllDebrid account and it wires together an indexer
 (Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), the *arr apps that
 turn a request into an organized library (Radarr/Sonarr/Lidarr/Readarr), a debrid gateway that
 symlinks already-cached content instead of downloading it (Decypharr + Zurg), and a
-containerized Plex to actually watch it on — 23 services total, one compose file, every image
+containerized Plex to actually watch it on — 22 services total, one compose file, every image
 pinned and healthchecked. Usenet (NZBGet) is there as an explicit fallback for anything
 debrid doesn't have cached, not the default path.
 
@@ -68,8 +68,8 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 # 3. Bring the core stack up
 docker compose up -d
 
-# 4. Optional: extras too (Bazarr, Byparr, Tautulli, Heimdall, Homepage, Glances, Kometa,
-#    Unpackerr, Watchtower)
+# 4. Optional: extras too (Bazarr, Byparr, Tautulli, Glances, Kometa, Unpackerr, Watchtower,
+#    Control Panel)
 docker compose --profile extras up -d
 ```
 
@@ -108,7 +108,7 @@ Full details, including the *arr-key two-pass step this diagram shows, are in
 - [Zilean hardware tuning](#zilean-hardware-tuning)
 - [Zilean hash sources](#zilean-hash-sources)
 - [Resource limits](#resource-limits)
-- [Custom format: blocking low-quality sources](#custom-format-blocking-low-quality-sources)
+- [Custom format: blocked releases](#custom-format-blocked-releases)
 - [Security note](#security-note)
 - [Image pinning policy](#image-pinning-policy)
 - [Container healthchecks](#container-healthchecks)
@@ -118,7 +118,7 @@ Full details, including the *arr-key two-pass step this diagram shows, are in
 - [CI: validation and dependency updates](#ci-validation-and-dependency-updates)
 - [Installer image](#installer-image)
 - [Optional extras reference](#optional-extras-reference)
-- [Dashboard (Homepage)](#dashboard-homepage)
+- [Dashboard: Control Panel is the single pane of glass](#dashboard-control-panel-is-the-single-pane-of-glass)
 - [Plex (containerized)](#plex-containerized)
 - [Kometa (Plex collections/metadata/overlays)](#kometa-plex-collectionsmetadataoverlays)
 - [Control Panel](#control-panel)
@@ -151,6 +151,15 @@ Plex (containerized as of 3.3.0) → network_mode: host, /mnt mounted 1:1 with t
                                      both existing libraries (Movies: /mnt/zurg/movies; TV Shows:
                                      /mnt/zurg/shows + /mnt/all/magnets)
 ```
+
+> **Two Decypharr instances, not one:** the diagram above simplifies "Decypharr" to a single
+> box, but `docker-compose.yml` actually runs two — `decypharr` (port 8282, both debrid
+> backends, Radarr/Lidarr/Readarr's download client) and `decypharr-alldebrid` (port 8283,
+> AllDebrid only, Sonarr's download client). Decypharr has no per-provider category scoping —
+> a single instance's `debrids[]` list is available to every category on it — so a fully
+> separate instance, with its own config/mount, is the only way to keep AllDebrid exclusive to
+> Sonarr instead of shared with Radarr/Lidarr/Readarr. This is undocumented elsewhere in this
+> file pending a proper CHANGELOG entry for when it was added.
 
 Root folders live on regular host disk (`./media/<type>`), not on Zurg's rclone FUSE mount —
 that mount doesn't support having new files/symlinks written into it. See
@@ -197,7 +206,6 @@ Stack/
 ├── README.md, CHANGELOG.md
 ├── config/<app>/                 # each app's persistent config
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
-├── config/heimdall/www/app.sqlite  # dashboard tiles, populated directly via SQLite
 ├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
 ├── control-panel/                # custom-built one-click ops app (own Dockerfile, see below)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
@@ -216,16 +224,21 @@ verified live against the running stack before being marked done.*
 - **zilean-postgres** is on Postgres 18 — migrated from Dependabot's initial version-bump PR,
   which needed real accompanying changes beyond the image tag (see [CHANGELOG.md](CHANGELOG.md)
   for what it required).
-- Heimdall is configured with all 14 apps from the stack, grouped into five categories
-  (Requests, Acquisition, Libraries, Media Server, Monitoring & Tools) — see
-  [CHANGELOG.md](CHANGELOG.md) v2.3.0.
+- **Control Panel** is the stack's single dashboard — live container status/control, host
+  stats, Zilean hash count, a Quick Links panel to every service, and one-click ops actions —
+  see [CHANGELOG.md](CHANGELOG.md) and [Control Panel](#control-panel) below. Heimdall and
+  Homepage (an earlier link-launcher/widget-dashboard pair — see v2.3.0) were both removed
+  once Quick Links covered what they were for.
 - `docker-compose.yml` validates clean (`docker compose config`), all image references
   verified against live registries rather than assumed.
 - Full stack (core + extras) is live and healthy — see [CHANGELOG.md](CHANGELOG.md) for the
   issues hit and fixed along the way.
-- **Prowlarr** has 70 indexers configured (69 public trackers + Zilean), Byparr wired
+- **Prowlarr** has 68 indexers configured (67 public trackers + Zilean), Byparr wired
   up as an Indexer Proxy for the Cloudflare-protected ones (FlareSolverr originally, replaced
-  in [3.4.0](CHANGELOG.md)), and NZBGet added as its own global download client.
+  in [3.4.0](CHANGELOG.md)), and NZBGet added as its own global download client. Rebuilt from
+  zero in [5.2.0](CHANGELOG.md) after both the indexer list and the proxy were found empty —
+  see that entry for the 3 skipped (credential-gated) and 16 failed (dead/blocked sites)
+  definitions.
 - **Decypharr** and **NZBGet** are both added as download clients (priority 1 and 2
   respectively) in Radarr, Sonarr, Lidarr, and Readarr — Decypharr auto-detected
   all 4 apps.
@@ -239,9 +252,9 @@ verified live against the running stack before being marked done.*
   servers.
 - **Prowlarr** is connected to all 4 *arr apps under Settings → Apps (`fullSync`), so
   indexers propagate down automatically instead of needing to be configured per-app.
-- A single **custom format** ("Blocked Releases (All Qualities)") hard-rejects low-quality
-  sources, legacy codec encodes, disc-based releases, and known low-trust groups across every
-  Radarr and Sonarr quality profile, at every quality tier — see
+- A single **custom format** ("Block - Sample, Russian, Low-Quality Sources") hard-rejects
+  samples, Russian/Korean-language releases, and a specific low-quality-source/group regex, at
+  `-10000` in the one quality profile each app now has — see
   [Custom format: blocked releases](#custom-format-blocked-releases) below.
 - **Every arr app can now actually import from Decypharr, end-to-end.** v2.1.0 fixed path
   *visibility* (all 4 containers share `config/decypharr/downloads` at the identical path
@@ -327,8 +340,8 @@ cd /home/bear/Stack
 docker compose up -d
 ```
 
-Core + optional extras (Bazarr, Byparr, Tautulli, Heimdall, Homepage, Glances, Kometa,
-Unpackerr, Watchtower):
+Core + optional extras (Bazarr, Byparr, Tautulli, Glances, Kometa, Unpackerr, Watchtower,
+Control Panel):
 
 ```bash
 docker compose --profile extras up -d
@@ -366,6 +379,7 @@ recreate it after a compose file change.
 | Prowlarr | http://192.168.4.105:9696 | indexer manager |
 | Zilean | http://192.168.4.105:8181 | DMM cache-hash indexer + dashboard |
 | Decypharr | http://192.168.4.105:8282 | debrid gateway UI |
+| Decypharr (AllDebrid) | http://192.168.4.105:8283 | second, isolated Decypharr instance so AllDebrid stays exclusive to Sonarr — see [Architecture](#architecture) |
 | Zurg | http://192.168.4.105:9999 | Real-Debrid FUSE mount dashboard |
 | Radarr | http://192.168.4.105:7878 | movies |
 | Sonarr | http://192.168.4.105:8989 | TV |
@@ -376,9 +390,8 @@ recreate it after a compose file change.
 | Bazarr *(extras)* | http://192.168.4.105:6767 | subtitles |
 | Byparr *(extras)* | http://192.168.4.105:8191 | Cloudflare-protected indexers (replaced FlareSolverr in [3.4.0](CHANGELOG.md)) |
 | Tautulli *(extras)* | http://192.168.4.105:8182 | Plex stats |
-| Heimdall *(extras)* | http://192.168.4.105:3000 | dashboard linking every service, grouped into 5 categories |
-| Homepage *(extras)* | http://192.168.4.105:3001 | live per-service dashboard, see [Dashboard](#dashboard-homepage) |
 | Glances *(extras)* | http://192.168.4.105:61208 | host CPU/mem/disk/uptime |
+| Control Panel *(extras)* | http://192.168.4.105:8420 | one-click ops actions, see [Control Panel](#control-panel) |
 
 ## Configuration status
 
@@ -386,7 +399,7 @@ Everything below was done via each app's API directly (scripted, not clicked thr
 noted as **done** where complete. What's left is a preference call, not a technical gap
 (which quality profile to assign where).
 
-1. **Prowlarr** (done): 69 public trackers + Zilean added (see
+1. **Prowlarr** (done): 67 public trackers + Zilean added (see
    [What's already done](#whats-already-done)), Byparr proxy wired up, NZBGet added as
    Prowlarr's own download client. Private/semi-private trackers need your own account
    credentials per-site if you want to add any — those weren't and can't be automated.
@@ -397,17 +410,25 @@ noted as **done** where complete. What's left is a preference call, not a techni
    [CHANGELOG.md](CHANGELOG.md) v2.2.0).
 3. **Seerr** (done): initialized and signed in to Plex using the existing Plex token already
    on this host (from Zurg's config) rather than the interactive OAuth flow, so it turned out
-   scriptable after all. Connected to Radarr (`HD Bluray + WEB` profile, `/data/movies`)
-   and Sonarr (`WEB-1080p` profile, `/data/shows`) as default servers.
+   scriptable after all. Connected to Radarr (`720p+ (All Sources)` profile, `/data/movies`)
+   and Sonarr (`720p+ (All Sources)` profile, `/data/shows`) as default servers — repointed
+   from each app's old profile after both were deleted in [6.0.0](CHANGELOG.md); `main.apiKey`
+   in `config/seerr/settings.json` works as `X-Api-Key` on Seerr's own settings endpoints, no
+   session login needed to fix this kind of thing going forward.
 4. **Decypharr** (done): debrid API keys set, all 4 arr apps auto-detected. `download_action`
-   defaults to `symlink` for every arr — no change needed. As of v4.14.0, Radarr's arr entry is
+   defaults to `symlink` for every arr — no change needed. A second, isolated Decypharr
+   instance (`decypharr-alldebrid`, port 8283) also exists in `docker-compose.yml` to keep
+   AllDebrid exclusive to Sonarr — see the [Architecture](#architecture) callout above; this
+   item doesn't yet reflect that instance's own configuration status. As of v4.14.0, Radarr's arr entry is
    pinned to Real-Debrid only (`selected_debrid: "realdebrid"`) — Sonarr/Lidarr/Readarr are
    still unrestricted (`source: "auto"`, either debrid provider).
-5. **Quality profiles** (done): `HD Bluray + WEB` in Radarr and `WEB-1080p` in Sonarr, both
-   maintained directly in each app now — Recyclarr and its TRaSH-Guides sync were removed
-   entirely (see [Custom format: blocked releases](#custom-format-blocked-releases) below for
-   what replaced its per-quality custom-format scoring). Still manual: go to each app's
-   **Settings → Profiles** and set the profile as default for your root folders.
+5. **Quality profiles** (done): a single `720p+ (All Sources)` profile in each app (replacing
+   the earlier `HD Bluray + WEB` / `WEB-1080p` profiles in [6.0.0](CHANGELOG.md)) — allows
+   720p/1080p/2160p HDTV/WEBDL/WEBRip/Bluray plus 1080p/2160p Remux, cutoff at the top tier.
+   Recyclarr and its TRaSH-Guides sync were removed entirely (see
+   [Custom format: blocked releases](#custom-format-blocked-releases) below for what replaced
+   its per-quality custom-format scoring). Still manual: go to each app's **Settings →
+   Profiles** and set the profile as default for your root folders.
 6. **Bazarr** (done): its Radarr, Sonarr, and Plex connections were all found silently broken
    (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
    [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.2.
@@ -469,8 +490,9 @@ Postgres database were tuned deliberately rather than maxed out:
 | zilean-postgres `effective_cache_size`, `work_mem`, `max_parallel_workers` | 1.5GB / 32MB / 4 | Sized for this host rather than left at Postgres's hardware-agnostic defaults. |
 | zilean-postgres `random_page_cost`, `effective_io_concurrency` | 1.1 / 200 | Tuned for the NVMe SSD underneath (Postgres defaults assume spinning disks). |
 
-Container limits: Zilean 4GB RAM / 12 CPUs (reservation 512MB / 1 CPU), zilean-postgres 2GB
-RAM / 4 CPUs. Both confirmed applied via live `SHOW` queries and container env inspection
+Container limits: Zilean 4GB RAM / 12 CPUs (RAM reservation 512MB; compose has no CPU
+reservation field, only the 12-CPU ceiling), zilean-postgres 2GB RAM / 4 CPUs. Both confirmed
+applied via live `SHOW` queries and container env inspection
 after restart.
 
 ## Zilean hash sources
@@ -525,14 +547,21 @@ to constrain normal operation:
 | `plex` | 6GB | 512MB | 12 | Scans/transcode/thumbnail passes spike; HW transcode covers playback decode, not analysis. Same 4-thread desktop headroom Zilean reserves above. |
 | `zurg` | 1GB | 128MB | 6 | Sustained ~20-25% CPU baseline observed across two samples (not a spike) — likely its own 10s Real-Debrid poll interval plus serving reads for Plex/the arr apps. |
 | `decypharr` | 1.5GB | 256MB | 4 | Highest steady RAM baseline (~540-580MB) of any container besides Postgres/Zilean. |
+| `decypharr-alldebrid` | 1.5GB | 256MB | 4 | Second, isolated Decypharr instance (AllDebrid-only, Sonarr-only — see [Architecture](#architecture)); same limits as the primary `decypharr` instance since it runs the identical image and workload pattern. |
 | `byparr` | 2GB | 256MB | 4 | Defensive — idle footprint is modest, but each Cloudflare solve spins up a real Camoufox browser instance and concurrent load hasn't been tested yet. |
 | `kometa` | 2GB | 256MB | 4 | 642MB observed resident even while "sleeping" between scheduled runs — largest idle footprint of any non-Postgres/Zilean container, plus real spikes during overlay/poster generation. |
 | `bazarr` | 1GB | 128MB | 2 | 141 PIDs observed at rest, far more threads/processes than anything else here (likely per-provider subtitle-search workers) — not obviously a leak, but cheap insurance given nothing capped it before. |
 
-Deliberately left alone: Heimdall, Homepage, Glances, Tautulli, Unpackerr, Watchtower, Seerr,
-NZBGet, rclone-alldebrid, and all six `*arr` apps besides Bazarr — all comfortably under
-250MB/low CPU% at rest in the same observation pass. Adding ceilings there would be pure
-overhead for no real protection.
+**[5.1.0](CHANGELOG.md) added ceilings to 6 more** — `rclone-alldebrid` (512MB/64MB/4 cpus, same
+own-FUSE-mount reasoning as `zurg` above but lighter since it's read-only with no Real-Debrid
+polling of its own), `tautulli` (512MB/64MB/2), `control-panel` (512MB/64MB/2, despite its
+elevated `docker.sock` access), `glances` (512MB/64MB/2), `unpackerr` (512MB/64MB/2, extraction
+can spike CPU briefly on large archives), `watchtower` (256MB/32MB/1). All defensive insurance
+sized generously rather than from observed pressure, same reasoning pattern as the original six.
+
+Deliberately left alone: Seerr, NZBGet, and the four `*arr` apps besides Bazarr (Radarr, Sonarr,
+Lidarr, Readarr) — all comfortably under 250MB/low CPU% at rest in the original observation
+pass, and not revisited since.
 
 One thing deliberately *not* copied from Zilean: `.NET Server GC` (`DOTNET_gcServer=1`) stays
 Zilean-only. The `*arr` apps run .NET's default Workstation GC, which is actually correct for
@@ -547,42 +576,47 @@ byte/nanocpu values matched what was set) before this was documented.
 **Recyclarr and every TRaSH-Guides-synced custom format have been removed entirely** — Radarr
 and Sonarr each went from 41/40 custom formats (the full TRaSH per-quality-tier scoring
 catalog) down to a single one, added directly via each app's API. Quality selection is handled
-purely by each app's native quality profile (`HD Bluray + WEB` in Radarr, `WEB-1080p` in
-Sonarr, both now maintained by hand); custom formats exist only to hard-reject specific naming
-patterns, not to score/rank between qualities.
+purely by each app's native quality profile (`720p+ (All Sources)` in both apps as of
+[6.0.0](CHANGELOG.md)); custom formats exist only to hard-reject specific naming patterns, not
+to score/rank between qualities.
 
-Both apps now have exactly one custom format, **"Blocked Releases (All Qualities)"**, scored
-`-10000` in every quality profile — since `minFormatScore` is `0` everywhere, this is a hard
-reject, not just deprioritization. It applies uniformly across every quality tier (there's no
-per-quality variant) and has four OR'd Release Title conditions (all `required: false`, so
-any one matching is enough to reject):
+> **Rebuilt from zero in [6.0.0](CHANGELOG.md).** Before that session, both apps had **0**
+> custom formats and only the 6 stock default quality profiles — the format and profile this
+> section used to describe (`"Blocked Releases (All Qualities)"`, `HD Bluray + WEB`/
+> `WEB-1080p`) didn't exist live despite being documented here as done. See the dated note near
+> the top of [CHANGELOG.md](CHANGELOG.md) for what else was found in the same state.
 
-1. **Low quality / legacy encodes / low-trust groups** — carried over from the old
-   `Low Quality Sources/Groups` / `FUCK RD` formats plus a Real-Debrid-motivated addition: since
-   Decypharr symlinks a debrid-cached file straight into the arr apps' library folder, an
-   older x264/XviD re-encode of a source that also exists as a native WEB-DL/remux buys
-   nothing and just wastes debrid cache slots, so those specific encode/source combinations are
-   rejected outright rather than merely down-scored:
+Both apps now have exactly one custom format, **"Block - Sample, Russian, Low-Quality
+Sources"**, scored `-10000` in the one quality profile each app has — since `minFormatScore` is
+`0`, this is a hard reject, not just deprioritization. Four OR'd conditions (all
+`required: false`, so any one matching is enough to reject):
+
+1. **Sample** — `(?i)\bsample\b`, release titles with "sample" as a whole word. Release-title
+   level only — a bundled sample *file* inside an otherwise-clean release is caught separately,
+   by each app's own built-in per-file sample detection during import.
+2. **Russian language** — Radarr/Sonarr's own built-in `LanguageSpecification`, set to Russian
+   (value `11`), matching on parsed-language metadata rather than title text.
+3. **Russian/Korean text or script** — catches either language "in any way" beyond just the
+   declared-language field: literal `rus`/`russian`/`kor`/`korean` word-boundary text tags, plus
+   the actual Cyrillic (`[Ѐ-ӿ]`) and Hangul (`[가-힣ᄀ-ᇿ㄰-㆏]`) Unicode
+   ranges — matches a release with Cyrillic or Hangul characters in the title even if nothing
+   tagged its language metadata correctly. Korean was added in a same-day follow-up to the
+   initial Russian-only version.
+4. **Blocked sources/groups** — user-specified regex:
    ```
-   (?i)\b(WEB-DL|WEBRip|BDRip|HDRip|DVDRip|HDTV|AMZN|NF|DSNP|CR|YTS|TGX|TorrentGalaxy|FGT|LOL|KILLERS|EPSiLON|Erai-raws)\b|rartv|rarbg|eztv|BluRay\.x264|HDTV\.x264|HDTV\.XviD|WEB\.x264|WEB\.h264
+   (?i)\b(WEB-DL|WEBRip|BDRip|HDRip|DVDRip|HDTV|AMZN|NF|DSNP|CR|YTS|TGX|TorrentGalaxy|FGT|LOL|KILLERS|EPSiLON|Erai-raws)\b|rartv|rarbg|eztv
    ```
-2. **BR-DISK / disc-based releases** — the exact TRaSH-Guides `BR-DISK` regex, reused verbatim
-   rather than rewritten. Disc-image/folder releases (`ISO`, `BDMV`, `COMPLETE BLURAY`, etc.)
-   don't symlink into a single playable file the way Decypharr's debrid mount expects, so
-   they're rejected the same way TRaSH already recommends, just folded into this one format
-   instead of a separate one.
-3. **Cyrillic** (added [v4.12.0](CHANGELOG.md)) — `[Ѐ-ӿ]`, any release title containing a
-   Cyrillic character.
-4. **Sample** (added [v4.12.0](CHANGELOG.md)) — `(?i)\bsample\b`, release titles with "sample"
-   as a whole word. Release-title level only — a bundled sample *file* inside an otherwise-clean
-   release is caught separately, by each app's own built-in per-file sample detection during
-   import.
+   Narrower than the pre-[6.0.0](CHANGELOG.md) version of this format used to be — that one
+   also folded in `BluRay\.x264|HDTV\.x264|HDTV\.XviD|WEB\.x264|WEB\.h264` and a separate
+   TRaSH-Guides `BR-DISK` disc-release regex. This rebuild implemented exactly the regex given
+   at the time, not the fuller historical one; worth revisiting if the narrower coverage turns
+   out to matter.
 
-Verified live against each app's own `/api/v3/parse` endpoint (real regex evaluation, not a
-guess): a plain `WEB-DL` release and a `BluRay.x264` release are both rejected; a `BluRay.x265`
-release and a full `REMUX` release are both left alone. The two v4.12.0 additions were verified
-differently — see [CHANGELOG.md v4.12.0](CHANGELOG.md) for why `/api/v3/parse`-style live
-verification wasn't available for those two.
+Sanity-checked with Python's `re` module against real and adversarial sample titles (Cyrillic
+title, Hangul title, `RUS`-tagged, `KOR`-tagged, a clean `WEB-DL` release, and a title
+containing "Correction" as a substring-collision check against `kor`/`rus`) — all matched or
+didn't match as expected. Not a substitute for each app's own `.NET` regex engine, but the
+patterns used don't touch any feature that differs between engines.
 
 Since Recyclarr is gone, nothing re-syncs or overwrites this format automatically anymore —
 any future change to it is a manual API/UI edit in both apps.
@@ -608,16 +642,17 @@ silently change overnight with no record of what changed or an easy way back.
 Every image is now pinned, using whichever approach doesn't change what's actually running
 today:
 
-- **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the 8 hotio images — verified
-  each channel tag resolves to the exact same digest as `:latest` at pin time, so this is a
-  no-op today. hotio's whole model is rolling channels (`release`/`testing`/`nightly`)
-  identified by git-hash, not semver, so this is as close to "pin to the stable channel,
-  explicitly" as that upstream supports.
+- **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the 7 hotio images (Prowlarr,
+  Radarr, Sonarr, Lidarr, NZBGet, Bazarr, Tautulli — Readarr is a LinuxServer image, not
+  hotio, pinned separately below) — verified each channel tag resolves to the exact same
+  digest as `:latest` at pin time, so this is a no-op today. hotio's whole model is rolling
+  channels (`release`/`testing`/`nightly`) identified by git-hash, not semver, so this is as
+  close to "pin to the stable channel, explicitly" as that upstream supports.
 - **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
   `nickfedor/watchtower:1.19.0`) where the upstream project tags real releases and the current
   running image matches the newest one.
-- **Digest pins** (`@sha256:...`) for Seerr, Homepage, Glances, Kometa, Unpackerr, and
-  Heimdall - in every one of these cases the currently-running `:latest` build is *ahead* of
+- **Digest pins** (`@sha256:...`) for Seerr, Glances, Kometa, and Unpackerr - in every one of
+  these cases the currently-running `:latest` build is *ahead* of
   the newest tagged release upstream has cut, so no tag exists that wouldn't be a downgrade.
   These freeze exactly what's running today; bumping to a newer build is a deliberate, visible
   change to this file going forward, not something that happens silently at 4am. **Byparr** is
@@ -633,7 +668,7 @@ today:
 Watchtower still auto-updates the channel-tag-pinned images (hotio's rolling `:release`
 channels) daily - the difference is every actual update now posts to Discord first (see
 [Alerting](#alerting-discord)) instead of just happening. The digest-pinned images (Seerr,
-Homepage, Glances, Kometa, Unpackerr, Heimdall, Byparr) and the exact-version-tag-pinned
+Glances, Kometa, Unpackerr, Byparr) and the exact-version-tag-pinned
 ones (Zilean, Decypharr, Watchtower itself, and now Plex) are *not* meaningfully
 auto-updated either: an exact version tag is immutable once published the same way a digest
 is, so Watchtower never finds a new digest to pull at that specific reference. Plex rides on
@@ -645,7 +680,7 @@ periodic manual look rather than assuming Watchtower has them covered.
 
 ## Container healthchecks
 
-All 21 containers now have a `healthcheck:` — before this, `docker compose ps` only ever
+All 22 containers now have a `healthcheck:` — before this, `docker compose ps` only ever
 reported "the process started," never "the app is actually responding" (a hung API would show
 green forever). Most use each app's own unauthenticated liveness endpoint (Servarr apps ship
 `/ping` specifically for this); a few needed something else:
@@ -661,13 +696,21 @@ green forever). Most use each app's own unauthenticated liveness endpoint (Serva
 
 ## Docker log rotation
 
-`/etc/docker/daemon.json` (host-level, not tracked in this repo) sets
-`"max-size": "10m", "max-file": "3"` for every container's `json-file` logs - previously there
-was no rotation at all, daemon-level or per-container, on a stack with 21 always-on containers
-sharing this host's single disk with the (already-local-only) backup repo. Applies to every
-container going forward; existing containers needed a `docker compose up -d --force-recreate`
-once after the daemon restart to actually pick it up (a running container's log config is
-fixed at creation time, not re-read from the daemon's current defaults on a plain restart).
+A `logging: &common-logging` anchor in `docker-compose.yml` sets `max-size: "10m"`,
+`max-file: "3"` for every container's `json-file` logs - applied via the existing `x-common`
+anchor where a service already used it, and an explicit `logging: *common-logging` line added
+to every standalone service block otherwise, so there's no service left uncovered. Before
+[5.1.0](CHANGELOG.md), there was no rotation at all, daemon-level or per-container, on a stack
+with 22 always-on containers sharing this host's single disk with the (already-local-only)
+backup repo — `/etc/docker/daemon.json` didn't exist despite an earlier version of this section
+describing daemon-level rotation as already live (no CHANGELOG entry for that ever existed
+either, so it's unclear it was ever actually shipped). Deliberately compose-level this time,
+not `/etc/docker/daemon.json`, so it's tracked in git with everything else this stack manages
+instead of living only on the host with no record of when or why it was set. Applies to every
+container going forward; existing containers needed a `docker compose up -d` recreate once to
+actually pick it up (a running container's log config is fixed at creation time, not re-read
+from a new anchor value on a plain restart) — all 21 containers recreated and confirmed
+`healthy` afterward.
 
 ## Automated config backups
 
@@ -677,18 +720,29 @@ reproducible by re-running `docker compose up` or re-pulling images. A known Dec
 (see the changelog) has already wiped its own config once; this exists so that's a non-event
 next time instead of a rebuild.
 
-- **`scripts/backup-config.sh`** — runs `restic backup ./config`, then `restic forget --prune`
-  with `--keep-daily 7 --keep-weekly 4 --keep-monthly 6`. Repo lives at
-  `~/backups/stack-restic-repo`, restic-encrypted, password in `~/backups/.restic-password`
-  (`chmod 600`, outside git).
+- **`scripts/backup-config.sh`** — dumps `zilean-postgres` first (see below), then runs
+  `restic backup ./config`, then `restic forget --prune` with `--keep-daily 7 --keep-weekly 4
+  --keep-monthly 6`. Repo lives at `~/backups/stack-restic-repo`, restic-encrypted, password in
+  `~/backups/.restic-password` (`chmod 600`, outside git). As of [5.1.0](CHANGELOG.md) this is
+  genuinely running: `restic` wasn't installed and the repo didn't exist until then, despite
+  `stack-backup.timer` having been enabled already — every prior scheduled run would have
+  failed at the first command. Bootstrapped and verified live with a real end-to-end run: 742
+  files, 113.944 MiB snapshotted, retention policy applied, exit 0.
 - **`systemd/stack-backup.{service,timer}`** — same tracked-in-repo-then-symlinked-into
   `~/.config/systemd/user/` pattern as `media-stack.service`. Runs daily at 03:30, before
   Watchtower's 4am image updates so a bad update never lands ahead of that day's backup.
-- **Excluded from the backup:** `decypharr/cache` (fully regenerable - a FUSE cache), every
-  app's `logs`/`log` directory, and `zilean-postgres` entirely. That last one isn't just size -
-  file-level copying a *running* Postgres data directory can produce an inconsistent restore;
-  Zilean's index is a rebuildable DMM-scrape cache, not something that needs point-in-time
-  correctness, so it's simpler to exclude than to add pg_dump machinery for it.
+- **Excluded from the restic backup:** `decypharr/cache` (fully regenerable - a FUSE cache),
+  every app's `logs`/`log` directory, `zilean-postgres`'s raw datadir, and several regenerable
+  Plex subdirectories (`Metadata`, `Cache`, `Codecs`, `Logs`, `Crash Reports`, plus the sibling
+  `plex-transcode` dir) — see [Plex (containerized)](#plex-containerized) for the reasoning
+  specific to those. `zilean-postgres`'s raw-datadir exclusion isn't about size - file-level
+  copying a *running* Postgres data directory can produce an inconsistent restore. As of
+  [5.1.0](CHANGELOG.md), that gap is actually closed rather than just accepted: the script now
+  runs `docker exec zilean-postgres pg_dump -U postgres zilean | gzip >
+  ./config/zilean-postgres-dump/zilean.sql.gz` first, and restic picks up that logical dump
+  normally (different directory name than the excluded path, so no exclude-pattern collision).
+  Before that, the ~5,600-entry Real-Debrid-ingested hash index had zero backup coverage of any
+  kind.
 - **Known limitation:** this host has a single physical disk (btrfs, one NVMe), so the repo
   protects against config corruption/accidental deletion/a repeat of the Decypharr bug, *not*
   disk failure. Snapper's `root` config doesn't cover `/home` either. A cloud remote (restic
@@ -699,9 +753,10 @@ next time instead of a rebuild.
 
 ## Alerting (Discord)
 
-Previously nothing in this stack could tell you it was broken except looking at Homepage - no
-signal at all for a failed backup, a Watchtower update that broke something, or a container
-stuck crash-looping at 3am. A single Discord webhook (`DISCORD_WEBHOOK_URL` in `.env`) now
+Previously nothing in this stack could tell you it was broken except looking at Control
+Panel's container grid - no signal at all for a failed backup, a Watchtower update that broke
+something, or a container stuck crash-looping at 3am. A single Discord webhook
+(`DISCORD_WEBHOOK_URL` in `.env`) now
 backs four independent alert paths:
 
 - **`scripts/notify-discord.sh`** — the shared sender every other piece below calls. No-ops
@@ -720,13 +775,18 @@ backs four independent alert paths:
   `systemd/stack-health-check.{service,timer}`, diffs the current unhealthy/restarting
   container set against the last poll (state kept in `~/.cache/stack-unhealthy-containers`)
   and only posts on an actual *change* - a new failure, or a recovery - not on every poll, so
-  a container stuck unhealthy for hours doesn't spam the channel.
-- **Plex library report** — `scripts/plex-library-report.py`, run every 12 hours by
+  a container stuck unhealthy for hours doesn't spam the channel. `docker ps` failing outright
+  (socket permission issue, daemon restart mid-poll) is checked explicitly and alerts on its
+  own - caught live during setup: without this, a failed `docker ps` produced an empty result
+  that silently compared equal to an also-empty first-run state, reporting "no problems"
+  instead of "monitoring is blind right now." `stack-health-check.service` also now has the
+  same `OnFailure=notify-failure@%n.service` defense-in-depth the other two units already had.
+- **Plex library report** — `scripts/plex-library-report.py`, run every 30 minutes by
   `systemd/stack-plex-report.{service,timer}`. Snapshots every item across every movie/show
   library (`PLEX_URL`/`PLEX_TOKEN` in `.env`), diffs against the previous snapshot
   (`~/.cache/plex-library-snapshot.json`), and posts an embed listing what was added and
   removed since the last run - unlike the other three, this one posts on a fixed schedule
-  regardless of whether anything changed ("No changes in the last 12 hours" when nothing did),
+  regardless of whether anything changed ("No changes in the last 30 minutes" when nothing did),
   since the point is a periodic digest, not an anomaly alert. Diffs on Plex's `guid`, not
   `ratingKey` - the latter can get reassigned when an item is re-matched (observed firsthand
   during the WCW-PPV metadata cleanup), which would otherwise show up as a false
@@ -734,6 +794,8 @@ backs four independent alert paths:
   establishes a baseline (nothing to diff against yet) rather than reporting the entire
   library as newly "added". Long added/removed lists are truncated to 20 titles per library
   with a count of the rest, to stay under Discord's embed field limits.
+
+## CI: validation and dependency updates
 
 Three things run on GitHub, not on this host:
 
@@ -757,8 +819,8 @@ Three things run on GitHub, not on this host:
 ## Installer image
 
 `Dockerfile` + `entrypoint.sh` bundle this repo's own tracked, portable files —
-`docker-compose.yml`, `scripts/`, `systemd/`, and the docs — into a small image that
-extracts (or updates) them onto a host with one command, instead of a git clone. **Never**
+`docker-compose.yml`, `.env.example`, `scripts/`, `systemd/`, and the docs — into a small image
+that extracts (or updates) them onto a host with one command, instead of a git clone. **Never**
 contains `.env`, `config/`, `media/`, or `usenet/` — those are excluded by `.dockerignore` and
 never baked into the image, so re-running it later to pick up changes can't touch your real
 secrets or app state.
@@ -773,7 +835,8 @@ compose up -d --force-recreate` and `systemctl --user daemon-reload` if any syst
 changed.
 
 `.github/workflows/publish-installer.yml` rebuilds and republishes this to GHCR automatically
-on every push to `main` that touches any of the bundled files, tagged both `:latest` and
+on every push to `main` that touches any of the bundled files or the build machinery itself
+(`Dockerfile`, `entrypoint.sh`, `.dockerignore`, the workflow file), tagged both `:latest` and
 `:vX.Y.Z` (version read straight from `CHANGELOG.md`). The package inherits this repo's
 visibility (private) on first publish via `GITHUB_TOKEN` — worth a manual check in GitHub's
 package settings after the first run, since visibility is the one thing here actually worth
@@ -781,7 +844,7 @@ double-checking rather than just trusting.
 
 ### Setup wizard (filling in `.env`)
 
-`.env` has 12 keys across 6 sections, several of them opaque secrets (a Plex token, two
+`.env` has 14 keys across 7 sections, several of them opaque secrets (a Plex token, two
 self-issued Zilean tokens, four *arr API keys, two optional Discord webhooks) — the kind of
 thing that's easy to get subtly wrong hand-editing a file the first time (wrong key in the
 wrong `KEY=` line, an extra space, a value copied with a trailing newline). The wizard turns
@@ -839,12 +902,9 @@ first boot") and defaults them to `changeme`. The intended flow:
    container-*create* time — a plain `restart` won't see a `.env` change, it needs
    `--force-recreate`.
 
-**One thing this doesn't touch:** `config/homepage/services.yaml` keeps its own separate copy
-of the same 4 keys (see the comment in `.env.example`) and isn't sourced from `.env` at all —
-if you rotate a key, that file still needs the same manual edit it always has. More broadly,
-**this only ever fills in `.env` — it doesn't touch any running container or wire up
-connections between apps** (Prowlarr indexers, Radarr/Sonarr root folders, Seerr, etc. all stay
-exactly as manual as they've always been).
+**One thing this doesn't touch:** this only ever fills in `.env` — **it doesn't touch any
+running container or wire up connections between apps** (Prowlarr indexers, Radarr/Sonarr root
+folders, Seerr, etc. all stay exactly as manual as they've always been).
 
 ## Optional extras reference
 
@@ -853,63 +913,31 @@ exactly as manual as they've always been).
 | Bazarr | Automatic subtitle download/matching for Radarr/Sonarr libraries |
 | Byparr | Lets Prowlarr solve Cloudflare challenges some indexers put up — already registered as an Indexer Proxy and tagged onto the trackers that need it (replaced FlareSolverr in [3.4.0](CHANGELOG.md)) |
 | Tautulli | Plex watch-history/stats dashboard |
-| Heimdall | Single landing page linking every service above, grouped into 5 categories |
-| Homepage | Broader live dashboard - per-service widgets, docker container health, dedicated Zilean panel, real host stats via Glances - see below |
-| Glances | Real host CPU/memory/disk/uptime stats, feeds Homepage's top-of-page widget and Glances' own card |
+| Glances | Real host CPU/memory/disk/uptime stats, surfaced on [Control Panel](#control-panel)'s overview strip |
 | Kometa | Automated Plex collections, metadata, and overlays - configured and running, see below |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
 | Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
-| Control Panel | One-click operational actions Homepage/Heimdall can't do themselves - run Kometa now, Plex scan/empty-trash/optimize, *arr RSS sync + search, service restarts - see below |
+| Control Panel | The stack's single dashboard - live container status/control, host stats, a Quick Links panel to every service, one-click ops actions (Kometa now, Plex scan/empty-trash/optimize, *arr RSS sync + search, service restarts) - see below |
 
 Not included but worth knowing about: Decypharr can stream Usenet directly via NNTP with no
 separate download client (a built-in feature), which would make NZBGet unnecessary if a
 fully "nothing touches local disk" setup is ever wanted. Left out here since NZBGet was
 requested specifically.
 
-## Dashboard (Homepage)
+## Dashboard: Control Panel is the single pane of glass
 
-Note: v2.3.0 replaced an earlier Homepage instance with Heimdall. This isn't a reversal of
-that decision - the ask this time was specifically live per-service data (queue depth, grab
-counts, health), which Heimdall's static links don't provide, so Homepage is back
-*alongside* Heimdall rather than instead of it.
+**[Control Panel](#control-panel) (port 8420) is the one dashboard** - a Quick Links panel to
+every service's own web UI, live container status/control, host system stats, Zilean's own
+indexed-hash count, one-click operational actions, and a direct Zilean search with
+grab-to-Decypharr, all on one page. See [Control Panel](#control-panel) below for the full
+feature list.
 
-- **Every service gets a live widget** where one exists (Radarr/Sonarr/Lidarr/Readarr grab
-  and queue counts, Prowlarr indexer stats, Bazarr missing-subtitle counts, NZBGet
-  rate/remaining, Seerr request counts via its Overseerr-compatible API, Tautulli active
-  streams).
-- **Docker integration** (`config/homepage/docker.yaml`, read-only `docker.sock` mount) gives
-  every service a live running/health badge and start/stop/restart controls, including the
-  services with no widget of their own (Decypharr, Unpackerr, Watchtower, Heimdall).
-- **Zilean Watch** is its own group: a direct link to Zilean's own built-in dashboard (the
-  thing `Zilean__EnableDashboard` was already turned on for), a ping health check, and
-  container status for both `zilean` and `zilean-postgres`. No custom API widget - Zilean's
-  actual stats API isn't documented and guessing at endpoints (tried `/health`, `/api/stats`,
-  `/dmm/status`, all 404) risked a broken widget for no real benefit over its own dashboard.
-- **Theme:** `color: slate` (not Homepage's built-in `color: red`, which tints entire card
-  surfaces red - reads as "all red" rather than "dark with red accents"). Actual black
-  background + red borders/headings/search-bar come from `config/homepage/custom.css`.
-- **Real gotcha hit wiring this up:** newer Homepage versions (Next.js-based) reject any
-  request whose `Host` header isn't explicitly allow-listed, failing every page load with
-  "Host validation failed" and no other symptom. Fixed via `HOMEPAGE_ALLOWED_HOSTS` in the
-  compose environment - needs the exact `host:port` combination(s) it'll be reached by
-  (`localhost:3001`, `127.0.0.1:3001`, `${HOST_IP}:3001`), not just the bare hostname.
-- Runs on port **3001** (Heimdall already had 3000).
-- **Kometa progress:** it's a batch job with no API of its own, so rather than fake a
-  progress bar, `showStats: true` (global, `settings.yaml`) surfaces its container's live
-  CPU/memory - idle near-0% normally, visibly spikes while a scheduled run is actually
-  processing collections/overlays. Genuine signal, not a decorative one.
-- **Glances** (`nicolargo/glances`, `pid: host` + read-only `/:/rootfs` mount) gives real
-  *host*-level CPU/memory/disk/uptime, both as a top-of-page widget and its own service card
-  with a working web UI at port **61208**. Worth knowing: Homepage's built-in `resources`
-  widget only ever reports the *container's own* usage, not the host's - Glances is what
-  actually closes that gap, which is the whole reason it's here as a separate service rather
-  than a config tweak.
-- **Visual polish pass:** `custom.css` grew past the base black/red palette - card surfaces
-  now get a subtle gradient + drop shadow with a red glow and lift on hover, section headings
-  got a short gradient underline instead of just colored text, stat/progress bars render with
-  a red gradient fill, and "up" status indicators get a slow pulse instead of a static dot.
-  `blockHighlights` in `settings.yaml` was also re-themed so widget good/warn/danger states
-  lean into the same red/black palette instead of Homepage's default green/amber/red.
+**Homepage and Heimdall have been removed entirely** - both were simple link-launcher/widget
+dashboards (see v2.3.0 and the "Broad-featured live dashboard" note in earlier revisions of
+this file) that were never actually themed or populated with live data beyond what shipped in
+their stock installs, and Quick Links now covers exactly the "one link to every service" job
+either was for. `docker-compose.yml` no longer defines either service; if you want a second,
+more casual bookmarks page back, that's a separate ask.
 
 ## Plex (containerized)
 
@@ -941,9 +969,9 @@ this repo's usual TODO-to-CHANGELOG convention).
 - **Image pin**: `plexinc/pms-docker:1.43.2.10687-563d026ea` — the native install ran the Plex
   Pass (beta) channel at `1.43.3.10793`; the official image only publishes the public channel,
   whose newest tag at migration time was slightly behind that. Deliberate, not an oversight —
-  treated like the manually-bumped image group (Seerr/Homepage/Kometa/Glances/Unpackerr/
-  Heimdall) rather than Watchtower's daily train, since an unattended PMS version change on a
-  live library is higher blast radius than anything else in this stack.
+  treated like the manually-bumped image group (Seerr/Kometa/Glances/Unpackerr) rather than
+  Watchtower's daily train, since an unattended PMS version change on a live library is higher
+  blast radius than anything else in this stack.
 - **Verified live, not assumed**: file tree between the native data dir and its
   `config/plex` copy diffed identical (113,382 files, 0 differences) before the native service
   was disabled; both libraries came back with their exact pre-migration item counts (3,826
@@ -976,10 +1004,9 @@ driven by a `config.yml` you write.
   you're on the official image anyway.
 - **No web UI** - Kometa is a scheduled batch job (wakes at 5AM by default, processes the
   config, goes back to sleep; `KOMETA_RUN`/`KOMETA_TIMES` env vars can change that), not a
-  service with a page to load. No port is published. In Heimdall and Homepage it's linked to
-  its own wiki (`https://kometa.wiki/`) instead of a local URL, since that's the only
-  destination that actually goes somewhere - same treatment Unpackerr/Watchtower already got
-  for the same reason.
+  service with a page to load. No port is published, so it has no entry in Control Panel's
+  Quick Links panel either - same treatment Unpackerr/Watchtower get, both real containers
+  with no page anything would actually link to.
 - **Talks to Plex over its API, not the filesystem** - overlays/posters are uploaded through
   Plex's API, so unlike the *arr apps, Kometa's container doesn't need `/mnt` or
   `./media/*` mounted at all. Only volume is `./config/kometa:/config`.
@@ -996,22 +1023,46 @@ driven by a `config.yml` you write.
 
 ## Control Panel
 
-Homepage (above) shows live status and can start/stop/restart a container, but it has no
-concept of "run this command inside a container" or "call this app's API" - there's no button
-config for that in its YAML schema. Control Panel is a small custom-built app (`control-panel/`,
-its own `Dockerfile`, not a pulled image) that fills that specific gap with one-click actions,
-styled to match Homepage's own black/red theme. Runs on port **8420**, linked from both
-Homepage and Heimdall's Monitoring & Tools group.
+Control Panel is a small custom-built app (`control-panel/`, its own `Dockerfile`, not a
+pulled image) that is now **the single dashboard for this stack** - a Quick Links panel to
+every service's own web UI, live container status/control, host system stats, one-click
+operational actions, and a direct Zilean search, all in one place. This replaced Heimdall and
+Homepage entirely (both removed from `docker-compose.yml`) rather than running alongside them.
+Runs on port **8420**.
 
+- **Quick Links** - a link to every service's own web UI (Plex, Prowlarr, Zilean, both
+  Decypharr instances, Zurg, all 4 arr apps, NZBGet, Seerr, Bazarr, Byparr, Tautulli, Glances),
+  each with a live status dot sourced from the same container data the grid below uses. This is
+  what let Heimdall and Homepage be removed entirely instead of kept around as link launchers.
+- **Matrix theme** - black/phosphor-green throughout, monospace headings, and a falling-code
+  rain layer (`matrix-rain.js`) rendered on a fixed canvas behind everything - self-contained,
+  respects `prefers-reduced-motion` (skips the render loop entirely rather than just hiding the
+  canvas), and pauses via the Page Visibility API when the tab isn't active. Red is kept only
+  for real errors/danger states, so it still reads as a genuine anomaly against the green.
+- **Overview strip** - host CPU/memory/disk/uptime (proxied from Glances' own REST API,
+  `GLANCES_URL=http://glances:61208` - this container has no host `pid` namespace of its own,
+  Glances already does via `pid: host`), Zilean's total indexed-hash count (queried straight
+  from `zilean-postgres`, `SELECT COUNT(*) FROM "Torrents"` - Zilean has no stats API of its
+  own, see [Zilean hash sources](#zilean-hash-sources)), a containers-healthy tile, and the
+  running Plex version with an on-demand "Check for updates" button (`/identity` +
+  `/updater/status`). Every tile degrades to "unavailable" independently rather than one
+  failure blanking the page - Glances or Postgres being briefly unreachable shouldn't take
+  down the rest of the dashboard.
+- **Containers grid** - every container in this compose project, discovered live from Docker
+  (the same `com.docker.compose.project` label lookup the whole-stack restart already used, not
+  a hardcoded list - a service added to `docker-compose.yml` shows up here automatically),
+  showing state, health, image, and live CPU/memory (computed the same way `docker stats`
+  does), with **start/stop/restart per container**. Stop is arm/confirm-guarded like Grab and
+  the whole-stack restart below, since it leaves something down until someone notices; the
+  panel can't stop or restart itself.
 - **Kometa: Run now**, optionally scoped to specific libraries - `docker exec`s
   `python3 /kometa.py --run` (plus `--run-libraries <names>` if any are checked) inside the
   running Kometa container, bypassing its 05:00 schedule. The library checkboxes are populated
   live from `GET /api/plex/libraries` (Plex's own `/library/sections`), not hardcoded against
   `config/kometa/config.yml` - guarantees an exact, case-sensitive match with whatever Plex
   actually has, even if libraries are renamed or added later. Detached, so the button returns
-  immediately instead of blocking on however long the full pass takes; watch progress via
-  Homepage's Kometa card (`showStats: true` already surfaces its live CPU while a run is
-  active).
+  immediately instead of blocking on however long the full pass takes; watch progress via the
+  Containers grid above (Kometa's live CPU visibly spikes while a run is active).
 - **Plex actions**, all via Plex's own HTTP API using `PLEX_URL`/`PLEX_TOKEN`: scan every
   library for new files (`/library/sections/all/refresh`), empty trash per-library
   (`/library/sections/{id}/emptyTrash`, looped over every section), and two Butler tasks -
@@ -1020,9 +1071,8 @@ Homepage and Heimdall's Monitoring & Tools group.
 - ***arr actions*** - RSS sync and search-for-missing on Radarr, Sonarr, Lidarr, and Readarr,
   each via `POST /api/v3|v1/command` with that app's own command name (`RssSync`, plus
   `MissingMoviesSearch`/`MissingEpisodeSearch`/`MissingAlbumSearch`/`MissingBookSearch`
-  respectively). Needs its own copy of each app's API key (`RADARR_API_KEY` etc. in `.env`,
-  mirroring the values already in `config/homepage/services.yaml`) since it talks to these
-  APIs directly rather than through Homepage.
+  respectively). Needs its own copy of each app's API key (`RADARR_API_KEY` etc. in `.env`)
+  since it talks to these APIs directly.
 - ***arr search box*** - a free-text search per app that opens a new tab at that app's own
   `/add/new?term=<query>` URL (e.g. `http://192.168.4.105:7878/add/new?term=Dune`), which
   Radarr/Sonarr/Lidarr/Readarr's shared React UI reads on load and runs immediately. No lookup
@@ -1090,11 +1140,11 @@ Homepage and Heimdall's Monitoring & Tools group.
   restarts all of them except itself, sequentially in a background thread so the button returns
   immediately. Guarded by an arm/confirm double-click (first click arms it for 5 seconds, only
   a second click within that window fires it) rather than a native `confirm()` dialog, to avoid
-  a stray click bouncing all 22 other containers.
+  a stray click bouncing all 21 other containers.
 - **Docker socket is read-write** (`/var/run/docker.sock:/var/run/docker.sock`, no `:ro`) -
-  unlike Homepage's read-only mount, this one actually execs into containers and issues
-  restarts, not just reads status. Runs as root in-container (no `PUID`/`PGID`) since that's
-  what talking to the socket needs.
+  needed since this actually execs into containers and issues start/stop/restart, not just
+  reads status. Runs as root in-container (no `PUID`/`PGID`) since that's what talking to the
+  socket needs.
 - **No auth, LAN-only** - same threat model as every other service in this stack (see
   [Security note](#security-note)), a deliberate choice given the read-write docker socket is
   a genuinely higher blast radius than anything else here: anyone on the LAN could restart the
@@ -1108,7 +1158,7 @@ Homepage and Heimdall's Monitoring & Tools group.
   scoped to a single library (confirmed via the container's own live process args), all four
   *arr command names were accepted on the first try, all four Plex endpoints (scan/empty-trash/
   optimize-db/clean-bundles) returned success, `GET /api/plex/libraries` matched Kometa's
-  config exactly, a full stack restart correctly discovered and cycled all 22 other containers
+  config exactly, a full stack restart correctly discovered and cycled all 21 other containers
   back to healthy while leaving the panel itself untouched, a real Radarr restart round-tripped
   through Docker, and both the allow-list 404s (unknown *arr app, non-allow-listed container)
   were confirmed to actually reject. The `/add/new?term=` search deep link was confirmed to
@@ -1138,5 +1188,5 @@ Homepage and Heimdall's Monitoring & Tools group.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **4.14.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.0.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
