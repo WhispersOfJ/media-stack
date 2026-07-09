@@ -633,6 +633,22 @@ patterns used don't touch any feature that differs between engines.
 Since Recyclarr is gone, nothing re-syncs or overwrites this format automatically anymore —
 any future change to it is a manual API/UI edit in both apps.
 
+### Lidarr: blocked uploader tag
+
+Added in [6.6.0](CHANGELOG.md), separate from the Radarr/Sonarr format above since it targets
+one specific bad source rather than a general quality policy. A batch of Metallica albums kept
+failing extraction with `bad file checksum` errors traced to a single uploader tag (`88`, one
+release also carrying `vtwin88cube`) — see [6.5.0](CHANGELOG.md) for the full investigation.
+Lidarr had no custom formats configured at all until this point.
+
+**"Blocked Uploader (88 tag)"**, scored `-10000` in all three quality profiles (`Any`,
+`Lossless`, `Standard`): one `ReleaseTitleSpecification` regex,
+`(?<!\d)88(?:cube)?\s*$` — matches a trailing `88` or `88cube` tag not preceded by another
+digit, so `[FLAC] 88` and `vtwin88cube` both hard-reject while a release year like `1988` is
+left alone (the negative lookbehind blocks a match on its last two digits, since they're
+preceded by another digit). Verified live via `GET /api/v1/parse` against real titles from the
+[6.5.0](CHANGELOG.md) investigation.
+
 ## Security note
 
 Every web UI publishes its port directly on the host (`0.0.0.0:<port>`) with no auth gate in
@@ -1263,5 +1279,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.5.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.6.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
