@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.4.0**.
+retroactive pass) was never versioned under. Current version: **v6.5.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,57 @@ retroactive pass) was never versioned under. Current version: **v6.4.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [6.5.0] — Unpackerr was silently doing nothing; now wired up and extracting
+
+User reported Lidarr had downloads stuck waiting on extraction. Checked Unpackerr's own logs
+first rather than assuming the compose config was right: `No Starr apps or folders configured`
+— it had been running since the service was first added with **zero API keys** set for any of
+the four Starr apps (`UN_*_API_KEY` env vars were entirely absent, not just blank) and was only
+mounted `/mnt`, missing every app's actual `/app/downloads/...` path, so even with keys it
+couldn't have reached the archives to extract them. Readarr had never been wired in either.
+Confirmed this had been inert for its entire runtime — no prior extraction ever appears in its
+history.
+
+### Fixed
+- **`docker-compose.yml`** — `unpackerr` now sets `UN_RADARR_0_API_KEY`, `UN_SONARR_0_API_KEY`,
+  `UN_LIDARR_0_API_KEY`, and `UN_READARR_0_API_KEY` (all reused from the existing `.env` keys
+  each app already had). Added the missing volume mounts: `./config/decypharr/downloads`,
+  `./config/decypharr-alldebrid/downloads`, and `./usenet`, alongside the existing `/mnt`, so
+  every app's reported `outputPath` actually resolves inside the container.
+- Container recreated (`docker compose up -d unpackerr`); startup log now shows all 4 apps as
+  `1 server` with `apikey:true`.
+
+### Found while verifying: separate, unrelated data-integrity issue
+Once Unpackerr could actually reach Lidarr's queue, all 9 queued Metallica albums failed
+extraction with an identical `rardecode: bad file checksum` error — reproduced independently
+with the CLI `unrar t` too, so not a decoder bug. Repeated `md5sum` reads through the mount
+were byte-for-byte identical, and Decypharr's own local cache showed a complete, single-range
+file matching the expected size (no truncation). Cross-referenced Real-Debrid's own status via
+Decypharr's API: all 9 show `status: downloaded`, `bad: false` — Real-Debrid itself doesn't
+consider them corrupt. Conclusion: the source RAR archives are bad at the release level, almost
+all sharing the uploader tag `88` (one also carried `vtwin88cube`) across *both* FLAC and MP3
+encodes of the same albums — not a bug anywhere in this stack's mount, cache, or extraction
+chain, but a single bad uploader's catalog being close to the only source for this artist on
+the user's current indexers.
+
+Blocklisted all 9 in Lidarr (`DELETE /api/v1/queue/{id}?blocklist=true&skipRedownload=false`),
+which triggers Lidarr's own automatic re-search. Several rounds of re-grabs landed on more `88`
+-tagged releases and failed the same way, requiring repeated manual blocklisting; **72 Seasons**
+is the only one confirmed fully re-imported clean this session, from an unrelated `PMEDIA`
+release. The rest were still cycling through Lidarr's own retry logic
+(`autoRedownloadFailed: true`, already enabled) when this entry was written — Lidarr will keep
+trying on its own without further intervention, it's just a matter of whether non-`88` sources
+exist on the configured indexers for each remaining album.
+
+### Verified live
+- Unpackerr's log: `Radarr Config: 1 server: ..., apikey:true`, same for Sonarr/Lidarr/Readarr.
+- Test extraction succeeded end-to-end on a real archive before the corrupted batch was found,
+  confirming the fix itself works and the later failures were data, not config.
+- `GET /api/v1/history?eventType=downloadImported` confirms 72 Seasons' replacement release
+  imported cleanly, track-by-track, with no checksum errors.
+
+---
 
 ## [6.4.0] — Installer image now publishes multi-arch (amd64 + arm64)
 

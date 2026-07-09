@@ -784,11 +784,24 @@ services:
       start_period: 30s
     environment:
       TZ: ${TZ}
+      # Was missing every API key below (not just blank - entirely absent), so Unpackerr ran
+      # with "0 servers" configured since the day it was added. Confirmed live via its own
+      # startup log: "No Starr apps or folders configured."
       UN_RADARR_0_URL: http://radarr:7878
+      UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
       UN_SONARR_0_URL: http://sonarr:8989
+      UN_SONARR_0_API_KEY: ${SONARR_API_KEY}
       UN_LIDARR_0_URL: http://lidarr:8686
+      UN_LIDARR_0_API_KEY: ${LIDARR_API_KEY}
+      UN_READARR_0_URL: http://readarr:8787
+      UN_READARR_0_API_KEY: ${READARR_API_KEY}
     volumes:
       - /mnt:/mnt:rslave
+      # Same mounts every arr app already has (see Sonarr/Radarr above) - /mnt alone doesn't
+      # cover it, since each app's queue reports outputPath as /app/downloads/<category>/...,
+      # not the /mnt/decypharr/... path the symlink actually resolves through.
+      - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
       - ./usenet:/usenet:rslave
     # No prior ceiling - extraction (unzip/unrar) can spike CPU briefly on
     # large archives, cheap insurance same as the other companion apps above.
