@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.3.2**.
+retroactive pass) was never versioned under. Current version: **v6.4.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,49 @@ retroactive pass) was never versioned under. Current version: **v6.3.2**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [6.4.0] — Installer image now publishes multi-arch (amd64 + arm64)
+
+Scoped deliberately to the two images this repo builds itself (the installer image,
+`control-panel`) — every other service in `docker-compose.yml` just pulls a pre-built upstream
+image, which Docker already resolves to the right platform automatically from that image's own
+multi-arch manifest. DebridMediaManager's git-context build was explicitly left out of scope -
+its own Prisma schema already declares `linux-arm64-openssl-3.0.x` as a binary target upstream,
+suggesting they've thought about this, and it's not this repo's Dockerfile to modify anyway.
+
+### Verified locally before touching CI, not assumed
+- Installed QEMU arm64 emulation (`docker run --privileged tonistiigi/binfmt --install arm64`)
+  and cross-built both Dockerfiles for real: `docker buildx build --platform linux/arm64`.
+  Neither needed a single line changed - `FROM alpine:3.24` and
+  `FROM python:3.12.7-slim-bookworm` are both already-multi-arch official images, and none of
+  `apk add python3` or `pip install`'s five packages (`fastapi`/`uvicorn`/`docker`/`httpx`/
+  `psycopg2-binary`) pull anything architecture-specific - confirmed `psycopg2-binary`
+  specifically has a real `manylinux2014_aarch64` wheel, the one dependency here most likely to
+  need a source compile instead.
+- Ran the resulting arm64 installer image under emulation end-to-end (not just built it):
+  scaffolded files into a mounted target, exit 0, correct file set written.
+- Ran the resulting arm64 `control-panel` image under emulation: process stayed up, `docker
+  top` showed a real `qemu-aarch64`-wrapped `uvicorn` process consuming CPU (not crash-looping),
+  and the only failure hit (`KeyError: 'PLEX_URL'`) was from testing the container standalone
+  without the env vars `docker-compose.yml` normally supplies - the exact same failure would
+  happen identically on amd64 run the same way, not an architecture-specific bug.
+
+### Added
+- **`.github/workflows/publish-installer.yml`** — added `docker/setup-qemu-action@v3` and
+  `docker/setup-buildx-action@v3` steps before the build, and `platforms: linux/amd64,
+  linux/arm64` on the `docker/build-push-action@v6` step. Without both actions, `platforms:`
+  alone isn't enough - QEMU is what actually executes arm64 instructions during `RUN` steps on
+  the (amd64) GitHub Actions runner, and the buildx `docker-container` driver (not the default
+  `docker` driver) is required to produce a multi-platform manifest list at all.
+
+### Fixed
+- **Stale "Homepage" reference in `entrypoint.sh`'s own first-run output** - found incidentally
+  while testing the arm64 cross-build, not related to it. Homepage was removed and later
+  replaced by Control Panel's Quick Links ([5.0.0]) but the success message users see after
+  their very first `docker run` still told them to expect it. Updated to name what's actually
+  there (`Bazarr/Byparr/Tautulli/Kometa/DebridMediaManager/etc.`).
+
+---
 
 ## [6.3.2] — Quality profile renamed to "Unlimited"
 

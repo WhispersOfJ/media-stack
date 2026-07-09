@@ -849,10 +849,13 @@ changed.
 `.github/workflows/publish-installer.yml` rebuilds and republishes this to GHCR automatically
 on every push to `main` that touches any of the bundled files or the build machinery itself
 (`Dockerfile`, `entrypoint.sh`, `.dockerignore`, the workflow file), tagged both `:latest` and
-`:vX.Y.Z` (version read straight from `CHANGELOG.md`). The package inherits this repo's
-visibility (private) on first publish via `GITHUB_TOKEN` — worth a manual check in GitHub's
-package settings after the first run, since visibility is the one thing here actually worth
-double-checking rather than just trusting.
+`:vX.Y.Z` (version read straight from `CHANGELOG.md`). Published for both `linux/amd64` and
+`linux/arm64` as of [6.4.0](CHANGELOG.md) (`docker/setup-qemu-action` + `docker/setup-buildx-
+action` ahead of the build step, `platforms: linux/amd64,linux/arm64` on it) — `docker run`
+without any `--platform` flag pulls the right one automatically. The package does **not**
+automatically inherit this repo's visibility on first publish via `GITHUB_TOKEN` — worth a
+manual check in GitHub's package settings after the first run regardless of whether the repo
+itself is public or private, since GHCR's default here is private either way.
 
 ### Setup wizard (filling in `.env`)
 
@@ -1260,5 +1263,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.3.2**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.4.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
