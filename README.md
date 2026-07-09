@@ -122,6 +122,7 @@ Full details, including the *arr-key two-pass step this diagram shows, are in
 - [Plex (containerized)](#plex-containerized)
 - [Kometa (Plex collections/metadata/overlays)](#kometa-plex-collectionsmetadataoverlays)
 - [Control Panel](#control-panel)
+- [DebridMediaManager](#debridmediamanager)
 
 ## Architecture
 
@@ -396,6 +397,7 @@ recreate it after a compose file change.
 | Tautulli *(extras)* | http://192.168.4.105:8182 | Plex stats |
 | Glances *(extras)* | http://192.168.4.105:61208 | host CPU/mem/disk/uptime |
 | Control Panel *(extras)* | http://192.168.4.105:8420 | one-click ops actions, see [Control Panel](#control-panel) |
+| DebridMediaManager *(extras)* | http://192.168.4.105:3000 | self-hosted DMM — personal library browsing/casting plus on-demand per-title search, see [DebridMediaManager](#debridmediamanager) |
 
 ## Configuration status
 
@@ -436,6 +438,10 @@ noted as **done** where complete. What's left is a preference call, not a techni
 6. **Bazarr** (done): its Radarr, Sonarr, and Plex connections were all found silently broken
    (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
    [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.2.
+7. **DebridMediaManager** (partially done, [6.2.0](CHANGELOG.md)): all four containers live and
+   verified. `TMDB_KEY`/`MDBLIST_KEY` still need real values (free signups required, can't be
+   automated) before its search/scraper feature will do anything — see
+   [DebridMediaManager](#debridmediamanager) below.
 
 > Seerr only recognizes Radarr and Sonarr in its settings API
 > (`/api/v1/settings/lidarr|readarr` both 404) — it's a TMDB-based movie/TV frontend
@@ -1189,8 +1195,51 @@ Runs on port **8420**.
   outside the range), and combining a resolution + quality filter (`1080p` + `BluRay REMUX`)
   correctly narrowed to 9 results.
 
+## DebridMediaManager
+
+Self-hosted instance of [DebridMediaManager](https://github.com/debridmediamanager/debrid-media-manager)
+(the app behind debridmediamanager.com) - personal library browsing/organizing/casting, plus
+its own on-demand per-title search/scraper. Added in [6.2.0](CHANGELOG.md); full research and
+scoping decisions preserved in that entry and `~/.claude/plans/jaunty-munching-aurora.md`.
+
+Four services, all `profiles: [extras]`: `dmm-mysql` (dedicated database - MySQL is
+hard-required by DMM's own Prisma schema, not swappable), `dmm-redis` (rate limiting),
+`dmm-migrate` (one-shot `prisma db push` schema setup, runs once and exits), and
+`debridmediamanager` itself on port `3000`.
+
+**Real-Debrid/AllDebrid/TorBox credentials are entered in the browser** (`localStorage`), never
+a server-side secret - nothing to configure here for personal library access. Confirmed live:
+loading `http://192.168.4.105:3000` redirects to `/start` and renders DMM's actual login
+screen, with a "no data stored on our servers" message matching that design.
+
+**Search/scrape is on-demand, not a standing crawler** - triggers per-title when you view/search
+something in the UI (`api/search/title.ts` → `api/scrapers/imdb.ts`), confirmed by reading the
+actual route source rather than assumed. This means `TMDB_KEY` and `MDBLIST_KEY` in `.env` are
+required in practice (not just "optional" like upstream's own `.env.example` implies) - the
+scraper can't identify a title without them. **Still `changeme` as of 6.2.0** - free signups at
+[themoviedb.org](https://www.themoviedb.org/settings/api) and
+[mdblist.com](https://mdblist.com/preferences); update `.env` and recreate
+`debridmediamanager` once you have real keys. `OMDB_KEY`/`TRAKT_CLIENT_ID`/
+`TRAKT_CLIENT_SECRET` are genuinely optional and can stay `changeme` indefinitely. OAuth login
+providers (Patreon/GitHub/Discord) and the Tor stream-proxy container were deliberately skipped
+- see [6.2.0](CHANGELOG.md) for why.
+
+Two real upstream bugs were found and worked around during setup, both without vendoring a
+modified Dockerfile (which would lose the clean pin-by-commit build and create an ongoing
+upstream-sync burden):
+- **BuildKit wasn't installed on this host at all** - the upstream Dockerfile's
+  `RUN --mount=type=cache` needs it (`sudo pacman -S docker-buildx`).
+- **A Prisma binary-target mismatch in upstream's own `deploy` stage** - it generates the
+  Prisma Client without `openssl` installed, so Prisma can't detect the real OpenSSL version
+  and silently builds the wrong query engine, crash-looping the app on startup. Both
+  `dmm-migrate` and `debridmediamanager` run from the Dockerfile's `build` stage instead (full
+  toolchain present to fix `openssl` detection and regenerate the client correctly, then start
+  via plain `next start` rather than the standalone server that stage doesn't produce). Costs
+  somewhat more RAM - `debridmediamanager`'s `mem_limit` is `1.5g`, above the usual
+  "no observation yet" default, to account for it.
+
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.0.3**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.2.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
