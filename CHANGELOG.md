@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.5.0**.
+retroactive pass) was never versioned under. Current version: **v6.6.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,33 @@ retroactive pass) was never versioned under. Current version: **v6.5.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [6.6.0] — Lidarr: custom format added to reject the `88`/`vtwin88cube` uploader tag
+
+Follow-up to [6.5.0]'s corrupted-archive investigation. Lidarr had no custom format support
+configured at all (`GET /api/v1/customformat` returned `[]`) despite the API supporting it
+(confirmed on the running `3.1.0.4875`), so every re-grab of a blocklisted album was still
+eligible to land on another release from the same bad uploader - which is exactly what kept
+happening across the ~4 manual blocklist rounds in [6.5.0].
+
+### Added
+- **Lidarr custom format `"Blocked Uploader (88 tag)"`** — one `ReleaseTitleSpecification`
+  regex: `(?<!\d)88(?:cube)?\s*$`. Matches a trailing `88` or `88cube` release-title tag not
+  preceded by another digit (so it catches `[FLAC] 88`, `[MP3 320] 88`, and `vtwin88cube`) while
+  leaving genuine years alone - `(?<!\d)` blocks a match on the last two digits of `1988`, since
+  those are preceded by `9`, a digit. Scored `-10000` in all three of Lidarr's quality profiles
+  (`Any`, `Lossless`, `Standard` - Metallica's own profile is `Any`, but applied everywhere for
+  the same reason Radarr/Sonarr's blocked-releases format is universal).
+
+### Verified live
+- `GET /api/v1/parse?title=...` against real titles from [6.5.0]'s investigation:
+  `Metallica - Reload (1997) [FLAC] 88` and the `vtwin88cube` Kill 'Em All release both come
+  back with `customFormatScore: -10000`; `Metallica - 72 Seasons (2023) [24Bit-48kHz] FLAC
+  [PMEDIA]` (the clean replacement release that actually imported) comes back `customFormats: []`,
+  `customFormatScore: 0` - confirms the regex doesn't false-positive on the album's release year
+  or unrelated bracketed tags.
+
+---
 
 ## [6.5.0] — Unpackerr was silently doing nothing; now wired up and extracting
 
