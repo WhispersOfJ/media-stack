@@ -1,4 +1,19 @@
 version: 2
+
+# ghcr-zurg: debridmediamanager/zurg is a sponsor-gated GHCR image (see docker-compose.yml's
+# own comment on it, not the public zurg-testing image) - Dependabot can't even check it for
+# updates without a credential that has sponsor access, otherwise every docker-compose update
+# run fails outright with private_source_authentication_failure (see CHANGELOG v6.0.1).
+# DEPENDABOT_GHCR_TOKEN is a classic PAT (read:packages only) set in the Dependabot secrets
+# store specifically (Settings -> Secrets and variables -> Dependabot), not the Actions store -
+# the two are separate and Dependabot's own update jobs only read from the former.
+registries:
+  ghcr-zurg:
+    type: docker-registry
+    url: ghcr.io
+    username: WhispersOfJ
+    password: ${{secrets.DEPENDABOT_GHCR_TOKEN}}
+
 updates:
   # Checks docker-compose.yml for newer image tags/digests and opens a PR when
   # found. Every service is pinned now (v2.11.0) - channel tags (:release),
@@ -10,6 +25,8 @@ updates:
   # already watching.
   - package-ecosystem: "docker-compose"
     directory: "/"
+    registries:
+      - ghcr-zurg
     schedule:
       interval: "weekly"
     commit-message:
