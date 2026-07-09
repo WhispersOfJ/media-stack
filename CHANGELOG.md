@@ -4,7 +4,27 @@
 
 All notable changes to this project are documented here, versioned as if each exchange with
 Claude were a release: **MAJOR** for breaking/foundational changes, **MINOR** for new
-features, **PATCH** for fixes. Current version: **v4.14.0**.
+features, **PATCH** for everything else — fixes, but also docs-only additions, CI/tooling
+changes, dependency bumps, and planning docs that used to ship with no version at all. Every
+commit that adds new, real information to the record gets a version now, however small; a
+commit that only re-syncs already-documented information into a second file (e.g. copying a
+just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
+same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
+retroactive pass) was never versioned under. Current version: **v4.14.0**.
+
+> **2026-07-09 — versioning policy tightened, history backfilled.** Several past commits (a
+> planning doc, two CI workflow additions, a Dependabot base-image bump, a doc-only bugfix
+> link, a doc-only correction, and turning on an already-built feature) had shipped with no
+> version or CHANGELOG entry at all. Backfilled all of them and renumbered everything after
+> each insertion point so the sequence stays gapless — see [2.3.1], [2.5.1], [2.7.0],
+> [2.11.1], [2.11.2] (previously logged out-of-sequence as "[Unversioned, 2026-07-07]"),
+> [2.13.1], [2.13.2], and [3.2.4]. This only touched `CHANGELOG.md`/`README.md`; no git commits
+> were rewritten. **Only some `2.x` minor/patch numbers between `2.3.0` and `2.13.0` shifted**
+> — `v4.14.0` and everything in the `3.x`/`4.x` line is unaffected. One consequence worth
+> knowing: this repo's installer image is tagged `:vX.Y.Z` in GHCR on every push, parsed
+> straight from this file's "Current version" line — a tag actually published in the past
+> under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
+> lines up 1:1 with what that number refers to here now.
 
 ---
 
@@ -958,12 +978,28 @@ service themselves before this session resumed.
   irreplaceable.
 - README updated throughout: architecture diagram, service URL table, image pinning policy,
   and a new [Plex (containerized)](README.md#plex-containerized) section. Version header
-  corrected from a stale `2.12.0` to match the CHANGELOG's actual current version at the same
+  corrected from a stale `2.13.0` to match the CHANGELOG's actual current version at the same
   time (pre-existing drift, unrelated to this change, fixed while already editing the file).
 - `PLEX_MIGRATION_PLAN.md` removed now that it's shipped, per this repo's usual
   TODO-to-CHANGELOG convention.
 
 *Built with Claude AI.*
+
+---
+
+## [3.2.4] — Plex containerization plan documented (planning only)
+
+Backfilled retroactively — commit `d02428b` shipped this without its own version at the time.
+Given a real version number as part of the 2026-07-09 versioning-policy pass (see note at top
+of this file).
+
+### Added
+- **`PLEX_MIGRATION_PLAN.md`** — the agreed plan for bringing Plex into `docker-compose.yml`:
+  official `plexinc/pms-docker` image, `PLEX_UID`/`PLEX_GID=955` to match the existing native
+  owner, `network_mode: host`, GPU passthrough, and the path-parity requirement that keeps the
+  existing 33GB library database intact. Paused before execution at the user's request.
+  Shipped as [3.3.0](CHANGELOG.md); the plan doc itself was removed once it shipped, per this
+  repo's usual TODO-to-CHANGELOG convention.
 
 ---
 
@@ -984,35 +1020,6 @@ Follow-up to v3.2.2. Two things:
   `/mnt/all` from its surface entirely. Sonarr's mount is unchanged. Verified: `/mnt/all` no
   longer resolves inside the `radarr` container, `/mnt/zurg` and `/data/movies` still do,
   container healthy, queue still importing normally after recreate.
-
----
-
-## [Unversioned, 2026-07-07] — Discord alerting activated (retroactive entry)
-
-Commit `84efed2` shipped this directly without a version bump or a CHANGELOG entry, so
-`TODO.md` kept listing it as not-started for a full day even though it was live. Logged here
-now, out of the normal version sequence, purely to close that documentation gap — found while
-auditing `TODO.md`/memory for genuinely open work and confirming this was actually already done
-rather than still pending.
-
-### Changed
-- **Watchtower's Shoutrrr Discord notifications turned on for real** — the three
-  `WATCHTOWER_NOTIFICATION*` lines added commented-out in [2.10.0](CHANGELOG.md) were
-  uncommented in `docker-compose.yml` now that `DISCORD_WATCHTOWER_SHOUTRRR_URL` in `.env` is a
-  real webhook, not a placeholder. Verified live: Watchtower's own logs report
-  `Using notifications: discord` and it stayed healthy (no crash-loop, which Shoutrrr does
-  immediately on an invalid URL) - confirmed for real again just now, it actually posted for
-  this morning's `zilean-postgres` auto-update.
-- **Fixed a real bug in `scripts/notify-discord.sh`** found while wiring this up: it used
-  `source .env`, which executes the file as bash and chokes (`unbound variable` under `set -u`)
-  on the literal `$` characters in the old Caddy bcrypt hash line. Replaced with grep+cut
-  extraction of just the two variables it actually needs, sidestepping shell expansion of the
-  rest of the file entirely. Verified with a live test message at the time.
-- This also means the backup script's and container-health watcher's Discord paths (both
-  already built in [2.10.0](CHANGELOG.md), previously just no-op-silent without a real webhook)
-  have been live since 2026-07-07 too - confirmed via `journalctl` that both
-  `stack-backup.service` and `stack-health-check.service` have been running cleanly on their
-  normal schedule since.
 
 ---
 
@@ -1101,7 +1108,7 @@ gap and would have vanished on the next `docker compose up`. Closed both out.
 
 ## [3.1.0] — Caddy reverse-proxy/Basic-Auth layer removed
 
-Decided to drop the Caddy front-end added in v2.10.0 — every web UI publishes its host port
+Decided to drop the Caddy front-end added in v2.11.0 — every web UI publishes its host port
 directly again, with no auth gate in front. A partial removal (Caddyfile deleted, Basic Auth env
 vars dropped from `.env`/`.env.example`) had already been done by hand but left the `caddy`
 service block still in `docker-compose.yml` and every other service still pointed at Caddy with
@@ -1174,7 +1181,35 @@ more moving parts than value.
 
 ---
 
-## [2.12.0] — Plex library added/removed report, every 12 hours
+## [2.13.2] — Claude Code Review workflow fixed for Dependabot PRs
+
+Backfilled retroactively — commit `4d667bf` shipped this without its own version at the time.
+Given a real version number as part of the 2026-07-09 versioning-policy pass (see note at top
+of this file).
+
+### Fixed
+- `claude-code-review.yml` ([2.7.0](CHANGELOG.md)) triggers on every PR with no actor filter,
+  so Dependabot's own version-bump PRs hit it too — and the underlying
+  `anthropics/claude-code-action` refuses to run for non-human actors by default ("Workflow
+  initiated by non-human actor: dependabot (type: Bot). Add bot to allowed_bots list or use '*'
+  to allow all bots."). Scoped the allowlist to `dependabot[bot]` specifically rather than `*`,
+  since that's the only bot that actually needs to trigger this.
+
+---
+
+## [2.13.1] — Installer image's Alpine base bumped 3.20 → 3.24
+
+Backfilled retroactively — commits `f4c3f9c`/`40f4872` (a routine Dependabot PR) shipped this
+without a version at the time. Given a real version number as part of the 2026-07-09
+versioning-policy pass (see note at top of this file).
+
+### Changed
+- `Dockerfile`'s Alpine base image bumped from `3.20` to `3.24` — the installer image's own
+  base only; no functional change to the stack itself.
+
+---
+
+## [2.13.0] — Plex library added/removed report, every 12 hours
 
 ### Added
 - **`scripts/plex-library-report.py`** — snapshots every item across every movie/show Plex
@@ -1203,7 +1238,7 @@ more moving parts than value.
 
 ---
 
-## [2.11.0] — Installer image published to GHCR
+## [2.12.0] — Installer image published to GHCR
 
 ### Added
 - **`Dockerfile` + `entrypoint.sh`** — bundles this repo's own tracked, portable files
@@ -1232,7 +1267,7 @@ more moving parts than value.
 
 ---
 
-## [2.10.1] — Removed leftover Jellyfin artifacts
+## [2.11.3] — Removed leftover Jellyfin artifacts
 
 ### Removed
 - `config/NEW-ADMIN-CREDENTIALS.txt` — a stale plaintext credentials file (Jellyfin/Jellystat
@@ -1247,7 +1282,50 @@ more moving parts than value.
 
 ---
 
-## [2.10.0] — Reverse-proxy auth, image pinning, healthchecks, log rotation, Discord alerting
+## [2.11.2] — Discord alerting activated
+
+Backfilled retroactively — commit `84efed2` shipped this directly without a version bump or a
+CHANGELOG entry, so `TODO.md` kept listing it as not-started for a full day even though it was
+live. Originally logged out-of-sequence as "[Unversioned, 2026-07-07]"; given a real version
+number as part of the 2026-07-09 versioning-policy pass (see note at top of this file).
+
+### Changed
+- **Watchtower's Shoutrrr Discord notifications turned on for real** — the three
+  `WATCHTOWER_NOTIFICATION*` lines added commented-out in [2.11.0](CHANGELOG.md) were
+  uncommented in `docker-compose.yml` now that `DISCORD_WATCHTOWER_SHOUTRRR_URL` in `.env` is a
+  real webhook, not a placeholder. Verified live: Watchtower's own logs report
+  `Using notifications: discord` and it stayed healthy (no crash-loop, which Shoutrrr does
+  immediately on an invalid URL) - confirmed for real again just now, it actually posted for
+  this morning's `zilean-postgres` auto-update.
+- **Fixed a real bug in `scripts/notify-discord.sh`** found while wiring this up: it used
+  `source .env`, which executes the file as bash and chokes (`unbound variable` under `set -u`)
+  on the literal `$` characters in the old Caddy bcrypt hash line. Replaced with grep+cut
+  extraction of just the two variables it actually needs, sidestepping shell expansion of the
+  rest of the file entirely. Verified with a live test message at the time.
+- This also means the backup script's and container-health watcher's Discord paths (both
+  already built in [2.11.0](CHANGELOG.md), previously just no-op-silent without a real webhook)
+  have been live since 2026-07-07 too - confirmed via `journalctl` that both
+  `stack-backup.service` and `stack-health-check.service` have been running cleanly on their
+  normal schedule since.
+
+---
+
+## [2.11.1] — 2.11.0 correction: digest-pinned images aren't auto-updated by Watchtower
+
+Backfilled retroactively — commit `297dc13` shipped this without its own version at the time.
+Given a real version number as part of the 2026-07-09 versioning-policy pass (see note at top
+of this file). Caught while re-verifying [2.11.0](CHANGELOG.md): a digest pin is immutable by
+definition, so Watchtower re-pulling that exact reference never sees anything new. The README/
+CHANGELOG had claimed Watchtower "still updates every" pinned image — true for the 14 channel/
+version-tag pins, false for the 7 digest pins (Whisparr, Seerr, Homepage, Glances, Kometa,
+Unpackerr, Heimdall).
+
+### Fixed
+- Corrected both docs to say the 7 digest-pinned images need a manual bump instead.
+
+---
+
+## [2.11.0] — Reverse-proxy auth, image pinning, healthchecks, log rotation, Discord alerting
 
 A self-audit of the running stack (no prior bug report driving this one) surfaced five gaps:
 every one of ~20 web UIs was exposed on the LAN with no auth in front of it; 20 of 21 images
@@ -1305,10 +1383,10 @@ or a crash-looping container were all silent. All five fixed in one pass.
 
 *Built with Claude AI.*
 
-## [2.9.1] — Glances service-card widget crashed the whole Homepage page
+## [2.10.1] — Glances service-card widget crashed the whole Homepage page
 
 ### Fixed
-- The Glances card added in v2.9.0 used the wrong config schema: `cpu: true`/`mem: true` are
+- The Glances card added in v2.10.0 used the wrong config schema: `cpu: true`/`mem: true` are
   the *info-widget's* (`widgets.yaml`, top-of-page) option flags, but the *service-widget*
   (`services.yaml`, individual cards) uses a completely different schema requiring a single
   `metric:` field (`info`, `cpu`, `memory`, `process`, `containers`, or a parameterized one
@@ -1324,7 +1402,7 @@ or a crash-looping container were all silent. All five fixed in one pass.
 
 *Built with Claude AI.*
 
-## [2.9.0] — Real Kometa progress signal, Glances host stats, dashboard visual polish
+## [2.10.0] — Real Kometa progress signal, Glances host stats, dashboard visual polish
 
 ### Added
 - **Glances** (`nicolargo/glances:latest`), `extras` profile, `pid: host` + read-only
@@ -1350,7 +1428,7 @@ or a crash-looping container were all silent. All five fixed in one pass.
 
 *Built with Claude AI.*
 
-## [2.8.0] — Kometa added and configured (Plex collections/metadata/overlays)
+## [2.9.0] — Kometa added and configured (Plex collections/metadata/overlays)
 
 ### Added
 - **Kometa** (`kometateam/kometa:latest` - the official image's stable channel, explicitly
@@ -1412,7 +1490,7 @@ or a crash-looping container were all silent. All five fixed in one pass.
 
 *Built with Claude AI.*
 
-## [2.7.1] — Bazarr couldn't see Sonarr/Radarr's actual libraries
+## [2.8.1] — Bazarr couldn't see Sonarr/Radarr's actual libraries
 
 ### Fixed
 - Bazarr's `docker-compose.yml` volumes only had `/config` and `/mnt` - never the actual
@@ -1427,7 +1505,7 @@ or a crash-looping container were all silent. All five fixed in one pass.
 
 *Built with Claude AI.*
 
-## [2.7.0] — Live dashboard (Homepage) + automated config backups
+## [2.8.0] — Live dashboard (Homepage) + automated config backups
 
 ### Added
 - **Homepage** (`ghcr.io/gethomepage/homepage`), `extras` profile, port 3001, alongside
@@ -1476,6 +1554,21 @@ or a crash-looping container were all silent. All five fixed in one pass.
 
 *Built with Claude AI.*
 
+---
+
+## [2.7.0] — Claude Code GitHub Actions workflows added
+
+Backfilled retroactively — commits `53d3f23`, `240b90f`, and their merge (`8c74a94`, PR #3)
+shipped this without a version at the time. Given a real version number as part of the
+2026-07-09 versioning-policy pass (see note at top of this file).
+
+### Added
+- **`.github/workflows/claude.yml`** — the Claude PR Assistant workflow; tags `@claude` in an
+  issue or PR comment to trigger an agentic response.
+- **`.github/workflows/claude-code-review.yml`** — an automatic Claude code review on every PR.
+
+---
+
 ## [2.6.0] — Boot automation via systemd
 
 ### Added
@@ -1500,7 +1593,7 @@ or a crash-looping container were all silent. All five fixed in one pass.
 
 ---
 
-## [2.5.1] — Bazarr's Plex connection fixed (last piece of the v2.4.0 bug)
+## [2.5.2] — Bazarr's Plex connection fixed (last piece of the v2.4.0 bug)
 
 ### Fixed
 - Plex Media Server itself was found stopped on the host (`systemctl status` showed
@@ -1515,6 +1608,19 @@ or a crash-looping container were all silent. All five fixed in one pass.
   Bazarr's media-source connections (Plex, Radarr, Sonarr) are now genuinely live.
 
 *Built with Claude AI.*
+
+## [2.5.1] — Decypharr's config-wipe bug filed upstream
+
+Backfilled retroactively — commit `a7158f7` shipped this without its own version at the time.
+Given a real version number as part of the 2026-07-09 versioning-policy pass (see note at top
+of this file).
+
+### Changed
+- Linked [sirrobot01/decypharr#343](https://github.com/sirrobot01/decypharr/issues/343) into
+  [2.5.0](CHANGELOG.md)'s writeup of the partial-`PATCH`-drops-config bug, for anyone checking
+  the issue's status later.
+
+---
 
 ## [2.5.0] — Jellyfin removed; reverted to symlinks, experience judged not worth it
 
@@ -1626,6 +1732,18 @@ or a crash-looping container were all silent. All five fixed in one pass.
   now-dead root folder entries from both Radarr and Sonarr entirely.
 
 *Built with Claude AI.*
+
+## [2.3.1] — TODO.md added, tracking planned Jellyfin work
+
+Backfilled retroactively — commit `cc156b6` shipped this without its own version at the time.
+Given a real version number as part of the 2026-07-09 versioning-policy pass (see note at top
+of this file).
+
+### Added
+- **`TODO.md`** — a running list of planned-but-not-started work, seeded with the Jellyfin +
+  companion-app build that shipped as [2.4.0](CHANGELOG.md).
+
+---
 
 ## [2.3.0] — Homepage replaced with Heimdall; Watchtower's stale Docker client fixed
 

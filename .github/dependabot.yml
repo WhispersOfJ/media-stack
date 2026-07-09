@@ -1,7 +1,7 @@
 version: 2
 updates:
   # Checks docker-compose.yml for newer image tags/digests and opens a PR when
-  # found. Every service is pinned now (v2.10.0) - channel tags (:release),
+  # found. Every service is pinned now (v2.11.0) - channel tags (:release),
   # version tags, or exact digests - so this actually has something to bump
   # for all 22 services, not just the few that used to have real version
   # pins. Digest-pinned images (see README's Image pinning policy) won't get
