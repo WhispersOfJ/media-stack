@@ -132,7 +132,10 @@ Prowlarr ──indexes──> (your trackers + Zilean's DMM cache-hash list)
 Radarr / Sonarr / Lidarr / Readarr ──grab──> Decypharr (qBittorrent-compatible API)
    │                                                        │
    │                                                        ├─> Real-Debrid API  (add magnet)
-   │                                                        └─> AllDebrid API    (add magnet)
+   │                                                        └─> AllDebrid API    (add magnet;
+   │                                                            Radarr pinned to Real-Debrid only
+   │                                                            as of v4.14.0 - selected_debrid
+   │                                                            in config/decypharr/config.json)
    │                                                        │
    │                                        symlinked into  ▼
    │                                        each app's root folder: ./media/<type> → /data/<type>
@@ -397,7 +400,9 @@ noted as **done** where complete. What's left is a preference call, not a techni
    scriptable after all. Connected to Radarr (`HD Bluray + WEB` profile, `/data/movies`)
    and Sonarr (`WEB-1080p` profile, `/data/shows`) as default servers.
 4. **Decypharr** (done): debrid API keys set, all 4 arr apps auto-detected. `download_action`
-   defaults to `symlink` for every arr — no change needed.
+   defaults to `symlink` for every arr — no change needed. As of v4.14.0, Radarr's arr entry is
+   pinned to Real-Debrid only (`selected_debrid: "realdebrid"`) — Sonarr/Lidarr/Readarr are
+   still unrestricted (`source: "auto"`, either debrid provider).
 5. **Quality profiles** (done): `HD Bluray + WEB` in Radarr and `WEB-1080p` in Sonarr, both
    maintained directly in each app now — Recyclarr and its TRaSH-Guides sync were removed
    entirely (see [Custom format: blocked releases](#custom-format-blocked-releases) below for
@@ -549,8 +554,8 @@ patterns, not to score/rank between qualities.
 Both apps now have exactly one custom format, **"Blocked Releases (All Qualities)"**, scored
 `-10000` in every quality profile — since `minFormatScore` is `0` everywhere, this is a hard
 reject, not just deprioritization. It applies uniformly across every quality tier (there's no
-per-quality variant) and has two OR'd Release Title conditions (both `required: false`, so
-either one matching is enough to reject):
+per-quality variant) and has four OR'd Release Title conditions (all `required: false`, so
+any one matching is enough to reject):
 
 1. **Low quality / legacy encodes / low-trust groups** — carried over from the old
    `Low Quality Sources/Groups` / `FUCK RD` formats plus a Real-Debrid-motivated addition: since
@@ -566,10 +571,18 @@ either one matching is enough to reject):
    don't symlink into a single playable file the way Decypharr's debrid mount expects, so
    they're rejected the same way TRaSH already recommends, just folded into this one format
    instead of a separate one.
+3. **Cyrillic** (added [v4.12.0](CHANGELOG.md)) — `[Ѐ-ӿ]`, any release title containing a
+   Cyrillic character.
+4. **Sample** (added [v4.12.0](CHANGELOG.md)) — `(?i)\bsample\b`, release titles with "sample"
+   as a whole word. Release-title level only — a bundled sample *file* inside an otherwise-clean
+   release is caught separately, by each app's own built-in per-file sample detection during
+   import.
 
 Verified live against each app's own `/api/v3/parse` endpoint (real regex evaluation, not a
 guess): a plain `WEB-DL` release and a `BluRay.x264` release are both rejected; a `BluRay.x265`
-release and a full `REMUX` release are both left alone.
+release and a full `REMUX` release are both left alone. The two v4.12.0 additions were verified
+differently — see [CHANGELOG.md v4.12.0](CHANGELOG.md) for why `/api/v3/parse`-style live
+verification wasn't available for those two.
 
 Since Recyclarr is gone, nothing re-syncs or overwrites this format automatically anymore —
 any future change to it is a manual API/UI edit in both apps.
@@ -1016,6 +1029,19 @@ Homepage and Heimdall's Monitoring & Tools group.
   API duplicated here - the arr app does its own search and renders its own results, this just
   deep-links into it. Uses `location.hostname` client-side rather than a baked-in host, so it
   works from whatever address the panel itself was opened at.
+- **Unstick** (Radarr/Sonarr only) - an armed button that sweeps every queue item the app
+  itself flagged `warning`/`error` (the same condition that lights up its own Queue tab's
+  warning icon - usually the [Radarr-specific mount fragility](#architecture) leaving a
+  completed download stuck at `importBlocked`) and removes it, blocklists the release, and
+  triggers an immediate re-search, one `DELETE .../queue/{id}?removeFromClient=true&blocklist=
+  true&skipRedownload=false` call per item.
+- **Manual import** (Radarr/Sonarr only) - a collapsible panel listing every importable file
+  found across currently-stuck queue items (match title/episode, quality, release group, size,
+  rejection reasons like `Sample`), each with its own armed **Import** button. The candidate
+  object each app's own `manualimport` endpoint returns is echoed straight back on import
+  (`ManualImport` command) - the same shape its own Manual Import screen submits, so
+  quality/language/match data can't drift between scan and import. See
+  [CHANGELOG.md v4.11.0](CHANGELOG.md).
 - **Search Zilean directly** - a search box that calls Zilean's own `POST /dmm/search`
   endpoint (`AllowAnonymous`, no API key needed - see [Zilean hash sources](#zilean-hash-sources))
   and renders results inline: title, year, resolution, quality, size, and info hash with a
@@ -1112,5 +1138,5 @@ Homepage and Heimdall's Monitoring & Tools group.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **4.7.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **4.14.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
