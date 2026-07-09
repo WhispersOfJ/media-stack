@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.0.3**.
+retroactive pass) was never versioned under. Current version: **v6.2.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,105 @@ retroactive pass) was never versioned under. Current version: **v6.0.3**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+---
+
+## [6.2.0] — DebridMediaManager self-hosted (4 new services)
+
+User asked to self-host [DebridMediaManager](https://github.com/debridmediamanager/debrid-media-manager)
+(the app behind debridmediamanager.com) locally, "with all of the optional settings it comes
+with" - including its own scraper-driven search, not just personal library browsing. Planned
+first (Plan mode) since the actual env vars, Docker setup, and database requirements weren't
+fully documented upstream - researched directly against the repo (Dockerfile, docker-compose.yml,
+Prisma schema, scraper source) rather than assumed. Full plan, including three explicit scoping
+decisions made with the user beforehand (scraper pipeline vs. personal-library-only; OAuth
+login providers; the Tor proxy container), is preserved at
+`~/.claude/plans/jaunty-munching-aurora.md`.
+
+### Added
+- **`dmm-mysql`** (`mysql:8.4`) - dedicated database, own container (same "each app-specific DB
+  gets its own instance" pattern as `zilean-postgres`). MySQL is hard-required here, not
+  swappable for Postgres/MariaDB - DMM's own `prisma/schema.prisma` hardcodes
+  `provider = "mysql"` and uses MySQL-specific column types plus `@@fulltext` indexes.
+- **`dmm-redis`** (`redis:7-alpine`) - rate limiting, matches upstream's own reference
+  `docker-compose.yml` exactly.
+- **`dmm-migrate`** - one-shot init container (`npx prisma db push --accept-data-loss`,
+  `restart: "no"`) for first-run schema setup, since DMM's `package.json` has no migration
+  runner and no `prisma/migrations` history to run `migrate deploy` against. Verified live: all
+  55 tables from the full Prisma schema landed correctly in a single run (confirmed via
+  `SHOW TABLES` against the fresh database, not just a clean exit code).
+- **`debridmediamanager`** - the web app, port `3000`. No pre-built image exists anywhere
+  (checked GHCR and Docker Hub) - built from source via a **git-context build pinned to a
+  specific commit** (`c2ceef94477e49ddd5c55606bf57959ffdf29b9e`), not `main`, consistent with
+  this stack's pin-everything policy (see README's Image pinning policy) - an unpinned git ref
+  would be the self-built equivalent of `:latest`.
+
+### Two real upstream bugs found and worked around live (not vendored/forked)
+- **BuildKit wasn't installed on the host at all** (`docker-buildx` package missing) - the
+  Dockerfile's `RUN --mount=type=cache` syntax needs it. User installed it (`sudo pacman -S
+  docker-buildx`); confirmed working via `docker buildx version` before retrying the build.
+- **Prisma binary-target mismatch** - the Dockerfile's `deploy` stage generates the Prisma
+  Client without `openssl` installed, so Prisma can't detect the real OpenSSL version and
+  silently generates the wrong query engine (`debian-openssl-1.1.x` instead of the actual
+  `debian-openssl-3.0.x` runtime) - the app then crash-loops on startup unable to find a
+  matching engine. Not fixable via `docker-compose` alone without vendoring a modified
+  Dockerfile (which would lose the clean pin-by-commit setup and create an ongoing
+  upstream-sync burden). Worked around instead: both `dmm-migrate` and `debridmediamanager` run
+  from the Dockerfile's `build` stage (`target: build`) rather than the default `deploy` stage -
+  that stage has the full toolchain, so `debridmediamanager`'s `command:` installs `openssl`
+  (plus `curl`, for the healthcheck - caught live in a second pass: the app was actually up and
+  serving the whole time, but the healthcheck itself was failing with "curl: executable file
+  not found") and regenerates the Prisma Client correctly before starting via plain `next start`
+  (this stage's regular, non-pruned `.next` build output, not the standalone server binary
+  which isn't produced here). Costs somewhat more RAM (full `node_modules` present) - `mem_limit`
+  set to `1.5g` accordingly, above the usual "no observation yet" default.
+- Backup coverage closed proactively this time (not discovered missing later, unlike
+  `zilean-postgres`'s gap in [5.1.0]): `scripts/backup-config.sh` gets a `mysqldump` step for
+  `dmm-mysql` alongside the existing `pg_dump` step, same reasoning and naming convention.
+
+### Verified live
+- All four containers `healthy`; `dmm-migrate` exits `0` after a clean schema push.
+- `GET /api/healthz` returns `{"status":"ok"}`, `GET /` returns `200`.
+- Loaded `http://localhost:3000` in a real browser: correctly redirects to `/start` and renders
+  DMM's actual login screen (Real-Debrid/AllDebrid/Torbox options, "no data stored on our
+  servers" messaging confirming client-side credential storage) - not just a health-check pass.
+  No console errors on a clean page load.
+- **Deliberately not done**: logging in with real debrid credentials, or testing an actual
+  per-title scrape - both need the user's own account credentials entered client-side
+  (`localStorage`, never a server secret by DMM's own design), which wasn't done on their
+  behalf, consistent with how every other sensitive credential was handled this session.
+
+### Known follow-up (not done this session)
+- **`TMDB_KEY`/`MDBLIST_KEY` are still `changeme`** - these are required in practice (not just
+  "optional" like upstream's own `.env.example` implies) for the on-demand per-title scraper to
+  resolve anything; search/scrape won't produce results until the user signs up for free keys
+  at themoviedb.org and mdblist.com and updates `.env`, then recreates `debridmediamanager`.
+  `OMDB_KEY`/`TRAKT_CLIENT_ID`/`TRAKT_CLIENT_SECRET` are genuinely optional and can stay
+  `changeme` indefinitely.
+
+---
+
+## [6.1.0] — Sonarr now prefers season packs; Zilean set to top indexer priority
+
+### Added
+- **Custom format "Prefer Season Packs"** (Sonarr id 2) — a single `ReleaseTypeSpecification`
+  set to `Season Pack` (value `3`), scored `+25` in the `720p+ (All Sources)` profile
+  (`formatItems`). Uses Sonarr's own release parser to distinguish season packs from single/
+  multi-episode releases, rather than a title regex - more reliable, and Sonarr-only (Radarr has
+  no such specification, no episodes/seasons to distinguish). This is a *preference*, not a
+  requirement: a positive score only outranks other releases at the identical quality tier, it
+  doesn't block single-episode grabs when no season pack exists yet.
+- **Verified live** against Sonarr's own `/api/v3/parse` endpoint (real parser evaluation, not
+  a guess): `Yellowstone.S05.2160p.WEB.H265-GGEZ` parses `fullSeason: true`, matches the format,
+  scores `+25`. Both `Yellowstone.S05E03...` (single) and `Yellowstone.S05E03-E04...`
+  (multi-episode) parse `fullSeason: false`, match nothing, score `0`.
+
+### Changed
+- **Zilean's indexer priority set to `1`** (highest - Prowlarr's priority scale is `1`-`50`,
+  lower is more preferred, matching Sonarr/Radarr's own convention) via `PUT /api/v1/indexer/
+  13`, up from the default `25` every bulk-added indexer in [5.2.0] got. Triggered
+  `ApplicationIndexerSync` afterward so the new priority propagates down to the 4 connected
+  *arr apps (`fullSync` on all of them) instead of only living in Prowlarr's own database.
 
 ---
 
