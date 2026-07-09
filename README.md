@@ -1090,9 +1090,10 @@ Homepage entirely (both removed from `docker-compose.yml`) rather than running a
 Runs on port **8420**.
 
 - **Quick Links** - a link to every service's own web UI (Plex, Prowlarr, Zilean, both
-  Decypharr instances, Zurg, all 4 arr apps, NZBGet, Seerr, Bazarr, Byparr, Tautulli, Glances),
-  each with a live status dot sourced from the same container data the grid below uses. This is
-  what let Heimdall and Homepage be removed entirely instead of kept around as link launchers.
+  Decypharr instances, Zurg, all 4 arr apps, NZBGet, Seerr, Bazarr, Byparr, Tautulli, Glances,
+  DebridMediaManager), each with a live status dot sourced from the same container data the grid
+  below uses. This is what let Heimdall and Homepage be removed entirely instead of kept around
+  as link launchers.
 - **Matrix theme** - black/phosphor-green throughout, monospace headings, and a falling-code
   rain layer (`matrix-rain.js`) rendered on a fixed canvas behind everything - self-contained,
   respects `prefers-reduced-motion` (skips the render loop entirely rather than just hiding the
@@ -1127,6 +1128,12 @@ Runs on port **8420**.
   (`/library/sections/{id}/emptyTrash`, looped over every section), and two Butler tasks -
   optimize database (`/butler/OptimizeDatabase`) and clean old bundles
   (`/butler/CleanOldBundles`).
+- **Bazarr: Search all wanted subtitles** - triggers Bazarr's own
+  `wanted_search_missing_subtitles_series`/`_movies` scheduled tasks immediately via
+  `POST /api/system/tasks`, bypassing their normal 6-hour interval - same "run now" pattern as
+  the Kometa card above. Added in [6.8.0](CHANGELOG.md) alongside the rest of Bazarr's setup;
+  needed its own `BAZARR_API_KEY` wired into `.env`/`docker-compose.yml` since, unlike the other
+  `*arr` apps, Bazarr's key had never been mirrored out of its own config before.
 - ***arr actions*** - RSS sync and search-for-missing on Radarr, Sonarr, Lidarr, and Readarr,
   each via `POST /api/v3|v1/command` with that app's own command name (`RssSync`, plus
   `MissingMoviesSearch`/`MissingEpisodeSearch`/`MissingAlbumSearch`/`MissingBookSearch`
@@ -1138,12 +1145,15 @@ Runs on port **8420**.
   API duplicated here - the arr app does its own search and renders its own results, this just
   deep-links into it. Uses `location.hostname` client-side rather than a baked-in host, so it
   works from whatever address the panel itself was opened at.
-- **Unstick** (Radarr/Sonarr only) - an armed button that sweeps every queue item the app
+- **Unstick** (Radarr/Sonarr/Lidarr) - an armed button that sweeps every queue item the app
   itself flagged `warning`/`error` (the same condition that lights up its own Queue tab's
   warning icon - usually the [Radarr-specific mount fragility](#architecture) leaving a
   completed download stuck at `importBlocked`) and removes it, blocklists the release, and
   triggers an immediate re-search, one `DELETE .../queue/{id}?removeFromClient=true&blocklist=
-  true&skipRedownload=false` call per item.
+  true&skipRedownload=false` call per item. Extended to Lidarr in [6.8.0](CHANGELOG.md) - this
+  is the exact manual process from [6.5.0](CHANGELOG.md)'s Metallica corrupted-archive
+  investigation, turned into a button instead of hand-run API calls. Readarr isn't included -
+  never exercised against its queue, so no live evidence its shape matches the other three.
 - **Manual import** (Radarr/Sonarr only) - a collapsible panel listing every importable file
   found across currently-stuck queue items (match title/episode, quality, release group, size,
   rejection reasons like `Sample`), each with its own armed **Import** button. The candidate
@@ -1307,5 +1317,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.7.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.8.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

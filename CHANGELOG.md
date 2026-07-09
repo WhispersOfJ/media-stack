@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.7.0**.
+retroactive pass) was never versioned under. Current version: **v6.8.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,56 @@ retroactive pass) was never versioned under. Current version: **v6.7.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [6.8.0] — Control Panel: DMM's 4 containers labeled, Bazarr search + Lidarr unstick added
+
+`CONTAINER_LABELS` in `control-panel/app.py` is display-only, not an allow-list - unlisted
+containers still show up in the grid, just under their raw container name (see the code's own
+comment). [6.2.0]'s 4 DMM containers had gone unlabeled since they were added; fixed as part of
+a broader pass over what else the panel could usefully cover given everything else added since
+it was last touched (the DMM stack, and this session's Bazarr work).
+
+### Added
+- **Container labels for DMM's 4 services** - `debridmediamanager`, `dmm-mysql`, `dmm-redis`,
+  `dmm-migrate` (the last one correctly noted as "exits after running, not a bug if shown
+  stopped" - it's a one-shot Prisma migration, not a long-running service).
+- **DebridMediaManager added to Quick Links** - was missing since [6.2.0], same gap as above.
+- **Bazarr "Search all wanted subtitles" primary action** - one click triggers Bazarr's own
+  `wanted_search_missing_subtitles_series` and `_movies` scheduled tasks immediately via
+  `POST /api/system/tasks`, bypassing their normal 6-hour interval. Same pattern as the existing
+  Kometa/Plex primary action cards. Needed its own API key wired through - Bazarr's key was
+  never mirrored into `.env` the way Radarr/Sonarr/Lidarr/Readarr's are, unlike every other
+  `*arr` app's key already available to this container; added `BAZARR_API_KEY` to `.env` and
+  `docker-compose.yml`'s `control-panel` environment block, matching the existing pattern.
+- **Unstick extended to Lidarr** - the "remove + blocklist + re-search a stuck queue item"
+  action (previously Radarr/Sonarr-only) now also covers Lidarr, using the identical
+  `DELETE .../queue/{id}?blocklist=true&skipRedownload=false` pattern verified live, repeatedly,
+  during [6.5.0]'s Metallica corrupted-archive investigation - this isn't speculative, it's the
+  exact manual process from that investigation turned into a button. Manual import stayed
+  Radarr/Sonarr-only - its file-to-item field mapping is Radarr/Sonarr-specific (`movieId` vs.
+  `seriesId`/`episodeIds`) and was never adapted or tested against Lidarr's artist/album-shaped
+  manual-import response, so extending unstick's queue coverage doesn't also silently extend
+  manual-import into an untested, likely-broken state. `QUEUE_ARR_APPS` split into
+  `UNSTICK_ARR_APPS` (`radarr`, `sonarr`, `lidarr`) and `MANUAL_IMPORT_ARR_APPS` (`radarr`,
+  `sonarr`) to keep the two capabilities independently scoped going forward. Readarr excluded
+  from both - never exercised against its queue this session, no live evidence its shape
+  matches.
+
+### Verified live
+- Rebuilt and recreated the `control-panel` container; confirmed healthy.
+- `GET /api/containers` shows all 4 DMM services with their new labels.
+- `POST /api/bazarr/search-wanted` returned `200`; Bazarr's own `GET /api/system/tasks` showed
+  `job_running: true` for both series and movies tasks immediately after.
+- `POST /api/arr/lidarr/unstick` returned `200` - and genuinely found and fixed a real stuck
+  item left over from [6.5.0]'s investigation (`Metallica - Load (1996) [MP3 320] 88`, never
+  manually cleaned up after its second extraction failure), not just an empty "nothing to do"
+  response.
+- `GET /api/arr/lidarr/manual-import` correctly `404`s (`"manual import works on radarr and
+  sonarr"`) - confirms the split didn't accidentally widen manual-import's scope too.
+- `POST /api/arr/readarr/unstick` correctly `404`s - confirms Readarr wasn't accidentally
+  included.
+
+---
 
 ## [6.7.0] — Bazarr: English language wired up, default profile applied, real providers enabled
 
