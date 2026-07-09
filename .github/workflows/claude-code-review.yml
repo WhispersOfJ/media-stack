@@ -1,7 +1,16 @@
 name: Claude Code Review
 
 on:
-  pull_request:
+  # pull_request_target, not pull_request: GitHub withholds repository secrets from
+  # pull_request-triggered runs when the triggering actor is dependabot[bot], to stop a
+  # malicious dependency bump from exfiltrating them - Dependabot's own PRs (opening or
+  # auto-synchronizing) never got CLAUDE_CODE_OAUTH_TOKEN under pull_request, confirmed via
+  # a comment-triggered claude.yml run on the same PR succeeding with the same secret.
+  # pull_request_target runs in the base branch's trust context regardless of actor. Safe
+  # here since the checkout step below has no `ref:` override (stays on the base branch, not
+  # the PR head) and this job never executes PR code - Claude reviews the diff via GitHub's
+  # API through the prompt below, the same as any other PR.
+  pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
     # Optional: Only run on specific file changes
     # paths:

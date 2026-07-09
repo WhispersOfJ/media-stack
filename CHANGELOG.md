@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.0.0**.
+retroactive pass) was never versioned under. Current version: **v6.0.1**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,36 @@ retroactive pass) was never versioned under. Current version: **v6.0.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+---
+
+## [6.0.1] — CI: Claude Code Review fixed on Dependabot PRs
+
+Checked GitHub Actions CI status after the [6.0.0] push and found two persistent failures.
+This entry fixes one of them.
+
+### Fixed
+- **`claude-code-review.yml` was failing on every Dependabot-authored PR** (`ANTHROPIC_API_KEY,
+  CLAUDE_CODE_OAUTH_TOKEN... is required`, consistently, on PR #6's rclone bump) despite
+  `CLAUDE_CODE_OAUTH_TOKEN` being set as a repo secret (`gh secret set`, confirmed present via
+  `gh secret list`). Root cause: GitHub withholds repository secrets from `pull_request`-
+  triggered workflow runs when the triggering actor is `dependabot[bot]`, a hardening measure
+  against a malicious dependency bump exfiltrating them. Confirmed by testing the *other*
+  Claude workflow (`claude.yml`, comment-triggered via `issue_comment`) on the same PR with the
+  same secret — it succeeded, proving the secret itself was valid and the restriction was
+  specific to the `pull_request` trigger + Dependabot actor combination. Switched the trigger
+  to `pull_request_target`, which runs in the base branch's trust context regardless of actor.
+  Safe here: the checkout step has no `ref:` override (stays on the base branch, never the PR
+  head) and the job never executes PR code — Claude reviews the diff through GitHub's API via
+  the prompt, same as it always did.
+
+### Known follow-up (not fixed this pass)
+- **Dependabot's own `docker_compose` update job fails checking `debridmediamanager/zurg`**
+  (`private_source_authentication_failure` against `ghcr.io`) — that image is the sponsor-gated
+  Zurg build (see `docker-compose.yml`'s own comment on it, not the public `zurg-testing`
+  image), so Dependabot needs a registry credential to check it for updates at all. Needs a
+  `registries:` entry in `.github/dependabot.yml` pointing at a GHCR token secret - not done in
+  this pass.
 
 ---
 
