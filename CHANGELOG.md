@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.0.2**.
+retroactive pass) was never versioned under. Current version: **v6.0.3**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,44 @@ retroactive pass) was never versioned under. Current version: **v6.0.2**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+---
+
+## [6.0.3] — Fixed: every AllDebrid-sourced Sonarr grab was stuck at import forever
+
+User reported Sonarr stuck on `Yellowstone.2018.S05E03.2160p.WEB.H265-GGEZ[rarbg]` with "No
+files found are eligible for import in /app/downloads/sonarr-ad/...". Not a one-off - this
+affected every single release grabbed through the `Decypharr-AllDebrid` download client, since
+the second, isolated Decypharr instance added to keep AllDebrid exclusive to Sonarr (see
+[Architecture](README.md#architecture)) never got its own downloads folder mounted into
+Sonarr's container. `Decypharr-AllDebrid` reports `outputPath` as `/app/downloads/<category>/
+...` to Sonarr's API - identical-looking to the primary `decypharr` instance's own path
+convention - but it's actually a different host directory
+(`config/decypharr-alldebrid/downloads`, not `config/decypharr/downloads`). Confirmed live:
+`docker exec sonarr ls /app/downloads/sonarr-ad/...` → "No such file or directory", while the
+same path existed fine on the host and inside the `decypharr-alldebrid` container itself.
+
+### Fixed
+- **`docker-compose.yml`** — added `./config/decypharr-alldebrid/downloads:/app/downloads-ad:
+  rslave` to Sonarr's volumes. Can't bind both decypharr instances' downloads at the literal
+  `/app/downloads` (one container path, one mount), so this one lands at a second path instead.
+- **Remote Path Mapping added in Sonarr** (`POST /api/v3/remotepathmapping`) for the
+  `Decypharr-AllDebrid` download client specifically: `host: decypharr-alldebrid`, `remotePath:
+  /app/downloads/`, `localPath: /app/downloads-ad/` - translates what that download client's
+  API reports into where Sonarr should actually look on its own filesystem. The
+  `Decypharr-AllDebrid` client's one exception to the "identical paths, no Remote Path
+  Mappings" rule the rest of this stack follows (see [Architecture](README.md#architecture)).
+- Sonarr recreated (`docker compose up -d sonarr`) to pick up the new mount.
+
+### Verified live
+- `docker exec sonarr stat -L` on the symlinked file resolved to a real, readable 5.99GB file
+  (not a stale FUSE handle) before touching Sonarr's own import logic.
+- Triggered `RefreshMonitoredDownloads`; the stuck queue item cleared on its own within seconds
+  - `GET /api/v3/episode/113` now shows `hasFile: true`, `episodeFileId: 13`, and
+  `GET /api/v3/history?episodeId=113` shows a `downloadFolderImported` event. Confirmed the
+  actual symlink exists in the library at `media/shows/Yellowstone (2018)/Season 5/
+  Yellowstone.2018.S05E03.2160p.WEB.H265-GGEZ[rarbg].mkv`, resolving through
+  `/mnt/decypharr-alldebrid`.
 
 ---
 
