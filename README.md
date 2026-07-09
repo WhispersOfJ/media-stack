@@ -109,6 +109,7 @@ Full details, including the *arr-key two-pass step this diagram shows, are in
 - [Zilean hash sources](#zilean-hash-sources)
 - [Resource limits](#resource-limits)
 - [Custom format: blocked releases](#custom-format-blocked-releases)
+- [Subtitles: Bazarr language and providers](#subtitles-bazarr-language-and-providers)
 - [Security note](#security-note)
 - [Image pinning policy](#image-pinning-policy)
 - [Container healthchecks](#container-healthchecks)
@@ -648,6 +649,33 @@ digit, so `[FLAC] 88` and `vtwin88cube` both hard-reject while a release year li
 left alone (the negative lookbehind blocks a match on its last two digits, since they're
 preceded by another digit). Verified live via `GET /api/v1/parse` against real titles from the
 [6.5.0](CHANGELOG.md) investigation.
+
+## Subtitles: Bazarr language and providers
+
+Added in [6.7.0](CHANGELOG.md). Bazarr's Sonarr/Radarr/Plex connections were fixed long ago
+(v2.4.0/v2.5.2, see above), but nothing downstream of that connection was ever configured — no
+language enabled, no language profile, no default profile for new library items, and no
+subtitle provider at all. Connected and idle the whole time.
+
+- **English** enabled, one language profile (`"English"`, plain - not forced/HI-only), set as
+  the default for both new series and new movies, and applied retroactively to every series/
+  movie already synced in from Sonarr/Radarr (the default only auto-applies going forward,
+  not to what's already there).
+- **Two subtitle providers**, both genuinely credential-free: `gestdown` (TV, addic7ed
+  alternative) and `subf2m` (Subscene mirror, movies + TV). Every other bundled provider needs
+  a real account this stack has no credentials for.
+- Hit a real Bazarr bug applying the profile retroactively: its own
+  `languages-profiles` POST schema doesn't document a 6th per-item field
+  (`audio_only_include`) that `list_missing_subtitles`/`list_missing_subtitles_movies` reads
+  unconditionally - omitting it doesn't fail the profile save (still returns `204`), it 500s
+  one step later, the first time anything tries to compute missing subtitles against that
+  profile. That's not just a manual-step gotcha either: `serie_default_enabled`/
+  `movie_default_enabled` runs the identical code path automatically on every future sync, so
+  this would have silently broken subtitle handling for every new series/movie added from here
+  on if it had shipped without the fix.
+- Verified live end-to-end, not just settings saved: a real missing-subtitle Rick and Morty
+  episode returned actual `gestdown` search results with real match scores and working
+  download URLs.
 
 ## Security note
 
@@ -1279,5 +1307,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.6.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.7.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

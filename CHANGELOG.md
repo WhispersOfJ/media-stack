@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.6.0**.
+retroactive pass) was never versioned under. Current version: **v6.7.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,60 @@ retroactive pass) was never versioned under. Current version: **v6.6.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [6.7.0] — Bazarr: English language wired up, default profile applied, real providers enabled
+
+Bazarr was already connected to Sonarr and Radarr (`sonarr.apikey`/`radarr.apikey` in its own
+config matched `.env`, confirmed live via `GET /api/system/status` returning real
+`sonarr_version`/`radarr_version` strings, and all 6 series + 3 movies were already synced into
+its library) but otherwise completely inert for actual subtitle fetching: **zero** languages
+enabled, **zero** language profiles, **zero** subtitle providers (`enabled_providers: []`), and
+no default profile set for new series/movies. It could see everything and do nothing with it.
+
+### Added
+- **English enabled** (`POST /api/system/settings`, `languages-enabled=en`).
+- **Language profile "English"** (profileId `1`) — one item, plain English, not forced/HI-only.
+  Set as the default for both new series and new movies going forward
+  (`serie_default_enabled`/`movie_default_enabled` + matching `_profile` fields).
+- **Applied retroactively** to the 6 series and 3 movies already synced from Sonarr/Radarr
+  (`POST /api/series` / `POST /api/movies` with `profileid=1`) — the default-profile settings
+  only apply to items added *after* being set, so existing library items needed an explicit
+  bulk update or they'd have sat with no profile indefinitely.
+- **Two subtitle providers enabled, both genuinely no-auth**: `gestdown` (TV-only, addic7ed
+  alternative, zero signup) and `subf2m` (Subscene mirror, covers movies and TV, only needs a
+  user agent Bazarr sets itself). Every other bundled provider needs a real account/API key
+  this stack doesn't have credentials for, so these two are the only ones that could actually
+  be turned on unilaterally.
+
+### Fixed
+- **Real bug hit while applying the profile retroactively**: `POST /api/series` and
+  `POST /api/movies` both 500'd with `KeyError: 'audio_only_include'` the first time - Bazarr
+  1.6.0's `list_missing_subtitles`/`list_missing_subtitles_movies` read a 6th field
+  (`audio_only_include`) from each language-profile item that isn't documented in the
+  `languages-profiles` POST schema itself, only surfaces once something actually tries to
+  compute missing subtitles against the profile. The initial profile write (missing that field)
+  returned a clean `204` and looked fully saved - the break only showed up one step later. This
+  wasn't just a one-off for the retroactive bulk-apply either: the exact same code path runs
+  automatically the moment `serie_default_enabled`/`movie_default_enabled` assigns the profile
+  to any newly-synced series or movie, so leaving the field out would have silently broken
+  every future Sonarr/Radarr sync's subtitle handling, not just this manual step. Fixed by
+  re-posting the profile with `audio_only_include: "False"` added to its one item.
+
+### Verified live
+- `GET /api/system/languages` — English now shows `enabled: true`.
+- `GET /api/system/languages/profiles` — profile `1` exists with the full 6-field item shape.
+- All 6 series and all 3 movies show `profileId: 1` via `GET /api/series` / `GET /api/movies`,
+  with real (non-error) missing-subtitle counts computed per item.
+- **Real end-to-end subtitle search**: `GET /api/providers/episodes?episodeid=695` (a genuinely
+  missing-subtitle Rick and Morty episode) returned actual `gestdown` results with real match
+  scores (93, 86) and working download URLs - not just a clean API response, an actual
+  subtitle found.
+- The 3 Godfather movies correctly report zero missing subtitles because they already have
+  embedded English tracks (`embedded_track_id` present in their `subtitles` list) - confirms
+  the missing-subtitle logic is working correctly on the movie side too, not just silently
+  reporting empty due to a bug.
+
+---
 
 ## [6.6.0] — Lidarr: custom format added to reject the `88`/`vtwin88cube` uploader tag
 
