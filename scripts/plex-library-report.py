@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Diffs Plex's movie/show libraries against the last snapshot and posts what
-was added/removed to Discord. Run every 12h by
+was added/removed to Discord. Run every 30 minutes by
 systemd/stack-plex-report.{service,timer}.
 
 State lives in ~/.cache/plex-library-snapshot.json so the first run just
@@ -155,7 +155,7 @@ def main():
         )
         embed["color"] = DISCORD_BLURPLE
     elif not fields:
-        embed["description"] = "No changes in the last 12 hours."
+        embed["description"] = "No changes in the last 30 minutes."
         embed["color"] = DISCORD_BLURPLE
     else:
         embed["fields"] = fields[:25]  # Discord's hard cap on embed fields

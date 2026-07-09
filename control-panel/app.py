@@ -1,9 +1,15 @@
 """
-Control Panel - one-click operational actions for The Stack.
+Control Panel - the single dashboard for The Stack: live container status
+and start/stop/restart control, host system stats, Zilean's own indexed-hash
+count, one-click operational actions, and a direct Zilean search with
+grab-to-Decypharr. Supersedes the old Homepage+Control Panel split - see
+README.md's Control Panel section.
 
-Talks to the Docker socket (exec/restart) and to each app's own HTTP API
-(Plex, Radarr, Sonarr, Lidarr, Readarr). No auth - LAN-only, matches every
-other service in this stack (see README.md "Security note").
+Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
+HTTP API (Plex, Radarr, Sonarr, Lidarr, Readarr, Zilean), Glances (host
+stats), and zilean-postgres directly (hash count - Zilean has no stats API
+of its own). No auth - LAN-only, matches every other service in this stack
+(see README.md "Security note").
 """
 import os
 import re
@@ -14,6 +20,7 @@ from urllib.parse import quote
 
 import docker
 import httpx
+import psycopg2
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -23,6 +30,8 @@ PLEX_TOKEN = os.environ["PLEX_TOKEN"]
 ZILEAN_URL = "http://zilean:8181"
 DECYPHARR_URL = "http://decypharr:8282"
 DECYPHARR_MANUAL_CATEGORY = "manual"
+GLANCES_URL = "http://glances:61208"
+ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
 # Matches Decypharr's own hexRegex (pkg/internal/utils/magnet.go) - its
 # magnet parser (anacrolix/torrent's metainfo.ParseMagnetUri) 400s with no
 # application-level log line for anything that doesn't match this, so this
@@ -68,25 +77,37 @@ ARR_APPS = {
 # because that wasn't asked for and untested against their queue shape.
 QUEUE_ARR_APPS = ("radarr", "sonarr")
 
-# Allow-listed restart targets only - never accept an arbitrary container
-# name from the client, even though this is a trusted LAN tool.
-RESTARTABLE_CONTAINERS = {
-    "radarr": "Radarr — also clears the stale Zurg mount issue (v4.0.1)",
-    "sonarr": "Sonarr",
-    "lidarr": "Lidarr",
-    "readarr": "Readarr",
-    "bazarr": "Bazarr",
-    "prowlarr": "Prowlarr",
-    "plex": "Plex",
-    "zurg": "Zurg (Real-Debrid mount)",
-    "rclone-alldebrid": "rclone (AllDebrid mount)",
-    "decypharr": "Decypharr",
-    "nzbget": "NZBGet",
-    "seerr": "Seerr",
-    "tautulli": "Tautulli",
-    "byparr": "Byparr",
-    "kometa": "Kometa",
-    "zilean": "Zilean",
+# Display-only labels/notes for the container grid - NOT an allow-list.
+# Which containers actually exist, and which actions are valid on them, is
+# always determined live from Docker (see project_containers() below), so
+# this dict going stale (a service added to docker-compose.yml but not
+# listed here) only means a slightly plainer name in the UI, never a broken
+# or missing control - the exact staleness failure mode the old hardcoded
+# RESTARTABLE_CONTAINERS allow-list had (it silently excluded any service
+# added to compose after it was written, e.g. decypharr-alldebrid).
+CONTAINER_LABELS = {
+    "radarr": ("Radarr", "also clears the stale Zurg mount issue (v4.0.1)"),
+    "sonarr": ("Sonarr", None),
+    "lidarr": ("Lidarr", None),
+    "readarr": ("Readarr", None),
+    "bazarr": ("Bazarr", None),
+    "prowlarr": ("Prowlarr", None),
+    "plex": ("Plex", None),
+    "zurg": ("Zurg", "Real-Debrid mount"),
+    "rclone-alldebrid": ("rclone", "AllDebrid mount"),
+    "decypharr": ("Decypharr", "Real-Debrid + AllDebrid"),
+    "decypharr-alldebrid": ("Decypharr", "AllDebrid only, Sonarr-exclusive"),
+    "nzbget": ("NZBGet", None),
+    "seerr": ("Seerr", None),
+    "tautulli": ("Tautulli", None),
+    "byparr": ("Byparr", None),
+    "kometa": ("Kometa", None),
+    "zilean": ("Zilean", None),
+    "zilean-postgres": ("Zilean Postgres", None),
+    "glances": ("Glances", None),
+    "unpackerr": ("Unpackerr", None),
+    "watchtower": ("Watchtower", None),
+    "control-panel": ("Control Panel", "this dashboard"),
 }
 
 app = FastAPI(title="Control Panel")
@@ -128,6 +149,67 @@ def own_container():
     return docker_client.containers.get(socket.gethostname())
 
 
+def project_containers():
+    """Every container in this compose project, live from Docker - the same
+    label-based discovery stack_restart_all() already used, pulled out so
+    the container grid, start/stop/restart validation, and the whole-stack
+    restart all share one source of truth instead of three separate lists
+    that can individually drift out of sync with docker-compose.yml (the
+    exact failure mode CONTAINER_LABELS going stale is harmless for, but an
+    allow-list going stale silently breaks)."""
+    try:
+        me = own_container()
+    except docker.errors.NotFound:
+        fail("Could not find this container's own record - can't determine the compose project.")
+    project = me.labels.get("com.docker.compose.project")
+    if not project:
+        fail("This container has no compose project label - can't tell what 'the stack' is.")
+    containers = docker_client.containers.list(all=True, filters={"label": f"com.docker.compose.project={project}"})
+    return me, containers
+
+
+def container_stats(c) -> dict:
+    """CPU%/memory for a running container, computed the same way `docker
+    stats` does - a single stats() call already contains both the current
+    and previous sample (cpu_stats/precpu_stats), so no extra polling
+    delay is needed for one data point."""
+    if c.status != "running":
+        return {"cpu_percent": None, "mem_used_mb": None, "mem_limit_mb": None, "mem_percent": None}
+    try:
+        s = c.stats(stream=False)
+        cpu = s.get("cpu_stats", {})
+        precpu = s.get("precpu_stats", {})
+        cpu_total = cpu.get("cpu_usage", {}).get("total_usage")
+        precpu_total = precpu.get("cpu_usage", {}).get("total_usage")
+        system = cpu.get("system_cpu_usage")
+        presystem = precpu.get("system_cpu_usage")
+        online_cpus = cpu.get("online_cpus") or len(cpu.get("cpu_usage", {}).get("percpu_usage") or [1]) or 1
+        cpu_percent = None
+        if None not in (cpu_total, precpu_total, system, presystem):
+            cpu_delta = cpu_total - precpu_total
+            system_delta = system - presystem
+            if system_delta > 0 and cpu_delta >= 0:
+                cpu_percent = round((cpu_delta / system_delta) * online_cpus * 100, 1)
+        mem = s.get("memory_stats", {})
+        mem_used = mem.get("usage")
+        # Docker's raw "usage" includes page cache; subtracting inactive_file
+        # (cgroup v1/v2 key differs) is what `docker stats` itself does to
+        # show the same number a user would recognize from that command.
+        mem_stats = mem.get("stats", {})
+        cache = mem_stats.get("inactive_file", mem_stats.get("total_inactive_file", 0)) or 0
+        if mem_used is not None:
+            mem_used = max(mem_used - cache, 0)
+        mem_limit = mem.get("limit")
+        mem_used_mb = round(mem_used / 1024 / 1024, 1) if mem_used is not None else None
+        mem_limit_mb = round(mem_limit / 1024 / 1024, 1) if mem_limit else None
+        mem_percent = round((mem_used / mem_limit) * 100, 1) if mem_used and mem_limit else None
+        return {"cpu_percent": cpu_percent, "mem_used_mb": mem_used_mb, "mem_limit_mb": mem_limit_mb, "mem_percent": mem_percent}
+    except Exception:
+        # Stats are a nice-to-have on the grid, not something a transient
+        # per-container failure should turn into a 502 for the whole grid.
+        return {"cpu_percent": None, "mem_used_mb": None, "mem_limit_mb": None, "mem_percent": None}
+
+
 def now() -> str:
     return datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S")
 
@@ -147,19 +229,119 @@ def healthz():
 
 @app.get("/api/status")
 def status():
-    """Live running/health state for every restartable container, used to
-    light up the status lamps on page load without a manual refresh."""
+    """Live running/health state for every container in the compose
+    project, used to light up the status lamps on page load without a
+    manual refresh. Discovered live rather than from a fixed list, so a
+    newly added service shows up with no code change."""
+    _, containers = project_containers()
     out = {}
-    for name in RESTARTABLE_CONTAINERS:
-        try:
-            c = docker_client.containers.get(name)
-            health = c.attrs.get("State", {}).get("Health", {}).get("Status")
-            out[name] = {"state": c.status, "health": health}
-        except docker.errors.NotFound:
-            out[name] = {"state": "missing", "health": None}
-        except Exception as e:
-            out[name] = {"state": "unknown", "health": None, "error": str(e)}
+    for c in containers:
+        health = c.attrs.get("State", {}).get("Health", {}).get("Status")
+        out[c.name] = {"state": c.status, "health": health}
     return out
+
+
+@app.get("/api/containers")
+def containers_list():
+    """Full container grid data - state, health, image, and live CPU/memory
+    for every container in this compose project, discovered live from
+    Docker rather than a hardcoded list."""
+    me, containers = project_containers()
+    out = []
+    for c in sorted(containers, key=lambda c: c.name):
+        label, note = CONTAINER_LABELS.get(c.name, (c.name, None))
+        health = c.attrs.get("State", {}).get("Health", {}).get("Status")
+        image_tags = c.image.tags
+        image = image_tags[0] if image_tags else (c.image.short_id or "")
+        service = c.labels.get("com.docker.compose.service", c.name)
+        out.append({
+            "name": c.name,
+            "label": label,
+            "note": note,
+            "service": service,
+            "image": image,
+            "state": c.status,
+            "health": health,
+            "is_self": c.id == me.id,
+            **container_stats(c),
+        })
+    return out
+
+
+# ---------------------------------------------------------------------
+# Overview strip: live host stats (proxied from Glances - this container
+# has no host pid namespace of its own, Glances already does via pid: host)
+# and Zilean's own indexed-hash count (queried straight from
+# zilean-postgres - Zilean has no stats API of its own; every endpoint
+# guessed at (/health, /api/stats, /dmm/status) 404s, see README.md
+# "Zilean hash sources"). Both are best-effort: an unreachable Glances or
+# Postgres degrades this one stat tile, not the whole page.
+# ---------------------------------------------------------------------
+@app.get("/api/system/stats")
+def system_stats():
+    try:
+        r = httpx.get(f"{GLANCES_URL}/api/4/all", timeout=8)
+        r.raise_for_status()
+        data = r.json()
+    except httpx.HTTPError:
+        return {"available": False}
+    try:
+        cpu = data.get("cpu", {})
+        mem = data.get("mem", {})
+        fs_list = data.get("fs", []) or []
+        root_fs = next((f for f in fs_list if f.get("mnt_point") == "/"), fs_list[0] if fs_list else {})
+        uptime = data.get("uptime")
+        load = data.get("load", {})
+        return {
+            "available": True,
+            "cpu_percent": cpu.get("total"),
+            "load_1min": load.get("min1"),
+            "mem_percent": mem.get("percent"),
+            "mem_used_gb": round(mem["used"] / 1024**3, 1) if mem.get("used") else None,
+            "mem_total_gb": round(mem["total"] / 1024**3, 1) if mem.get("total") else None,
+            "disk_percent": root_fs.get("percent"),
+            "disk_used_gb": round(root_fs["used"] / 1024**3, 1) if root_fs.get("used") else None,
+            "disk_total_gb": round(root_fs["size"] / 1024**3, 1) if root_fs.get("size") else None,
+            "uptime": uptime,
+        }
+    except Exception:
+        return {"available": False}
+
+
+@app.get("/api/zilean/stats")
+def zilean_stats():
+    if not ZILEAN_POSTGRES_PASSWORD:
+        return {"available": False}
+    try:
+        conn = psycopg2.connect(
+            host="zilean-postgres",
+            port=5432,
+            dbname="zilean",
+            user="postgres",
+            password=ZILEAN_POSTGRES_PASSWORD,
+            connect_timeout=5,
+        )
+        try:
+            with conn.cursor() as cur:
+                # The base count is the one thing this tile actually needs -
+                # do it first and on its own, so a wrong guess at the second
+                # query's column name (below) can't take out the whole tile.
+                cur.execute('SELECT COUNT(*) FROM "Torrents"')
+                total = cur.fetchone()[0]
+                matched = None
+                try:
+                    # Column name guessed from EF Core's PascalCase
+                    # convention (matches "Torrents" itself) - not verified
+                    # against the live schema, so this is best-effort only.
+                    cur.execute('SELECT COUNT(*) FROM "Torrents" WHERE "ImdbId" IS NOT NULL')
+                    matched = cur.fetchone()[0]
+                except Exception:
+                    conn.rollback()
+        finally:
+            conn.close()
+        return {"available": True, "total_hashes": total, "imdb_matched": matched}
+    except Exception:
+        return {"available": False}
 
 
 # ---------------------------------------------------------------------
@@ -184,7 +366,7 @@ def kometa_run(payload: KometaRunRequest = KometaRunRequest()):
         c.exec_run(cmd=cmd, detach=True)
     except Exception as e:
         fail(f"Failed to start Kometa run: {e}")
-    return ok(f"Kometa run started ({scope}) - watch its container stats on Homepage for progress.")
+    return ok(f"Kometa run started ({scope}) - watch its live CPU on the Containers grid below for progress.")
 
 
 # ---------------------------------------------------------------------
@@ -256,6 +438,35 @@ def plex_clean_bundles():
     except httpx.HTTPError as e:
         fail(f"Clean bundles failed: {e}")
     return ok("Cleanup of old bundles started.")
+
+
+@app.get("/api/plex/updates")
+def plex_updates():
+    """Checks Plex's own update-checker rather than trying to compare
+    version strings against anything external - `/identity` gives the
+    running version, `/updater/status` is Plex's own undocumented-but-real
+    endpoint for whether it's found something newer on its current channel.
+    This container is pinned deliberately (see README's Image pinning
+    policy / Plex section) - this is a check, never an auto-apply action."""
+    try:
+        r = httpx.get(f"{PLEX_URL}/identity", headers=plex_headers(), timeout=10)
+        r.raise_for_status()
+        running_version = r.json().get("MediaContainer", {}).get("version")
+    except httpx.HTTPError as e:
+        fail(f"Could not read Plex's running version: {e}")
+    available = []
+    try:
+        r = httpx.get(f"{PLEX_URL}/updater/status", headers=plex_headers(), timeout=10)
+        r.raise_for_status()
+        for u in r.json().get("MediaContainer", {}).get("Release", []):
+            available.append({"version": u.get("version"), "added_at": u.get("added")})
+    except httpx.HTTPError:
+        # Not fatal - the official image's updater channel can be
+        # unreachable/disabled in a container without breaking anything
+        # else; the running version above is still real and useful on its
+        # own.
+        pass
+    return {"running_version": running_version, "update_available": bool(available), "releases": available}
 
 
 # ---------------------------------------------------------------------
@@ -385,7 +596,7 @@ def arr_search_missing(app_name: str):
 # Unstick + manual import - for queue items the arr app flagged itself
 # (trackedDownloadStatus warning/error, the same icon its own UI shows),
 # usually caused by the Zurg/rclone debrid mount going stale mid-import
-# (see RESTARTABLE_CONTAINERS' Radarr note) or a release that doesn't
+# (see CONTAINER_LABELS' Radarr note) or a release that doesn't
 # actually match what was expected.
 # ---------------------------------------------------------------------
 def require_queue_app(app_name: str) -> dict:
@@ -521,20 +732,60 @@ def arr_manual_import_execute(app_name: str, payload: ManualImportFile):
 
 
 # ---------------------------------------------------------------------
-# Container restarts
+# Individual container control - start/stop/restart. Validated against the
+# live set of containers in this compose project (project_containers()),
+# never a hardcoded name list - see CONTAINER_LABELS' comment above for why.
+# Self (this panel) is rejected for stop/restart: stopping the container
+# serving the request that stops it just drops the connection with no
+# useful confirmation, and there's no one-click way to start it back up
+# from a page it just took down.
 # ---------------------------------------------------------------------
+def find_project_container(name: str, *, reject_self: bool):
+    me, containers = project_containers()
+    match = next((c for c in containers if c.name == name), None)
+    if match is None:
+        fail(f"'{name}' is not a container in this compose project.", status_code=404)
+    if reject_self and match.id == me.id:
+        fail("This panel can't stop or restart itself - use the host/systemd to do that.", status_code=400)
+    return match
+
+
+def container_label(name: str) -> str:
+    return CONTAINER_LABELS.get(name, (name, None))[0]
+
+
 @app.post("/api/container/{name}/restart")
 def container_restart(name: str):
-    if name not in RESTARTABLE_CONTAINERS:
-        fail(f"'{name}' is not a restartable service.", status_code=404)
+    c = find_project_container(name, reject_self=True)
     try:
-        c = docker_client.containers.get(name)
         c.restart(timeout=30)
-    except docker.errors.NotFound:
-        fail(f"Container '{name}' not found.")
     except Exception as e:
         fail(f"Restart failed: {e}")
-    return ok(f"{RESTARTABLE_CONTAINERS[name].split(' — ')[0]} restarted.")
+    return ok(f"{container_label(name)} restarted.")
+
+
+@app.post("/api/container/{name}/stop")
+def container_stop(name: str):
+    c = find_project_container(name, reject_self=True)
+    if c.status != "running":
+        return ok(f"{container_label(name)} is already {c.status}.")
+    try:
+        c.stop(timeout=30)
+    except Exception as e:
+        fail(f"Stop failed: {e}")
+    return ok(f"{container_label(name)} stopped.")
+
+
+@app.post("/api/container/{name}/start")
+def container_start(name: str):
+    c = find_project_container(name, reject_self=False)
+    if c.status == "running":
+        return ok(f"{container_label(name)} is already running.")
+    try:
+        c.start()
+    except Exception as e:
+        fail(f"Start failed: {e}")
+    return ok(f"{container_label(name)} started.")
 
 
 # ---------------------------------------------------------------------
@@ -542,14 +793,7 @@ def container_restart(name: str):
 # ---------------------------------------------------------------------
 @app.post("/api/stack/restart-all")
 def stack_restart_all():
-    try:
-        me = own_container()
-    except docker.errors.NotFound:
-        fail("Could not find this container's own record - can't determine the compose project.")
-    project = me.labels.get("com.docker.compose.project")
-    if not project:
-        fail("This container has no compose project label - can't tell what 'the stack' is.")
-    containers = docker_client.containers.list(all=True, filters={"label": f"com.docker.compose.project={project}"})
+    me, containers = project_containers()
     # Excludes itself - restarting the panel mid-request would just drop the
     # connection instead of confirming the sweep actually started.
     targets = [c for c in containers if c.id != me.id]

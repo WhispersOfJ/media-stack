@@ -1,20 +1,23 @@
-/* Control Panel — extends The Stack's existing black/red identity
-   (see config/homepage/custom.css) into a functional ops console. */
+/* Control Panel — Matrix theme: black + phosphor green, monospace-forward
+   headings, and a falling-code rain layer (matrix-rain.js) behind
+   everything. Red is kept only for --bad (real errors/danger) so it still
+   reads as a genuine anomaly against an otherwise all-green console. */
 
 :root {
-  --bg: #030303;
-  --card-bg: linear-gradient(155deg, #121013 0%, #0a0808 100%);
-  --card-solid: #0c0c0c;
-  --border: rgba(225, 29, 72, 0.32);
-  --border-hover: rgba(225, 29, 72, 0.7);
-  --accent: #e11d48;
-  --accent-deep: #7a1010;
-  --accent-soft: rgba(225, 29, 72, 0.14);
-  --text: #f2f0ef;
-  --text-muted: #8f8b8a;
-  --text-dim: #5c5958;
-  --good: #34d399;
-  --bad: #fb7185;
+  --bg: #020603;
+  --card-bg: linear-gradient(155deg, #0d130d 0%, #070a07 100%);
+  --card-solid: #090c09;
+  --border: rgba(0, 255, 65, 0.28);
+  --border-hover: rgba(0, 255, 65, 0.65);
+  --accent: #00ff41;
+  --accent-deep: #064e1c;
+  --accent-soft: rgba(0, 255, 65, 0.13);
+  --accent-text-on: #04170a;
+  --text: #daffe4;
+  --text-muted: #7fae86;
+  --text-dim: #45614a;
+  --good: #33ff77;
+  --bad: #ff3b3b;
   --warn: #fbbf24;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -33,13 +36,24 @@ html, body {
 
 body {
   background-image:
-    radial-gradient(ellipse 80% 55% at 10% 0%, rgba(225, 29, 72, 0.09), transparent 60%),
-    radial-gradient(ellipse 65% 45% at 100% 15%, rgba(225, 29, 72, 0.05), transparent 60%);
+    radial-gradient(ellipse 80% 55% at 10% 0%, rgba(0, 255, 65, 0.09), transparent 60%),
+    radial-gradient(ellipse 65% 45% at 100% 15%, rgba(0, 255, 65, 0.05), transparent 60%);
   background-attachment: fixed;
   padding-bottom: 220px; /* room for the sticky log panel */
 }
 
 a { color: inherit; }
+
+/* ---------- Matrix rain (matrix-rain.js) ---------- */
+#matrix-rain {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  opacity: 0.55;
+  pointer-events: none;
+}
 
 /* ---------- Topbar ---------- */
 .topbar {
@@ -68,17 +82,19 @@ a { color: inherit; }
   height: 14px;
   border-radius: 3px;
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  box-shadow: 0 0 14px rgba(225, 29, 72, 0.65);
+  box-shadow: 0 0 14px rgba(0, 255, 65, 0.55);
   transform: rotate(45deg);
   flex: none;
 }
 
 .brand h1 {
   margin: 0;
+  font-family: var(--font-mono);
   font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: 0.01em;
-  color: var(--text);
+  color: var(--accent);
+  text-shadow: 0 0 12px rgba(0, 255, 65, 0.5);
 }
 
 .brand-sub {
@@ -109,6 +125,7 @@ main {
   position: relative;
   margin: 0 0 6px;
   padding-bottom: 8px;
+  font-family: var(--font-mono);
   font-size: 1rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -158,7 +175,7 @@ main {
 
 .card:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 4px 18px rgba(225, 29, 72, 0.18), 0 2px 10px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 18px rgba(0, 255, 65, 0.18), 0 2px 10px rgba(0, 0, 0, 0.6);
   transform: translateY(-1px);
 }
 
@@ -196,11 +213,11 @@ a:focus-visible {
   padding: 10px 14px;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #fff0f0;
+  color: var(--accent-text-on);
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  box-shadow: 0 2px 8px rgba(225, 29, 72, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 255, 65, 0.3);
 }
-.btn-primary:hover { box-shadow: 0 4px 14px rgba(225, 29, 72, 0.4); transform: translateY(-1px); }
+.btn-primary:hover { box-shadow: 0 4px 14px rgba(0, 255, 65, 0.45); transform: translateY(-1px); }
 .btn-primary:active { transform: translateY(0); }
 .btn-primary:disabled { opacity: 0.55; cursor: wait; transform: none; }
 
@@ -300,10 +317,10 @@ a:focus-visible {
 }
 .lamp.up {
   background: var(--good);
-  box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
+  box-shadow: 0 0 6px rgba(51, 255, 119, 0.8);
   animation: pulse 2.4s ease-in-out infinite;
 }
-.lamp.down { background: var(--bad); box-shadow: 0 0 6px rgba(251, 113, 133, 0.7); }
+.lamp.down { background: var(--bad); box-shadow: 0 0 6px rgba(255, 59, 59, 0.7); }
 .lamp.unknown { background: var(--text-dim); }
 
 @keyframes pulse {
@@ -587,26 +604,154 @@ a:focus-visible {
   font-size: 0.72rem;
 }
 
-/* ---------- Service chips ---------- */
-.chip-grid {
+/* ---------- Overview stat tiles ---------- */
+.overview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
 }
 
-.chip {
+.stat-tile {
   background-image: var(--card-bg);
   background-color: var(--card-solid);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 16px 18px;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
-.chip-name { font-size: 0.85rem; font-weight: 600; flex: 1; }
+.stat-tile-wide { grid-column: span 2; }
+
+.stat-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+}
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stat-sub {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.stat-sub-warn { color: var(--warn); }
+
+.stat-tile-btn { align-self: flex-start; margin-top: 2px; }
+
+.stat-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.stat-bar.small { height: 4px; }
+
+.stat-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+  border-radius: 3px;
+  transition: width 400ms ease;
+}
+
+/* ---------- Container grid ---------- */
+.container-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.container-card {
+  background-image: var(--card-bg);
+  background-color: var(--card-solid);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 180ms ease;
+}
+
+.container-card:hover { border-color: var(--border-hover); }
+
+.container-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.container-name { font-size: 0.86rem; font-weight: 650; flex: 1; min-width: 0; }
 .chip-sub { font-size: 0.68rem; color: var(--text-dim); display: block; margin-top: 1px; }
+
+.container-health {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  flex: none;
+}
+
+.container-image {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.container-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.metric-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  min-width: 62px;
+  text-align: right;
+}
+
+.container-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.container-actions .btn-icon.armed {
+  border-color: var(--border-hover);
+  color: var(--accent);
+  background: var(--accent-soft);
+  animation: armed-pulse 1s ease-in-out infinite;
+}
 
 /* ---------- Danger zone ---------- */
 .danger-card {
@@ -632,13 +777,13 @@ a:focus-visible {
 .btn-danger:disabled { opacity: 0.55; cursor: wait; transform: none; }
 .btn-danger.armed {
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  color: #fff0f0;
+  color: var(--accent-text-on);
   animation: armed-pulse 1s ease-in-out infinite;
 }
 
 @keyframes armed-pulse {
-  0%, 100% { box-shadow: 0 2px 8px rgba(225, 29, 72, 0.25); }
-  50% { box-shadow: 0 2px 18px rgba(225, 29, 72, 0.55); }
+  0%, 100% { box-shadow: 0 2px 8px rgba(0, 255, 65, 0.3); }
+  50% { box-shadow: 0 2px 18px rgba(0, 255, 65, 0.6); }
 }
 
 /* ---------- Activity log ---------- */
@@ -709,9 +854,49 @@ a:focus-visible {
   .log-body { height: 160px; }
 }
 
+/* ---------- Quick links ---------- */
+.quicklinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quicklink {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-solid);
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.quicklink:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.quicklink-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-dim);
+}
+
+.quicklink-dot.up { background: var(--good); box-shadow: 0 0 5px rgba(51, 255, 119, 0.8); }
+.quicklink-dot.down { background: var(--bad); }
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   .lamp.up { animation: none; }
   .btn-icon.spinning svg { animation: none; }
   .card, .btn-primary { transition: none; }
+  #matrix-rain { display: none; }
 }

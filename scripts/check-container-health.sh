@@ -11,7 +11,18 @@ state_file="$HOME/.cache/stack-unhealthy-containers"
 mkdir -p "$(dirname "$state_file")"
 [ -f "$state_file" ] || touch "$state_file"
 
-current=$(docker ps -a --filter "health=unhealthy" --filter "status=restarting" --format '{{.Names}}' | sort -u)
+# Checked explicitly rather than relying on `set -e` (which the script
+# doesn't use, on purpose - the diff/notify logic below needs to keep
+# running even when comm/grep "fail" on empty input). Without this check, a
+# failed `docker ps` (socket permission issue, daemon restart mid-poll,
+# etc.) would previously produce an empty $current that silently compared
+# equal to an also-empty $previous on first run, reporting "no problems"
+# instead of "monitoring is blind right now" - the one failure mode where
+# this script staying silent is actually the worst outcome.
+if ! current=$(docker ps -a --filter "health=unhealthy" --filter "status=restarting" --format '{{.Names}}' | sort -u); then
+  ./scripts/notify-discord.sh "Health check itself failed: 'docker ps' errored (socket permission or daemon issue?) - container monitoring is blind until this is fixed." error
+  exit 1
+fi
 previous=$(cat "$state_file")
 
 if [ "$current" = "$previous" ]; then
