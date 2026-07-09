@@ -63,6 +63,11 @@ ARR_APPS = {
     },
 }
 
+# Unstick/manual-import only make sense for apps with a download queue that
+# actually gets stuck on import matching - Lidarr/Readarr are excluded here
+# because that wasn't asked for and untested against their queue shape.
+QUEUE_ARR_APPS = ("radarr", "sonarr")
+
 # Allow-listed restart targets only - never accept an arbitrary container
 # name from the client, even though this is a trusted LAN tool.
 RESTARTABLE_CONTAINERS = {
@@ -99,6 +104,21 @@ class ZileanSearchRequest(BaseModel):
 class GrabRequest(BaseModel):
     hash: str
     title: str | None = None
+
+
+class ManualImportFile(BaseModel):
+    # Mirrors the shape returned by GET .../manualimport - the client just
+    # echoes back the candidate it was given, same as the arr apps' own web
+    # UI does when you confirm a manual import.
+    path: str
+    folderName: str | None = None
+    quality: dict
+    languages: list[dict]
+    releaseGroup: str | None = None
+    downloadId: str | None = None
+    movieId: int | None = None
+    seriesId: int | None = None
+    episodeIds: list[int] | None = None
 
 
 def own_container():
@@ -359,6 +379,145 @@ def arr_search_missing(app_name: str):
     cfg = ARR_APPS[app_name]
     arr_command(app_name, cfg["search_command"])
     return ok(f"{cfg['label']} search for missing items started.")
+
+
+# ---------------------------------------------------------------------
+# Unstick + manual import - for queue items the arr app flagged itself
+# (trackedDownloadStatus warning/error, the same icon its own UI shows),
+# usually caused by the Zurg/rclone debrid mount going stale mid-import
+# (see RESTARTABLE_CONTAINERS' Radarr note) or a release that doesn't
+# actually match what was expected.
+# ---------------------------------------------------------------------
+def require_queue_app(app_name: str) -> dict:
+    if app_name not in QUEUE_ARR_APPS:
+        fail(f"'{app_name}' isn't supported here - only radarr and sonarr have a queue.", status_code=404)
+    return ARR_APPS[app_name]
+
+
+def arr_queue(app_name: str) -> list[dict]:
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(
+            f"{cfg['url']}/api/{cfg['api']}/queue",
+            params={"pageSize": 250, "includeUnknownMovieItems": "true"},
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} queue lookup failed: {e}")
+    return r.json().get("records", [])
+
+
+def stuck_queue_items(app_name: str) -> list[dict]:
+    # warning/error is exactly what lights up the warning icon in Radarr's
+    # and Sonarr's own Activity/Queue tab - not "importPending", which is
+    # just normal in-progress state.
+    return [q for q in arr_queue(app_name) if q.get("trackedDownloadStatus") in ("warning", "error")]
+
+
+@app.post("/api/arr/{app_name}/unstick")
+def arr_unstick(app_name: str):
+    cfg = require_queue_app(app_name)
+    items = stuck_queue_items(app_name)
+    if not items:
+        return ok(f"No stuck downloads in {cfg['label']}.")
+    removed, errors = [], []
+    for q in items:
+        title = q.get("title") or str(q["id"])
+        try:
+            r = httpx.delete(
+                f"{cfg['url']}/api/{cfg['api']}/queue/{q['id']}",
+                params={"removeFromClient": "true", "blocklist": "true", "skipRedownload": "false"},
+                headers={"X-Api-Key": cfg["key"]},
+                timeout=20,
+            )
+            r.raise_for_status()
+            removed.append(title)
+        except httpx.HTTPError as e:
+            errors.append(f"{title}: {e}")
+    if errors and not removed:
+        fail(f"Unstick failed for all {len(errors)} stuck item(s) in {cfg['label']}: {errors[0]}")
+    message = f"Removed, blocklisted, and re-searching {len(removed)} stuck download(s) in {cfg['label']}."
+    if errors:
+        message += f" {len(errors)} failed."
+    return ok(message, removed=removed, errors=errors)
+
+
+@app.get("/api/arr/{app_name}/manual-import")
+def arr_manual_import_candidates(app_name: str):
+    """Every importable file the arr app can see across all currently
+    stuck queue items, in the same shape its own Manual Import screen
+    would show - each candidate is echoed straight back on import so the
+    quality/language/match info can't drift from what the arr app itself
+    reported."""
+    cfg = require_queue_app(app_name)
+    candidates = []
+    for q in stuck_queue_items(app_name):
+        folder, download_id = q.get("outputPath"), q.get("downloadId")
+        if not folder or not download_id:
+            continue
+        try:
+            r = httpx.get(
+                f"{cfg['url']}/api/{cfg['api']}/manualimport",
+                params={"folder": folder, "downloadId": download_id, "filterExistingFiles": "true"},
+                headers={"X-Api-Key": cfg["key"]},
+                timeout=30,
+            )
+            r.raise_for_status()
+        except httpx.HTTPError:
+            # One queue item's folder failing to scan shouldn't blank the
+            # whole list - the others are still worth showing.
+            continue
+        for f in r.json():
+            match = f.get("movie") or f.get("series")
+            episodes = f.get("episodes") or []
+            file_payload = {
+                "path": f.get("path"),
+                "folderName": f.get("folderName"),
+                "quality": f.get("quality"),
+                "languages": f.get("languages"),
+                "releaseGroup": f.get("releaseGroup"),
+                "downloadId": f.get("downloadId"),
+            }
+            if app_name == "radarr":
+                file_payload["movieId"] = match.get("id") if match else None
+            else:
+                file_payload["seriesId"] = (match or {}).get("id") or (episodes[0]["seriesId"] if episodes else None)
+                file_payload["episodeIds"] = [e["id"] for e in episodes]
+            episode_label = None
+            if episodes:
+                e = episodes[0]
+                episode_label = f"S{e['seasonNumber']:02d}E{e['episodeNumber']:02d} - {e.get('title', '')}"
+            candidates.append({
+                "queue_title": q.get("title"),
+                "name": f.get("name"),
+                "relative_path": f.get("relativePath"),
+                "size": human_size(f.get("size")),
+                "quality": (f.get("quality") or {}).get("quality", {}).get("name"),
+                "release_group": f.get("releaseGroup"),
+                "rejections": [x.get("reason") for x in f.get("rejections", [])],
+                "match_title": match.get("title") if match else None,
+                "episode": episode_label,
+                "file": file_payload,
+            })
+    return candidates
+
+
+@app.post("/api/arr/{app_name}/manual-import")
+def arr_manual_import_execute(app_name: str, payload: ManualImportFile):
+    cfg = require_queue_app(app_name)
+    body = {"name": "ManualImport", "files": [payload.model_dump(exclude_none=True)]}
+    try:
+        r = httpx.post(f"{cfg['url']}/api/{cfg['api']}/command", json=body, headers={"X-Api-Key": cfg["key"]}, timeout=30)
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        detail = e.response.text.strip() or str(e)
+        fail(f"{cfg['label']} manual import failed: {detail}")
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} manual import failed: {e}")
+    name = payload.path.rsplit("/", 1)[-1]
+    return ok(f'Import started for "{name}" in {cfg["label"]}.')
 
 
 # ---------------------------------------------------------------------

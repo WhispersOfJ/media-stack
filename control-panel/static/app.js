@@ -58,8 +58,8 @@ const PRIMARY_ACTIONS = [
 ];
 
 const ARR_APPS = [
-  { id: "radarr", label: "Radarr", port: 7878 },
-  { id: "sonarr", label: "Sonarr", port: 8989 },
+  { id: "radarr", label: "Radarr", port: 7878, queue: true },
+  { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
   { id: "lidarr", label: "Lidarr", port: 8686 },
   { id: "readarr", label: "Readarr", port: 8787 },
 ];
@@ -211,14 +211,16 @@ function buildArrList() {
       <div class="arr-actions">
         <button class="btn-ghost" data-action="rss-sync" type="button">RSS sync</button>
         <button class="btn-ghost" data-action="search-missing" type="button">Search missing</button>
+        ${app.queue ? `<button class="btn-ghost" data-unstick type="button">Unstick</button>` : ""}
+        ${app.queue ? `<button class="btn-ghost" data-import-toggle type="button">Manual import</button>` : ""}
       </div>
     `;
     const status = row.querySelector(".arr-status");
-    row.querySelectorAll(".arr-actions button").forEach((btn) => {
+    row.querySelectorAll(".arr-actions button[data-action]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const action = btn.dataset.action;
         const label = action === "rss-sync" ? "RSS sync" : "Search missing";
-        row.querySelectorAll(".arr-actions button").forEach((b) => (b.disabled = true));
+        row.querySelectorAll(".arr-actions button[data-action]").forEach((b) => (b.disabled = true));
         setStatusLine(status, "pending", `${label}…`);
         logLine("pending", `${app.label} ${label} — requested`);
         try {
@@ -229,7 +231,7 @@ function buildArrList() {
           setStatusLine(status, "error", e.message);
           logLine("err", `${app.label} ${label} — ${e.message}`);
         } finally {
-          row.querySelectorAll(".arr-actions button").forEach((b) => (b.disabled = false));
+          row.querySelectorAll(".arr-actions button[data-action]").forEach((b) => (b.disabled = false));
         }
       });
     });
@@ -245,7 +247,109 @@ function buildArrList() {
       input.value = "";
     });
     list.appendChild(row);
+
+    if (app.queue) {
+      const panel = document.createElement("div");
+      panel.className = "import-panel";
+      panel.hidden = true;
+      list.appendChild(panel);
+      setupUnstick(app, row, status);
+      setupManualImportToggle(app, row, panel);
+    }
   }
+}
+
+/* ---------- Unstick: sweep every stuck (warning/error) queue item ---------- */
+function setupUnstick(app, row, status) {
+  const btn = row.querySelector("[data-unstick]");
+  armButton(btn, "Unstick", "Confirm — removes + blocklists", async () => {
+    btn.disabled = true;
+    setStatusLine(status, "pending", "Unsticking…");
+    logLine("pending", `${app.label} unstick — requested`);
+    try {
+      const data = await postAction(`/api/arr/${app.id}/unstick`);
+      setStatusLine(status, "success", data.message);
+      logLine("ok", `${app.label} unstick — ${data.message}`);
+    } catch (e) {
+      setStatusLine(status, "error", e.message);
+      logLine("err", `${app.label} unstick — ${e.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+/* ---------- Manual import panel ---------- */
+function setupManualImportToggle(app, row, panel) {
+  const toggleBtn = row.querySelector("[data-import-toggle]");
+  toggleBtn.addEventListener("click", async () => {
+    const opening = panel.hidden;
+    panel.hidden = !opening;
+    if (opening) await loadManualImportCandidates(app, panel);
+  });
+}
+
+async function loadManualImportCandidates(app, panel) {
+  panel.innerHTML = `<div class="zilean-hint">Scanning stuck downloads for importable files…</div>`;
+  logLine("pending", `${app.label} manual import — scanning`);
+  try {
+    const res = await fetch(`/api/arr/${app.id}/manual-import`);
+    const items = await res.json();
+    if (!res.ok) throw new Error(items?.detail?.message || items?.message || `Scan failed (${res.status})`);
+    renderManualImportCandidates(app, panel, items);
+    logLine("ok", `${app.label} manual import — found ${items.length} importable file${items.length === 1 ? "" : "s"}`);
+  } catch (e) {
+    panel.innerHTML = `<div class="zilean-hint error">${escapeHtml(e.message)}</div>`;
+    logLine("err", `${app.label} manual import — ${e.message}`);
+  }
+}
+
+function renderManualImportCandidates(app, panel, items) {
+  if (!items.length) {
+    panel.innerHTML = `<div class="zilean-hint">No importable files found among currently stuck downloads.</div>`;
+    return;
+  }
+  panel.innerHTML = items
+    .map((item, i) => {
+      const meta = [item.quality, item.release_group, item.size].filter(Boolean).join(" · ");
+      const match = [item.match_title, item.episode].filter(Boolean).join(" — ");
+      const rejections = item.rejections.length
+        ? `<span class="import-rejections" title="${escapeHtml(item.rejections.join("; "))}">⚠ ${item.rejections.length} rejection${item.rejections.length === 1 ? "" : "s"}</span>`
+        : "";
+      return `
+        <div class="zilean-row">
+          <div class="zilean-row-main">
+            <span class="zilean-title">${escapeHtml(match || item.name || "Unknown")}</span>
+            ${rejections}
+            <span class="zilean-meta">${escapeHtml(meta)}</span>
+          </div>
+          <div class="zilean-row-hash">
+            <code title="${escapeHtml(item.relative_path || "")}">${escapeHtml(item.relative_path || "")}</code>
+            <button class="btn-ghost import-run" type="button" data-idx="${i}">Import</button>
+          </div>
+          <div class="status-line zilean-row-status" id="import-status-${app.id}-${i}">—</div>
+        </div>`;
+    })
+    .join("");
+  panel.querySelectorAll("button.import-run").forEach((btn) => {
+    const item = items[Number(btn.dataset.idx)];
+    const status = panel.querySelector(`#import-status-${app.id}-${btn.dataset.idx}`);
+    armButton(btn, "Import", "Confirm import?", async () => {
+      btn.disabled = true;
+      setStatusLine(status, "pending", "Importing…");
+      logLine("pending", `${app.label} manual import — "${item.name}" requested`);
+      try {
+        const data = await postAction(`/api/arr/${app.id}/manual-import`, item.file);
+        setStatusLine(status, "success", data.message);
+        logLine("ok", `${app.label} manual import — ${data.message}`);
+      } catch (e) {
+        setStatusLine(status, "error", e.message);
+        logLine("err", `${app.label} manual import — ${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 /* ---------- Service restart chips ---------- */
