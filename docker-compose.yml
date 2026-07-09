@@ -266,7 +266,7 @@ services:
   rclone-alldebrid:
     restart: unless-stopped
     logging: *common-logging
-    image: rclone/rclone:1.74.3
+    image: rclone/rclone:1.74.4
     container_name: rclone-alldebrid
     networks: [stacknet]
     environment:
