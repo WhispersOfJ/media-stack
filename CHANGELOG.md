@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.0.1**.
+retroactive pass) was never versioned under. Current version: **v6.0.2**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -51,7 +51,19 @@ retroactive pass) was never versioned under. Current version: **v6.0.1**.
 
 ---
 
-## [6.0.1] — CI: root causes found for two Dependabot-PR failures, neither fully fixed
+## [6.0.2] — CI: Dependabot's GHCR auth failure on the Zurg image actually fixed
+
+The second of the two failures found in [6.0.1] - this one closed out for real.
+
+### Fixed
+- **`.github/dependabot.yml`** — added a `registries:` block (`ghcr-zurg`, `type:
+  docker-registry`, `url: ghcr.io`) so Dependabot's `docker-compose` update job can
+  authenticate against the sponsor-gated `debridmediamanager/zurg` image instead of failing
+  outright with `private_source_authentication_failure` on every run. Credential is
+  `DEPENDABOT_GHCR_TOKEN`, a classic PAT scoped to `read:packages` only, set in the
+  **Dependabot** secrets store specifically (`gh secret set ... --app dependabot`) - a
+  separate store from the Actions secrets used for [6.0.1], which Dependabot's own update
+  jobs don't read from at all.
 
 Checked GitHub Actions CI status after the [6.0.0] push and found two persistent failures on
 Dependabot-authored PRs. Root-caused both; genuinely fixed neither.
