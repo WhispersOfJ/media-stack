@@ -254,7 +254,7 @@ verified live against the running stack before being marked done.*
   the full story.
 - **Bazarr**'s Radarr, Sonarr, and Plex connections were all found silently broken
   (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
-  [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.1. All three are now genuinely live.
+  [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.2. All three are now genuinely live.
 
 ## One prerequisite: extend Zurg for new media types (done)
 
@@ -410,7 +410,7 @@ noted as **done** where complete. What's left is a preference call, not a techni
    **Settings → Profiles** and set the profile as default for your root folders.
 6. **Bazarr** (done): its Radarr, Sonarr, and Plex connections were all found silently broken
    (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
-   [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.1.
+   [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.2.
 
 > Seerr only recognizes Radarr and Sonarr in its settings API
 > (`/api/v1/settings/lidarr|readarr` both 404) — it's a TMDB-based movie/TV frontend
@@ -987,7 +987,7 @@ driven by a `config.yml` you write.
   every other service already uses - no new networking needed, just config content.
 - **Configured and validated.** `config.yml` connects to Plex, TMDb, Radarr, Sonarr, and
   Tautulli, plus Trakt and MyAnimeList (both needed a one-time interactive OAuth step - see
-  CHANGELOG.md v2.8.0 for how MAL's was completed manually after the standard interactive flow
+  CHANGELOG.md v2.9.0 for how MAL's was completed manually after the standard interactive flow
   didn't work non-interactively). `libraries:` covers the two libraries that actually exist on
   this Plex server (`Movies`, `TV Shows`) with a deliberately small set of common defaults
   (`genre`/`studio`/`decade` collections, a `resolution` overlay) rather than enabling
