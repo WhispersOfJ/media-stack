@@ -358,6 +358,16 @@ services:
       - /mnt:/mnt:rslave
       - ./usenet:/usenet:rslave
       - ./config/decypharr/downloads:/app/downloads:rslave
+      # Sonarr's exclusive AllDebrid path (see the decypharr-alldebrid service comment above) -
+      # that instance reports outputPath as /app/downloads/<category>/... to Sonarr's API,
+      # identical-looking to the primary decypharr's own path convention above, but it's
+      # actually a different host directory (config/decypharr-alldebrid/downloads). Can't bind
+      # both at the literal /app/downloads (one container path, one mount), so this one lands
+      # at a second path and gets a Remote Path Mapping in Sonarr's own settings instead - the
+      # Decypharr-AllDebrid download client's one exception to the "identical paths, no Remote
+      # Path Mappings" rule the rest of this stack follows. Found live: every AllDebrid-sourced
+      # Sonarr grab was stuck "No files found are eligible for import" with this mount missing.
+      - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
       - ./media/shows:/data/shows
 
   lidarr:

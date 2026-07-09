@@ -159,7 +159,11 @@ Plex (containerized as of 3.3.0) → network_mode: host, /mnt mounted 1:1 with t
 > a single instance's `debrids[]` list is available to every category on it — so a fully
 > separate instance, with its own config/mount, is the only way to keep AllDebrid exclusive to
 > Sonarr instead of shared with Radarr/Lidarr/Readarr. This is undocumented elsewhere in this
-> file pending a proper CHANGELOG entry for when it was added.
+> file pending a proper CHANGELOG entry for when it was added. One consequence of the separate
+> mount: `decypharr-alldebrid` reports the same-looking `/app/downloads/<category>/...` path to
+> Sonarr as the primary instance does, but it's actually a different host directory - every
+> AllDebrid-sourced grab was stuck at import until [6.0.3](CHANGELOG.md) added a second mount
+> (`/app/downloads-ad`) plus a Remote Path Mapping in Sonarr to translate between them.
 
 Root folders live on regular host disk (`./media/<type>`), not on Zurg's rclone FUSE mount —
 that mount doesn't support having new files/symlinks written into it. See
@@ -1188,5 +1192,5 @@ Runs on port **8420**.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.0.2**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.0.3**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
