@@ -1188,5 +1188,5 @@ Runs on port **8420**.
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.0.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.0.1**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
