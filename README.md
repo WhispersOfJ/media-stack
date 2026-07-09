@@ -416,8 +416,8 @@ noted as **done** where complete. What's left is a preference call, not a techni
    [CHANGELOG.md](CHANGELOG.md) v2.2.0).
 3. **Seerr** (done): initialized and signed in to Plex using the existing Plex token already
    on this host (from Zurg's config) rather than the interactive OAuth flow, so it turned out
-   scriptable after all. Connected to Radarr (`720p+ (All Sources)` profile, `/data/movies`)
-   and Sonarr (`720p+ (All Sources)` profile, `/data/shows`) as default servers — repointed
+   scriptable after all. Connected to Radarr (`Unlimited` profile, `/data/movies`)
+   and Sonarr (`Unlimited` profile, `/data/shows`) as default servers — repointed
    from each app's old profile after both were deleted in [6.0.0](CHANGELOG.md); `main.apiKey`
    in `config/seerr/settings.json` works as `X-Api-Key` on Seerr's own settings endpoints, no
    session login needed to fix this kind of thing going forward.
@@ -428,10 +428,11 @@ noted as **done** where complete. What's left is a preference call, not a techni
    item doesn't yet reflect that instance's own configuration status. As of v4.14.0, Radarr's arr entry is
    pinned to Real-Debrid only (`selected_debrid: "realdebrid"`) — Sonarr/Lidarr/Readarr are
    still unrestricted (`source: "auto"`, either debrid provider).
-5. **Quality profiles** (done): a single `720p+ (All Sources)` profile in each app (replacing
-   the earlier `HD Bluray + WEB` / `WEB-1080p` profiles in [6.0.0](CHANGELOG.md)) — allows
-   720p/1080p/2160p HDTV/WEBDL/WEBRip/Bluray plus 1080p/2160p Remux, cutoff at the top tier.
-   Recyclarr and its TRaSH-Guides sync were removed entirely (see
+5. **Quality profiles** (done): a single `Unlimited` profile in each app (originally created as
+   `720p+ (All Sources)` in [6.0.0](CHANGELOG.md), renamed in [6.3.1](CHANGELOG.md) once the
+   1080p WEB/HDTV size caps were lifted) — allows 720p/1080p/2160p HDTV/WEBDL/WEBRip/Bluray plus
+   1080p/2160p Remux, cutoff at the top tier. Recyclarr and its TRaSH-Guides sync were removed
+   entirely (see
    [Custom format: blocked releases](#custom-format-blocked-releases) below for what replaced
    its per-quality custom-format scoring). Still manual: go to each app's **Settings →
    Profiles** and set the profile as default for your root folders.
@@ -586,9 +587,10 @@ byte/nanocpu values matched what was set) before this was documented.
 **Recyclarr and every TRaSH-Guides-synced custom format have been removed entirely** — Radarr
 and Sonarr each went from 41/40 custom formats (the full TRaSH per-quality-tier scoring
 catalog) down to a single one, added directly via each app's API. Quality selection is handled
-purely by each app's native quality profile (`720p+ (All Sources)` in both apps as of
-[6.0.0](CHANGELOG.md)); custom formats exist only to hard-reject specific naming patterns, not
-to score/rank between qualities.
+purely by each app's native quality profile (`Unlimited` in both apps, originally created as
+`720p+ (All Sources)` in [6.0.0](CHANGELOG.md) and renamed in [6.3.1](CHANGELOG.md)); custom
+formats exist only to hard-reject specific naming patterns, not to score/rank between
+qualities.
 
 > **Rebuilt from zero in [6.0.0](CHANGELOG.md).** Before that session, both apps had **0**
 > custom formats and only the 6 stock default quality profiles — the format and profile this
@@ -1258,5 +1260,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.3.1**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.3.2**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
