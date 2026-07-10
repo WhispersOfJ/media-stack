@@ -21,19 +21,21 @@ from urllib.parse import quote
 import docker
 import httpx
 import psycopg2
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-PLEX_URL = os.environ["PLEX_URL"].rstrip("/")
-PLEX_TOKEN = os.environ["PLEX_TOKEN"]
+PLEX_URL = (os.environ.get("PLEX_URL") or "").rstrip("/")
+PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
 ZILEAN_URL = "http://zilean:8181"
 DECYPHARR_URL = "http://decypharr:8282"
 DECYPHARR_MANUAL_CATEGORY = "manual"
 GLANCES_URL = "http://glances:61208"
 BAZARR_URL = "http://bazarr:6767"
-BAZARR_API_KEY = os.environ["BAZARR_API_KEY"]
+BAZARR_API_KEY = os.environ.get("BAZARR_API_KEY")
 ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
+HOST_IP = os.environ.get("HOST_IP")
 # Matches Decypharr's own hexRegex (pkg/internal/utils/magnet.go) - its
 # magnet parser (anacrolix/torrent's metainfo.ParseMagnetUri) 400s with no
 # application-level log line for anything that doesn't match this, so this
@@ -106,6 +108,33 @@ CONTAINER_LABELS = {
 
 app = FastAPI(title="Control Panel")
 docker_client = docker.from_env()
+
+# CSRF hardening, not auth: this panel is deliberately no-login/LAN-only (see
+# README's Security note), but its POST endpoints hold full docker.sock
+# restart/exec power with zero Origin check, so any external site a LAN
+# browser visits could otherwise fire a same-origin-exempt POST at it. This
+# blocks cross-origin/cross-host POSTs without adding any credential.
+ALLOWED_HOSTS = {h for h in (HOST_IP, "localhost", "127.0.0.1") if h}
+
+
+@app.middleware("http")
+async def verify_same_origin(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        host = (request.headers.get("host") or "").split(":")[0]
+        if host not in ALLOWED_HOSTS:
+            return JSONResponse(
+                status_code=403,
+                content={"ok": False, "message": "Rejected: Host header did not match this panel's configured HOST_IP."},
+            )
+        origin = request.headers.get("origin")
+        if origin:
+            origin_host = origin.split("://", 1)[-1].split(":")[0].split("/")[0]
+            if origin_host not in ALLOWED_HOSTS:
+                return JSONResponse(
+                    status_code=403,
+                    content={"ok": False, "message": "Rejected: Origin did not match this panel's host."},
+                )
+    return await call_next(request)
 
 
 class KometaRunRequest(BaseModel):
@@ -367,6 +396,8 @@ def kometa_run(payload: KometaRunRequest = KometaRunRequest()):
 # Plex
 # ---------------------------------------------------------------------
 def plex_headers():
+    if not PLEX_URL or not PLEX_TOKEN:
+        fail("Plex isn't configured (PLEX_URL/PLEX_TOKEN not set)", status_code=503)
     return {"Accept": "application/json", "X-Plex-Token": PLEX_TOKEN}
 
 
@@ -472,6 +503,8 @@ def plex_updates():
 # wanted list, matching the arr apps' own "Search missing" pattern below.
 # ---------------------------------------------------------------------
 def bazarr_headers():
+    if not BAZARR_API_KEY:
+        fail("Bazarr isn't configured (BAZARR_API_KEY not set)", status_code=503)
     return {"X-API-KEY": BAZARR_API_KEY}
 
 

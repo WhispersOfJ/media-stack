@@ -26,8 +26,11 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 # Can't be known before the corresponding app has booted once and
-# generated its own key - see module docstring.
-POST_BOOT_KEYS = {"RADARR_API_KEY", "SONARR_API_KEY"}
+# generated its own key - see module docstring. PLEX_TOKEN fits the same
+# shape: reading it (Settings -> a library item -> Get Info -> View XML)
+# needs a running Plex with at least one library item, not just a running
+# container - left unset it silently breaks every Control Panel Plex action.
+POST_BOOT_KEYS = {"RADARR_API_KEY", "SONARR_API_KEY", "PLEX_TOKEN"}
 
 # Self-issued secrets with no external source - safe to generate for the
 # user instead of asking them to run a command themselves.

@@ -631,6 +631,10 @@ services:
       # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
       # the same credential Zilean itself already has, no new secret.
       ZILEAN_POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
+      # Origin/Host validation only (see app.py's verify_same_origin) - not
+      # auth, just closing the cross-origin-POST hole given this panel's
+      # docker.sock access.
+      HOST_IP: ${HOST_IP}
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # actually execs into containers (Kometa's on-demand run) and issues
