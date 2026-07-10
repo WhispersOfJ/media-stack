@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v7.2.2**.
+retroactive pass) was never versioned under. Current version: **v8.0.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,61 @@ retroactive pass) was never versioned under. Current version: **v7.2.2**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [8.0.0] — Pinchflat removed entirely; Lidarr/Readarr/Whisparr connections swept clean
+
+User call, not a bug-driven removal: the storage setup Pinchflat's YouTube archiving needed
+isn't there right now - "good app, just not doable for me" - same shape as the
+[4.0.0](CHANGELOG.md) Whisparr removal, not a soft disable. While removing it, also swept for
+any remaining directories/files/connections still pointing at Lidarr, Readarr, and Whisparr,
+all three of which were fully removed in earlier versions ([7.0.0](CHANGELOG.md),
+[4.0.0](CHANGELOG.md)) but hadn't been re-verified clean until now.
+
+### Removed
+- **Pinchflat** - container stopped and removed, `pinchflat` service block deleted from
+  `docker-compose.yml`, `config/pinchflat/` deleted from disk (root-owned files - this image
+  runs with no PUID/PGID support, so a privileged throwaway container was needed to actually
+  remove them). `control-panel/app.py`'s `CONTAINER_LABELS` and `control-panel/static/app.js`'s
+  `QUICK_LINKS` entries removed. README swept for every reference (Quick start, Contents, the
+  service URL table, Resource limits, the dedicated `## Pinchflat` section, Optional extras
+  reference, Control Panel's Quick Links description) - the dedicated section removed entirely,
+  the rest updated in place.
+- **`./media/adult`** - confirmed empty (0 files) and unreferenced anywhere in
+  `docker-compose.yml` or Zurg's live `config.yml`, so removing the plain host directory needed
+  no service restart, unlike the Zurg `config.yml` routing group itself (see README's own note,
+  left alone for the reason already documented there - a live restart for zero benefit).
+
+### Verified clean, left alone
+- **Prowlarr's applications list** - confirmed via `GET /api/v1/applications` to contain only
+  Radarr and Sonarr, no lingering Lidarr/Readarr/Whisparr entries.
+- **`config/neutarr/{lidarr,readarr,whisparr,eros}.json`** - NeutArr's own per-app-type config
+  stubs, `api_url`/`api_key` both blank on all four. These aren't a real "connection" (nothing to
+  disconnect) and are scaffolding NeutArr manages itself for every app type it supports whether
+  used or not - left in place rather than deleted and risk the app just recreating them, or
+  erroring, on next restart.
+- **`config/heimdall/`, `config/homepage/`** - both apps were fully replaced by Control Panel
+  back in v5.0.0, but their config directories are still sitting on disk. Out of scope for this
+  pass (not mentioned in the removal request) - flagged here for a future cleanup, not touched.
+
+### Found while verifying
+- **Deleting the orphaned Plex "YouTube" library triggered an unexpected internal Plex Media
+  Server restart** - `DELETE /library/sections/{id}` reached Plex (confirmed in its own logs:
+  a real stop/start cycle, "Sqlite3: Sleeping for 200ms to retry busy DB" repeated, then a
+  clean reboot sequence), and the immediate follow-up check still showed the section present,
+  so it looked at first like the delete had failed outright. It hadn't - the removal completed
+  asynchronously behind that restart, confirmed by a later check showing only Movies/TV
+  Shows/Music remain. The Docker container itself never went down (continuous uptime, `healthy`
+  throughout) and the other three libraries' paths were confirmed unaffected.
+
+### Verified live
+- `docker compose config --quiet` (default + extras profile) clean after the service block
+  removal.
+- Rebuilt and force-recreated `control-panel`; confirmed healthy and the Quick Links panel no
+  longer references Pinchflat.
+- `du`/`find` confirmed `./media/music` and `./media/books` (the still-live Lidarr/Readarr
+  library content, kept since [7.0.0](CHANGELOG.md)) were untouched by any of the above - real,
+  substantial content (a large personal music collection) that this pass was careful not to go
+  anywhere near.
 
 ## [7.2.2] — Claude Code Review: skip Dependabot PRs cleanly instead of failing
 
