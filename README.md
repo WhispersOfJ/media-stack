@@ -844,9 +844,17 @@ next time instead of a rebuild.
   kind.
 - **Known limitation:** this host has a single physical disk (btrfs, one NVMe), so the repo
   protects against config corruption/accidental deletion/a repeat of the Decypharr bug, *not*
-  disk failure. Snapper's `root` config doesn't cover `/home` either. A cloud remote (restic
-  supports S3/B2/etc. natively) would close that gap if it's ever wanted - not set up here
-  since no cloud storage account exists on this host yet.
+  disk failure. Snapper's `root` config doesn't cover `/home` either. An optional off-site leg
+  now exists to close that gap: set `BACKUP_REMOTE_REPOSITORY` (and, if the provider needs one,
+  `BACKUP_REMOTE_PASSWORD_FILE`) in `.env` to any restic-supported repository URL (B2/S3/sftp/
+  rclone/etc. - restic supports all of these natively) and `backup-config.sh` mirrors the same
+  backup there after the local one succeeds, with its own retention policy. Left unset by
+  default (still no cloud storage account configured on this host as of writing) - the local-only
+  leg keeps working exactly as before if so.
+- **Monthly integrity check:** on the 1st of the month, the same daily run also does
+  `restic check --read-data-subset=10%` against the local repo (and the remote one too, if
+  configured) - catches silent repo corruption before the day an actual restore is needed,
+  rather than after.
 - Verify anytime with `restic -r ~/backups/stack-restic-repo snapshots` (needs
   `RESTIC_PASSWORD_FILE=~/backups/.restic-password` in the environment).
 
