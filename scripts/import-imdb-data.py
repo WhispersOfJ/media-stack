@@ -75,7 +75,7 @@ def stream_gz_rows(url):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         with gzip.GzipFile(fileobj=resp) as gz:
-            header = gz.readline()  # discard column header row
+            gz.readline()  # discard column header row
             for line in gz:
                 yield line.decode("utf-8", errors="replace").rstrip("\n").split("\t")
 

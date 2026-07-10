@@ -47,3 +47,28 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+
+  # Control Panel's pinned Python deps (control-panel/requirements.txt) - nothing
+  # was bumping these before. scripts/*.py are stdlib-only, no requirements file
+  # there, so this is the only pip ecosystem needed.
+  - package-ecosystem: "pip"
+    directory: "/control-panel"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "python"
+    labels:
+      - "dependencies"
+      - "python"
+
+  # Pins the Actions themselves (actions/checkout@v4, etc.) across every
+  # workflow in .github/workflows/ - previously nothing bumped these either.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
