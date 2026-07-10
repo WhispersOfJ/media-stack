@@ -14,7 +14,7 @@
 # Usage: notify-discord.sh "message text" [info|warn|error]
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
 # Deliberately not `source .env` - some values contain literal `$` characters
 # that bash's normal assignment expansion would try to interpret as parameter

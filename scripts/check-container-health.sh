@@ -5,7 +5,7 @@
 # Run periodically by systemd/stack-health-check.{service,timer}.
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
 state_file="$HOME/.cache/stack-unhealthy-containers"
 mkdir -p "$(dirname "$state_file")"

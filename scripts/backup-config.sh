@@ -9,7 +9,7 @@ set -uo pipefail
 export RESTIC_REPOSITORY="$HOME/backups/stack-restic-repo"
 export RESTIC_PASSWORD_FILE="$HOME/backups/.restic-password"
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
 # Logical dump of zilean-postgres before the restic run below - the raw
 # datadir is excluded (a live raw-file backup of postgres would be
