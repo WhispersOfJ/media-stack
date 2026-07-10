@@ -1,0 +1,52 @@
+---
+# Static configuration - git-tracked, no secrets (session/storage/jwt
+# secrets come in via AUTHELIA_* env vars in docker-compose.yml, same
+# pattern every other secret in this stack already uses). Same "tracked in
+# git, no secrets, just config" treatment as traefik/traefik.yml.
+
+theme: dark
+
+server:
+  address: 'tcp://:9091'
+
+log:
+  level: info
+
+totp:
+  issuer: cave.internal
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+
+# Single default_policy: deny + one blanket two_factor rule for every
+# *.cave.internal host - every router gets the same authelia@docker
+# forwardAuth middleware label (see docker-compose.yml), so this one rule
+# covers all of them rather than needing a per-service entry here too.
+access_control:
+  default_policy: deny
+  rules:
+    - domain: "*.cave.internal"
+      policy: two_factor
+
+session:
+  cookies:
+    - domain: cave.internal
+      authelia_url: "https://authelia.cave.internal"
+      default_redirection_url: "https://traefik.cave.internal"
+
+regulation:
+  max_retries: 3
+  find_time: 2m
+  ban_time: 5m
+
+storage:
+  local:
+    path: /config/db.sqlite3
+
+# Filesystem notifier, not SMTP - single-admin homelab, no mail server in
+# this stack. Password-reset links land in config/authelia/notification.txt
+# on disk instead of an inbox.
+notifier:
+  filesystem:
+    filename: /config/notification.txt
