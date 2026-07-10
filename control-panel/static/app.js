@@ -92,7 +92,6 @@ const QUICK_LINKS = [
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
   { id: "neutarr", label: "NeutArr", port: 9705 },
   { id: "dozzle", label: "Dozzle", port: 8080 },
-  { id: "pinchflat", label: "Pinchflat", port: 8945 },
 ];
 
 function buildQuickLinks() {

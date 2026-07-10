@@ -1081,35 +1081,3 @@ services:
     mem_reservation: 32m
     cpus: 1
 
-  # YouTube channel/playlist archiving - a new content vertical, writes
-  # real local files (same pattern as NZBGet's usenet fallback), with
-  # Plex-friendly naming built in rather than needing a separate renamer.
-  # Digest-pinned: the newest tagged release (v2025.6.6) is meaningfully
-  # behind what's actually shipped as :latest - same "no tag to pin to
-  # without downgrading" reasoning as Seerr/Glances/Kometa/Unpackerr above.
-  # No PUID/PGID support in this image (root is expected instead, per its
-  # own docs) - a deliberate exception to the `<<: *common` anchor, not an
-  # oversight.
-  pinchflat:
-    restart: unless-stopped
-    logging: *common-logging
-    image: ghcr.io/kieraneglin/pinchflat@sha256:01b4f98aabaf3f5fe394213f7a32578c9e84e42080f52e2f8334021a4473b202
-    container_name: pinchflat
-    profiles: [extras]
-    networks: [stacknet]
-    environment:
-      TZ: ${TZ}
-    ports:
-      - "8945:8945"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8945/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/pinchflat:/config
-      - ./media/youtube:/downloads
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2

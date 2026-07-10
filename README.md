@@ -73,7 +73,7 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 docker compose up -d
 
 # 4. Optional: extras too (Bazarr, Byparr, Tautulli, Glances, Kometa, Unpackerr, Watchtower,
-#    Cleanuparr, NeutArr, Dozzle, Pinchflat, Control Panel, DebridMediaManager)
+#    Cleanuparr, NeutArr, Dozzle, Control Panel, DebridMediaManager)
 docker compose --profile extras up -d
 ```
 
@@ -189,7 +189,6 @@ Full details, including the *arr-key two-pass step this diagram shows, are in
 - [Subtitles: Bazarr language and providers](#subtitles-bazarr-language-and-providers)
 - [Plex library updates on import](#plex-library-updates-on-import)
 - [Cleanuparr and NeutArr](#cleanuparr-and-neutarr)
-- [Pinchflat](#pinchflat)
 - [Security note](#security-note)
 - [Image pinning policy](#image-pinning-policy)
 - [Container healthchecks](#container-healthchecks)
@@ -358,7 +357,16 @@ verified live against the running stack before being marked done.*
 > [CHANGELOG.md v3.5.1](CHANGELOG.md) — no app roots there anymore, so it's unused. Left as-is
 > in Zurg's live `config.yml` rather than editing it here too: it doesn't hurt anything sitting
 > idle, and touching it means another live restart for a service actively serving Plex with no
-> real benefit.
+> real benefit. (The old `./media/adult` host directory itself was removed alongside Pinchflat's
+> own cleanup - see [CHANGELOG.md](CHANGELOG.md) - since that one was a plain empty folder with
+> no live config pointing at it, not something requiring a Zurg restart to touch.)
+>
+> The Plex **"YouTube"** library Pinchflat's removal orphaned was also removed - `DELETE
+> /library/sections/{id}` triggered an unexpected internal Plex Media Server restart
+> (container itself stayed up throughout, confirmed healthy after), which briefly looked like
+> the delete had failed since an immediate follow-up check still showed the library present.
+> It hadn't - the removal completed asynchronously behind that restart, confirmed by a later
+> check showing only Movies/TV Shows/Music remain.
 
 Zurg's live `config.yml` directory routing, for reference:
 
@@ -407,7 +415,7 @@ docker compose up -d
 ```
 
 Core + optional extras (Bazarr, Byparr, Tautulli, Glances, Kometa, Unpackerr, Watchtower,
-Cleanuparr, NeutArr, Dozzle, Pinchflat, Control Panel):
+Cleanuparr, NeutArr, Dozzle, Control Panel):
 
 ```bash
 docker compose --profile extras up -d
@@ -545,7 +553,6 @@ it at boot on a headless host.
 | Cleanuparr *(extras)* | http://192.168.4.105:11011 | queue cleanup automation: strikes, malware block, stalled/failed removal |
 | NeutArr *(extras)* | http://192.168.4.105:9705 | hardened Huntarr-lineage fork — missing/upgrade hunting |
 | Dozzle *(extras)* | http://192.168.4.105:8080 | real-time log viewer for every container |
-| Pinchflat *(extras)* | http://192.168.4.105:8945 | YouTube channel/playlist archiving |
 
 ## Configuration status
 
@@ -715,11 +722,11 @@ sized generously rather than from observed pressure, same reasoning pattern as t
 Deliberately left alone: Seerr, NZBGet, and Radarr/Sonarr - all comfortably under 250MB/low
 CPU% at rest in the original observation pass, and not revisited since.
 
-**[7.1.0](CHANGELOG.md)'s 4 new services shipped with ceilings from day one**, cheap insurance
+**[7.1.0](CHANGELOG.md)'s new services shipped with ceilings from day one**, cheap insurance
 from the start rather than added after the fact: `cleanuparr` (512MB/64MB/2), `neutarr`
 (512MB/64MB/2), `dozzle` (256MB/32MB/1 - stateless log viewer, the lightest thing in this
-table), `pinchflat` (512MB/64MB/2 - video encoding/muxing during downloads could spike higher
-under real load, revisit if that's observed).
+table). (A fourth, `pinchflat`, shipped the same way but was removed entirely - see
+[CHANGELOG.md](CHANGELOG.md).)
 
 One thing deliberately *not* copied from Zilean: `.NET Server GC` (`DOTNET_gcServer=1`) stays
 Zilean-only. The `*arr` apps run .NET's default Workstation GC, which is actually correct for
@@ -864,25 +871,6 @@ within minutes of being configured, not just a clean-looking config.
 > "not under active development, use at your own risk" notice). NeutArr traces through
 > `elfhosted/newtarr`'s fork of Huntarr v6.6.3 - the last clean release before that - with the
 > auth system fully rebuilt and the original findings addressed.
-
-## Pinchflat
-
-Added in [7.1.0](CHANGELOG.md) - a new content vertical, not something this stack had before.
-YouTube channel/playlist archiving straight into a Plex-ready library, writing real local files
-the same way NZBGet's usenet fallback does (`ghcr.io/kieraneglin/pinchflat`, port 8945,
-digest-pinned for the same "newest tag is behind :latest" reason as Seerr/Glances/Kometa/
-Unpackerr above).
-
-One Media Profile created (`YouTube`, using Pinchflat's own built-in "Media Center" preset -
-season/episode-by-upload-date naming that Plex reads natively). Deliberately left unconfigured:
-actual channel/playlist **Sources** - which channels to archive is a content choice, not an
-infrastructure one, so that step is manual.
-
-New `./media/youtube:/downloads` mount, and a new Plex library ("YouTube", TV Shows type -
-matching Pinchflat's own recommended structure for episodic content, since Plex has no
-dedicated "YouTube" library type) pointed at it. Uses a mount that already existed in
-`docker-compose.yml` (`./media:/home/bear/Stack/media`) waiting for exactly this - added ahead
-of time in an earlier session per its own comment, never acted on until now.
 
 ## Security note
 
@@ -1430,7 +1418,6 @@ folders, Seerr, etc. all stay exactly as manual as they've always been).
 | Cleanuparr | Automates queue cleanup: a strike system for bad downloads, a community malware blocklist, stalled/failed-import removal with auto re-search - see [Cleanuparr and NeutArr](#cleanuparr-and-neutarr) below |
 | NeutArr | Dedicated missing-content/quality-upgrade hunting - a hardened fork of Huntarr's last clean release, not Huntarr itself (see below for why) |
 | Dozzle | Real-time log viewer for every container - the one thing [Control Panel](#control-panel)'s grid can't show |
-| Pinchflat | YouTube channel/playlist archiving straight into a Plex-ready library - see [Pinchflat](#pinchflat) below |
 | Control Panel | The stack's single dashboard - live container status/control, host stats, a Quick Links panel to every service, one-click ops actions (Kometa now, Plex scan/empty-trash/optimize, *arr RSS sync + search, service restarts) - see below |
 
 Not included but worth knowing about: Decypharr can stream Usenet directly via NNTP with no
@@ -1546,7 +1533,7 @@ Runs on port **8420**.
 
 - **Quick Links** - a link to every service's own web UI (Plex, Prowlarr, Zilean, both
   Decypharr instances, Zurg, Radarr, Sonarr, NZBGet, Seerr, Bazarr, Byparr, Tautulli, Glances,
-  DebridMediaManager, Cleanuparr, NeutArr, Dozzle, Pinchflat), each with a live status dot
+  DebridMediaManager, Cleanuparr, NeutArr, Dozzle), each with a live status dot
   sourced from the same container data the grid below uses. This is what let Heimdall and
   Homepage be removed entirely instead of kept around as link launchers.
 - **Matrix theme** - black/phosphor-green throughout, monospace headings, and a falling-code
@@ -1771,5 +1758,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **7.2.2**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **8.0.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
