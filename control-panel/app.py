@@ -6,10 +6,10 @@ grab-to-Decypharr. Supersedes the old Homepage+Control Panel split - see
 README.md's Control Panel section.
 
 Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
-HTTP API (Plex, Radarr, Sonarr, Lidarr, Readarr, Zilean), Glances (host
-stats), and zilean-postgres directly (hash count - Zilean has no stats API
-of its own). No auth - LAN-only, matches every other service in this stack
-(see README.md "Security note").
+HTTP API (Plex, Radarr, Sonarr, Bazarr, Zilean), Glances (host stats), and
+zilean-postgres directly (hash count - Zilean has no stats API of its own).
+No auth - LAN-only, matches every other service in this stack (see
+README.md "Security note").
 """
 import os
 import re
@@ -58,36 +58,12 @@ ARR_APPS = {
         "search_command": "MissingEpisodeSearch",
         "label": "Sonarr",
     },
-    "lidarr": {
-        "url": "http://lidarr:8686",
-        "api": "v1",
-        "key": os.environ["LIDARR_API_KEY"],
-        "search_command": "MissingAlbumSearch",
-        "label": "Lidarr",
-    },
-    "readarr": {
-        "url": "http://readarr:8787",
-        "api": "v1",
-        "key": os.environ["READARR_API_KEY"],
-        "search_command": "MissingBookSearch",
-        "label": "Readarr",
-    },
 }
 
-# Unstick (remove + blocklist + re-search a stuck queue item) works against
-# any app on the same Servarr API family - verified live against Lidarr's
-# queue during the v6.5.0 Metallica investigation (identical
-# DELETE .../queue/{id}?blocklist=true&skipRedownload=false pattern as
-# Radarr/Sonarr). Readarr is left out - never exercised against its queue,
-# so no live evidence its shape matches.
-UNSTICK_ARR_APPS = ("radarr", "sonarr", "lidarr")
-
-# Manual import is narrower than unstick: arr_manual_import_candidates()'s
-# file-to-movie/series field mapping is Radarr/Sonarr-specific (movieId vs.
-# seriesId/episodeIds) - Lidarr's manualimport response uses artist/album
-# fields instead, untested here, so extending unstick to Lidarr doesn't
-# also extend this without real field-mapping work first.
-MANUAL_IMPORT_ARR_APPS = ("radarr", "sonarr")
+# Unstick/manual-import only make sense for apps with a download queue that
+# actually gets stuck on import matching - just Radarr/Sonarr now that
+# Lidarr/Readarr are gone.
+QUEUE_ARR_APPS = ("radarr", "sonarr")
 
 # Display-only labels/notes for the container grid - NOT an allow-list.
 # Which containers actually exist, and which actions are valid on them, is
@@ -100,8 +76,6 @@ MANUAL_IMPORT_ARR_APPS = ("radarr", "sonarr")
 CONTAINER_LABELS = {
     "radarr": ("Radarr", "also clears the stale Zurg mount issue (v4.0.1)"),
     "sonarr": ("Sonarr", None),
-    "lidarr": ("Lidarr", None),
-    "readarr": ("Readarr", None),
     "bazarr": ("Bazarr", None),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
@@ -643,15 +617,9 @@ def arr_search_missing(app_name: str):
 # (see CONTAINER_LABELS' Radarr note) or a release that doesn't
 # actually match what was expected.
 # ---------------------------------------------------------------------
-def require_unstick_app(app_name: str) -> dict:
-    if app_name not in UNSTICK_ARR_APPS:
-        fail(f"'{app_name}' isn't supported here - unstick works on radarr, sonarr, and lidarr.", status_code=404)
-    return ARR_APPS[app_name]
-
-
-def require_manual_import_app(app_name: str) -> dict:
-    if app_name not in MANUAL_IMPORT_ARR_APPS:
-        fail(f"'{app_name}' isn't supported here - manual import works on radarr and sonarr.", status_code=404)
+def require_queue_app(app_name: str) -> dict:
+    if app_name not in QUEUE_ARR_APPS:
+        fail(f"'{app_name}' isn't supported here - only radarr and sonarr have a queue.", status_code=404)
     return ARR_APPS[app_name]
 
 
@@ -679,7 +647,7 @@ def stuck_queue_items(app_name: str) -> list[dict]:
 
 @app.post("/api/arr/{app_name}/unstick")
 def arr_unstick(app_name: str):
-    cfg = require_unstick_app(app_name)
+    cfg = require_queue_app(app_name)
     items = stuck_queue_items(app_name)
     if not items:
         return ok(f"No stuck downloads in {cfg['label']}.")
@@ -712,7 +680,7 @@ def arr_manual_import_candidates(app_name: str):
     would show - each candidate is echoed straight back on import so the
     quality/language/match info can't drift from what the arr app itself
     reported."""
-    cfg = require_manual_import_app(app_name)
+    cfg = require_queue_app(app_name)
     candidates = []
     for q in stuck_queue_items(app_name):
         folder, download_id = q.get("outputPath"), q.get("downloadId")
@@ -767,7 +735,7 @@ def arr_manual_import_candidates(app_name: str):
 
 @app.post("/api/arr/{app_name}/manual-import")
 def arr_manual_import_execute(app_name: str, payload: ManualImportFile):
-    cfg = require_manual_import_app(app_name)
+    cfg = require_queue_app(app_name)
     body = {"name": "ManualImport", "files": [payload.model_dump(exclude_none=True)]}
     try:
         r = httpx.post(f"{cfg['url']}/api/{cfg['api']}/command", json=body, headers={"X-Api-Key": cfg["key"]}, timeout=30)

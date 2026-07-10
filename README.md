@@ -21,9 +21,9 @@ explicit NZBGet fallback.
 The Stack turns "I want a Plex library that fills itself in" into one `docker-compose.yml`.
 Point it at a Real-Debrid/AllDebrid account and it wires together an indexer
 (Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), the *arr apps that
-turn a request into an organized library (Radarr/Sonarr/Lidarr/Readarr), a debrid gateway that
+turn a request into an organized library (Radarr/Sonarr), a debrid gateway that
 symlinks already-cached content instead of downloading it (Decypharr + Zurg), and a
-containerized Plex to actually watch it on — 22 services total, one compose file, every image
+containerized Plex to actually watch it on — 24 services total, one compose file, every image
 pinned and healthchecked. Usenet (NZBGet) is there as an explicit fallback for anything
 debrid doesn't have cached, not the default path.
 
@@ -110,6 +110,7 @@ Full details, including the *arr-key two-pass step this diagram shows, are in
 - [Resource limits](#resource-limits)
 - [Custom format: blocked releases](#custom-format-blocked-releases)
 - [Subtitles: Bazarr language and providers](#subtitles-bazarr-language-and-providers)
+- [Plex library updates on import](#plex-library-updates-on-import)
 - [Security note](#security-note)
 - [Image pinning policy](#image-pinning-policy)
 - [Container healthchecks](#container-healthchecks)
@@ -131,7 +132,7 @@ Full details, including the *arr-key two-pass step this diagram shows, are in
 Prowlarr ──indexes──> (your trackers + Zilean's DMM cache-hash list)
    │
    ▼
-Radarr / Sonarr / Lidarr / Readarr ──grab──> Decypharr (qBittorrent-compatible API)
+Radarr / Sonarr ──grab──> Decypharr (qBittorrent-compatible API)
    │                                                        │
    │                                                        ├─> Real-Debrid API  (add magnet)
    │                                                        └─> AllDebrid API    (add magnet;
@@ -156,11 +157,11 @@ Plex (containerized as of 3.3.0) → network_mode: host, /mnt mounted 1:1 with t
 
 > **Two Decypharr instances, not one:** the diagram above simplifies "Decypharr" to a single
 > box, but `docker-compose.yml` actually runs two — `decypharr` (port 8282, both debrid
-> backends, Radarr/Lidarr/Readarr's download client) and `decypharr-alldebrid` (port 8283,
+> backends, Radarr's download client) and `decypharr-alldebrid` (port 8283,
 > AllDebrid only, Sonarr's download client). Decypharr has no per-provider category scoping —
 > a single instance's `debrids[]` list is available to every category on it — so a fully
 > separate instance, with its own config/mount, is the only way to keep AllDebrid exclusive to
-> Sonarr instead of shared with Radarr/Lidarr/Readarr. This is undocumented elsewhere in this
+> Sonarr instead of shared with Radarr. This is undocumented elsewhere in this
 > file pending a proper CHANGELOG entry for when it was added. One consequence of the separate
 > mount: `decypharr-alldebrid` reports the same-looking `/app/downloads/<category>/...` path to
 > Sonarr as the primary instance does, but it's actually a different host directory - every
@@ -189,8 +190,8 @@ that mount doesn't support having new files/symlinks written into it. See
 > [CHANGELOG.md v3.5.1](CHANGELOG.md).
 
 > **Radarr-specific mount fragility:** Radarr bind-mounts `/mnt/zurg` and `/mnt/decypharr`
-> directly (`/mnt/zurg:/mnt/zurg:rslave`) rather than the parent `/mnt` like Sonarr/Lidarr/
-> Readarr/Plex do. A direct bind of a FUSE mountpoint doesn't reliably survive that FUSE
+> directly (`/mnt/zurg:/mnt/zurg:rslave`) rather than the parent `/mnt` like Sonarr/
+> Plex do. A direct bind of a FUSE mountpoint doesn't reliably survive that FUSE
 > process being recreated underneath it (Zurg image update, resource-limit change, etc.) — only
 > Radarr breaks, with `Socket not connected` inside the container and `accessible: false` from
 > `/api/v3/rootfolder`, while every other app keeps working fine. Fix is just `docker restart
@@ -246,9 +247,8 @@ verified live against the running stack before being marked done.*
   see that entry for the 3 skipped (credential-gated) and 16 failed (dead/blocked sites)
   definitions.
 - **Decypharr** and **NZBGet** are both added as download clients (priority 1 and 2
-  respectively) in Radarr, Sonarr, Lidarr, and Readarr — Decypharr auto-detected
-  all 4 apps.
-- **Root folders** are set in all 4 arr apps, pointed at `/data/<type>` (backed by
+  respectively) in Radarr and Sonarr — Decypharr auto-detected both apps.
+- **Root folders** are set in both arr apps, pointed at `/data/<type>` (backed by
   `./media/<type>` on regular host disk) — not `/mnt/zurg/<type>`, since Zurg's rclone FUSE
   mount can't have new files written into it. See the v2.2.0 fix below.
 - **Zilean** is tuned for this host's actual hardware (16-thread CPU, NVMe) rather than left
@@ -256,14 +256,14 @@ verified live against the running stack before being marked done.*
   [Zilean hardware tuning](#zilean-hardware-tuning) below.
 - **Seerr** is initialized, signed in to Plex, and connected to Radarr + Sonarr as default
   servers.
-- **Prowlarr** is connected to all 4 *arr apps under Settings → Apps (`fullSync`), so
+- **Prowlarr** is connected to both *arr apps under Settings → Apps (`fullSync`), so
   indexers propagate down automatically instead of needing to be configured per-app.
 - A single **custom format** ("Block - Sample, Russian, Low-Quality Sources") hard-rejects
   samples, Russian/Korean-language releases, and a specific low-quality-source/group regex, at
   `-10000` in the one quality profile each app now has — see
   [Custom format: blocked releases](#custom-format-blocked-releases) below.
 - **Every arr app can now actually import from Decypharr, end-to-end.** v2.1.0 fixed path
-  *visibility* (all 4 containers share `config/decypharr/downloads` at the identical path
+  *visibility* (all containers share `config/decypharr/downloads` at the identical path
   Decypharr uses internally, `/app/downloads`). v2.2.0 fixed the deeper issue underneath it —
   root folders were still on Zurg's read-only FUSE mount, so the final import write always
   failed even after visibility was fixed. Root folders now live on regular disk (`/data/<type>`,
@@ -275,22 +275,13 @@ verified live against the running stack before being marked done.*
   (`ip: 127.0.0.1`, unreachable from inside its own container) and fixed — see
   [CHANGELOG.md](CHANGELOG.md) v2.4.0 and v2.5.2. All three are now genuinely live.
 
-## One prerequisite: extend Zurg for new media types (done)
-
-Music/books are routed through Zurg rather than a separate AllDebrid path, so
-Lidarr/Readarr need Zurg to organize those into their own folders. This meant
-editing the **live** `config.yml` for a service actively serving the Plex library — this has
-already been applied and the service restarted cleanly, confirmed by the `music`/`books`
-folders appearing under `/mnt/zurg`.
-
 > The `adult` directory group below is a leftover from Whisparr, removed in
 > [CHANGELOG.md v3.5.1](CHANGELOG.md) — no app roots there anymore, so it's unused. Left as-is
 > in Zurg's live `config.yml` rather than editing it here too: it doesn't hurt anything sitting
 > idle, and touching it means another live restart for a service actively serving Plex with no
 > real benefit.
 
-For reference, the change made to `/home/bear/zurg/config.yml` (backup kept at
-`config.yml.bak`):
+Zurg's live `config.yml` directory routing, for reference:
 
 ```yaml
 directories:
@@ -299,16 +290,6 @@ directories:
     group_order: 10
     filters:
       - has_episodes: true
-  music:
-    group: media
-    group_order: 15
-    filters:
-      - regex: /(?i)\b(FLAC|MP3|320kbps|CDDA|Discography)\b/
-  books:
-    group: media
-    group_order: 16
-    filters:
-      - regex: /(?i)\b(AUDIOBOOK|EPUB|MOBI|AZW3)\b/
   adult:
     group: media
     group_order: 17
@@ -321,9 +302,9 @@ directories:
     group_order: 20
 ```
 
-These regexes are a starting heuristic based on common release-naming conventions, not a
-guarantee — anything that doesn't match just falls through to `movies` as it did before, so a
-miscategorized item is a quick fix later, not data loss.
+`music`/`books` directory groups existed here briefly to serve Lidarr/Readarr - removed along
+with those two apps (their only consumer) rather than left routing content nothing reads
+anymore. See [CHANGELOG.md](CHANGELOG.md) for the removal.
 
 Restart command, if the config ever needs tuning again — the `zurg` container runs the
 binary directly and spawns its own rclone mount as a child process, so one restart handles
@@ -389,8 +370,6 @@ recreate it after a compose file change.
 | Zurg | http://192.168.4.105:9999 | Real-Debrid FUSE mount dashboard |
 | Radarr | http://192.168.4.105:7878 | movies |
 | Sonarr | http://192.168.4.105:8989 | TV |
-| Lidarr | http://192.168.4.105:8686 | music |
-| Readarr | http://192.168.4.105:8787 | books — pinned to `0.4.19-nightly` (LinuxServer's generic `nightly` tag is dead upstream) |
 | NZBGet | http://192.168.4.105:6789 | usenet, real local downloads, fallback path |
 | Seerr | http://192.168.4.105:5055 | request frontend |
 | Bazarr *(extras)* | http://192.168.4.105:6767 | subtitles |
@@ -410,9 +389,9 @@ noted as **done** where complete. What's left is a preference call, not a techni
    [What's already done](#whats-already-done)), Byparr proxy wired up, NZBGet added as
    Prowlarr's own download client. Private/semi-private trackers need your own account
    credentials per-site if you want to add any — those weren't and can't be automated.
-2. **Each *arr app** (Radarr/Sonarr/Lidarr/Readarr) (done): Decypharr (priority 1)
+2. **Each *arr app** (Radarr/Sonarr) (done): Decypharr (priority 1)
    and NZBGet (priority 2, fallback) both added as download clients; root folders set to
-   `/data/movies`, `/data/shows`, `/data/music`, `/data/books` respectively
+   `/data/movies`, `/data/shows` respectively
    (regular disk, backed by `./media/<type>` — not Zurg's read-only FUSE mount; see
    [CHANGELOG.md](CHANGELOG.md) v2.2.0).
 3. **Seerr** (done): initialized and signed in to Plex using the existing Plex token already
@@ -422,12 +401,12 @@ noted as **done** where complete. What's left is a preference call, not a techni
    from each app's old profile after both were deleted in [6.0.0](CHANGELOG.md); `main.apiKey`
    in `config/seerr/settings.json` works as `X-Api-Key` on Seerr's own settings endpoints, no
    session login needed to fix this kind of thing going forward.
-4. **Decypharr** (done): debrid API keys set, all 4 arr apps auto-detected. `download_action`
+4. **Decypharr** (done): debrid API keys set, both arr apps auto-detected. `download_action`
    defaults to `symlink` for every arr — no change needed. A second, isolated Decypharr
    instance (`decypharr-alldebrid`, port 8283) also exists in `docker-compose.yml` to keep
    AllDebrid exclusive to Sonarr — see the [Architecture](#architecture) callout above; this
    item doesn't yet reflect that instance's own configuration status. As of v4.14.0, Radarr's arr entry is
-   pinned to Real-Debrid only (`selected_debrid: "realdebrid"`) — Sonarr/Lidarr/Readarr are
+   pinned to Real-Debrid only (`selected_debrid: "realdebrid"`) — Sonarr is
    still unrestricted (`source: "auto"`, either debrid provider).
 5. **Quality profiles** (done): a single `Unlimited` profile in each app (originally created as
    `720p+ (All Sources)` in [6.0.0](CHANGELOG.md), renamed in [6.3.1](CHANGELOG.md) once the
@@ -444,12 +423,6 @@ noted as **done** where complete. What's left is a preference call, not a techni
    [6.3.0](CHANGELOG.md)): all four containers live, real API keys reused from Kometa, local
    IMDB title index populated and refreshing daily — search verified working end-to-end, not
    just configured. See [DebridMediaManager](#debridmediamanager) below.
-
-> Seerr only recognizes Radarr and Sonarr in its settings API
-> (`/api/v1/settings/lidarr|readarr` both 404) — it's a TMDB-based movie/TV frontend
-> with no data model for music or books. Lidarr and Readarr have
-> no Seerr request page and can't get one; they stay standalone, already fully wired up on
-> their own via Prowlarr + Decypharr/NZBGet.
 
 ## The Usenet caveat
 
@@ -571,9 +544,8 @@ elevated `docker.sock` access), `glances` (512MB/64MB/2), `unpackerr` (512MB/64M
 can spike CPU briefly on large archives), `watchtower` (256MB/32MB/1). All defensive insurance
 sized generously rather than from observed pressure, same reasoning pattern as the original six.
 
-Deliberately left alone: Seerr, NZBGet, and the four `*arr` apps besides Bazarr (Radarr, Sonarr,
-Lidarr, Readarr) — all comfortably under 250MB/low CPU% at rest in the original observation
-pass, and not revisited since.
+Deliberately left alone: Seerr, NZBGet, and Radarr/Sonarr - all comfortably under 250MB/low
+CPU% at rest in the original observation pass, and not revisited since.
 
 One thing deliberately *not* copied from Zilean: `.NET Server GC` (`DOTNET_gcServer=1`) stays
 Zilean-only. The `*arr` apps run .NET's default Workstation GC, which is actually correct for
@@ -634,22 +606,6 @@ patterns used don't touch any feature that differs between engines.
 Since Recyclarr is gone, nothing re-syncs or overwrites this format automatically anymore —
 any future change to it is a manual API/UI edit in both apps.
 
-### Lidarr: blocked uploader tag
-
-Added in [6.6.0](CHANGELOG.md), separate from the Radarr/Sonarr format above since it targets
-one specific bad source rather than a general quality policy. A batch of Metallica albums kept
-failing extraction with `bad file checksum` errors traced to a single uploader tag (`88`, one
-release also carrying `vtwin88cube`) — see [6.5.0](CHANGELOG.md) for the full investigation.
-Lidarr had no custom formats configured at all until this point.
-
-**"Blocked Uploader (88 tag)"**, scored `-10000` in all three quality profiles (`Any`,
-`Lossless`, `Standard`): one `ReleaseTitleSpecification` regex,
-`(?<!\d)88(?:cube)?\s*$` — matches a trailing `88` or `88cube` tag not preceded by another
-digit, so `[FLAC] 88` and `vtwin88cube` both hard-reject while a release year like `1988` is
-left alone (the negative lookbehind blocks a match on its last two digits, since they're
-preceded by another digit). Verified live via `GET /api/v1/parse` against real titles from the
-[6.5.0](CHANGELOG.md) investigation.
-
 ## Subtitles: Bazarr language and providers
 
 Added in [6.7.0](CHANGELOG.md). Bazarr's Sonarr/Radarr/Plex connections were fixed long ago
@@ -677,6 +633,28 @@ subtitle provider at all. Connected and idle the whole time.
   episode returned actual `gestdown` search results with real match scores and working
   download URLs.
 
+## Plex library updates on import
+
+Radarr and Sonarr both connect straight to Plex via each app's native **Plex Media Server**
+notification (`Settings → Connect`), not a generic webhook - this is the same connection type
+Plex's own docs point to, and it refreshes just the affected library section on import/upgrade
+rather than the blunter full-library scan Control Panel's own "Scan for new files" button
+triggers on demand.
+
+- One connection per app, both pointed at `PLEX_URL`/`PLEX_TOKEN` from `.env` directly (skips
+  the OAuth "Authenticate with Plex.tv" flow entirely - the token's already on hand).
+  `updateLibrary: true`, triggered `onDownload` (initial import) and `onUpgrade` (a better
+  release replacing an existing file).
+- Verified live via each app's own `POST /api/v3/notification/test` (re-run against the saved
+  connection by including its `id`, not just the create-time validation) - both returned a
+  clean `200` with no errors, confirming Radarr/Sonarr can actually reach and authenticate
+  against Plex, not just that the connection saved without error.
+- Discovered Plex itself was wedged mid-restart while setting this up (stuck at "already
+  running" internally after an unrelated stop/start cycle, timing out every real request) -
+  `docker restart plex` cleared it. Worth knowing as a general symptom: a container that shows
+  `Up` but times out on every request, right after a stop/start, is worth a full restart before
+  assuming a deeper problem.
+
 ## Security note
 
 Every web UI publishes its port directly on the host (`0.0.0.0:<port>`) with no auth gate in
@@ -691,17 +669,15 @@ setup, but worth knowing if this host is ever shared or backed up somewhere less
 ## Image pinning policy
 
 Every image was `:latest` except Recyclarr (`:8`, pinned back in v1.4.1 after `:latest` was
-pulled from that registry entirely) and Readarr (an exact nightly build, since it has no other
-stable channel). Combined with Watchtower auto-updating daily, that meant every image could
-silently change overnight with no record of what changed or an easy way back.
+pulled from that registry entirely). Combined with Watchtower auto-updating daily, that meant
+every image could silently change overnight with no record of what changed or an easy way back.
 
 Every image is now pinned, using whichever approach doesn't change what's actually running
 today:
 
-- **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the 7 hotio images (Prowlarr,
-  Radarr, Sonarr, Lidarr, NZBGet, Bazarr, Tautulli — Readarr is a LinuxServer image, not
-  hotio, pinned separately below) — verified each channel tag resolves to the exact same
-  digest as `:latest` at pin time, so this is a no-op today. hotio's whole model is rolling
+- **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the 6 hotio images (Prowlarr,
+  Radarr, Sonarr, NZBGet, Bazarr, Tautulli) — verified each channel tag resolves to the exact
+  same digest as `:latest` at pin time, so this is a no-op today. hotio's whole model is rolling
   channels (`release`/`testing`/`nightly`) identified by git-hash, not semver, so this is as
   close to "pin to the stable channel, explicitly" as that upstream supports.
 - **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
@@ -813,7 +789,7 @@ Previously nothing in this stack could tell you it was broken except looking at 
 Panel's container grid - no signal at all for a failed backup, a Watchtower update that broke
 something, or a container stuck crash-looping at 3am. A single Discord webhook
 (`DISCORD_WEBHOOK_URL` in `.env`) now
-backs four independent alert paths:
+backs five independent alert paths:
 
 - **`scripts/notify-discord.sh`** — the shared sender every other piece below calls. No-ops
   silently (exit 0) if `DISCORD_WEBHOOK_URL` isn't set to a real URL yet, so nothing breaks
@@ -850,6 +826,17 @@ backs four independent alert paths:
   establishes a baseline (nothing to diff against yet) rather than reporting the entire
   library as newly "added". Long added/removed lists are truncated to 20 titles per library
   with a count of the rest, to stay under Discord's embed field limits.
+- **`*arr` app backups** — `scripts/arr-app-backup.py`, run daily at 03:40 by
+  `systemd/stack-arr-backup.{service,timer}` (right after `stack-backup`'s 03:30 config
+  snapshot, before Watchtower's 04:00 updates). Triggers Radarr and Sonarr's own native
+  `Backup` command (`POST /api/v3/command`) rather than relying solely on the raw
+  `./config/<app>` file-level snapshot `backup-config.sh` already takes - produces the same
+  `.zip` each app's own Settings → Backup screen creates on demand, which is what each app's
+  own restore flow expects and is more upgrade-portable than a raw SQLite file copied mid-write.
+  Polls the command until it completes (or a 60s timeout) and posts one embed covering both
+  apps. Scoped to Radarr/Sonarr only, matching this repo's own meaning of "the arr apps" -
+  Prowlarr and Bazarr both have an equivalent native backup mechanism too, but neither is "an
+  arr app" by that name.
 
 ## CI: validation and dependency updates
 
@@ -903,8 +890,8 @@ itself is public or private, since GHCR's default here is private either way.
 
 ### Setup wizard (filling in `.env`)
 
-`.env` has 14 keys across 7 sections, several of them opaque secrets (a Plex token, two
-self-issued Zilean tokens, four *arr API keys, two optional Discord webhooks) — the kind of
+`.env` has 23 keys across 8 sections, several of them opaque secrets (a Plex token, two
+self-issued Zilean tokens, three *arr/Bazarr API keys, two optional Discord webhooks) — the kind of
 thing that's easy to get subtly wrong hand-editing a file the first time (wrong key in the
 wrong `KEY=` line, an extra space, a value copied with a trailing newline). The wizard turns
 that into a browser form instead: it reads the field names, grouping, and help text straight
@@ -943,16 +930,15 @@ A few things worth knowing:
 
 #### A two-pass tool, by necessity
 
-`RADARR_API_KEY`, `SONARR_API_KEY`, `LIDARR_API_KEY`, and `READARR_API_KEY` can't be filled in
+`RADARR_API_KEY` and `SONARR_API_KEY` can't be filled in
 on a first run — each arr app generates its own key itself the first time it boots, and
 nothing hands it out ahead of time. The wizard marks these fields clearly ("fill in after
 first boot") and defaults them to `changeme`. The intended flow:
 
 1. Run `--setup`, fill in everything else, submit, `docker compose up -d`.
-2. Open each app's own **Settings → General → Security → API Key** (Radarr, Sonarr, Lidarr,
-   Readarr).
+2. Open each app's own **Settings → General → Security → API Key** (Radarr, Sonarr).
 3. Re-run the exact same `--setup` command — the form now shows your real `.env`, so only the
-   4 key fields need pasting in.
+   2 key fields need pasting in.
 4. Pick up the change with:
    ```bash
    docker compose up -d --force-recreate control-panel
@@ -1090,7 +1076,7 @@ Homepage entirely (both removed from `docker-compose.yml`) rather than running a
 Runs on port **8420**.
 
 - **Quick Links** - a link to every service's own web UI (Plex, Prowlarr, Zilean, both
-  Decypharr instances, Zurg, all 4 arr apps, NZBGet, Seerr, Bazarr, Byparr, Tautulli, Glances,
+  Decypharr instances, Zurg, Radarr, Sonarr, NZBGet, Seerr, Bazarr, Byparr, Tautulli, Glances,
   DebridMediaManager), each with a live status dot sourced from the same container data the grid
   below uses. This is what let Heimdall and Homepage be removed entirely instead of kept around
   as link launchers.
@@ -1134,26 +1120,25 @@ Runs on port **8420**.
   the Kometa card above. Added in [6.8.0](CHANGELOG.md) alongside the rest of Bazarr's setup;
   needed its own `BAZARR_API_KEY` wired into `.env`/`docker-compose.yml` since, unlike the other
   `*arr` apps, Bazarr's key had never been mirrored out of its own config before.
-- ***arr actions*** - RSS sync and search-for-missing on Radarr, Sonarr, Lidarr, and Readarr,
-  each via `POST /api/v3|v1/command` with that app's own command name (`RssSync`, plus
-  `MissingMoviesSearch`/`MissingEpisodeSearch`/`MissingAlbumSearch`/`MissingBookSearch`
-  respectively). Needs its own copy of each app's API key (`RADARR_API_KEY` etc. in `.env`)
-  since it talks to these APIs directly.
+- ***arr actions*** - RSS sync and search-for-missing on Radarr and Sonarr,
+  each via `POST /api/v3/command` with that app's own command name (`RssSync`, plus
+  `MissingMoviesSearch`/`MissingEpisodeSearch` respectively). Needs its own copy of each app's
+  API key (`RADARR_API_KEY` etc. in `.env`) since it talks to these APIs directly.
 - ***arr search box*** - a free-text search per app that opens a new tab at that app's own
   `/add/new?term=<query>` URL (e.g. `http://192.168.4.105:7878/add/new?term=Dune`), which
-  Radarr/Sonarr/Lidarr/Readarr's shared React UI reads on load and runs immediately. No lookup
+  Radarr/Sonarr's shared React UI reads on load and runs immediately. No lookup
   API duplicated here - the arr app does its own search and renders its own results, this just
   deep-links into it. Uses `location.hostname` client-side rather than a baked-in host, so it
   works from whatever address the panel itself was opened at.
-- **Unstick** (Radarr/Sonarr/Lidarr) - an armed button that sweeps every queue item the app
+- **Unstick** (Radarr/Sonarr) - an armed button that sweeps every queue item the app
   itself flagged `warning`/`error` (the same condition that lights up its own Queue tab's
   warning icon - usually the [Radarr-specific mount fragility](#architecture) leaving a
   completed download stuck at `importBlocked`) and removes it, blocklists the release, and
   triggers an immediate re-search, one `DELETE .../queue/{id}?removeFromClient=true&blocklist=
-  true&skipRedownload=false` call per item. Extended to Lidarr in [6.8.0](CHANGELOG.md) - this
-  is the exact manual process from [6.5.0](CHANGELOG.md)'s Metallica corrupted-archive
-  investigation, turned into a button instead of hand-run API calls. Readarr isn't included -
-  never exercised against its queue, so no live evidence its shape matches the other three.
+  true&skipRedownload=false` call per item. Briefly extended to Lidarr in
+  [6.8.0](CHANGELOG.md) - the exact manual process from [6.5.0](CHANGELOG.md)'s Metallica
+  corrupted-archive investigation, turned into a button - reverted along with the rest of
+  Lidarr's removal.
 - **Manual import** (Radarr/Sonarr only) - a collapsible panel listing every importable file
   found across currently-stuck queue items (match title/episode, quality, release group, size,
   rejection reasons like `Sample`), each with its own armed **Import** button. The candidate
@@ -1317,5 +1302,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **6.8.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **7.0.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

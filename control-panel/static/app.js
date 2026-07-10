@@ -65,14 +65,8 @@ const PRIMARY_ACTIONS = [
 ];
 
 const ARR_APPS = [
-  { id: "radarr", label: "Radarr", port: 7878, unstick: true, manualImport: true },
-  { id: "sonarr", label: "Sonarr", port: 8989, unstick: true, manualImport: true },
-  // Unstick-only: verified live against Lidarr's queue during the v6.5.0
-  // Metallica investigation, but manual-import's file-to-item field mapping
-  // is Radarr/Sonarr-specific and was never adapted/tested for Lidarr's
-  // artist/album shape - see app.py's MANUAL_IMPORT_ARR_APPS comment.
-  { id: "lidarr", label: "Lidarr", port: 8686, unstick: true },
-  { id: "readarr", label: "Readarr", port: 8787 },
+  { id: "radarr", label: "Radarr", port: 7878, queue: true },
+  { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
 ];
 
 /* Every service's own web UI - replaces Heimdall/Homepage as the link
@@ -88,8 +82,6 @@ const QUICK_LINKS = [
   { id: "zurg", label: "Zurg", port: 9999 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "lidarr", label: "Lidarr", port: 8686 },
-  { id: "readarr", label: "Readarr", port: 8787 },
   { id: "nzbget", label: "NZBGet", port: 6789 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "bazarr", label: "Bazarr", port: 6767 },
@@ -235,8 +227,8 @@ function buildArrList() {
       <div class="arr-actions">
         <button class="btn-ghost" data-action="rss-sync" type="button">RSS sync</button>
         <button class="btn-ghost" data-action="search-missing" type="button">Search missing</button>
-        ${app.unstick ? `<button class="btn-ghost" data-unstick type="button">Unstick</button>` : ""}
-        ${app.manualImport ? `<button class="btn-ghost" data-import-toggle type="button">Manual import</button>` : ""}
+        ${app.queue ? `<button class="btn-ghost" data-unstick type="button">Unstick</button>` : ""}
+        ${app.queue ? `<button class="btn-ghost" data-import-toggle type="button">Manual import</button>` : ""}
       </div>
     `;
     const status = row.querySelector(".arr-status");
@@ -272,12 +264,12 @@ function buildArrList() {
     });
     list.appendChild(row);
 
-    if (app.unstick) setupUnstick(app, row, status);
-    if (app.manualImport) {
+    if (app.queue) {
       const panel = document.createElement("div");
       panel.className = "import-panel";
       panel.hidden = true;
       list.appendChild(panel);
+      setupUnstick(app, row, status);
       setupManualImportToggle(app, row, panel);
     }
   }

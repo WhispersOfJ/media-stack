@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v6.8.0**.
+retroactive pass) was never versioned under. Current version: **v7.0.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,84 @@ retroactive pass) was never versioned under. Current version: **v6.8.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [7.0.0] — Lidarr and Readarr removed; Radarr/Sonarr get native Plex hooks + their own backups
+
+MAJOR: two entire services removed, not just reconfigured. User's call after living with both
+for a while - decided they weren't worth the ongoing hassle relative to how little they were
+actually used. Bundled with two smaller additions that came up in the same pass: native Plex
+library-update hooks on Radarr/Sonarr (previously nothing told Plex an import had happened -
+only the manual "Scan for new files" button in Control Panel ever refreshed it), and a daily
+native-backup script for the arr apps that remain.
+
+### Removed
+- **Lidarr and Readarr** - containers stopped and removed, service blocks deleted from
+  `docker-compose.yml`, `config/lidarr/`+`config/readarr/` deleted from disk (their own
+  app config/database only - the actual synced music/book library files under `./media/music`
+  and `./media/books` were left untouched, since those are real library content, not app state).
+  `LIDARR_API_KEY`/`READARR_API_KEY` removed from `.env` and `.env.example`.
+- **Prowlarr applications** - both removed via `DELETE /api/v1/applications/{id}`, so indexer
+  sync no longer targets either.
+- **Unpackerr** - `UN_LIDARR_0_*`/`UN_READARR_0_*` env vars removed; it was extracting for both
+  apps' queues, now just Radarr/Sonarr.
+- **Zurg's `music`/`books` directory groups** - existed in `config/zurg/config.yml` only to
+  organize content for Lidarr/Readarr to consume; removed as dead routing now that nothing
+  reads from those folders, rather than left silently pointless. Live-edited and restarted
+  (`docker restart zurg`) the same way this file's config has been touched before.
+- **Control Panel** - `lidarr`/`readarr` removed from `ARR_APPS`/`CONTAINER_LABELS`
+  (`control-panel/app.py`) and `ARR_APPS`/`QUICK_LINKS` (`static/app.js`). The `UNSTICK_ARR_APPS`/
+  `MANUAL_IMPORT_ARR_APPS` split added in [6.8.0](CHANGELOG.md) specifically to give Lidarr
+  unstick-only support collapsed back into a single `QUEUE_ARR_APPS` set (and the frontend's
+  matching `unstick`/`manualImport` flags back into one `queue` flag) now that both remaining
+  apps support both actions identically - keeping the split would have been unnecessary
+  complexity with nothing left to differentiate.
+- **`scripts/setup_wizard.py`** - `LIDARR_API_KEY`/`READARR_API_KEY` removed from
+  `POST_BOOT_KEYS`.
+- **README.md** - swept for every Lidarr/Readarr reference (architecture diagram, service
+  table, configuration status list, image pinning policy, resource limits, Control Panel
+  section, setup wizard docs) - some updated in place (service/key counts), some sections
+  removed entirely where they no longer had anything to describe (Lidarr's blocked-uploader
+  custom format, the Zurg music/books prerequisite write-up).
+
+### Added
+- **Native Plex Media Server connections** in both Radarr and Sonarr (`Settings → Connect`,
+  not a generic webhook) - refreshes just the affected library section on import (`onDownload`)
+  and upgrade (`onUpgrade`), rather than relying on someone noticing and clicking Control
+  Panel's full-library "Scan for new files" button. Both point at `PLEX_URL`/`PLEX_TOKEN`
+  directly, skipping the OAuth flow since the token's already on hand.
+- **`scripts/arr-app-backup.py`** + `systemd/stack-arr-backup.{service,timer}`, daily at 03:40
+  (after `stack-backup`'s 03:30 config snapshot, before Watchtower's 04:00 updates). Triggers
+  each app's own native `Backup` command (`POST /api/v3/command`) and polls until it completes,
+  producing the same portable `.zip` each app's own Settings → Backup screen creates on demand -
+  a meaningfully different artifact than `backup-config.sh`'s raw file-level `./config`
+  snapshot, and what each app's own restore flow actually expects as input. Scoped to
+  Radarr/Sonarr only, matching this repo's own established meaning of "the arr apps" (Prowlarr
+  and Bazarr both have an equivalent native backup mechanism, but neither is "an arr app" by
+  that name).
+- **`BAZARR_API_KEY`** added to `.env.example` - a gap from [6.8.0](CHANGELOG.md) that added it
+  to `.env` and `docker-compose.yml` but missed the template file.
+
+### Fixed while verifying
+- **Plex itself was wedged** while testing the new notification hooks - stuck mid-restart from
+  an unrelated earlier stop/start cycle (`Plex Media Server is already running. Will not
+  start...` followed by a failed internal `kill`), timing out every real request despite Docker
+  showing it `Up`. `docker restart plex` cleared it. Notification tests against Radarr/Sonarr
+  failed with a connection timeout until this was caught and fixed - not a bug in the new hook
+  config itself.
+
+### Verified live
+- `DELETE /api/v3/notification/test` (re-tested against each saved connection by id, not just
+  at create time) returned a clean `200` for both Radarr and Sonarr - confirms real
+  connectivity and auth against Plex, not just that the connection saved without error.
+- Both apps' native `Backup` command completed successfully and produced real, listable
+  `.zip` files (`GET /api/v3/system/backup`).
+- Prowlarr's application list confirmed down to just Radarr/Sonarr after the removal
+  (`GET /api/v1/applications`).
+- Control Panel rebuilt and confirmed healthy; `GET /api/containers` no longer lists
+  `lidarr`/`readarr`; `/api/arr/lidarr/unstick` now correctly `404`s instead of running.
+- Zurg restarted healthy after the config edit; Plex connectivity reconfirmed unaffected.
+
+---
 
 ## [6.8.0] — Control Panel: DMM's 4 containers labeled, Bazarr search + Lidarr unstick added
 

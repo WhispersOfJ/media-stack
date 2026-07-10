@@ -191,7 +191,7 @@ services:
   # Second, isolated Decypharr instance for AllDebrid only. Decypharr has no
   # per-provider category scoping (a single instance's debrids[] are all
   # available to every category), so the only way to keep AllDebrid
-  # exclusive to Sonarr rather than shared with Radarr/Lidarr/Readarr is a
+  # exclusive to Sonarr rather than shared with Radarr is a
   # fully separate instance - own port, own config/mount, wired into Sonarr
   # only as a download client.
   decypharr-alldebrid:
@@ -369,46 +369,6 @@ services:
       # Sonarr grab was stuck "No files found are eligible for import" with this mount missing.
       - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
       - ./media/shows:/data/shows
-
-  lidarr:
-    <<: *common
-    image: ghcr.io/hotio/lidarr:release
-    container_name: lidarr
-    networks: [stacknet]
-    ports:
-      - "8686:8686"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8686/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/lidarr:/config
-      - /mnt:/mnt:rslave
-      - ./usenet:/usenet:rslave
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      - ./media/music:/data/music
-
-  readarr:
-    <<: *common
-    image: lscr.io/linuxserver/readarr:0.4.19-nightly
-    container_name: readarr
-    networks: [stacknet]
-    ports:
-      - "8787:8787"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8787/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/readarr:/config
-      - /mnt:/mnt:rslave
-      - ./usenet:/usenet:rslave
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      - ./media/books:/data/books
 
   # ---------------------------------------------------------------------
   # Usenet (real local downloads - only path that isn't debrid/symlink based)
@@ -667,8 +627,6 @@ services:
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
-      LIDARR_API_KEY: ${LIDARR_API_KEY}
-      READARR_API_KEY: ${READARR_API_KEY}
       BAZARR_API_KEY: ${BAZARR_API_KEY}
       # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
       # the same credential Zilean itself already has, no new secret.
@@ -792,10 +750,6 @@ services:
       UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
       UN_SONARR_0_URL: http://sonarr:8989
       UN_SONARR_0_API_KEY: ${SONARR_API_KEY}
-      UN_LIDARR_0_URL: http://lidarr:8686
-      UN_LIDARR_0_API_KEY: ${LIDARR_API_KEY}
-      UN_READARR_0_URL: http://readarr:8787
-      UN_READARR_0_API_KEY: ${READARR_API_KEY}
     volumes:
       - /mnt:/mnt:rslave
       # Same mounts every arr app already has (see Sonarr/Radarr above) - /mnt alone doesn't
