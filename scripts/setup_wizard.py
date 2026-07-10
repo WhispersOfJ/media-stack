@@ -9,12 +9,12 @@ Serves a single HTML form built from .env.example (sections from
 line), collects real values, and writes them to .env. Stdlib only - no
 pip dependency, matching how lean the installer image already is.
 
-Two-pass by design: RADARR_API_KEY/SONARR_API_KEY/LIDARR_API_KEY/
-READARR_API_KEY genuinely don't exist until each arr app has booted
-once and generated its own key - nothing external can supply them
-ahead of time. Re-running this same wizard after first boot loads the
-just-written .env as defaults (instead of .env.example's placeholders)
-so only the fields that actually changed need retyping.
+Two-pass by design: RADARR_API_KEY/SONARR_API_KEY genuinely don't
+exist until each arr app has booted once and generated its own key -
+nothing external can supply them ahead of time. Re-running this same
+wizard after first boot loads the just-written .env as defaults
+(instead of .env.example's placeholders) so only the fields that
+actually changed need retyping.
 """
 import os
 import re
@@ -27,7 +27,7 @@ from urllib.parse import parse_qs
 
 # Can't be known before the corresponding app has booted once and
 # generated its own key - see module docstring.
-POST_BOOT_KEYS = {"RADARR_API_KEY", "SONARR_API_KEY", "LIDARR_API_KEY", "READARR_API_KEY"}
+POST_BOOT_KEYS = {"RADARR_API_KEY", "SONARR_API_KEY"}
 
 # Self-issued secrets with no external source - safe to generate for the
 # user instead of asking them to run a command themselves.
