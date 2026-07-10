@@ -49,7 +49,7 @@ retroactive pass) was never versioned under. Current version: **v9.1.1**.
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
 
-## [9.1.1] — Fixed: Plex unreachable through Traefik ("Bad Gateway"), firewall hairpin-NAT gap
+## [9.1.1] — Fixed: Plex unreachable from any stacknet container (Traefik 502s, silent Radarr/Sonarr notification failures) - firewall hairpin-NAT gap
 
 Found live, reported as "Bad Gateway on plex" after [9.0.0](CHANGELOG.md)'s network-security
 rollout - every request that reached Plex's backend through Traefik failed with a `502`, **100%
@@ -62,19 +62,44 @@ idle keep-alive connections that Traefik's pool then tried to reuse) would have 
 every single proxied request failing rather than a fraction of them.
 
 **Root cause:** the nftables firewall added in [9.0.0](CHANGELOG.md) only allowed this host's LAN
-subnet (`192.168.4.0/22`) to reach Plex's `network_mode: host` port `32400`. Traefik itself runs
-in a container on `stacknet` - when it proxies to Plex via the host's real IP, that connection
-hairpins through Docker's own NAT and arrives at the firewall's `INPUT` chain from `stacknet`'s
-own subnet (`172.18.0.0/16`), not the LAN, so it was being rejected outright
-(`meta pkttype host limit rate 5/second ... reject with icmpx admin-prohibited` - the same rule
-already in place, just never exercised by a *containerized* client reaching this particular
-port before). Verified directly: a throwaway container on `stacknet` hitting
-`http://192.168.4.105:32400/` got connection-refused (`000`) before the fix, a clean `401` after.
+subnet (`192.168.4.0/22`) to reach Plex's `network_mode: host` port `32400`. Any container on
+`stacknet` reaching Plex via the host's real IP hairpins through Docker's own NAT and arrives at
+the firewall's `INPUT` chain from `stacknet`'s own subnet (`172.18.0.0/16`), not the LAN, so it
+was being rejected outright (`meta pkttype host limit rate 5/second ... reject with icmpx
+admin-prohibited` - the same rule already in place, just never exercised by a *containerized*
+client reaching this particular port before). Verified directly: a throwaway container on
+`stacknet` hitting `http://192.168.4.105:32400/` got connection-refused (`000`) before the fix, a
+clean `401` after.
+
+**Same root cause, wider blast radius than first thought.** Digging into a separate symptom - a
+freshly-imported movie (Interstellar) not showing up in Plex despite Radarr reporting a clean
+import - traced back to this exact bug. Radarr's own debug log (`radarr.debug.6.txt`, the file
+covering the actual import window - its log rotation is fast enough under heavy API traffic that
+the current `radarr.txt`/`radarr.debug.0.txt` no longer covered it) showed Radarr attempting its
+native Plex Media Server notification at the moment of import and failing with the identical
+signature:
+```
+PlexServerProxy|Url: http://192.168.4.105:32400/identity?...
+Warn|PlexServerService|Failed to Update Plex host: 192.168.4.105
+Warn|NotificationService|Unable to process notification queue for Plex Media Server
+```
+Reproduced a second, independent failure for a different movie (Grease) 10 minutes later in the
+same log, both before this fix landed. Radarr runs on `stacknet` exactly like Traefik, using the
+same `http://192.168.4.105:32400` address (`PLEX_URL` in `.env`) - so its automatic
+"update library on import" notification was silently failing via the same hairpin-NAT gap the
+whole time, with no user-visible error (Radarr logs the failure at `Warn`, not somewhere the UI
+surfaces by default). Sonarr has the identical `PlexServer` notification configured and was never
+observed failing, but shares the exact same exposure and would have hit it under the same
+conditions. Confirmed fixed by replicating Radarr's exact failing request
+(`curl` from a `stacknet` container to `http://192.168.4.105:32400/identity?X-Plex-Token=...`) -
+`000` before the fix, `200` after. Going forward, both Radarr and Sonarr should notify Plex
+successfully on import/upgrade without needing a manual library scan.
 
 ### Fixed
 - **`/etc/nftables.conf`** (host-level, not tracked in this repo) - added an explicit allow for
   `172.18.0.0/16` (stacknet) to reach `tcp/32400`, alongside the existing LAN allowance. One
-  line; every other rule untouched.
+  line; every other rule untouched. Fixes Traefik's proxying *and* Radarr/Sonarr's own Plex
+  notifications in one change, since all three hit the same gap.
 
 ### Known follow-up
 - A first fix attempt (a custom Traefik `serversTransport` with a 1-second idle-connection
@@ -83,6 +108,9 @@ port before). Verified directly: a throwaway container on `stacknet` hitting
   at the time, but it also wasn't the actual fix, and `docker-compose.yml` ended up byte-identical
   to [9.1.0](CHANGELOG.md) once removed (nothing to commit there this round - only this file and
   the host's own `/etc/nftables.conf` changed).
+- Any content imported between [9.0.0](CHANGELOG.md) landing and this fix (just Interstellar, in
+  practice) needed a one-time manual Plex library refresh to show up - already done live for that
+  title; nothing further to clean up.
 
 ## [9.1.0] — README rewritten for beginners; all prior technical depth moved to TECHNICAL.md
 
