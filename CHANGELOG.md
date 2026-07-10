@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v7.2.1**.
+retroactive pass) was never versioned under. Current version: **v7.2.2**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,30 @@ retroactive pass) was never versioned under. Current version: **v7.2.1**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [7.2.2] — Claude Code Review: skip Dependabot PRs cleanly instead of failing
+
+PATCH, CI-only. `.github/workflows/claude-code-review.yml` was showing a red X on every
+Dependabot PR (`fastapi`, `uvicorn`, `docker`, `psycopg2-binary`, `actions/checkout`, etc. -
+[7.2.0](CHANGELOG.md)'s new `pip`/`github-actions` ecosystems immediately surfaced a wave of
+these): `Environment variable validation failed: ... ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN,
+or workload identity federation ... is required`. Root cause was already diagnosed and dead-ended
+by an earlier session (see this file's own top-of-workflow comment): GitHub withholds repository
+secrets from `pull_request` runs triggered by `dependabot[bot]`, and switching the trigger to
+`pull_request_target` to route around that (tried previously) makes
+`anthropics/claude-code-action`'s own OIDC-based GitHub App token exchange fail instead (`401
+Unauthorized - Invalid OIDC token`) - a structural incompatibility between the action and that
+trigger type, not something fixable by reconfiguring secrets.
+
+### Fixed
+- Added `if: github.actor != 'dependabot[bot]'` at the job level, so the job shows a clean
+  `skipped` instead of attempting and failing on Dependabot PRs. `Validate Compose` already
+  gives those PRs real CI signal; the documented manual `@claude` PR-comment workaround (which
+  triggers `claude.yml` instead, unaffected by any of this) still works for a human-requested
+  review. The proper fix - splitting this into a `pull_request` (no secrets, uploads context) +
+  `workflow_run` (runs on the base branch, has secrets) pair, which is GitHub's own recommended
+  pattern for this exact scenario - would need `anthropics/claude-code-action` to support being
+  invoked that way; not attempted here.
 
 ## [7.2.1] — Installation docs rewritten: real terminal output, wizard internals, more depth
 

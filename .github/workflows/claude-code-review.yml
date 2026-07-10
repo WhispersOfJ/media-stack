@@ -21,6 +21,15 @@ on:
 
 jobs:
   claude-review:
+    # Skip entirely for Dependabot PRs (see CHANGELOG v7.2.2) rather than let the job run
+    # and fail: GitHub withholds repository secrets from pull_request runs triggered by
+    # dependabot[bot] (see the pull_request_target history above) - CLAUDE_CODE_OAUTH_TOKEN
+    # comes through empty every time, so this job cannot succeed on a Dependabot PR today
+    # regardless of allowed_bots below. A clean skip beats a red X for something structurally
+    # unfixable without a rewrite (the workflow_run two-workflow split GitHub recommends for
+    # this exact case) - "Validate Compose" already gives Dependabot PRs real CI signal, and
+    # the manual `@claude` comment workaround still works for a human-requested review.
+    if: github.actor != 'dependabot[bot]'
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
