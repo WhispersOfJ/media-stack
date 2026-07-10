@@ -11,3 +11,16 @@ and gets removed from here.
   recent `Backup` task output worth restoring from (`System → Backup` in each app's UI, or
   `config/<app>/Backups/` on disk) before more content gets treated as "orphaned" and cleaned up
   on the assumption that a 0-item library is accurate.
+
+- **`rclone-alldebrid` doesn't reliably survive `docker restart`**: found live while testing the
+  Restart-All mount-ordering fix (see README's "Radarr-specific mount fragility" note for the
+  sibling Zurg/Radarr bug this resembles). A plain `docker restart rclone-alldebrid` can leave
+  its own `/mnt/all` FUSE mount in a `Transport endpoint is not connected` / `Socket not
+  connected` state that the container's own restart-policy retries never clear on their own
+  (observed retrying with growing backoff for 4+ minutes) - recovery needed a lazy unmount from
+  outside the container's mount namespace (`docker run --rm --privileged -v /mnt:/mnt:rshared
+  alpine umount -l /mnt/all`) followed by a fresh `docker restart rclone-alldebrid`. Same failure
+  class as the Radarr one, just on a different container and without a known one-line fix yet -
+  would also bite a Watchtower-triggered restart, not just Restart-All. Worth root-causing
+  properly (an `unless-stopped` restart loop that can't self-heal is worse than Radarr's, which
+  at least recovers cleanly with one manual restart).
