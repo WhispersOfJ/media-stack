@@ -294,7 +294,7 @@ Stack/
 ├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
 ├── control-panel/                # custom-built one-click ops app (own Dockerfile, see below)
 ├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
-└── media/{movies,shows,music,books,adult}  # every arr app's writable root folder (mounted at /data/<type>)
+└── media/{movies,shows}  # every arr app's writable root folder (mounted at /data/<type>)
 ```
 
 ## What's already done
@@ -623,14 +623,14 @@ service has cached.
 Add these as new library locations in Plex (Settings → Libraries → Edit → Add folder),
 matching how `/mnt/all/magnets` is already an extra TV Shows location:
 
-- **`/home/bear/Stack/media/{movies,shows,music,books,adult}`** — required, not optional, as
-  of v2.2.0. Every arr app's root folder now lives here (regular disk, not Zurg's FUSE mount),
-  so this is where *all* future imports land — Decypharr-symlinked and NZBGet alike. Without
-  this added as a library location, newly-acquired content won't appear in Plex even though
-  it's successfully imported. Confirmed live and working for Sonarr (Blue Bloods S01E03); add
-  the matching location for each library type.
-- `/mnt/zurg/music`, `/mnt/zurg/books`, `/mnt/zurg/adult` — still worth adding for content that
-  predates v2.2.0's root folder migration; folders already exist and are live.
+- **`/home/bear/Stack/media/{movies,shows}`** — required, not optional, as of v2.2.0. Every
+  remaining arr app's root folder lives here (regular disk, not Zurg's FUSE mount), so this is
+  where *all* future imports land — Decypharr-symlinked and NZBGet alike. Without this added as
+  a library location, newly-acquired content won't appear in Plex even though it's successfully
+  imported. Confirmed live and working for Sonarr (Blue Bloods S01E03); add the matching
+  location for each library type. (`music`/`books`/`adult` were the equivalent root folders for
+  Lidarr/Readarr/Whisparr - all three apps, and as of [8.0.0](CHANGELOG.md) their `./media`
+  directories too, have been removed.)
 - `/mnt/decypharr/...` — Decypharr's own organized mount; the symlinks under `./media/<type>`
   point here, so Plex needs to be able to resolve through to it either way.
 

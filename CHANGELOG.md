@@ -76,6 +76,20 @@ all three of which were fully removed in earlier versions ([7.0.0](CHANGELOG.md)
   directories were still sitting on disk - 296K and 32K respectively, dashboard settings/
   bookmarks/widget config, nothing resembling real content. Confirmed disposable and removed
   (root-owned `homepage/logs/` again needed the privileged-container trick).
+- **`./media/music`, `./media/books`** - unlike everything else in this entry, this *was* real
+  content, not disposable app state: `./media/music` held a substantial personal collection
+  (studio tracks, live recordings, rare mixes/demos), kept untouched through the Lidarr removal
+  itself ([7.0.0](CHANGELOG.md)) on the explicit reasoning that library content and app state are
+  different things. Removed here only after an explicit user decision to permanently delete it
+  ("I will never use those directories") given as its own follow-up, not folded into the
+  original Pinchflat/Lidarr/Readarr/Whisparr cleanup - flagged before acting that `./media/` has
+  zero backup coverage (`backup-config.sh` only ever covers `./config`), so this has no
+  restic snapshot to fall back on. `./media/books` was already empty. Plex's "Music" library
+  keeps working via its other location (`/mnt/zurg/music`, the Real-Debrid FUSE mount) - only the
+  local-disk location is now gone, left as a dead (non-crashing) entry in Plex's own library
+  config rather than touched again after the last library-edit surprised with an unplanned Plex
+  restart. README's directory layout and Plex library locations sections swept for the
+  resulting stale `music`/`books` references.
 
 ### Verified clean, left alone
 - **Prowlarr's applications list** - confirmed via `GET /api/v1/applications` to contain only
