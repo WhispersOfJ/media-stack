@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v7.2.0**.
+retroactive pass) was never versioned under. Current version: **v7.2.1**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,50 @@ retroactive pass) was never versioned under. Current version: **v7.2.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [7.2.1] — Installation docs rewritten: real terminal output, wizard internals, more depth
+
+Docs-only (PATCH per this file's own versioning policy). Rewrote the Quick start, Bringing the
+stack up, Installer image, and Setup wizard sections substantially longer and more technical,
+built entirely from real, verified material rather than illustrative snippets:
+
+### Changed
+- **Quick start** — added a step-by-step "what actually happens" walkthrough with real captured
+  terminal output for both the fresh-install and re-scaffold cases, and the `entrypoint.sh`
+  `FIRST_RUN` detection logic that decides which message you get. Corrected the two-pass diagram,
+  which had drifted stale after [7.0.0](CHANGELOG.md) removed Lidarr/Readarr and this session
+  added `PLEX_TOKEN` to `POST_BOOT_KEYS` - it said "paste the 4 keys in" when the real count is
+  now 3 (`RADARR_API_KEY`, `SONARR_API_KEY`, `PLEX_TOKEN`).
+- **Installer image** — added the full `Dockerfile`/`.dockerignore` contents with an explanation
+  of why the "never touches your secrets" claim is structural (build-context exclusion) rather
+  than just documented, plus a local-build example.
+- **Setup wizard** — added a "How it actually works" walkthrough of `setup_wizard.py`'s three
+  functions (`parse_env_example`, `render_form`, `render_env_file`) with real code excerpts, a
+  real (sanitized) example `.env` from an actual wizard submission, and the exact conditional
+  logic behind the confirmation page's "next step" hint. Documented a genuinely non-obvious
+  behavior found while writing this: `render_form` renders non-post-boot fields before post-boot
+  fields *within each section*, so the rendered field order doesn't match `.env.example`'s source
+  order - discovered the hard way when a first attempt at scripting the wizard via Tab-key
+  navigation put values in the wrong fields.
+- **Bringing the stack up** — added the full `media-stack.service` unit contents, real
+  `systemctl --user status` output from this stack's own host, and a real `docker compose up -d`
+  re-run against the live (already-healthy) stack showing an in-place image recreate.
+
+### Found while verifying
+- **`rclone-alldebrid` was one patch behind its own compose pin** (`1.74.3` running vs. `1.74.4`
+  pinned) - surfaced by capturing real `docker compose up -d` output for the docs above, not a
+  new bug. Recreated cleanly this time and came up healthy; a Dependabot bump had apparently
+  never been manually applied.
+- Re-verified `github.com/WhispersOfJ/Stackalicious` against this repo file-by-file rather than
+  by commit-message similarity alone: `docker-compose.yml`, `Dockerfile`, `entrypoint.sh`,
+  `.dockerignore`, `.gitignore`, `control-panel/`, `scripts/*`, `TODO.md`, and `CHANGELOG.md` are
+  byte-identical (`CHANGELOG.md` differs in exactly one line, the same `HOST_IP` sanitization
+  pattern as `.env.example`). **`README.md` is not a synced copy** - Stackalicious carries its
+  own distinct, much shorter (466 vs. this file's 1,381 lines pre-rewrite) public-facing README
+  plus a separate `HOWTO.md` that doesn't exist in this repo at all. Whatever process keeps
+  Stackalicious in sync clearly rewrites docs for a public audience rather than copying them, so
+  this rewrite (and this repo's README generally) won't propagate there the way the code commits
+  above do.
 
 ## [7.2.0] — Control Panel hardening, restart-ordering fix, CI gates, off-site backup
 

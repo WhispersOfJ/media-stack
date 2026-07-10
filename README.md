@@ -58,7 +58,11 @@ the tracked files onto a fresh host, a browser-based setup wizard fills in `.env
 
 ## Quick start
 
+Four commands, on a host with nothing but Docker installed:
+
 ```bash
+mkdir -p ~/Stack && cd ~/Stack
+
 # 1. Scaffold this repo's tracked files onto a fresh host
 docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
 
@@ -69,9 +73,76 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 docker compose up -d
 
 # 4. Optional: extras too (Bazarr, Byparr, Tautulli, Glances, Kometa, Unpackerr, Watchtower,
-#    Control Panel)
+#    Cleanuparr, NeutArr, Dozzle, Pinchflat, Control Panel, DebridMediaManager)
 docker compose --profile extras up -d
 ```
+
+That's the whole surface area — no `git clone`, no manual `.env` hand-editing required (though
+you can still `cp .env.example .env && $EDITOR .env` if you'd rather skip the browser form
+entirely). Here's what actually happens at each step, verified against a real run of this exact
+image on this exact repo, in an isolated scratch directory so the output below is real, not
+illustrative:
+
+**Step 1 — scaffold.** `docker run --rm -v "$(pwd)":/out ...` with no arguments runs
+`entrypoint.sh`'s default branch: it `cp -r`s everything baked into the image
+(`docker-compose.yml`, `.env.example`, `scripts/`, `systemd/`, `README.md`, `CHANGELOG.md`,
+`TODO.md`) into `/out`, then `chown -R`s the result to match whoever owns the mounted directory
+on the host — the image runs as root internally, but you shouldn't end up with root-owned files
+on your host because of that. A real run looks like this:
+
+```
+$ docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
+Stack files written to /out
+
+This looks like a fresh install. Next steps:
+  cd /out
+  docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest --setup
+                                     # opens a setup wizard at http://localhost:8090
+                                     # to fill in .env (or: cp .env.example .env && $EDITOR .env)
+  docker compose up -d              # core services
+  docker compose --profile extras up -d   # + Bazarr/Byparr/Tautulli/Kometa/DebridMediaManager/etc.
+```
+
+The "fresh install" framing isn't guesswork — `entrypoint.sh` checks whether
+`docker-compose.yml` already exists in the target directory *before* copying anything, and
+branches its own closing message on that:
+
+```sh
+FIRST_RUN=false
+[ -f "$TARGET/docker-compose.yml" ] || FIRST_RUN=true
+
+cp -r /stack/. "$TARGET/"
+```
+
+Re-run the exact same command later (after pulling a newer image, or on `:latest`'s own update
+cadence) and the branch flips — same files get overwritten, but the message changes since
+there's nothing left to bootstrap:
+
+```
+$ docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
+Stack files written to /out
+
+Updated in place. Your .env and config/ were not touched (this image never
+contains them). If docker-compose.yml or systemd/ changed,
+re-apply with:
+  cd /out
+  docker compose up -d --force-recreate
+  systemctl --user daemon-reload   # if any systemd unit changed
+```
+
+`.env` and `config/` are never at risk either way — `.dockerignore` excludes them from the image
+build itself, so there's no code path inside this container that could touch them even if it
+wanted to (see [Installer image](#installer-image) below for exactly what is and isn't baked
+in).
+
+**Step 2 — the setup wizard.** Covered in full, including a real captured `.env` example and
+the two-pass *arr-key flow, in [Setup wizard](#setup-wizard-filling-in-env) below. Skip it
+entirely if you'd rather hand-edit: `cp .env.example .env && $EDITOR .env` works exactly as
+well, the wizard is a convenience layer over the same file, not a required step.
+
+**Step 3/4 — bring it up.** Ordinary `docker compose up -d` / `--profile extras up -d` — see
+[Bringing the stack up](#bringing-the-stack-up) for the full service list, port table, and the
+systemd unit that automates this on boot.
 
 ```mermaid
 flowchart TD
@@ -81,13 +152,19 @@ flowchart TD
         C1 -->|fill form at :8090| D1[".env written"]
         D1 --> E["docker compose up -d"]
     end
-    E --> F["*arr apps boot,\neach generates its own API key"]
+    E --> F["*arr apps + Plex boot,\neach generates its own API key/token"]
     subgraph Pass2["Pass 2 - after first boot"]
-        F -->|"grab keys from each app's\nSettings -> API Key"| C2["docker run … --setup\n(same command)"]
-        C2 -->|".env reloaded as defaults,\npaste the 4 keys in"| D2[".env updated"]
+        F -->|"grab keys from each app's\nSettings -> API Key,\nPlex token from Get Info -> View XML"| C2["docker run … --setup\n(same command)"]
+        C2 -->|".env reloaded as defaults,\npaste the 3 keys in"| D2[".env updated"]
         D2 --> G["docker compose up -d\n--force-recreate control-panel"]
     end
 ```
+
+(The diagram says 3 keys, not 4 or 2 — `RADARR_API_KEY`, `SONARR_API_KEY`, and `PLEX_TOKEN`, the
+current [`POST_BOOT_KEYS`](scripts/setup_wizard.py) set. `BAZARR_API_KEY` looks like it belongs
+in this list too, since it's just as unknowable before Bazarr's first boot, but it isn't
+currently treated as post-boot by the wizard — worth knowing if you're filling in Bazarr's key
+and wondering why it wasn't flagged the way Radarr/Sonarr/Plex were.)
 
 Full details, including the *arr-key two-pass step this diagram shows, are in
 [Setup wizard](#setup-wizard-filling-in-env) below.
@@ -336,6 +413,39 @@ Cleanuparr, NeutArr, Dozzle, Pinchflat, Control Panel):
 docker compose --profile extras up -d
 ```
 
+Both commands are safe to run repeatedly — Compose only touches what's actually out of sync
+with `docker-compose.yml`. A real re-run against an already-healthy stack, captured live, mostly
+just confirms everything's already running:
+
+```
+$ docker compose up -d
+ Container decypharr Running
+ Container sonarr Running
+ Container zilean Running
+ Container decypharr-alldebrid Running
+ Container zilean-postgres Running
+ Container plex Running
+ Container nzbget Running
+ Container prowlarr Running
+ Container seerr Running
+ Container zurg Running
+ Container radarr Running
+ Container rclone-alldebrid Recreate
+ Container rclone-alldebrid Recreated
+ Container rclone-alldebrid Starting
+ Container rclone-alldebrid Started
+```
+
+That `Recreate`/`Recreated` on `rclone-alldebrid` in an otherwise all-`Running` list is real,
+not staged for this example — the running container was still on `rclone/rclone:1.74.3`, one
+patch behind `docker-compose.yml`'s current pin (`1.74.4`, bumped by
+[Dependabot](#ci-validation-and-dependency-updates) at some point after the container was last
+recreated). This is exactly what `docker compose up -d` is *for*: it diffs the running
+container's image against the compose file's pin and recreates only what drifted, leaving the
+other 26 containers alone. Worth internalizing if you're used to `up -d` being a no-op on a
+healthy stack elsewhere — here, a Dependabot merge you haven't manually applied yet will show up
+as a real (and correct) recreate the next time you run it.
+
 ### Starting at boot
 
 `systemd/media-stack.service` brings the whole stack (extras included) up automatically on
@@ -349,6 +459,31 @@ boot:
    in the same tier as everything else, `/mnt:rshared` on both puts their FUSE mounts at the
    literal `/mnt/zurg`/`/mnt/all` host paths Plex already expects).
 
+The unit itself, in full — a `oneshot` with `RemainAfterExit=yes`, since "started" for a Compose
+stack means "the `up -d` command exited 0", not a long-running process to supervise directly:
+
+```ini
+[Unit]
+Description=Media Stack (Docker Compose, extras profile)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=%h/Stack
+ExecStart=/usr/bin/docker compose --profile extras up -d
+ExecStop=/usr/bin/docker compose --profile extras down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
+```
+
+`%h` expands to the invoking user's home directory — this unit is written to be relocatable
+without editing a hardcoded path, as long as the repo genuinely lives at `~/Stack`. If yours
+lives elsewhere, that's the one line (`WorkingDirectory=%h/Stack`) to change before installing.
+
 Install it as a user unit:
 
 ```bash
@@ -361,6 +496,33 @@ systemctl --user enable --now media-stack.service
 `systemctl --user stop media-stack.service` tears the whole stack back down cleanly
 (`docker compose --profile extras down`); `systemctl --user restart media-stack.service` to
 recreate it after a compose file change.
+
+Verify it actually took, rather than trusting the install commands ran clean — a real
+`systemctl --user status` from this stack's own host:
+
+```
+$ systemctl --user status media-stack.service --no-pager
+● media-stack.service - Media Stack (Docker Compose, extras profile)
+     Loaded: loaded (/home/daddybear/.config/systemd/user/media-stack.service; enabled; preset: enabled)
+     Active: active (exited) since Thu 2026-07-09 12:51:25 EDT; 18h ago
+ Invocation: 5e363e210cd0461c8d1b0cc7813e1203
+   Main PID: 906 (code=exited, status=0/SUCCESS)
+   Mem peak: 104.7M
+        CPU: 163ms
+
+Jul 09 12:51:25 Cave docker[930]:  Container plex Running
+Jul 09 12:51:25 Cave docker[930]:  Container watchtower Running
+Jul 09 12:51:25 Cave docker[930]:  Container kometa Running
+...
+```
+
+`active (exited)` is the healthy end state for a `oneshot`/`RemainAfterExit=yes` unit — it means
+`ExecStart` ran to completion and returned `0`, not that the service crashed. If you see
+`failed` instead, `journalctl --user -u media-stack.service --no-pager` shows the actual
+`docker compose up -d` output/error, same as it would in an interactive terminal. Also confirm
+linger actually took (`loginctl show-user $USER -p Linger` should print `Linger=yes`) — without
+it, this unit only starts when you have an active login session, defeating the point of running
+it at boot on a headless host.
 
 | Service | URL | Notes |
 |---|---|---|
@@ -947,6 +1109,39 @@ contains `.env`, `config/`, `media/`, or `usenet/` — those are excluded by `.d
 never baked into the image, so re-running it later to pick up changes can't touch your real
 secrets or app state.
 
+The image itself is deliberately small and boring — Alpine base, one extra package:
+
+```dockerfile
+FROM alpine:3.24
+
+# python3 is only for scripts/setup_wizard.py (--setup mode, see
+# entrypoint.sh) - stdlib only, no pip install needed.
+RUN apk add --no-cache python3
+
+WORKDIR /stack
+COPY docker-compose.yml .env.example README.md CHANGELOG.md TODO.md ./
+COPY scripts/ ./scripts/
+COPY systemd/ ./systemd/
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh ./scripts/*.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+```
+
+and `.dockerignore` is what actually makes the "never touches your secrets" claim structural
+rather than just documented — these paths are excluded from the *build context* itself, so
+there's no COPY instruction in the Dockerfile above that could reach them even by mistake:
+
+```
+.git
+config/
+media/
+usenet/
+.env
+*.log
+```
+
 ```bash
 docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
 ```
@@ -954,7 +1149,18 @@ docker run --rm -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:latest
 First run scaffolds a fresh checkout. Re-running later after a new push updates
 `docker-compose.yml`, `scripts/`, `systemd/`, and the docs in place — apply with `docker
 compose up -d --force-recreate` and `systemctl --user daemon-reload` if any systemd unit
-changed.
+changed. See [Quick start](#quick-start) above for the real captured terminal output of both
+the first-run and re-run cases, and the `FIRST_RUN` detection logic in `entrypoint.sh` that
+decides which message you get.
+
+Building it locally (useful if you want to test a change to `docker-compose.yml`, a script, or
+a systemd unit before it's pushed and republished to GHCR) is the same one-liner any other image
+build is:
+
+```bash
+docker build -t media-stack-installer:local .
+docker run --rm -v "$(pwd)/scratch":/out media-stack-installer:local
+```
 
 `.github/workflows/publish-installer.yml` rebuilds and republishes this to GHCR automatically
 on every push to `main` that touches any of the bundled files or the build machinery itself
@@ -969,14 +1175,14 @@ itself is public or private, since GHCR's default here is private either way.
 
 ### Setup wizard (filling in `.env`)
 
-`.env` has 23 keys across 8 sections, several of them opaque secrets (a Plex token, two
-self-issued Zilean tokens, three *arr/Bazarr API keys, two optional Discord webhooks) — the kind of
-thing that's easy to get subtly wrong hand-editing a file the first time (wrong key in the
-wrong `KEY=` line, an extra space, a value copied with a trailing newline). The wizard turns
-that into a browser form instead: it reads the field names, grouping, and help text straight
-out of `.env.example`, so the two never drift out of sync, and it's safe to re-run any time you
-want to change a value later — see [Two-pass note](#a-two-pass-tool-by-necessity) below for why
-that matters in practice.
+`.env` has 25 keys across 9 sections, several of them opaque secrets (a Plex token, two
+self-issued Zilean tokens, three *arr/Bazarr API keys, two optional Discord webhooks, an
+optional off-site backup credential pair) — the kind of thing that's easy to get subtly wrong
+hand-editing a file the first time (wrong key in the wrong `KEY=` line, an extra space, a value
+copied with a trailing newline). The wizard turns that into a browser form instead: it reads the
+field names, grouping, and help text straight out of `.env.example`, so the two never drift out
+of sync, and it's safe to re-run any time you want to change a value later — see
+[Two-pass note](#a-two-pass-tool-by-necessity) below for why that matters in practice.
 
 Added in [4.9.0](CHANGELOG.md), same image and tag as the scaffolder above, just a different
 mode:
@@ -992,39 +1198,219 @@ not a lingering container; `--rm` cleans it up). No auth on the form, matching t
 
 ![Setup wizard form, showing the grouped fields read from .env.example and the "fill in after first boot" section for the *arr API keys](docs/images/setup-wizard-form.png)
 
-A few things worth knowing:
+#### How it actually works
+
+`scripts/setup_wizard.py` is a single stdlib-only file (no pip dependency, matching how lean the
+installer image already is — `entrypoint.sh` runs it with the image's own bundled `python3`,
+nothing else) built around three small, independently readable pieces:
+
+**1. Parsing `.env.example` into sections.** Two regexes do all the work — one for a
+`# ---- Section Name ----` header line, one for a `KEY=default` line — walking the file
+top-to-bottom and accumulating any comment lines directly above a field as that field's help
+text:
+
+```python
+FIELD_RE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
+SECTION_RE = re.compile(r"^# ---- (.+?) ----$")
+
+def parse_env_example(path: Path) -> list[dict]:
+    sections = []
+    current = None
+    pending_help = []
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line:
+            pending_help = []
+            continue
+        m = SECTION_RE.match(line)
+        if m:
+            current = {"name": m.group(1), "fields": []}
+            sections.append(current)
+            pending_help = []
+            continue
+        if line.startswith("#"):
+            pending_help.append(line.lstrip("#").strip())
+            continue
+        m = FIELD_RE.match(line)
+        if m and current is not None:
+            current["fields"].append(
+                {"key": m.group(1), "default": m.group(2), "help": " ".join(pending_help)}
+            )
+            pending_help = []
+    return sections
+```
+
+This is *why* the form and `.env.example` can never drift apart: there's no separate schema or
+field list maintained anywhere else in the codebase. Add a new `KEY=default` line with a comment
+above it in `.env.example` (exactly how [`BACKUP_REMOTE_REPOSITORY`](#off-site-backup-optional)
+was added in [7.2.0](CHANGELOG.md)) and it shows up in the wizard on the next run, grouped under
+whatever `# ---- Section ----` header it physically sits under, with zero code changes anywhere
+else — verified live by adding that exact section and confirming it rendered correctly.
+
+**2. Splitting each section into "known now" vs. "known only after boot" fields.** This is the
+one genuinely clever part, and worth understanding since it explains a rendering order that
+looks surprising if you're reading `.env.example` top-to-bottom expecting the form to match
+line-for-line:
+
+```python
+def render_form(sections: list[dict], existing: dict, is_rerun: bool) -> str:
+    parts = []
+    for section in sections:
+        post_boot_fields = [f for f in section["fields"] if f["key"] in POST_BOOT_KEYS]
+        normal_fields = [f for f in section["fields"] if f["key"] not in POST_BOOT_KEYS]
+        if normal_fields:
+            parts.append(f'<fieldset><legend>{escape(section["name"])}</legend>')
+            for f in normal_fields:
+                parts.append(render_field(f, existing))
+            parts.append("</fieldset>")
+        if post_boot_fields:
+            parts.append('<fieldset class="post-boot"><legend>⚠ Fill in after first boot</legend>...')
+            for f in post_boot_fields:
+                parts.append(render_field(f, existing))
+            parts.append("</fieldset>")
+    ...
+```
+
+Within a section, **normal fields render first, post-boot fields render second**, each in their
+own `<fieldset>` — regardless of the order those keys actually appear in `.env.example`. The
+"Control Panel (*arr API keys)" section is the clearest example: `.env.example` lists
+`RADARR_API_KEY`, then `SONARR_API_KEY`, then `BAZARR_API_KEY` in that order, but
+`BAZARR_API_KEY` isn't in `POST_BOOT_KEYS` (below) while the other two are — so the rendered
+form shows `BAZARR_API_KEY` first, in a plain fieldset, then a highlighted "⚠ Fill in after
+first boot" fieldset containing `RADARR_API_KEY` and `SONARR_API_KEY` afterward. This tripped up
+a first attempt at scripting the form via Tab-key navigation while writing this section — the
+DOM/tab order follows the *rendered* grouping, not `.env.example`'s source order, and assuming
+otherwise silently puts values in the wrong fields.
+
+```python
+POST_BOOT_KEYS = {"RADARR_API_KEY", "SONARR_API_KEY", "PLEX_TOKEN"}
+```
+
+**3. Writing `.env` back out, comments and all.** The output isn't a fresh render from the
+parsed field list — it's `.env.example` itself, read line-by-line a second time, with only the
+`KEY=` lines swapped for submitted (or existing, or default) values and every comment/blank line
+passed through untouched:
+
+```python
+def render_env_file(env_example_path: Path, submitted: dict, existing: dict) -> str:
+    out_lines = []
+    for raw_line in env_example_path.read_text().splitlines():
+        m = FIELD_RE.match(raw_line.strip())
+        if m:
+            key, example_default = m.group(1), m.group(2)
+            new_val = submitted.get(key, "").strip()
+            if not new_val:
+                new_val = existing.get(key, example_default)
+            out_lines.append(f"{key}={new_val}")
+        else:
+            out_lines.append(raw_line)
+    return "\n".join(out_lines) + "\n"
+```
+
+That's also why a blank submission for an already-set field doesn't wipe it: `new_val` only
+falls back to `existing`/`example_default` when the submitted value is empty, never overwrites a
+real existing value with blank. The write itself is atomic (`tmp` file + `os.replace()`), so a
+crash mid-submit can't leave a half-written `.env` on disk.
+
+A real `.env` produced by a real first-pass submission (sanitized — this was run against an
+isolated scratch copy of this repo, not the live one, with obviously-fake values in place of
+real secrets) looks like this:
+
+```bash
+# ---- Identity / runtime ----
+PUID=1000
+PGID=1000
+TZ=America/New_York
+
+# ---- Networking ----
+HOST_IP=192.168.1.50
+
+# ---- Zilean / Postgres ----
+ZILEAN_POSTGRES_PASSWORD=dad4377662088df68c72a6f43b5362d0
+ZILEAN_API_KEY=72ddc9acdb81edd190e4ce76e1526f0c
+
+# ---- Plex ----
+PLEX_URL=http://192.168.1.50:32400
+PLEX_TOKEN=demo-plex-token-abc123
+
+# ---- Control Panel (*arr API keys) ----
+RADARR_API_KEY=changeme
+SONARR_API_KEY=changeme
+BAZARR_API_KEY=changeme
+```
+*(truncated — comment lines and the remaining DMM/Discord/off-site-backup keys omitted here for
+length; the real file keeps every comment from `.env.example` intact, per the renderer above)*
+
+Note `RADARR_API_KEY`/`SONARR_API_KEY` both still `changeme` — correct for a genuine first pass,
+not a bug in this example. `ZILEAN_POSTGRES_PASSWORD`/`ZILEAN_API_KEY` are real-looking 32-hex-
+char strings even though nothing was typed into those fields — that's `AUTO_GENERATE_KEYS`
+(below) doing its job.
+
+A few more things worth knowing:
 
 - **The two Zilean secrets are generated for you.** `ZILEAN_POSTGRES_PASSWORD` and
   `ZILEAN_API_KEY` are self-issued (nothing external hands them out), so the form pre-fills
   them with a real `secrets.token_hex(16)` value instead of making you run that command
-  yourself and paste the result in.
+  yourself and paste the result in:
+  ```python
+  AUTO_GENERATE_KEYS = {"ZILEAN_POSTGRES_PASSWORD", "ZILEAN_API_KEY"}
+  ...
+  def initial_value(key: str, default: str, existing: dict) -> str:
+      if key in existing:
+          return existing[key]
+      if key in AUTO_GENERATE_KEYS and default == "changeme":
+          return secrets.token_hex(16)
+      return default
+  ```
 - **Required fields are marked `*`.** Only the handful that actually block
   `docker compose up -d` from working at all (`PUID`, `PGID`, `TZ`, `HOST_IP`, `PLEX_URL`) are
-  enforced — everything else (optional Discord webhooks, the *arr keys below) can legitimately
-  stay `changeme` for now.
+  enforced — everything else (optional Discord webhooks, the off-site backup pair, the *arr keys
+  below) can legitimately stay `changeme`, or blank, for now.
 - **Re-running it is safe and useful, not just idempotent.** If `.env` already exists, the form
-  loads its current values as defaults instead of `.env.example`'s placeholders, and a field
-  left blank on submit keeps its existing value rather than getting wiped — so a re-run only
-  means touching what actually changed.
+  loads its current values as defaults instead of `.env.example`'s placeholders (a green banner
+  says so explicitly — `"Loaded your existing .env as defaults..."`, confirmed live against a
+  real second run), and a field left blank on submit keeps its existing value rather than
+  getting wiped — so a re-run only means touching what actually changed.
+- **The confirmation page's "next step" hint isn't static** — it's `docker compose up -d` on a
+  genuine first submission, but flips to `docker compose up -d --force-recreate control-panel`
+  specifically when the submission changed at least one of the three `POST_BOOT_KEYS` from
+  `changeme` to something real, checked against what existed *before* this submission:
+  ```python
+  had_arr_keys_before = any(existing.get(k, "changeme") != "changeme" for k in POST_BOOT_KEYS)
+  ...
+  if now_has_arr_keys and not had_arr_keys_before:
+      next_step = "docker compose up -d --force-recreate control-panel"
+  else:
+      next_step = "docker compose up -d"
+  ```
+  Filling in just `PLEX_TOKEN` on an otherwise-fresh submission triggers the `--force-recreate`
+  hint on its own, even with `RADARR_API_KEY`/`SONARR_API_KEY` both still `changeme` — verified
+  live while producing the example `.env` above.
 
 #### A two-pass tool, by necessity
 
-`RADARR_API_KEY` and `SONARR_API_KEY` can't be filled in
-on a first run — each arr app generates its own key itself the first time it boots, and
-nothing hands it out ahead of time. The wizard marks these fields clearly ("fill in after
-first boot") and defaults them to `changeme`. The intended flow:
+`RADARR_API_KEY`, `SONARR_API_KEY`, and `PLEX_TOKEN` can't be filled in on a first run — each arr
+app generates its own key the first time it boots, and reading a Plex token
+(`Settings → a library item → Get Info → View XML`) needs a running Plex with at least one
+library item, not just a running container. Nothing external hands any of the three out ahead
+of time. The wizard marks these fields clearly ("fill in after first boot") and defaults them to
+`changeme`. The intended flow:
 
 1. Run `--setup`, fill in everything else, submit, `docker compose up -d`.
-2. Open each app's own **Settings → General → Security → API Key** (Radarr, Sonarr).
+2. Open each app's own **Settings → General → Security → API Key** (Radarr, Sonarr), and Plex's
+   **Get Info → View XML** on any library item for the token.
 3. Re-run the exact same `--setup` command — the form now shows your real `.env`, so only the
-   2 key fields need pasting in.
+   3 fields need pasting in.
 4. Pick up the change with:
    ```bash
    docker compose up -d --force-recreate control-panel
    ```
    `control-panel` is the only container that actually reads these from `.env`, at
    container-*create* time — a plain `restart` won't see a `.env` change, it needs
-   `--force-recreate`.
+   `--force-recreate`. (As of [7.2.0](CHANGELOG.md), missing/blank values here no longer crash
+   the container on boot either way — Control Panel degrades the affected feature to a clean
+   `503` instead of failing to start at all, so a delayed second pass is an inconvenience, not
+   an outage.)
 
 **One thing this doesn't touch:** this only ever fills in `.env` — **it doesn't touch any
 running container or wire up connections between apps** (Prowlarr indexers, Radarr/Sonarr root
@@ -1385,5 +1771,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **7.2.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **7.2.1**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
