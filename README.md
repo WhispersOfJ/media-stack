@@ -1014,7 +1014,7 @@ Previously nothing in this stack could tell you it was broken except looking at 
 Panel's container grid - no signal at all for a failed backup, a Watchtower update that broke
 something, or a container stuck crash-looping at 3am. A single Discord webhook
 (`DISCORD_WEBHOOK_URL` in `.env`) now
-backs five independent alert paths:
+backs six independent alert paths:
 
 - **`scripts/notify-discord.sh`** — the shared sender every other piece below calls. No-ops
   silently (exit 0) if `DISCORD_WEBHOOK_URL` isn't set to a real URL yet, so nothing breaks
@@ -1042,19 +1042,43 @@ backs five independent alert paths:
   that silently compared equal to an also-empty first-run state, reporting "no problems"
   instead of "monitoring is blind right now." `stack-health-check.service` also now has the
   same `OnFailure=notify-failure@%n.service` defense-in-depth the other two units already had.
-- **Plex library report** — `scripts/plex-library-report.py`, run every 30 minutes by
-  `systemd/stack-plex-report.{service,timer}`. Snapshots every item across every movie/show
-  library (`PLEX_URL`/`PLEX_TOKEN` in `.env`), diffs against the previous snapshot
-  (`~/.cache/plex-library-snapshot.json`), and posts an embed listing what was added and
-  removed since the last run - unlike the other three, this one posts on a fixed schedule
-  regardless of whether anything changed ("No changes in the last 30 minutes" when nothing did),
-  since the point is a periodic digest, not an anomaly alert. Diffs on Plex's `guid`, not
-  `ratingKey` - the latter can get reassigned when an item is re-matched (observed firsthand
-  during the WCW-PPV metadata cleanup), which would otherwise show up as a false
-  removed-then-added pair for content that never actually left the library. First run just
-  establishes a baseline (nothing to diff against yet) rather than reporting the entire
-  library as newly "added". Long added/removed lists are truncated to 20 titles per library
-  with a count of the rest, to stay under Discord's embed field limits.
+- **Plex additions, instantly, with boxart** — `scripts/plex-webhook-listener.py`, a
+  long-running listener (`systemd/stack-plex-webhook.service` - no timer, it listens rather than
+  polls) bound to `127.0.0.1:${PLEX_WEBHOOK_PORT}` (default `9880`). Reacts to Plex's own native
+  `library.new` webhook (Plex Pass feature - confirmed present on this account via
+  `myPlexSubscription` on the server's `/` endpoint) the instant Plex fires it, posting one
+  Discord embed per item with its synopsis and Plex's poster attached as boxart. **Not
+  configurable from this repo's `.env`** - webhooks are an account-level Plex setting, added
+  once by hand: Plex web app → Settings → Webhooks → Add Webhook →
+  `http://127.0.0.1:9880/plex-webhook` (or whatever port `PLEX_WEBHOOK_PORT` is set to). Bound to
+  localhost only, not published - Plex runs with `network_mode: host`
+  (see [Plex (containerized)](#plex-containerized)), so "localhost" from Plex's own perspective
+  is this same machine, and nothing else has a reason to reach this endpoint. The poster is
+  usually already attached to Plex's webhook POST itself (used directly, re-uploaded to Discord
+  as a file rather than linked - `PLEX_URL` is typically a LAN address Discord's servers can't
+  reach to render a linked image, and linking it directly would also leak `PLEX_TOKEN`); falls
+  back to fetching it from Plex's API via `Metadata.thumb` for the rarer case where an item
+  hadn't been matched yet when the event fired. Posts are handed to a single background worker
+  over a queue rather than fired straight from the request thread - a season-pack import fires
+  one `library.new` per episode within seconds of each other, and posting that many embeds
+  concurrently would blow through Discord's per-webhook rate limit (~5 requests/2s) and silently
+  drop most of them; the worker paces itself at roughly 1/second and retries once on an explicit
+  429 using Discord's own `Retry-After`.
+- **Plex removals** — `scripts/plex-library-report.py`, run every 30 minutes by
+  `systemd/stack-plex-report.{service,timer}`. Additions used to be this script's job too, but
+  as of [8.2.0](CHANGELOG.md) that moved to the instant webhook listener above; Plex has no
+  equivalent "item removed" webhook event, so this periodic diff is still the only way to catch
+  that. Snapshots every item across every movie/show library (`PLEX_URL`/`PLEX_TOKEN` in
+  `.env`), diffs against the previous snapshot (`~/.cache/plex-library-snapshot.json`), and posts
+  an embed listing what was removed since the last run - unlike the other alert paths, this one
+  posts on a fixed schedule regardless of whether anything changed ("No removals in the last 30
+  minutes" when nothing did), since the point is a periodic digest, not an anomaly alert. Diffs
+  on Plex's `guid`, not `ratingKey` - the latter can get reassigned when an item is re-matched
+  (observed firsthand during the WCW-PPV matching cleanup), which would otherwise show up as a
+  false removed-then-added pair for content that never actually left the library. First run just
+  establishes a baseline (nothing to diff against yet) rather than reporting the entire library
+  as newly "removed". Long removed lists are truncated to 20 titles per library with a count of
+  the rest, to stay under Discord's embed field limits.
 - **`*arr` app backups** — `scripts/arr-app-backup.py`, run daily at 03:40 by
   `systemd/stack-arr-backup.{service,timer}` (right after `stack-backup`'s 03:30 config
   snapshot, before Watchtower's 04:00 updates). Triggers Radarr and Sonarr's own native
@@ -1758,5 +1782,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **8.0.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **8.2.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

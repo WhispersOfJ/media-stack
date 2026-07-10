@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v8.0.0**.
+retroactive pass) was never versioned under. Current version: **v8.2.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,87 @@ retroactive pass) was never versioned under. Current version: **v8.0.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [8.2.0] — Plex additions now post to Discord instantly instead of on a 30-minute timer
+
+Follow-up user request: "change the discord to fire after every addition as opposed to on a
+timer." The [8.1.0](CHANGELOG.md) poster-boxart work still only ran on
+`stack-plex-report.timer`'s 30-minute schedule - a newly added movie could sit unannounced for
+up to half an hour. Verified this account actually has Plex Pass
+(`myPlexSubscription: true` on the server's own `/` endpoint) before committing to Plex's native
+webhooks as the mechanism, since that's the feature gate.
+
+### Added
+- **`scripts/plex-webhook-listener.py`** - new long-running HTTP listener
+  (`systemd/stack-plex-webhook.service`, `Type=simple`/`Restart=on-failure`, no timer) bound to
+  `127.0.0.1:${PLEX_WEBHOOK_PORT}` (new `.env` var, default `9880`). Parses Plex's
+  multipart/form-data `library.new` webhook POST (stdlib-only, via the `email` package's own
+  MIME parser rather than the removed-in-3.13 `cgi` module) and posts a Discord embed the
+  instant Plex fires the event - synopsis plus boxart, using the poster Plex already attaches to
+  the webhook when available, falling back to fetching `Metadata.thumb` from Plex's API for the
+  rarer case where an item hadn't been matched yet. Posts are queued through a single background
+  worker paced at ~1/second with a 429-triggered retry, rather than fired directly from the
+  request thread, since a season-pack import fires one `library.new` per episode within seconds
+  and posting that fast would blow through Discord's per-webhook rate limit and silently drop
+  most of them. Requires a one-time manual step outside this repo: Plex web app → Settings →
+  Webhooks → Add Webhook → `http://127.0.0.1:9880/plex-webhook` (account-level Plex setting, not
+  something `PLEX_TOKEN` can configure via API) - documented in README.
+
+### Changed
+- **`scripts/plex-library-report.py` scope narrowed to removals only.** Plex has no
+  "item removed" webhook event, so the 30-minute poll is still needed for that half of the
+  picture, but the poster-embed/added-tracking logic added in [8.1.0](CHANGELOG.md) is now dead
+  weight - reverted, and the snapshot format reverted with it (`guid -> "Title (Year)"` strings,
+  matching what's already on disk at `~/.cache/plex-library-snapshot.json` - that file never
+  actually got rewritten in the new dict shape by a live run, so this is a clean revert, not a
+  migration). `label_of()` still accepts the brief dict shape defensively in case any other
+  environment's snapshot passed through [8.1.0] before this shipped.
+
+### Verified
+Full request/response path exercised end-to-end against a local stand-in for Discord (not the
+real webhook, to avoid firing unreviewed posts at the live channel): a realistic Plex
+`library.new` multipart POST with an attached poster round-tripped correctly into a Discord
+embed with the image re-uploaded as a file attachment; the `Metadata.thumb` fallback path fires
+correctly when no poster is attached; a burst of 5 rapid additions was delivered in full with
+~1-second pacing between posts (4.5s elapsed for 5 items). The removals-only rewrite of
+`plex-library-report.py` was re-tested against the actual on-disk snapshot format. Ruff-clean.
+Not yet verified against a real Plex-fired webhook or the live Discord channel - first real
+`library.new` event once the webhook is registered in Plex's UI will exercise that.
+
+---
+
+## [8.1.0] — Plex library report: added items now post with real poster boxart
+
+User request: "greatly enhance the discord notifications from Plex to show boxart if possible."
+`scripts/plex-library-report.py`'s added/removed digest ([7.1.0](CHANGELOG.md)) only ever
+posted plain text title lists - no images, since a naive `image: {url: ...}` pointed at
+`PLEX_URL` wouldn't have rendered anyway (`PLEX_URL` is a LAN address, `http://192.168.4.105:32400`
+per `.env` - Discord's own servers fetch embed image URLs server-side and can't reach it) and
+would have leaked `PLEX_TOKEN` in the message besides.
+
+### Added
+- Each newly-added item (movie or show) now gets its own Discord embed with Plex's poster
+  attached as a real file upload (`attachment://posterN.jpg` referencing a multipart file part),
+  plus its synopsis. The poster is downloaded from Plex over the LAN and re-uploaded to Discord
+  as bytes rather than linked, sidestepping both the unreachable-URL problem and the token leak.
+  Stdlib-only multipart encoder added (`build_multipart`) - no new dependency taken on for this.
+- Capped at 9 poster embeds per run (Discord's hard 10-embeds-per-message limit, minus the
+  header embed) - items beyond the cap, and everything removed, still fall back to the previous
+  truncated text-list summary on the header embed.
+- Snapshot shape (`~/.cache/plex-library-snapshot.json`) changed from `guid -> "Title (Year)"` to
+  `guid -> {title, year, thumb, summary}` so poster paths and synopses are available at diff
+  time without extra Plex API calls. `label_of()` accepts both the old string shape and the new
+  dict shape, so upgrading doesn't force a re-baseline on the first post-upgrade run.
+
+### Verified
+Diff/embed-building logic and the multipart encoder were exercised against mocked Plex
+responses (baseline run, added-with-thumb, added-without-thumb, removed, and a >9-item overflow
+case all produced the expected embed/field/attachment shapes) - not yet verified against a real
+post to the live webhook, to avoid firing an unreviewed notification at the actual configured
+Discord channel. First real run under `systemd/stack-plex-report.timer` will exercise the live
+path.
+
+---
 
 ## [8.0.0] — Pinchflat removed entirely; Lidarr/Readarr/Whisparr connections swept clean
 
