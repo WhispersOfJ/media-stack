@@ -1,0 +1,14 @@
+[Unit]
+Description=Plex webhook listener (instant Discord boxart on library.new)
+After=media-stack.service
+OnFailure=notify-failure@%n.service
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=%h/Stack
+ExecStart=/usr/bin/python3 %h/Stack/scripts/plex-webhook-listener.py
+
+[Install]
+WantedBy=default.target

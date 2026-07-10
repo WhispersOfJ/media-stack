@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""Diffs Plex's movie/show libraries against the last snapshot and posts what
-was added/removed to Discord. Run every 30 minutes by
+"""Diffs Plex's movie/show libraries against the last snapshot and posts
+what was removed to Discord. Run every 30 minutes by
 systemd/stack-plex-report.{service,timer}.
 
+Only reports removals now - additions are reported instantly, with boxart,
+by scripts/plex-webhook-listener.py reacting to Plex's own `library.new`
+webhook (see README). Plex has no equivalent "item removed" webhook event,
+so this periodic diff is still the only way to catch that; it used to cover
+both directions before the webhook listener existed.
+
 State lives in ~/.cache/plex-library-snapshot.json so the first run just
-establishes a baseline instead of reporting every existing item as "added".
-Diffs on Plex's `guid` (stable across re-matches), not `ratingKey` (which can
-get reassigned when an item is re-matched - confirmed happening in this
-library during the WCW-PPV matching cleanup) so a re-match doesn't show up
-as a false "removed X / added X" pair.
+establishes a baseline instead of reporting every existing item as
+"removed". Diffs on Plex's `guid` (stable across re-matches), not
+`ratingKey` (which can get reassigned when an item is re-matched - confirmed
+happening in this library during the WCW-PPV matching cleanup) so a
+re-match doesn't show up as a false "removed X / added X" pair.
 """
 import json
 import sys
@@ -19,7 +25,6 @@ from datetime import datetime, timezone
 STACK_DIR = Path(__file__).resolve().parent.parent
 STATE_FILE = Path.home() / ".cache" / "plex-library-snapshot.json"
 DISCORD_BLURPLE = 0x5865F2
-DISCORD_GREEN = 0x57F287
 DISCORD_ORANGE = 0xE67E22
 
 
@@ -65,6 +70,13 @@ def get_section_items(key):
         title = m.get("title", "Unknown")
         items[guid] = f"{title} ({year})" if year else title
     return items
+
+
+def label_of(item):
+    """Handles both this script's plain-string shape and the richer dict
+    shape a brief v8.1.0 iteration wrote to snapshots, in case anyone's
+    state file passed through that version before this reverted it."""
+    return item if isinstance(item, str) else label_of(item.get("title", "Unknown"))
 
 
 def load_previous():
@@ -122,15 +134,7 @@ def main():
         if is_baseline:
             continue
 
-        added = [items[g] for g in items if g not in prev_items]
-        removed = [prev_items[g] for g in prev_items if g not in items]
-
-        if added:
-            fields.append({
-                "name": f"➕ {title} — added ({len(added)})",
-                "value": truncate_list(added),
-                "inline": False,
-            })
+        removed = [label_of(prev_items[g]) for g in prev_items if g not in items]
         if removed:
             fields.append({
                 "name": f"➖ {title} — removed ({len(removed)})",
@@ -151,15 +155,16 @@ def main():
         embed["description"] = (
             f"Baseline established — tracking {total} items across "
             f"{len(sections)} librar{'y' if len(sections) == 1 else 'ies'}. "
-            f"Future runs report what changed since the last one."
+            f"Future runs report anything removed since the last one "
+            f"(additions are reported instantly by plex-webhook-listener.py)."
         )
         embed["color"] = DISCORD_BLURPLE
     elif not fields:
-        embed["description"] = "No changes in the last 30 minutes."
+        embed["description"] = "No removals in the last 30 minutes."
         embed["color"] = DISCORD_BLURPLE
     else:
         embed["fields"] = fields[:25]  # Discord's hard cap on embed fields
-        embed["color"] = DISCORD_ORANGE if any("removed" in f["name"] for f in fields) else DISCORD_GREEN
+        embed["color"] = DISCORD_ORANGE
 
     post_discord(embed)
     return 0
