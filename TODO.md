@@ -10,7 +10,10 @@ and gets removed from here.
   in that session (only read-only `GET` requests preceded it). Check whether either app has a
   recent `Backup` task output worth restoring from (`System → Backup` in each app's UI, or
   `config/<app>/Backups/` on disk) before more content gets treated as "orphaned" and cleaned up
-  on the assumption that a 0-item library is accurate.
+  on the assumption that a 0-item library is accurate. Root cause still unknown - as a
+  blast-radius mitigation (not a fix), `scripts/enable-recycle-bin.py` turned on each app's
+  own Recycle Bin (`/data/movies/.recyclebin`, `/data/shows/.recyclebin`, 7-day cleanup), so a
+  repeat event lands recoverable content in a real folder instead of disappearing outright.
 
 - **`rclone-alldebrid` doesn't reliably survive `docker restart`**: found live while testing the
   Restart-All mount-ordering fix (see README's "Radarr-specific mount fragility" note for the
