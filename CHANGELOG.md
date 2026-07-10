@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v7.0.0**.
+retroactive pass) was never versioned under. Current version: **v7.1.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,95 @@ retroactive pass) was never versioned under. Current version: **v7.0.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [7.1.0] — Cleanuparr, NeutArr, Dozzle, and Pinchflat added; Discord alerts get real embeds
+
+A pasted recommendation (from another AI conversation) suggested 5 new services plus a Huntarr
+warning. Every claim was independently verified rather than trusted at face value before
+anything was added - see the planning file this was built from. Two of the five suggestions
+were turned down after review: **Notifiarr** requires routing app/library data through a
+third-party cloud relay and a hosted Discord bot (confirmed via its own docs) - a categorically
+different trust model than this stack's single self-controlled webhook, so its own Discord
+alerting was upgraded instead (see below) rather than taking on that dependency. **Wizarr**
+doesn't apply - solo Plex user, nothing to invite.
+
+### Added
+- **Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) - automates what Control
+  Panel's own "unstick" endpoint and "search missing" buttons already did by hand, for the whole
+  library on a schedule, plus a strike system and community malware blocklist neither button
+  covered. Connected to Radarr/Sonarr and, as its download client, **Decypharr** - verified live
+  via a real qBittorrent-API login, not just a connection test, resolving the one real unknown
+  in the original recommendation. Queue Cleaner enabled (3-strike failed-import detection in
+  `Exclude` mode with no exclusions, so nothing is scoped out; a 0-100%/both-privacy-types
+  stalled-download rule, closing a coverage gap Cleanuparr's own UI flagged by default). Malware
+  Blocker enabled for both apps against the community blocklist
+  (`raw.githubusercontent.com/Cleanuparr/Cleanuparr/.../blacklist`, verified reachable before
+  use) on an hourly schedule (the UI's own 5-second default was absurdly aggressive, changed
+  before saving). Its own proactive missing-content search stays off - NeutArr owns that role,
+  to avoid both apps redundantly hunting the same libraries against the same indexers.
+- **NeutArr** (`iampuid0/neutarr:1.9.1`, port 9705) - a hardened Huntarr-lineage fork
+  (`elfhosted/newtarr`'s fork of Huntarr v6.6.3, the last release before Huntarr's security
+  scandal - see below), rebuilt auth, Bandit/pip-audit clean, specific CVEs patched. Connected
+  to Radarr and Sonarr; verified live via both `Test Connection` calls succeeding
+  (`Successfully connected to Radarr API version: 6.2.1.10461` in its own logs) and, more
+  importantly, a real hunt cycle that found and searched for an actually-missing episode
+  (`Law & Order - S09E13 - Hunters`) within minutes of being configured - not just a clean
+  config, a real result.
+- **Dozzle** (`amir20/dozzle:v10.6.8`, port 8080) - real-time log viewer, the one thing Control
+  Panel's container grid couldn't do (state/health/CPU/mem, but no log content - previously a
+  manual `docker logs`). Direct `:ro` docker.sock mount, same pattern Control Panel/Watchtower
+  already use; no socket-proxy exists in this stack to slot behind (the pasted recommendation
+  assumed one did - it doesn't), left as a possible separate hardening project rather than
+  bundled into this one. Verified live: its own log confirms `"Connected to Docker", "clients":1`.
+- **Pinchflat** (`ghcr.io/kieraneglin/pinchflat@sha256:01b4f98a...`, digest-pinned - newest
+  tagged release `v2025.6.6` is meaningfully behind `:latest`, same reasoning as
+  Seerr/Glances/Kometa/Unpackerr's existing digest pins; port 8945) - a new content vertical,
+  YouTube channel/playlist archiving, writing real local files the same way NZBGet does. New
+  `./media/youtube:/downloads` mount. One Media Profile created (`YouTube`, the built-in "Media
+  Center" preset - Plex-friendly season/episode-by-date naming) - actual channel/playlist
+  Sources deliberately left unconfigured, since that's a content choice, not infrastructure.
+- **New Plex library, "YouTube"** (TV Shows type, matching Pinchflat's own recommended
+  structure for episodic content), pointed at `/home/bear/Stack/media/youtube` - the same
+  `./media:/home/bear/Stack/media` mount that already existed in `docker-compose.yml` waiting
+  for exactly this (added ahead of time in an earlier session, per its own comment, but never
+  acted on until now).
+- **`scripts/notify-discord.sh` now posts real embeds** (title/color-by-severity/timestamp/host
+  footer) instead of flat `{"content": "..."}` text - the visual upgrade Notifiarr would have
+  provided, without its cloud dependency. Matches the embed style `plex-library-report.py` and
+  `arr-app-backup.py` already built directly for their own posts; every caller
+  (`backup-config.sh`, `check-container-health.sh`, `notify-failure@.service`) needed no changes
+  - same `message [level]` call signature. Verified live with a real post to the configured
+  webhook.
+- **Control Panel** - `cleanuparr`/`neutarr`/`dozzle`/`pinchflat` added to `CONTAINER_LABELS`
+  (`control-panel/app.py`) and `QUICK_LINKS` (`static/app.js`), same pattern as every other
+  extras service. Verified live: all 4 appear correctly labeled and healthy in
+  `GET /api/containers` after a rebuild.
+
+### Fixed while verifying
+- **Decypharr's admin password was unrecoverable** (bcrypt-hashed in `auth.json`, no plaintext
+  anywhere, no documented reset flow) when Cleanuparr needed real credentials for the
+  qBittorrent-API connection - generated a new password + matching bcrypt hash (via a throwaway
+  `python:3.12-alpine` container, matching cost factor/prefix of the original), wrote it
+  directly into `auth.json`, restarted Decypharr. This broke Radarr's and Sonarr's own existing
+  Decypharr download-client connections, which had the old password stored - caught immediately
+  (both apps' own connection tests failed) and fixed by updating both apps' stored credential to
+  match, verified via a clean `200` re-test on both before moving on. Net downtime: none observed.
+- **NeutArr's Radarr/Sonarr instance forms don't auto-save on selector switch** - filled in
+  Sonarr, switched the type selector to Radarr without clicking Save first; caught via
+  `settings_manager` logs still showing only `['sonarr']` configured after the Radarr form was
+  filled and tested. Went back and saved explicitly; confirmed via the same log line updating to
+  `['sonarr', 'radarr']`.
+
+### Verified: the Huntarr warning in the original recommendation
+Independently confirmed via `rfsbraz/huntarr-security-review`'s reproducible writeup, not just
+the pasted claim: Huntarr v9.4.2 had an unauthenticated auth-bypass exposing every connected
+`*arr` app's API keys in cleartext (`POST /api/settings/general` with zero credentials), and the
+maintainer took the repo private/deleted it and banned people raising the issue on their own
+subreddit rather than patching it. `MGHazz/huntarr.io-archive` preserves the abandoned repo
+with an explicit "not under active development, use at your own risk" notice. Huntarr itself is
+not used anywhere in this stack; NeutArr (above) is the vetted alternative.
+
+---
 
 ## [7.0.0] — Lidarr and Readarr removed; Radarr/Sonarr get native Plex hooks + their own backups
 
