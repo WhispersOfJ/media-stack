@@ -986,3 +986,126 @@ services:
     mem_limit: 1.5g
     mem_reservation: 256m
     cpus: 2
+
+  # ---------------------------------------------------------------------
+  # Queue cleanup/missing-content automation. Automates what Control
+  # Panel's own "unstick" and "search missing" buttons already do by hand -
+  # roles deliberately split between the two apps below: Cleanuparr owns
+  # strikes/malware-blocking/stalled-cleanup, NeutArr owns "hunt missing"
+  # exclusively (Cleanuparr's own built-in missing-search should be left
+  # disabled once NeutArr is configured, so the two don't redundantly
+  # search the same libraries against the same indexers - see README).
+  # ---------------------------------------------------------------------
+  cleanuparr:
+    <<: *common
+    image: ghcr.io/cleanuparr/cleanuparr:2.9.16
+    container_name: cleanuparr
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "11011:11011"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11011/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/cleanuparr:/config
+    # No prior observation - generous default ceiling, same reasoning as
+    # every other companion app in this file.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
+
+  # Hardened Huntarr-lineage fork (Huntarr itself was abandoned after the
+  # original author suppressed reports of an unauthenticated auth-bypass
+  # that leaked every connected *arr app's API keys in cleartext - never
+  # add Huntarr proper). NeutArr traces through elfhosted/newtarr's fork of
+  # the last clean Huntarr release (v6.6.3), with the auth system fully
+  # rebuilt and the original security findings addressed.
+  neutarr:
+    <<: *common
+    image: iampuid0/neutarr:1.9.1
+    container_name: neutarr
+    profiles: [extras]
+    networks: [stacknet]
+    ports:
+      - "9705:9705"
+    # No curl (or wget) in this image - confirmed live, the curl-based
+    # healthcheck every other app in this file uses just failed with
+    # "curl: not found" despite the app itself serving fine (a real 200 on
+    # manual check). Uses the venv's own python3 instead, which is present.
+    healthcheck:
+      test: ["CMD-SHELL", "/venv/bin/python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9705/', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/neutarr:/config
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
+
+  # Read-only live log viewer - the one thing Control Panel's container
+  # grid can't do (shows state/health/CPU/mem, not actual log content).
+  # Direct :ro docker.sock mount, same pattern Control Panel/Watchtower
+  # already use - no socket-proxy in this stack yet (a possible later
+  # hardening project, not bundled with this addition). Stateless: no
+  # config volume, no PUID/PGID (the image doesn't use either).
+  dozzle:
+    restart: unless-stopped
+    logging: *common-logging
+    image: amir20/dozzle:v10.6.8
+    container_name: dozzle
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "/dozzle", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    mem_limit: 256m
+    mem_reservation: 32m
+    cpus: 1
+
+  # YouTube channel/playlist archiving - a new content vertical, writes
+  # real local files (same pattern as NZBGet's usenet fallback), with
+  # Plex-friendly naming built in rather than needing a separate renamer.
+  # Digest-pinned: the newest tagged release (v2025.6.6) is meaningfully
+  # behind what's actually shipped as :latest - same "no tag to pin to
+  # without downgrading" reasoning as Seerr/Glances/Kometa/Unpackerr above.
+  # No PUID/PGID support in this image (root is expected instead, per its
+  # own docs) - a deliberate exception to the `<<: *common` anchor, not an
+  # oversight.
+  pinchflat:
+    restart: unless-stopped
+    logging: *common-logging
+    image: ghcr.io/kieraneglin/pinchflat@sha256:01b4f98aabaf3f5fe394213f7a32578c9e84e42080f52e2f8334021a4473b202
+    container_name: pinchflat
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+    ports:
+      - "8945:8945"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8945/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/pinchflat:/config
+      - ./media/youtube:/downloads
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2

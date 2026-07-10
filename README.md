@@ -23,7 +23,7 @@ Point it at a Real-Debrid/AllDebrid account and it wires together an indexer
 (Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), the *arr apps that
 turn a request into an organized library (Radarr/Sonarr), a debrid gateway that
 symlinks already-cached content instead of downloading it (Decypharr + Zurg), and a
-containerized Plex to actually watch it on — 24 services total, one compose file, every image
+containerized Plex to actually watch it on — 28 services total, one compose file, every image
 pinned and healthchecked. Usenet (NZBGet) is there as an explicit fallback for anything
 debrid doesn't have cached, not the default path.
 
@@ -111,6 +111,8 @@ Full details, including the *arr-key two-pass step this diagram shows, are in
 - [Custom format: blocked releases](#custom-format-blocked-releases)
 - [Subtitles: Bazarr language and providers](#subtitles-bazarr-language-and-providers)
 - [Plex library updates on import](#plex-library-updates-on-import)
+- [Cleanuparr and NeutArr](#cleanuparr-and-neutarr)
+- [Pinchflat](#pinchflat)
 - [Security note](#security-note)
 - [Image pinning policy](#image-pinning-policy)
 - [Container healthchecks](#container-healthchecks)
@@ -328,7 +330,7 @@ docker compose up -d
 ```
 
 Core + optional extras (Bazarr, Byparr, Tautulli, Glances, Kometa, Unpackerr, Watchtower,
-Control Panel):
+Cleanuparr, NeutArr, Dozzle, Pinchflat, Control Panel):
 
 ```bash
 docker compose --profile extras up -d
@@ -378,6 +380,10 @@ recreate it after a compose file change.
 | Glances *(extras)* | http://192.168.4.105:61208 | host CPU/mem/disk/uptime |
 | Control Panel *(extras)* | http://192.168.4.105:8420 | one-click ops actions, see [Control Panel](#control-panel) |
 | DebridMediaManager *(extras)* | http://192.168.4.105:3000 | self-hosted DMM — personal library browsing/casting plus on-demand per-title search, see [DebridMediaManager](#debridmediamanager) |
+| Cleanuparr *(extras)* | http://192.168.4.105:11011 | queue cleanup automation: strikes, malware block, stalled/failed removal |
+| NeutArr *(extras)* | http://192.168.4.105:9705 | hardened Huntarr-lineage fork — missing/upgrade hunting |
+| Dozzle *(extras)* | http://192.168.4.105:8080 | real-time log viewer for every container |
+| Pinchflat *(extras)* | http://192.168.4.105:8945 | YouTube channel/playlist archiving |
 
 ## Configuration status
 
@@ -547,6 +553,12 @@ sized generously rather than from observed pressure, same reasoning pattern as t
 Deliberately left alone: Seerr, NZBGet, and Radarr/Sonarr - all comfortably under 250MB/low
 CPU% at rest in the original observation pass, and not revisited since.
 
+**[7.1.0](CHANGELOG.md)'s 4 new services shipped with ceilings from day one**, cheap insurance
+from the start rather than added after the fact: `cleanuparr` (512MB/64MB/2), `neutarr`
+(512MB/64MB/2), `dozzle` (256MB/32MB/1 - stateless log viewer, the lightest thing in this
+table), `pinchflat` (512MB/64MB/2 - video encoding/muxing during downloads could spike higher
+under real load, revisit if that's observed).
+
 One thing deliberately *not* copied from Zilean: `.NET Server GC` (`DOTNET_gcServer=1`) stays
 Zilean-only. The `*arr` apps run .NET's default Workstation GC, which is actually correct for
 their light, low-parallelism workload — Server GC's per-core-heap model would waste more RAM
@@ -654,6 +666,61 @@ triggers on demand.
   `docker restart plex` cleared it. Worth knowing as a general symptom: a container that shows
   `Up` but times out on every request, right after a stop/start, is worth a full restart before
   assuming a deeper problem.
+
+## Cleanuparr and NeutArr
+
+Added in [7.1.0](CHANGELOG.md). Both automate what [Control Panel](#control-panel)'s own
+"unstick" and "search missing" buttons already did by hand - for the whole library, on a
+schedule, with a couple of capabilities neither button had at all.
+
+**Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr`, port 11011) owns cleanup: a strike system for
+downloads that fail to import or stall (3 strikes, `Exclude` pattern mode with nothing excluded
+so nothing is scoped out of detection; one stalled-download rule covering the full 0-100%
+completion range for both public and private torrents - Cleanuparr's own UI flags a coverage gap
+by default if this range isn't fully covered), and a malware blocker checking both Radarr and
+Sonarr's downloads against the community blocklist
+(`raw.githubusercontent.com/Cleanuparr/Cleanuparr/refs/heads/main/blacklist`) hourly (the UI's
+own default schedule is every 5 seconds - deliberately changed before saving, not left as-is).
+
+Connected to Radarr and Sonarr directly, and to **Decypharr** as its qBittorrent-compatible
+download client - the one real unknown going in, since this stack's own docs only claimed the
+pairing "should" work. Verified live: adding Decypharr in Cleanuparr's UI returned a genuine
+`Connection to qBittorrent successful`, a real authenticated login against Decypharr's API, not
+just a reachability ping.
+
+**NeutArr** (`iampuid0/neutarr`, port 9705) owns missing-content/quality-upgrade hunting
+exclusively - Cleanuparr's own built-in proactive search stays disabled so the two apps don't
+redundantly hunt the same libraries against the same indexers. Connected to Radarr and Sonarr;
+verified live with a real hunt cycle that found and searched for an actually-missing episode
+within minutes of being configured, not just a clean-looking config.
+
+> **On Huntarr**: NeutArr is a hardened fork of Huntarr's lineage, not Huntarr itself - do not
+> add Huntarr directly. Huntarr had an unauthenticated auth-bypass that exposed every connected
+> `*arr` app's API keys in cleartext, and its maintainer took the repo private and banned users
+> raising the issue rather than patching it (`rfsbraz/huntarr-security-review` has the
+> reproducible writeup; `MGHazz/huntarr.io-archive` preserves the abandoned repo with its own
+> "not under active development, use at your own risk" notice). NeutArr traces through
+> `elfhosted/newtarr`'s fork of Huntarr v6.6.3 - the last clean release before that - with the
+> auth system fully rebuilt and the original findings addressed.
+
+## Pinchflat
+
+Added in [7.1.0](CHANGELOG.md) - a new content vertical, not something this stack had before.
+YouTube channel/playlist archiving straight into a Plex-ready library, writing real local files
+the same way NZBGet's usenet fallback does (`ghcr.io/kieraneglin/pinchflat`, port 8945,
+digest-pinned for the same "newest tag is behind :latest" reason as Seerr/Glances/Kometa/
+Unpackerr above).
+
+One Media Profile created (`YouTube`, using Pinchflat's own built-in "Media Center" preset -
+season/episode-by-upload-date naming that Plex reads natively). Deliberately left unconfigured:
+actual channel/playlist **Sources** - which channels to archive is a content choice, not an
+infrastructure one, so that step is manual.
+
+New `./media/youtube:/downloads` mount, and a new Plex library ("YouTube", TV Shows type -
+matching Pinchflat's own recommended structure for episodic content, since Plex has no
+dedicated "YouTube" library type) pointed at it. Uses a mount that already existed in
+`docker-compose.yml` (`./media:/home/bear/Stack/media`) waiting for exactly this - added ahead
+of time in an earlier session per its own comment, never acted on until now.
 
 ## Security note
 
@@ -793,7 +860,11 @@ backs five independent alert paths:
 
 - **`scripts/notify-discord.sh`** — the shared sender every other piece below calls. No-ops
   silently (exit 0) if `DISCORD_WEBHOOK_URL` isn't set to a real URL yet, so nothing breaks
-  for anyone running this stack without alerting configured.
+  for anyone running this stack without alerting configured. Posts a real embed
+  (title/color-by-severity/timestamp/host footer) as of [7.1.0](CHANGELOG.md) - matches the
+  style `plex-library-report.py`/`arr-app-backup.py` already built directly for their own posts,
+  the visual upgrade Notifiarr would have provided without taking on its cloud-relay dependency.
+  Same `message [info|warn|error]` call signature as before - no caller needed changes.
 - **Backups** — `scripts/backup-config.sh` posts on every run: success, a soft warning if
   restic's exit-3 "some files unreadable" case was hit, or an error if the backup or the
   retention prune actually failed. `systemd/stack-backup.service` also has `OnFailure=` wired
@@ -962,6 +1033,10 @@ folders, Seerr, etc. all stay exactly as manual as they've always been).
 | Kometa | Automated Plex collections, metadata, and overlays - configured and running, see below |
 | Unpackerr | Auto-extracts RAR'd releases (some cached torrents are compressed) |
 | Watchtower | Auto-updates all container images on a schedule (4am daily here), via the `nickfedor/watchtower` fork |
+| Cleanuparr | Automates queue cleanup: a strike system for bad downloads, a community malware blocklist, stalled/failed-import removal with auto re-search - see [Cleanuparr and NeutArr](#cleanuparr-and-neutarr) below |
+| NeutArr | Dedicated missing-content/quality-upgrade hunting - a hardened fork of Huntarr's last clean release, not Huntarr itself (see below for why) |
+| Dozzle | Real-time log viewer for every container - the one thing [Control Panel](#control-panel)'s grid can't show |
+| Pinchflat | YouTube channel/playlist archiving straight into a Plex-ready library - see [Pinchflat](#pinchflat) below |
 | Control Panel | The stack's single dashboard - live container status/control, host stats, a Quick Links panel to every service, one-click ops actions (Kometa now, Plex scan/empty-trash/optimize, *arr RSS sync + search, service restarts) - see below |
 
 Not included but worth knowing about: Decypharr can stream Usenet directly via NNTP with no
@@ -1077,9 +1152,9 @@ Runs on port **8420**.
 
 - **Quick Links** - a link to every service's own web UI (Plex, Prowlarr, Zilean, both
   Decypharr instances, Zurg, Radarr, Sonarr, NZBGet, Seerr, Bazarr, Byparr, Tautulli, Glances,
-  DebridMediaManager), each with a live status dot sourced from the same container data the grid
-  below uses. This is what let Heimdall and Homepage be removed entirely instead of kept around
-  as link launchers.
+  DebridMediaManager, Cleanuparr, NeutArr, Dozzle, Pinchflat), each with a live status dot
+  sourced from the same container data the grid below uses. This is what let Heimdall and
+  Homepage be removed entirely instead of kept around as link launchers.
 - **Matrix theme** - black/phosphor-green throughout, monospace headings, and a falling-code
   rain layer (`matrix-rain.js`) rendered on a fixed canvas behind everything - self-contained,
   respects `prefers-reduced-motion` (skips the render loop entirely rather than just hiding the
@@ -1302,5 +1377,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **7.0.0**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **7.1.0**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).

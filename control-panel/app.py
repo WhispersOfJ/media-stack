@@ -97,6 +97,10 @@ CONTAINER_LABELS = {
     "dmm-mysql": ("DMM MySQL", "app database"),
     "dmm-redis": ("DMM Redis", "rate limiting"),
     "dmm-migrate": ("DMM Migrate", "one-shot Prisma migration - exits after running, not a bug if shown stopped"),
+    "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
+    "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
+    "dozzle": ("Dozzle", "read-only live log viewer"),
+    "pinchflat": ("Pinchflat", "YouTube channel/playlist archiving"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 
