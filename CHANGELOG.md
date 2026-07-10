@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v9.1.0**.
+retroactive pass) was never versioned under. Current version: **v9.1.1**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,41 @@ retroactive pass) was never versioned under. Current version: **v9.1.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [9.1.1] — Fixed: Plex unreachable through Traefik ("Bad Gateway"), firewall hairpin-NAT gap
+
+Found live, reported as "Bad Gateway on plex" after [9.0.0](CHANGELOG.md)'s network-security
+rollout - every request that reached Plex's backend through Traefik failed with a `502`, **100%
+of the time**, while direct requests from the host itself to the exact same
+`http://192.168.4.105:32400` address always succeeded (confirmed with 20 back-to-back direct
+requests, all clean `200`/`401`s). That "always fails one way, never the other" pattern is what
+actually pointed at the real cause - a first hypothesis (Plex's HTTP server silently closing
+idle keep-alive connections that Traefik's pool then tried to reuse) would have predicted
+*intermittent* failures, not a deterministic one, and was abandoned once the access log showed
+every single proxied request failing rather than a fraction of them.
+
+**Root cause:** the nftables firewall added in [9.0.0](CHANGELOG.md) only allowed this host's LAN
+subnet (`192.168.4.0/22`) to reach Plex's `network_mode: host` port `32400`. Traefik itself runs
+in a container on `stacknet` - when it proxies to Plex via the host's real IP, that connection
+hairpins through Docker's own NAT and arrives at the firewall's `INPUT` chain from `stacknet`'s
+own subnet (`172.18.0.0/16`), not the LAN, so it was being rejected outright
+(`meta pkttype host limit rate 5/second ... reject with icmpx admin-prohibited` - the same rule
+already in place, just never exercised by a *containerized* client reaching this particular
+port before). Verified directly: a throwaway container on `stacknet` hitting
+`http://192.168.4.105:32400/` got connection-refused (`000`) before the fix, a clean `401` after.
+
+### Fixed
+- **`/etc/nftables.conf`** (host-level, not tracked in this repo) - added an explicit allow for
+  `172.18.0.0/16` (stacknet) to reach `tcp/32400`, alongside the existing LAN allowance. One
+  line; every other rule untouched.
+
+### Known follow-up
+- A first fix attempt (a custom Traefik `serversTransport` with a 1-second idle-connection
+  timeout for the Plex backend, meant to address the keep-alive theory above) was added and then
+  removed once the real cause was confirmed - it wasn't wrong to try given the evidence available
+  at the time, but it also wasn't the actual fix, and `docker-compose.yml` ended up byte-identical
+  to [9.1.0](CHANGELOG.md) once removed (nothing to commit there this round - only this file and
+  the host's own `/etc/nftables.conf` changed).
 
 ## [9.1.0] — README rewritten for beginners; all prior technical depth moved to TECHNICAL.md
 
