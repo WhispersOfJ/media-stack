@@ -8,8 +8,10 @@ README.md's Control Panel section.
 Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
 HTTP API (Plex, Radarr, Sonarr, Bazarr, Zilean), Glances (host stats), and
 zilean-postgres directly (hash count - Zilean has no stats API of its own).
-No auth - LAN-only, matches every other service in this stack (see
-README.md "Security note").
+No auth at the app layer itself - gated at the network layer by Traefik +
+Authelia like every other service in this stack (see README.md "Security
+note"). Deliberately still no in-app auth: adding it here would duplicate
+what the network layer already enforces in front of every request.
 """
 import os
 import re

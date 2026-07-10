@@ -1,0 +1,56 @@
+# Static configuration - git-tracked, no secrets (same "tracked in git, no
+# secrets, just routing" treatment the old Caddyfile used). Per-service
+# routing lives as docker-compose labels next to each service's own
+# mem_limit/healthcheck, not in this file - see docker-compose.yml.
+
+log:
+  level: INFO
+
+accessLog:
+  filePath: /var/log/traefik/access.log
+  bufferingSize: 100
+
+api:
+  dashboard: true
+
+# Internal-only entrypoint (not published on the host) - serves ping@internal
+# for this container's own healthcheck and api@internal for the dashboard,
+# reached over stacknet rather than a host port.
+ping: {}
+
+entryPoints:
+  traefik:
+    address: ":8080"
+  websecure:
+    address: ":443"
+    # ACME/Let's Encrypt intentionally not configured here - no public
+    # domain exists yet. TLS today comes entirely from the mkcert-issued
+    # local CA cert in config/traefik/dynamic/tls.yml. When a public
+    # service is ever wanted, add a certificatesResolvers block here
+    # (DNS-01 recommended - works without exposing port 80) and give that
+    # one router a tls.certResolver override; every other router keeps
+    # using the local CA untouched.
+
+# Downloaded from Traefik's plugin catalog at startup (needs the container
+# to reach the internet once, then it's cached in the plugins-storage
+# volume-less local dir inside the container - re-downloaded on image
+# recreate, which is fine, it's a small archive). Actual bouncer config
+# (LAPI key, trusted IP ranges) lives on the crowdsec middleware's own
+# docker labels, not here - this block only registers the plugin code.
+experimental:
+  plugins:
+    bouncer:
+      moduleName: "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
+      version: "v1.6.0"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    # Opt-in per service (traefik.enable=true label) rather than Caddy's old
+    # "every service gets an explicit Caddyfile block" - anything added to
+    # the stack later is private by default until a label says otherwise.
+    exposedByDefault: false
+    network: stacknet
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true

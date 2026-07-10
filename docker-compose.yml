@@ -16,6 +16,145 @@ networks:
 
 services:
   # ---------------------------------------------------------------------
+  # Network security layer - single ingress point for every web UI.
+  # Replaces the Caddy+Basic-Auth layer tried in v2.11.0 and removed in
+  # v3.1.0: Docker-label auto-discovery (exposedByDefault: false, opt-in
+  # per service) instead of a hand-maintained Caddyfile, real TLS via a
+  # local mkcert CA, and Authelia (below) for per-user/2FA auth instead of
+  # one shared Basic-Auth hash. See README's Security note for the full
+  # rationale and the nftables host-firewall layer this sits on top of.
+  # ---------------------------------------------------------------------
+  traefik:
+    restart: unless-stopped
+    logging: *common-logging
+    image: traefik:v3.7.7
+    container_name: traefik
+    networks: [stacknet]
+    ports:
+      - "443:443"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./config/traefik/certs:/etc/traefik/certs:ro
+      - ./config/traefik/logs:/var/log/traefik
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.traefik.rule: "Host(`traefik.cave.internal`)"
+      traefik.http.routers.traefik.entrypoints: "websecure"
+      traefik.http.routers.traefik.tls: "true"
+      traefik.http.routers.traefik.service: "api@internal"
+      traefik.http.routers.traefik.middlewares: "crowdsec@docker,authelia@docker"
+    mem_limit: 256m
+    mem_reservation: 64m
+    cpus: 1
+
+  # Per-user/2FA login gate in front of every proxied service - replaces
+  # Caddy's old one-shared-Basic-Auth-hash approach. forwardAuth middleware
+  # (defined once here, referenced as authelia@docker from every other
+  # service's own router labels) sends each request here first; a valid
+  # session cookie passes through, anything else redirects to this
+  # container's own login UI. Its own router (below) deliberately has no
+  # authelia@docker middleware - can't gate the login page behind itself.
+  authelia:
+    restart: unless-stopped
+    logging: *common-logging
+    image: authelia/authelia:4.39.20
+    container_name: authelia
+    networks: [stacknet]
+    healthcheck:
+      # Not `authelia healthcheck` - that subcommand was removed upstream;
+      # 4.39.20 ships no CLI healthcheck at all, so hit its own /api/health
+      # directly (plain HTTP - Traefik terminates TLS, Authelia is reached
+      # over stacknet in the clear same as every other proxied backend).
+      test: ["CMD", "wget", "-qO-", "http://localhost:9091/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    environment:
+      TZ: ${TZ}
+      AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET}
+      AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_JWT_SECRET}
+    volumes:
+      - ./authelia/configuration.yml:/config/configuration.yml:ro
+      - ./config/authelia:/config
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.authelia.rule: "Host(`authelia.cave.internal`)"
+      traefik.http.routers.authelia.entrypoints: "websecure"
+      traefik.http.routers.authelia.tls: "true"
+      traefik.http.services.authelia.loadbalancer.server.port: "9091"
+      # Defined once here, referenced as authelia@docker from every gated
+      # service's own router.middlewares label.
+      traefik.http.middlewares.authelia.forwardauth.address: "http://authelia:9091/api/authz/forward-auth"
+      traefik.http.middlewares.authelia.forwardauth.trustForwardHeader: "true"
+      traefik.http.middlewares.authelia.forwardauth.authResponseHeaders: "Remote-User,Remote-Groups,Remote-Name,Remote-Email"
+    mem_limit: 256m
+    mem_reservation: 64m
+    cpus: 1
+
+  # Reads Traefik's access log (crowdsec/acquis.yaml) and auto-bans IPs
+  # matching known attack scenarios (credential stuffing, path scanning,
+  # etc.) via its own Local API (LAPI); the Traefik plugin registered below
+  # is the "bouncer" that actually enforces those bans at the edge, one
+  # request earlier than Authelia even sees them. CROWDSEC_BOUNCER_API_KEY
+  # doesn't exist until this container has started once - see README's
+  # network-security-layer section for the one-time `cscli bouncers add`
+  # step.
+  crowdsec:
+    restart: unless-stopped
+    logging: *common-logging
+    image: crowdsecurity/crowdsec:v1.7.8
+    container_name: crowdsec
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "cscli lapi status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      TZ: ${TZ}
+      GID: "1000"
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
+    volumes:
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ./config/traefik/logs:/var/log/traefik:ro
+      - ./config/crowdsec:/var/lib/crowdsec/data
+    # traefik.enable=true with no router of its own - only here so Traefik's
+    # docker provider picks up the middleware definition below (LAPI itself
+    # is reached over stacknet directly by the plugin, never proxied).
+    labels:
+      traefik.enable: "true"
+      # No router uses this - it exists only because Traefik's docker
+      # provider tries to build an implicit default service for every
+      # traefik.enable=true container and hard-fails the whole container's
+      # label set (middleware included) if it can't determine a port.
+      # Found live: "service \"crowdsec-media-stack\" error: port is
+      # missing" was silently dropping the middleware definition below too.
+      traefik.http.services.crowdsec.loadbalancer.server.port: "8080"
+      traefik.http.middlewares.crowdsec.plugin.bouncer.enabled: "true"
+      traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecMode: "live"
+      traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecLapiScheme: "http"
+      traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecLapiHost: "crowdsec:8080"
+      traefik.http.middlewares.crowdsec.plugin.bouncer.crowdsecLapiKey: "${CROWDSEC_BOUNCER_API_KEY}"
+      traefik.http.middlewares.crowdsec.plugin.bouncer.forwardedHeadersTrustedIPs: "192.168.4.0/22,100.64.0.0/10"
+      traefik.http.middlewares.crowdsec.plugin.bouncer.clientTrustedIPs: "192.168.4.0/22,100.64.0.0/10"
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 1
+
+  # ---------------------------------------------------------------------
   # Indexing
   # ---------------------------------------------------------------------
   prowlarr:
@@ -27,8 +166,6 @@ services:
     image: ghcr.io/hotio/prowlarr:release
     container_name: prowlarr
     networks: [stacknet]
-    ports:
-      - "9696:9696"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9696/ping || exit 1"]
       interval: 30s
@@ -37,6 +174,13 @@ services:
       start_period: 30s
     volumes:
       - ./config/prowlarr:/config
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.prowlarr.rule: "Host(`prowlarr.cave.internal`)"
+      traefik.http.routers.prowlarr.entrypoints: "websecure"
+      traefik.http.routers.prowlarr.tls: "true"
+      traefik.http.routers.prowlarr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.prowlarr.loadbalancer.server.port: "9696"
 
   zilean-postgres:
     restart: unless-stopped
@@ -95,8 +239,6 @@ services:
     image: ipromknight/zilean:v3.5.0
     container_name: zilean
     networks: [stacknet]
-    ports:
-      - "8181:8181"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
       interval: 30s
@@ -145,6 +287,13 @@ services:
       # 3GB hard limit, leaving ~1GB of the 4GB container limit for non-GC
       # (native/thread stack) memory headroom.
       DOTNET_GCHeapHardLimit: "0xC0000000"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.zilean.rule: "Host(`zilean.cave.internal`)"
+      traefik.http.routers.zilean.entrypoints: "websecure"
+      traefik.http.routers.zilean.tls: "true"
+      traefik.http.routers.zilean.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.zilean.loadbalancer.server.port: "8181"
     mem_limit: 4g
     mem_reservation: 512m
     cpus: 12
@@ -160,8 +309,6 @@ services:
     image: cy01/blackhole:v2.3
     container_name: decypharr
     networks: [stacknet]
-    ports:
-      - "8282:8282"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8282/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -184,6 +331,13 @@ services:
     # runaway process could otherwise take whatever RAM/CPU it wanted from
     # the same shared-desktop host Zilean's own tuning above already
     # protects for Plex/desktop use.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.decypharr.rule: "Host(`decypharr.cave.internal`)"
+      traefik.http.routers.decypharr.entrypoints: "websecure"
+      traefik.http.routers.decypharr.tls: "true"
+      traefik.http.routers.decypharr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.decypharr.loadbalancer.server.port: "8282"
     mem_limit: 1.5g
     mem_reservation: 256m
     cpus: 4
@@ -199,8 +353,6 @@ services:
     image: cy01/blackhole:v2.3
     container_name: decypharr-alldebrid
     networks: [stacknet]
-    ports:
-      - "8283:8282"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8282/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -217,6 +369,13 @@ services:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.decypharr-alldebrid.rule: "Host(`decypharr-alldebrid.cave.internal`)"
+      traefik.http.routers.decypharr-alldebrid.entrypoints: "websecure"
+      traefik.http.routers.decypharr-alldebrid.tls: "true"
+      traefik.http.routers.decypharr-alldebrid.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.decypharr-alldebrid.loadbalancer.server.port: "8282"
     mem_limit: 1.5g
     mem_reservation: 256m
     cpus: 4
@@ -235,8 +394,6 @@ services:
     image: ghcr.io/debridmediamanager/zurg@sha256:924f1737814a72fddc87f90b2cb3056a0d25ecad4e8789d3d5294cf4e1aa0d07
     container_name: zurg
     networks: [stacknet]
-    ports:
-      - "9999:9999"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9999/ || exit 1"]
       interval: 30s
@@ -259,6 +416,13 @@ services:
     # plus serving reads for Plex/the arr apps. Capped well above that
     # baseline rather than tightened, purely so it can't compete unbounded
     # with Plex/desktop use if that baseline ever grows.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.zurg.rule: "Host(`zurg.cave.internal`)"
+      traefik.http.routers.zurg.entrypoints: "websecure"
+      traefik.http.routers.zurg.tls: "true"
+      traefik.http.routers.zurg.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.zurg.loadbalancer.server.port: "9999"
     mem_limit: 1g
     mem_reservation: 128m
     cpus: 6
@@ -316,8 +480,6 @@ services:
     image: ghcr.io/hotio/radarr:release
     container_name: radarr
     networks: [stacknet]
-    ports:
-      - "7878:7878"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:7878/ping || exit 1"]
       interval: 30s
@@ -339,14 +501,19 @@ services:
       # rclone FUSE mount and does not support having files written into it
       # (confirmed: symlink/hardlink/copy all fail there with I/O errors).
       - ./media/movies:/data/movies
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.radarr.rule: "Host(`radarr.cave.internal`)"
+      traefik.http.routers.radarr.entrypoints: "websecure"
+      traefik.http.routers.radarr.tls: "true"
+      traefik.http.routers.radarr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.radarr.loadbalancer.server.port: "7878"
 
   sonarr:
     <<: *common
     image: ghcr.io/hotio/sonarr:release
     container_name: sonarr
     networks: [stacknet]
-    ports:
-      - "8989:8989"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8989/ping || exit 1"]
       interval: 30s
@@ -373,13 +540,18 @@ services:
   # ---------------------------------------------------------------------
   # Usenet (real local downloads - only path that isn't debrid/symlink based)
   # ---------------------------------------------------------------------
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.sonarr.rule: "Host(`sonarr.cave.internal`)"
+      traefik.http.routers.sonarr.entrypoints: "websecure"
+      traefik.http.routers.sonarr.tls: "true"
+      traefik.http.routers.sonarr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.sonarr.loadbalancer.server.port: "8989"
   nzbget:
     <<: *common
     image: ghcr.io/hotio/nzbget:release
     container_name: nzbget
     networks: [stacknet]
-    ports:
-      - "6789:6789"
     # NZBGet's web UI requires its own auth, so a plain request 401s - that's
     # still proof the server is alive and responding, so 401 counts as healthy.
     healthcheck:
@@ -395,6 +567,13 @@ services:
   # ---------------------------------------------------------------------
   # Requests
   # ---------------------------------------------------------------------
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.nzbget.rule: "Host(`nzbget.cave.internal`)"
+      traefik.http.routers.nzbget.entrypoints: "websecure"
+      traefik.http.routers.nzbget.tls: "true"
+      traefik.http.routers.nzbget.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.nzbget.loadbalancer.server.port: "6789"
   seerr:
     restart: unless-stopped
     logging: *common-logging
@@ -406,8 +585,6 @@ services:
     image: ghcr.io/seerr-team/seerr@sha256:c92d2dc117f62185e7bcb88cd56efd374ea79210eaf433275449e8d5988eb5a8
     container_name: seerr
     networks: [stacknet]
-    ports:
-      - "5055:5055"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:5055/api/v1/status >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -425,6 +602,13 @@ services:
   # removed in 4.8.0 - this container is the only Plex on the host now, no
   # rollback fallback kept. See CHANGELOG for both.
   # ---------------------------------------------------------------------
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.seerr.rule: "Host(`seerr.cave.internal`)"
+      traefik.http.routers.seerr.entrypoints: "websecure"
+      traefik.http.routers.seerr.tls: "true"
+      traefik.http.routers.seerr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.seerr.loadbalancer.server.port: "5055"
   plex:
     restart: unless-stopped
     logging: *common-logging
@@ -466,6 +650,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    # network_mode: host means Traefik's Docker provider can't derive a
+    # backend address the normal way (Plex isn't attached to stacknet at
+    # all, unlike every labeled service above) - loadbalancer.server.url
+    # gives it an explicit address instead of relying on container network
+    # inspection. traefik.enable is still required; Traefik ignores
+    # network_mode: host containers entirely without it.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.plex.rule: "Host(`plex.cave.internal`)"
+      traefik.http.routers.plex.entrypoints: "websecure"
+      traefik.http.routers.plex.tls: "true"
+      traefik.http.routers.plex.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.plex.loadbalancer.server.url: "http://${HOST_IP}:32400"
     volumes:
       - ./config/plex:/config
       - ./config/plex-transcode:/transcode
@@ -509,8 +706,6 @@ services:
     container_name: bazarr
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "6767:6767"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:6767/ping || exit 1"]
       interval: 30s
@@ -529,6 +724,13 @@ services:
     # container here, likely per-provider subtitle-search workers. Not
     # obviously a leak (RAM stayed modest, ~230MB), but cheap insurance
     # given nothing was capping it before.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.bazarr.rule: "Host(`bazarr.cave.internal`)"
+      traefik.http.routers.bazarr.entrypoints: "websecure"
+      traefik.http.routers.bazarr.tls: "true"
+      traefik.http.routers.bazarr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.bazarr.loadbalancer.server.port: "6767"
     mem_limit: 1g
     mem_reservation: 128m
     cpus: 2
@@ -555,8 +757,6 @@ services:
     container_name: byparr
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "8191:8191"
     # Byparr's own docs: without this, some environments hit a
     # multiprocessing.synchronize error on startup.
     shm_size: 512m
@@ -572,6 +772,13 @@ services:
     # Cloudflare solve spins up a real Camoufox (Firefox-based) browser
     # instance, and concurrent solves under real load haven't been tested
     # yet.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.byparr.rule: "Host(`byparr.cave.internal`)"
+      traefik.http.routers.byparr.entrypoints: "websecure"
+      traefik.http.routers.byparr.tls: "true"
+      traefik.http.routers.byparr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.byparr.loadbalancer.server.port: "8191"
     mem_limit: 2g
     mem_reservation: 256m
     cpus: 4
@@ -584,8 +791,6 @@ services:
     networks: [stacknet]
     # Container's own web UI listens internally on Tautulli's default 8181;
     # public port stays 8182.
-    ports:
-      - "8182:8181"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
       interval: 30s
@@ -596,6 +801,13 @@ services:
       - ./config/tautulli:/config
     # No prior ceiling - same defensive reasoning as Bazarr above (simple
     # companion app, modest observed footprint, cheap insurance).
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.tautulli.rule: "Host(`tautulli.cave.internal`)"
+      traefik.http.routers.tautulli.entrypoints: "websecure"
+      traefik.http.routers.tautulli.tls: "true"
+      traefik.http.routers.tautulli.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.tautulli.loadbalancer.server.port: "8181"
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
@@ -614,8 +826,6 @@ services:
     container_name: control-panel
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "8420:8420"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8420/healthz')\" || exit 1"]
       interval: 30s
@@ -640,12 +850,20 @@ services:
       # actually execs into containers (Kometa's on-demand run) and issues
       # restarts, not just reads status. Runs as root in-container (no
       # PUID/PGID) since root is what the socket needs; no other privilege
-      # escalation beyond that. LAN-only, no auth in front - same threat
-      # model as every other service in this stack (see README's Security
-      # note), acknowledged as a deliberately higher-blast-radius exception.
+      # escalation beyond that. Gated by Traefik+Authelia like every other
+      # service now (see README's Security note) - was a deliberately
+      # higher-blast-radius LAN-only exception before that layer existed,
+      # given this is the one service that can exec/restart the whole stack.
       - /var/run/docker.sock:/var/run/docker.sock
     # No prior ceiling despite having docker.sock exec/restart access - a
     # light Flask app, but cheap insurance given its elevated blast radius.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.control-panel.rule: "Host(`control-panel.cave.internal`)"
+      traefik.http.routers.control-panel.entrypoints: "websecure"
+      traefik.http.routers.control-panel.tls: "true"
+      traefik.http.routers.control-panel.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.control-panel.loadbalancer.server.port: "8420"
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
@@ -667,8 +885,6 @@ services:
     profiles: [extras]
     networks: [stacknet]
     pid: host
-    ports:
-      - "61208:61208"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:61208/api/4/status || exit 1"]
       interval: 30s
@@ -681,6 +897,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /:/rootfs:ro
+    # Traefik pilot migration (see network-security-layer CHANGELOG entry) -
+    # ports: kept alongside the new route until it's confirmed working, then
+    # dropped same as every other service that follows.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.glances.rule: "Host(`glances.cave.internal`)"
+      traefik.http.routers.glances.entrypoints: "websecure"
+      traefik.http.routers.glances.tls: "true"
+      traefik.http.routers.glances.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.glances.loadbalancer.server.port: "61208"
     # No prior ceiling - lightweight monitoring agent, cheap insurance.
     mem_limit: 512m
     mem_reservation: 64m
@@ -875,6 +1101,40 @@ services:
     mem_reservation: 32m
     cpus: 1
 
+  # Single-file PHP DB browser for dmm-mysql - previously the only way to
+  # inspect DMM's Prisma-backed data was `docker exec -it dmm-mysql mysql
+  # ...`. Chosen over phpMyAdmin deliberately: Adminer ships as one PHP
+  # file (far smaller attack surface / CVE history), and it's the one PHP
+  # component in this stack (see network-security-layer CHANGELOG entry).
+  # No credentials stored here - reuses DMM_MYSQL_PASSWORD at the login
+  # screen same as DMM's own Prisma client does.
+  adminer:
+    restart: unless-stopped
+    logging: *common-logging
+    image: adminer:5.4.2-standalone
+    container_name: adminer
+    profiles: [extras]
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    environment:
+      TZ: ${TZ}
+      ADMINER_DEFAULT_SERVER: dmm-mysql
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.adminer.rule: "Host(`adminer.cave.internal`)"
+      traefik.http.routers.adminer.entrypoints: "websecure"
+      traefik.http.routers.adminer.tls: "true"
+      traefik.http.routers.adminer.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.adminer.loadbalancer.server.port: "8080"
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: 1
+
   # One-shot schema setup - no migration runner in DMM's own package.json,
   # so first-run schema creation needs `prisma db push` run once against a
   # fresh database (no prisma/migrations history to run `migrate deploy`
@@ -928,8 +1188,6 @@ services:
     container_name: debridmediamanager
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "3000:3000"
     # Overrides the deploy stage's `node server.js` (not present here - the
     # build stage never produces .next/standalone) with a fix-then-start:
     # install openssl so Prisma can detect it correctly (plus curl, for the
@@ -987,6 +1245,13 @@ services:
     # `next start` rather than the leaner standalone server) - the openssl
     # workaround above trades some extra RAM for a correctly-generated
     # Prisma client without vendoring a modified Dockerfile.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.debridmediamanager.rule: "Host(`debridmediamanager.cave.internal`)"
+      traefik.http.routers.debridmediamanager.entrypoints: "websecure"
+      traefik.http.routers.debridmediamanager.tls: "true"
+      traefik.http.routers.debridmediamanager.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.debridmediamanager.loadbalancer.server.port: "3000"
     mem_limit: 1.5g
     mem_reservation: 256m
     cpus: 2
@@ -1006,8 +1271,6 @@ services:
     container_name: cleanuparr
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "11011:11011"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11011/ || exit 1"]
       interval: 30s
@@ -1018,6 +1281,13 @@ services:
       - ./config/cleanuparr:/config
     # No prior observation - generous default ceiling, same reasoning as
     # every other companion app in this file.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.cleanuparr.rule: "Host(`cleanuparr.cave.internal`)"
+      traefik.http.routers.cleanuparr.entrypoints: "websecure"
+      traefik.http.routers.cleanuparr.tls: "true"
+      traefik.http.routers.cleanuparr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.cleanuparr.loadbalancer.server.port: "11011"
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
@@ -1034,8 +1304,6 @@ services:
     container_name: neutarr
     profiles: [extras]
     networks: [stacknet]
-    ports:
-      - "9705:9705"
     # No curl (or wget) in this image - confirmed live, the curl-based
     # healthcheck every other app in this file uses just failed with
     # "curl: not found" despite the app itself serving fine (a real 200 on
@@ -1048,6 +1316,13 @@ services:
       start_period: 30s
     volumes:
       - ./config/neutarr:/config
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.neutarr.rule: "Host(`neutarr.cave.internal`)"
+      traefik.http.routers.neutarr.entrypoints: "websecure"
+      traefik.http.routers.neutarr.tls: "true"
+      traefik.http.routers.neutarr.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.neutarr.loadbalancer.server.port: "9705"
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
@@ -1067,8 +1342,6 @@ services:
     networks: [stacknet]
     environment:
       TZ: ${TZ}
-    ports:
-      - "8080:8080"
     healthcheck:
       test: ["CMD", "/dozzle", "healthcheck"]
       interval: 30s
@@ -1077,6 +1350,13 @@ services:
       start_period: 10s
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.dozzle.rule: "Host(`dozzle.cave.internal`)"
+      traefik.http.routers.dozzle.entrypoints: "websecure"
+      traefik.http.routers.dozzle.tls: "true"
+      traefik.http.routers.dozzle.middlewares: "crowdsec@docker,authelia@docker"
+      traefik.http.services.dozzle.loadbalancer.server.port: "8080"
     mem_limit: 256m
     mem_reservation: 32m
     cpus: 1

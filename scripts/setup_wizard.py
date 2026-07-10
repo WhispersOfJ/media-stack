@@ -34,7 +34,13 @@ POST_BOOT_KEYS = {"RADARR_API_KEY", "SONARR_API_KEY", "PLEX_TOKEN"}
 
 # Self-issued secrets with no external source - safe to generate for the
 # user instead of asking them to run a command themselves.
-AUTO_GENERATE_KEYS = {"ZILEAN_POSTGRES_PASSWORD", "ZILEAN_API_KEY"}
+AUTO_GENERATE_KEYS = {
+    "ZILEAN_POSTGRES_PASSWORD",
+    "ZILEAN_API_KEY",
+    "AUTHELIA_SESSION_SECRET",
+    "AUTHELIA_STORAGE_ENCRYPTION_KEY",
+    "AUTHELIA_JWT_SECRET",
+}
 
 # Only these actually block `docker compose up` from working at all;
 # everything else can legitimately stay "changeme" for now (optional

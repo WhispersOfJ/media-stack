@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v8.2.0**.
+retroactive pass) was never versioned under. Current version: **v9.1.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,135 @@ retroactive pass) was never versioned under. Current version: **v8.2.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [9.1.0] — README rewritten for beginners; all prior technical depth moved to TECHNICAL.md
+
+`README.md` had grown into the project's real technical reference (1,828 lines) as of
+[9.0.0](CHANGELOG.md) — exact image-pinning rationale, resource-limit tuning tables, the full
+setup-wizard internals, byte-for-byte migration verification notes. Excellent for understanding
+*why* something is the way it is, genuinely hostile to someone who just wants to get a Plex
+library running and doesn't yet know what a `docker-compose.yml` even is. Decided to split
+these into two documents with two different jobs, rather than trim the technical one down and
+lose the depth that's been this project's whole differentiator so far.
+
+### Added
+- **`TECHNICAL.md`** — an exact copy of the prior `README.md` in full, plus a short banner at
+  the top pointing back to the new `README.md` for anyone who landed here first. Nothing was
+  cut; every image-pinning reason, every resource-limit table, every migration writeup, the
+  full setup-wizard code walkthrough - all still here, unchanged, still the deep reference for
+  anyone changing something in this stack themselves.
+
+### Changed
+- **`README.md` rewritten from scratch** as a short, plain-language "get this running and use
+  it" guide: what the project does in two sentences, the four things you need before starting
+  (Docker, a debrid account, a Plex account, a machine to run it on), the same setup commands
+  as before but explained in plain terms, a short table of what each app is *for* rather than
+  its port number, and a "you only actually need Seerr and Plex day to day" framing that the
+  old version never made explicit. Every cross-reference that used to point at a
+  now-relocated README section (image pinning, resource limits, Control Panel's full feature
+  list, etc.) now points at `TECHNICAL.md` instead.
+
+### Known follow-up
+- Historical CHANGELOG entries below this one that link to "README.md's `#some-section`" were
+  written when that content genuinely lived in `README.md` - it's all in `TECHNICAL.md` now,
+  same anchor names, so those links still resolve to the right *content*, just via the other
+  file. Left as-is rather than retroactively rewritten, consistent with this file's own
+  append-only/historical-record convention (see the top-of-file note on when past entries do
+  vs. don't get corrected).
+
+## [9.0.0] — Network security layer: Traefik + Authelia + CrowdSec replace the flat no-auth state
+
+Every web UI has published its port directly on the host with no auth gate since v3.1.0 removed
+the Caddy + Basic-Auth layer added in v2.11.0 (see that entry - the removal reasoning was
+maintenance cost, "more moving parts than value", not a flaw in reverse-proxying itself).
+Decided to revisit this with a different toolset, and to build it so that exposing one service
+publicly later is a small additive step instead of a redesign. Live investigation before writing
+any config surfaced two things that shaped the whole design: Tailscale was already installed and
+connected on this host (private remote access already solved, independent of this work), and
+there was no host firewall at all - only Docker's own iptables-nft-managed tables and
+Tailscale's `ts-input`/`ts-forward` chains.
+
+### Added
+- **nftables host firewall** - default-deny on the host's own `INPUT` chain
+  (`/etc/nftables.conf`, host-level, not tracked in this repo, same treatment as
+  `/etc/docker/daemon.json`). Explicit allow for `tailscale0` (full trust) and this host's LAN
+  subnet for a short allowlist: Plex (`network_mode: host` - its ports terminate on the host
+  directly, unlike every other container here, so this was the one real risk in an otherwise
+  container-port-transparent change), mDNS, SSDP, KDE Connect, Dropbox LanSync, and Traefik's
+  own `443`. No `forward` chain touched at all - confirmed live that Docker-published container
+  ports are DNAT'd and delivered via Docker's own `FORWARD` chain, never reaching this table, so
+  container networking needed zero changes here.
+- **Traefik** (`traefik:v3.7.7`) - single ingress point for every web UI, Docker-label
+  auto-discovery (`exposedByDefault: false`), TLS via a local `mkcert` CA
+  (`config/traefik/certs/`, installed into this host's system/browser trust stores). Static
+  config at `traefik/traefik.yml` (git-tracked, no secrets - same "tracked in git, just routing"
+  treatment the old Caddyfile used).
+- **Authelia** (`authelia/authelia:4.39.20`) - per-user login with TOTP 2FA via a
+  `forwardAuth` middleware (`authelia@docker`) applied to every router, replacing Caddy's old
+  one-shared-Basic-Auth-hash approach. File-based user DB
+  (`config/authelia/users_database.yml`, gitignored, `chmod 600`). Filesystem notifier (no SMTP
+  in this stack) - identity-verification codes for 2FA enrollment/password reset land in
+  `config/authelia/notification.txt` instead of an inbox.
+- **CrowdSec** (`crowdsecurity/crowdsec:v1.7.8` + the `maxlerebourg/crowdsec-bouncer-traefik-
+  plugin` v1.6.0) - reads Traefik's access log (`crowdsec/acquis.yaml`), 59 scenarios loaded
+  from the `crowdsecurity/traefik`, `crowdsecurity/http-cve`, and `crowdsecurity/base-http-
+  scenarios` collections. `crowdsec@docker` bouncer middleware applied ahead of Authelia on
+  every router; LAN/Tailscale ranges are exempted from bouncer checks
+  (`clientTrustedIPs`) - this layer is built for the day a service is made public, not for
+  today's LAN/tailnet-only traffic. Verified live: a manually-added ban decision for an
+  untrusted-range IP got a real `403` at the Traefik layer, before Authelia ever saw the
+  request; removing the decision restored normal access immediately.
+- **Adminer** (`adminer:5.4.2-standalone`) - single-file PHP database browser in front of
+  `dmm-mysql`, gated the same as every other service. Chosen over phpMyAdmin deliberately
+  (smaller attack surface / CVE history for a one-file PHP app). Previously the only way to
+  inspect DMM's Prisma-backed MySQL data was `docker exec -it dmm-mysql mysql ...`.
+
+### Changed
+- **All 18 previously host-published services** (Prowlarr, Zilean, Decypharr,
+  Decypharr-AllDebrid, Zurg, Radarr, Sonarr, NZBGet, Seerr, Bazarr, Byparr, Tautulli,
+  Control Panel, DebridMediaManager, Cleanuparr, NeutArr, Dozzle, Glances) had their `ports:`
+  mapping removed and a `traefik.enable`/router/service label block added instead, one at a
+  time - Glances went first as the pilot (validated the label pattern, then Authelia's forward-
+  auth flow, before repeating it 17 more times), and each service's old direct port was
+  confirmed closed before moving to the next. **Control Panel and Dozzle** (the two containers
+  holding a Docker socket mount) were the actual priority behind this whole effort - Control
+  Panel's own docstring had explicitly flagged its no-auth, read-write docker.sock access as
+  "a deliberately higher-blast-radius exception"; that gap is closed now with zero code changes
+  to either service, entirely at the network layer.
+- **Plex** (`network_mode: host`, can't be discovered by Traefik's Docker provider the normal
+  way since it isn't attached to `stacknet` at all) gets an explicit
+  `loadbalancer.server.url: http://${HOST_IP}:32400` label instead of the usual port label -
+  the one service that needed a different labeling approach.
+- README's Security note rewritten to describe the new layered architecture in place of the
+  old LAN-only-with-no-auth state; the three other places that referenced the old model
+  (top-of-file "what this isn't" bullet, Control Panel's docker-socket note, the setup wizard's
+  own no-auth note - genuinely still true, since that tool is ephemeral and runs *before*
+  Traefik/Authelia exist) were each updated rather than left stale.
+
+### Fixed (found live during this rollout)
+- **Authelia's healthcheck used a removed CLI subcommand** - `authelia healthcheck` doesn't
+  exist in 4.39.20; switched to `wget -qO- http://localhost:9091/api/health` directly.
+- **CrowdSec's Traefik middleware silently failed to register** - `service
+  "crowdsec-media-stack" error: port is missing"` in Traefik's logs, caused by its Docker
+  provider trying (and failing) to build an implicit default service for any
+  `traefik.enable=true` container that doesn't declare a port, which poisoned that container's
+  *entire* label set including the middleware definition - not just a missing service. Fixed by
+  giving the crowdsec container an explicit (unused-by-any-router)
+  `loadbalancer.server.port: "8080"` label.
+- **Authelia's identity-verification flow isn't a clickable email link on this stack** (no SMTP
+  configured, filesystem notifier only) - it's a one-time code written to
+  `config/authelia/notification.txt` that must be typed into the browser prompt. Retrying the
+  2FA-enrollment step without that code tripped Authelia's own endpoint rate limiter
+  (`/api/user/session/elevation`, ~3-4 minute cooldown), which surfaces to the user as a generic
+  "Failed to generate the One-Time Code" error with no obvious cause.
+
+### Known follow-up
+- Public exposure (Tailscale Funnel or Traefik's ACME resolver) deliberately not enabled by any
+  of the above - see README's Security note for the recommended path when that's actually
+  wanted.
+- Other devices (phones, other LAN machines) need the mkcert CA root installed separately to
+  see a trusted padlock for `*.cave.internal` - it's currently only in this host's own system/
+  browser trust stores.
 
 ## [8.2.0] — Plex additions now post to Discord instantly instead of on a 30-minute timer
 
