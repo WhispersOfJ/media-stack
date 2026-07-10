@@ -71,6 +71,11 @@ all three of which were fully removed in earlier versions ([7.0.0](CHANGELOG.md)
   `docker-compose.yml` or Zurg's live `config.yml`, so removing the plain host directory needed
   no service restart, unlike the Zurg `config.yml` routing group itself (see README's own note,
   left alone for the reason already documented there - a live restart for zero benefit).
+- **`config/heimdall/`, `config/homepage/`** - both apps were fully replaced by Control Panel
+  back in v5.0.0 (no service block, no code reference to either left anywhere), but their config
+  directories were still sitting on disk - 296K and 32K respectively, dashboard settings/
+  bookmarks/widget config, nothing resembling real content. Confirmed disposable and removed
+  (root-owned `homepage/logs/` again needed the privileged-container trick).
 
 ### Verified clean, left alone
 - **Prowlarr's applications list** - confirmed via `GET /api/v1/applications` to contain only
@@ -80,9 +85,6 @@ all three of which were fully removed in earlier versions ([7.0.0](CHANGELOG.md)
   disconnect) and are scaffolding NeutArr manages itself for every app type it supports whether
   used or not - left in place rather than deleted and risk the app just recreating them, or
   erroring, on next restart.
-- **`config/heimdall/`, `config/homepage/`** - both apps were fully replaced by Control Panel
-  back in v5.0.0, but their config directories are still sitting on disk. Out of scope for this
-  pass (not mentioned in the removal request) - flagged here for a future cleanup, not touched.
 
 ### Found while verifying
 - **Deleting the orphaned Plex "YouTube" library triggered an unexpected internal Plex Media
