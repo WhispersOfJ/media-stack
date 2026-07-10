@@ -1771,5 +1771,5 @@ upstream-sync burden):
 ---
 
 🤖 **This stack — architecture, every service, every fix, every line of documentation — was
-built by [Claude AI](https://www.anthropic.com/claude).** Current version **7.2.1**. Full
+built by [Claude AI](https://www.anthropic.com/claude).** Current version **7.2.2**. Full
 version history in [CHANGELOG.md](CHANGELOG.md).
