@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v7.1.0**.
+retroactive pass) was never versioned under. Current version: **v7.2.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,114 @@ retroactive pass) was never versioned under. Current version: **v7.1.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [7.2.0] — Control Panel hardening, restart-ordering fix, CI gates, off-site backup
+
+Source this time was a review of `github.com/WhispersOfJ/Stackalicious`, the public GitHub repo
+under this same account. First confirmed what that repo actually is before trusting anything
+found in it: its commit log is a same-day, paraphrased mirror of this repo's own CHANGELOG
+history (latest commit at the time, `b951e97c`, was titled identically to this repo's own
+v7.1.0 HEAD commit), and diffing `.env.example` between the two showed the *only* difference
+is `HOST_IP`/`PLEX_URL`/`DMM_ORIGIN` sanitized to a placeholder subnet — everything else,
+`control-panel/app.py` included, is the same content. So every finding below was independently
+re-verified against this live repo (exact line numbers, real API calls, real container state)
+rather than trusted from the review at face value — see the planning file this was built from.
+
+### Added
+- **CI gates in `.github/workflows/validate.yml`**: a var-diff step (every `${VAR}` referenced
+  in `docker-compose.yml` now must have a matching key in `.env.example` — previously
+  `docker compose config` just silently substituted an empty string for anything missing,
+  which is exactly the failure mode that would have caught a real gap if one still existed),
+  `shellcheck` (`ludeeus/action-shellcheck`) over `scripts/*.sh` + `entrypoint.sh`, and `ruff`
+  over `control-panel/app.py` + `scripts/*.py`.
+- **`pip` and `github-actions` Dependabot ecosystems** in `.github/dependabot.yml` —
+  `control-panel/requirements.txt`'s pinned FastAPI/docker/httpx/psycopg2 versions and the
+  Actions themselves (`actions/checkout@v4`, etc.) had nothing bumping them until now.
+- **CSRF/Origin-Host validation middleware** in `control-panel/app.py`
+  (`verify_same_origin`) — not auth (the "no auth, LAN-only" design in the Security note stays
+  exactly as-is; a prior Caddy + HTTP Basic Auth layer was already tried and removed once).
+  The real gap: the panel holds full read-write `docker.sock` access with zero Origin/Host
+  check on any of its 15 POST endpoints, meaning any external website a LAN device's browser
+  visited — not another device on the LAN, any website at all — could fire a same-origin-exempt
+  POST at container start/stop/restart/exec. Rejects any POST/PUT/PATCH/DELETE whose `Host` or
+  `Origin` header doesn't match `HOST_IP` (now passed into the container's environment) or
+  `localhost`/`127.0.0.1`, with a 403 and a plain JSON body.
+- **Off-site backup leg**, opt-in via two new blank-by-default `.env.example` vars
+  (`BACKUP_REMOTE_REPOSITORY`, `BACKUP_REMOTE_PASSWORD_FILE`) — closes the "Known limitation"
+  this file's own backup section already flagged (single physical disk, no remote copy). Any
+  restic-supported URL works (B2/S3/sftp/rclone/etc.); `scripts/backup-config.sh` mirrors the
+  same backup there with its own retention pass, tagged `(remote)` in every Discord
+  notification so a local-only failure is never confused with a remote-only one. No-ops
+  entirely if unset, same pattern `notify-discord.sh` already uses for
+  `DISCORD_WEBHOOK_URL`.
+- **Monthly restic integrity check** (`restic check --read-data-subset=10%`), piggybacked on
+  the existing daily `stack-backup.timer` with a `date +%d = 01` guard rather than a second
+  timer — runs against both the local repo and the remote one, if configured.
+- **`scripts/enable-recycle-bin.py`** — one-off script (not a recurring job) that turns on
+  Radarr/Sonarr's own Recycle Bin via `PUT /api/v3/config/mediamanagement/1`, reusing
+  `arr-app-backup.py`'s `env_get()`/`api_request()` pattern. A blast-radius mitigation for the
+  still-unsolved mass-deletion mystery below, not a fix for its root cause.
+
+### Fixed
+- **`BAZARR_API_KEY`/`PLEX_TOKEN`/`PLEX_URL` no longer crash the whole panel on boot** if
+  unset — all three were `os.environ[...]` at import time (would take down every Control Panel
+  feature for one missing optional key); now `.get()`, with `plex_headers()`/`bazarr_headers()`
+  returning a clean `503` instead. `PLEX_TOKEN` also added to `setup_wizard.py`'s
+  `POST_BOOT_KEYS` — it genuinely can't be known before Plex has booted and has a library item
+  to read it from (same shape as the arr apps' own post-boot keys), so it was falling through
+  the wizard's two-pass flow with nothing ever prompting for it.
+- **`stack_restart_all()` had no dependency ordering** — restarted every container in
+  whatever order the Docker API happened to list them, which could (and, per the
+  README's own "Radarr-specific mount fragility" note and [4.0.1](CHANGELOG.md), reliably did)
+  restart Zurg/Decypharr after Radarr and leave Radarr's direct `/mnt/zurg`/`/mnt/decypharr`
+  binds stale. Now restarts `zurg`/`decypharr`/`decypharr-alldebrid`/`rclone-alldebrid` first,
+  polls their own healthchecks (bounded, 60s), then the rest of the stack, then Radarr last.
+- **One real pre-existing lint finding each**, surfaced by adding the new CI gates rather than
+  introduced by them: an unused `header` variable in `scripts/import-imdb-data.py`
+  (`ruff` F841), and a missing `|| exit` after `cd "$(dirname "$0")/.."` in
+  `backup-config.sh`, `check-container-health.sh`, and `notify-discord.sh` (`shellcheck` SC2164).
+
+### Found while verifying (new, unresolved — added to [TODO.md](TODO.md))
+- **`rclone-alldebrid` doesn't reliably survive `docker restart`** — found live while testing
+  the restart-ordering fix above with a real full-stack Restart-All. Its own `/mnt/all` FUSE
+  mount came back `Transport endpoint is not connected` / `Socket not connected` and the
+  container's own `unless-stopped` restart policy retried with growing backoff for 4+ minutes
+  without ever clearing it on its own. Recovered manually: `docker run --rm --privileged -v
+  /mnt:/mnt:rshared alpine umount -l /mnt/all` (lazy unmount from outside the container's mount
+  namespace) followed by one `docker restart rclone-alldebrid`. Same failure class as the
+  documented Radarr/Zurg bug, different container, no known one-line fix yet — and unlike
+  Radarr's version, this one doesn't even self-heal with a single restart, so it would also
+  bite a routine Watchtower-triggered restart, not just Restart-All.
+
+### Verified live
+- Blanked `BAZARR_API_KEY` and `PLEX_TOKEN` in `.env`, rebuilt + force-recreated
+  `control-panel`, confirmed it stayed `healthy` (not crash-looping) and
+  `POST /api/bazarr/search-wanted` / `POST /api/plex/scan` both returned a clean `503` with a
+  plain-English message. Restored the real values, rebuilt again, confirmed both endpoints
+  returned their normal success response.
+- `curl -H "Origin: http://evil.example"` and `curl -H "Host: evil.example"` against a real
+  POST endpoint both returned `403`; the same request with a real matching `Origin` returned
+  `200` and actually restarted Glances, confirmed via `docker compose ps glances`.
+- Triggered a real `POST /api/stack/restart-all` against the live 27-container stack (with
+  explicit go-ahead first, given the blast radius). Watched the sweep with `docker compose ps`
+  every 5s: `zurg`/`decypharr`/`decypharr-alldebrid` went healthy within ~15s,
+  `rclone-alldebrid` hit its 60s timeout mid-incident (see above) without blocking the rest of
+  the sweep, and Radarr restarted last and came back with `GET /api/v3/rootfolder` reporting
+  `"accessible": true` — no manual follow-up restart needed, which is the exact failure this
+  fix targets. All 27 containers ended up healthy (`dmm-migrate` correctly `Exited (0)` — a
+  one-shot migration container, not a failure).
+- `PUT /api/v3/config/mediamanagement/1` confirmed via a follow-up `GET`:
+  `recycleBin: "/data/movies/.recyclebin"` (Radarr) / `"/data/shows/.recyclebin"` (Sonarr),
+  both `recycleBinCleanupDays: 7`. Deliberately did **not** verify via a real deletion — that
+  would mean removing real library content just to test a config change.
+- Ran `backup-config.sh` for real: local backup + retention succeeded as before; the new
+  remote/monthly-check blocks correctly no-op'd (`BACKUP_REMOTE_REPOSITORY` unset, not the 1st
+  of the month) without touching the rest of the script's behavior.
+- `ruff check control-panel/app.py scripts/*.py` and `shellcheck` over every `.sh` file both
+  clean after all of the above; `docker compose config --quiet` (default + `extras` profile)
+  and the new var-diff check both pass.
+
+---
 
 ## [7.1.0] — Cleanuparr, NeutArr, Dozzle, and Pinchflat added; Discord alerts get real embeds
 
