@@ -15,6 +15,7 @@ import os
 import re
 import socket
 import threading
+import time
 from datetime import datetime, timezone
 from urllib.parse import quote
 
@@ -846,6 +847,38 @@ def container_start(name: str):
 # ---------------------------------------------------------------------
 # Whole-stack restart
 # ---------------------------------------------------------------------
+# Radarr bind-mounts /mnt/zurg and /mnt/decypharr directly (rslave), unlike
+# Sonarr's blanket /mnt bind - a direct subpath bind doesn't survive the FUSE
+# process underneath it being recreated, so restarting a provider after
+# Radarr in the same sweep reproduces the CHANGELOG v4.0.1 stale-mount bug
+# (see README's "Radarr-specific mount fragility" note). Restart providers
+# first, wait for them to report healthy, then restart the dependents last.
+MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid"}
+MOUNT_DEPENDENTS = {"radarr"}
+
+
+def wait_for_healthy(container, timeout=60):
+    """Polls a container's own healthcheck status, if it has one. Containers
+    with no healthcheck report no Health block at all - falls back to a
+    flat sleep for those so the caller doesn't wait needlessly for a signal
+    that will never come."""
+    deadline = time.monotonic() + timeout
+    saw_health_block = False
+    while time.monotonic() < deadline:
+        try:
+            container.reload()
+            status = container.attrs.get("State", {}).get("Health", {}).get("Status")
+        except Exception:
+            status = None
+        if status:
+            saw_health_block = True
+            if status == "healthy":
+                return
+        time.sleep(2)
+    if not saw_health_block:
+        time.sleep(10)
+
+
 @app.post("/api/stack/restart-all")
 def stack_restart_all():
     me, containers = project_containers()
@@ -856,8 +889,26 @@ def stack_restart_all():
         fail("No other containers found in this compose project.")
     names = sorted(c.name for c in targets)
 
+    providers = [c for c in targets if c.name in MOUNT_PROVIDERS]
+    dependents = [c for c in targets if c.name in MOUNT_DEPENDENTS]
+    rest = [c for c in targets if c.name not in MOUNT_PROVIDERS and c.name not in MOUNT_DEPENDENTS]
+
     def worker():
-        for c in targets:
+        for c in providers:
+            try:
+                c.restart(timeout=30)
+            except Exception as e:
+                print(f"restart-all: failed to restart {c.name}: {e}")
+        for c in providers:
+            wait_for_healthy(c)
+        for c in rest:
+            try:
+                c.restart(timeout=30)
+            except Exception as e:
+                print(f"restart-all: failed to restart {c.name}: {e}")
+        # Dependents restart last, and only after their mount providers are
+        # back - restarting them any earlier reproduces the stale-mount bug.
+        for c in dependents:
             try:
                 c.restart(timeout=30)
             except Exception as e:
