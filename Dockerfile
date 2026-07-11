@@ -18,7 +18,7 @@ LABEL org.opencontainers.image.description="Installer/updater for the media-stac
 RUN apk add --no-cache python3
 
 WORKDIR /stack
-COPY docker-compose.yml .env.example README.md CHANGELOG.md TODO.md ./
+COPY docker-compose.yml .env.example README.md ./
 COPY scripts/ ./scripts/
 COPY systemd/ ./systemd/
 

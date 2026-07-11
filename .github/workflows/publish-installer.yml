@@ -12,8 +12,6 @@ on:
       - "docker-compose.yml"
       - ".env.example"
       - "README.md"
-      - "CHANGELOG.md"
-      - "TODO.md"
       - "scripts/**"
       - "systemd/**"
       - "Dockerfile"
@@ -38,10 +36,10 @@ jobs:
         run: |
           echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Extract version from CHANGELOG
+      - name: Extract version from README
         id: version
         run: |
-          v=$(grep -m1 -oP '(?<=Current version: \*\*v)[0-9.]+' CHANGELOG.md)
+          v=$(grep -m1 -oP '(?<=Current version: \*\*v)[0-9.]+' README.md)
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR

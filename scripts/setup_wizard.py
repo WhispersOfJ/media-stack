@@ -30,7 +30,10 @@ from urllib.parse import parse_qs
 # shape: reading it (Settings -> a library item -> Get Info -> View XML)
 # needs a running Plex with at least one library item, not just a running
 # container - left unset it silently breaks every Control Panel Plex action.
-POST_BOOT_KEYS = {"RADARR_API_KEY", "SONARR_API_KEY", "PLEX_TOKEN"}
+POST_BOOT_KEYS = {
+    "RADARR_API_KEY", "SONARR_API_KEY", "LIDARR_API_KEY", "READARR_API_KEY",
+    "WHISPARR_API_KEY", "PLEX_TOKEN",
+}
 
 # Self-issued secrets with no external source - safe to generate for the
 # user instead of asking them to run a command themselves.
