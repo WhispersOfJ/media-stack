@@ -16,6 +16,7 @@ import re
 import socket
 import threading
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from urllib.parse import quote
 
@@ -114,6 +115,7 @@ CONTAINER_LABELS = {
     "plex": ("Plex", None),
     "zurg": ("Zurg", "Real-Debrid mount"),
     "rclone-alldebrid": ("rclone", "AllDebrid mount"),
+    "rclone-alldebrid-anime": ("rclone", "AllDebrid mount, anime-filtered subset"),
     "decypharr": ("Decypharr", "Real-Debrid + AllDebrid"),
     "decypharr-alldebrid": ("Decypharr", "AllDebrid only, Sonarr-exclusive"),
     "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),
@@ -701,6 +703,45 @@ def arr_search_missing(app_name: str):
     return ok(f"{cfg['label']} search for missing items started.")
 
 
+# Snapshot of an arr app's own /command queue - not just the download
+# queue (arr_queue above), but the internal task backlog (searches,
+# RSS sync, bulk moves, etc). Surfaced after a real incident where a
+# hung ProcessMonitoredDownloads command silently backed up everything
+# behind it for over an hour with zero indication in the normal UI.
+@app.get("/api/arr/{app_name}/command-backlog")
+def arr_command_backlog(app_name: str):
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}'.", status_code=404)
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/command", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} command lookup failed: {e}")
+    commands = r.json()
+    counts = Counter(c.get("status") for c in commands)
+    running = sorted(
+        (
+            {"id": c["id"], "name": c["name"], "started": c.get("started")}
+            for c in commands
+            if c.get("status") == "started"
+        ),
+        key=lambda c: c["started"] or "",
+    )
+    queued = sorted((c for c in commands if c.get("status") == "queued"), key=lambda c: c.get("queued") or "")
+    oldest_queued = [{"id": c["id"], "name": c["name"], "queued": c.get("queued")} for c in queued[:5]]
+    return ok(
+        f"{cfg['label']}: {len(commands)} commands total "
+        f"({counts.get('completed', 0)} completed, {counts.get('queued', 0)} queued, "
+        f"{counts.get('started', 0)} running).",
+        total=len(commands),
+        counts=dict(counts),
+        running=running,
+        queued_total=len(queued),
+        oldest_queued=oldest_queued,
+    )
+
+
 # ---------------------------------------------------------------------
 # Unstick + manual import - for queue items the arr app flagged itself
 # (trackedDownloadStatus warning/error, the same icon its own UI shows),
@@ -1048,7 +1089,7 @@ def container_start(name: str):
 # Radarr in the same sweep reproduces the CHANGELOG v4.0.1 stale-mount bug
 # (see README's "Radarr-specific mount fragility" note). Restart providers
 # first, wait for them to report healthy, then restart the dependents last.
-MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid"}
+MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "rclone-alldebrid-anime"}
 MOUNT_DEPENDENTS = {"radarr"}
 
 
