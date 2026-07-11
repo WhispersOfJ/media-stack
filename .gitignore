@@ -6,7 +6,8 @@
 # every *arr app's config.xml). None of this belongs in git history.
 config/
 
-# NZBGet local downloads and NZBGet-acquired local media library
+# Leftover local downloads from NZBGet (removed in 10.1.0, replaced by NzbDAV's
+# streaming approach) plus the local media library every arr app writes to
 usenet/
 media/
 
