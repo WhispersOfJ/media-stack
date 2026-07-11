@@ -58,10 +58,9 @@ the tracked files onto a fresh host, a browser-based setup wizard fills in `.env
   resource limits are set deliberately (see [Resource limits](#resource-limits)) rather than
   left to `:latest` and hope.
 - **What this isn't:** a beginner's first Docker project — it assumes you're comfortable with
-  Compose, and (per the [Security note](#security-note)) every web UI here sits behind a
-  Traefik + Authelia + CrowdSec network security layer with real per-user 2FA login, not a
-  hardened multi-tenant/internet-facing setup on its own. If you want hand-holding through
-  Docker itself, this isn't tuned for that.
+  Compose, and (per the [Security note](#security-note)) every web UI here publishes directly to
+  the LAN with no login gate, not a hardened multi-tenant/internet-facing setup. If you want
+  hand-holding through Docker itself, this isn't tuned for that.
 
 ## Quick start
 
@@ -881,51 +880,50 @@ within minutes of being configured, not just a clean-looking config.
 
 ## Security note
 
-A prior Caddy + HTTP Basic Auth layer was added in v2.11.0 and removed in v3.1.0 - every web UI
-went back to publishing its port directly on the host with no auth gate, acceptable at the time
-under a LAN-only threat model. That's been replaced with a real, multi-layered network security
-setup (see [CHANGELOG](CHANGELOG.md) for the full writeup):
+A Caddy + HTTP Basic Auth layer was added in v2.11.0 and removed in v3.1.0; a second attempt - a
+full Traefik + Authelia + CrowdSec network security layer with real per-user TOTP 2FA login - was
+added in [9.0.0](CHANGELOG.md) and removed in [10.0.0](CHANGELOG.md). Both times, the stack landed
+back on the same model: **every web UI publishes its port directly on the host, with no auth
+gate**, under a LAN-only threat model. [9.0.0](CHANGELOG.md)'s layer worked as designed (verified
+live at every step - a banned IP really did get a real `403` from CrowdSec, Authelia really did
+gate every router with real 2FA), but the owner's call after living with it was that the
+day-to-day friction (a login+2FA prompt in front of every app, an extra three services to keep
+healthy, a firewall bug that took Plex down through the proxy - see
+[9.1.1](CHANGELOG.md)) wasn't worth it for a stack that's genuinely never reachable from outside
+the LAN/tailnet in the first place.
 
-- **Host firewall (nftables)** - default-deny on the host's own `INPUT` chain, layered
-  independently on top of (not replacing) Docker's own iptables-nft-managed tables. Explicit
-  allowlist for Tailscale (fully trusted), this host's LAN subnet for a short list of daily-use
-  services (Plex - `network_mode: host`, so its ports terminate on the host directly unlike
-  every other container here; mDNS; SSDP; KDE Connect; Dropbox LanSync), and Traefik's own
-  `443`. Everything else is dropped. No `forward` chain is touched at all - published container
-  ports are DNAT'd and delivered via Docker's own `FORWARD` chain, so container networking is
-  completely unaffected by this table.
-- **Traefik** - the single ingress point for every web UI in the stack. Docker-label
-  auto-discovery (`exposedByDefault: false`, opt-in per service via a `traefik.enable=true`
-  label) instead of a hand-maintained Caddyfile - routing config lives as labels right next to
-  each service's own `mem_limit`/`healthcheck:` in `docker-compose.yml`, reviewable in a normal
-  diff. Every service's direct host `ports:` mapping has been removed; TLS is real, via a local
-  `mkcert` CA (see `traefik/traefik.yml` and `config/traefik/certs/` - install the CA root on
-  any device other than this host that should see a trusted padlock instead of a warning).
-- **Authelia** - per-user login with TOTP 2FA in front of every router (`authelia@docker`
-  forwardAuth middleware), replacing Caddy's old one-shared-Basic-Auth-hash approach. Real
-  accounts, real sessions, lockout after repeated failed attempts. Only guards human access to
-  web UIs - internal service-to-service calls (Kometa→Plex, control-panel→Radarr, etc.) never
-  traverse Traefik and are completely unaffected.
-- **CrowdSec** - reads Traefik's access log, auto-bans IPs matching known attack scenarios
-  (credential stuffing, path scanning, CVE probing) via a Traefik bouncer plugin
-  (`crowdsec@docker`, applied ahead of Authelia on every router). LAN/Tailscale traffic is
-  exempted from bouncer checks (`clientTrustedIPs`) - this layer exists for the day a service
-  is ever made public, built in now rather than scrambled together later.
-- **Tailscale** - already installed and connected independently of this work; it's the private
-  remote-access path. Nothing here changes that - Traefik/Authelia add HTTPS + real login on
-  top of what Tailscale's private network already grants, for both LAN and tailnet clients.
-- **Public exposure** - deliberately not enabled by anything above. When a service is ever
-  meant to be reachable from the public internet, **Tailscale Funnel** is the recommended first
-  option (exposes one service through Tailscale's own edge, automatic TLS, no router
-  port-forward, smallest possible added attack surface); Traefik's ACME resolver config is an
-  alternative if a real custom domain is wanted instead of a Funnel URL. Either way, CrowdSec
-  and the label-based routing above are already in place - flipping this on is additive, not a
-  redesign.
+- **No host firewall.** The default-deny nftables `INPUT` table [9.0.0](CHANGELOG.md) added
+  (`/etc/nftables.conf`, host-level, not tracked in this repo) has been removed via its own
+  documented rollback (`sudo nft delete table inet filter`), and the `nftables.service` unit
+  disabled so it doesn't reapply on the next boot. Docker's own iptables-nft-managed tables and
+  Tailscale's `ts-input`/`ts-forward` chains are untouched by this - it only removes the second,
+  independent gate that sat on top of them.
+- **No reverse proxy.** Traefik, its `mkcert` CA, and every `traefik.*` docker-compose label are
+  gone; all 18 previously-proxied services (plus Adminer, added after [9.0.0](CHANGELOG.md) and
+  never proxy-only) publish direct `ports:` again - see [Opening everything in your
+  browser](README.md#opening-everything-in-your-browser) for the full list.
+- **No login gate.** Authelia is gone - no per-user accounts, no TOTP 2FA, no session cookies.
+  Anyone who can reach a service's port can use it, same as every other app in this stack.
+- **No intrusion-prevention layer.** CrowdSec is gone along with it - nothing here auto-bans IPs
+  anymore. That layer only mattered for the day this stack might be made public; irrelevant on a
+  LAN-only deployment.
+- **Tailscale** - untouched by any of this, still the private remote-access path if you want to
+  reach this stack away from home.
+- **What's deliberately *not* reverted:** [7.2.0](CHANGELOG.md)'s CSRF/Origin-Host validation on
+  Control Panel's POST endpoints. That fix isn't part of this network-security layer - it closes
+  a real gap where any website a LAN browser visits (not another device on the LAN, literally any
+  site at all) could fire a same-origin-exempt POST at Control Panel's docker.sock-backed
+  start/stop/restart/exec endpoints. Removing Traefik/Authelia doesn't reopen that hole, so the
+  fix stays in place.
 
 `config/decypharr/config.json` contains API keys in plaintext and is `chmod 600`. This matches
-how Zurg's own `config.yml` already stores its Real-Debrid token, and the same treatment now
-also covers `config/authelia/users_database.yml` (password hashes) - worth knowing if this host
-is ever shared or backed up somewhere less trusted.
+how Zurg's own `config.yml` already stores its Real-Debrid token - worth knowing if this host is
+ever shared or backed up somewhere less trusted.
+
+If a login/auth layer is ever wanted back in front of this stack - for example, before enabling
+any public exposure - the Traefik + Authelia + CrowdSec setup from
+[9.0.0](CHANGELOG.md)/[9.1.1](CHANGELOG.md) is fully described there and is a known-working
+starting point.
 
 ## Image pinning policy
 
@@ -1249,10 +1247,9 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 
 Open `http://<this-host>:8090` — a form built straight from `.env.example`'s sections and
 comments, grouped the same way. Submitting it writes `.env` and the wizard process exits (it's
-not a lingering container; `--rm` cleans it up). No auth on the form - unlike every web UI in
-the running stack itself (see [Security note](#security-note)), this is a one-shot, ephemeral
-bootstrap tool that runs *before* the stack (and Traefik/Authelia) exists at all, so it can't be
-gated the same way; it's gone the moment `.env` is written.
+not a lingering container; `--rm` cleans it up). No auth on the form, same as every web UI in
+the running stack itself (see [Security note](#security-note)) - it's also one-shot and
+ephemeral, gone the moment `.env` is written.
 
 ![Setup wizard form, showing the grouped fields read from .env.example and the "fill in after first boot" section for the *arr API keys](docs/images/setup-wizard-form.png)
 
@@ -1725,13 +1722,15 @@ Runs on port **8420**.
   needed since this actually execs into containers and issues start/stop/restart, not just
   reads status. Runs as root in-container (no `PUID`/`PGID`) since that's what talking to the
   socket needs.
-- **Gated by Authelia like every other service** (see [Security note](#security-note)) - was
-  "no auth, LAN-only" before the network-security-layer work, a deliberate exception at the
-  time given the read-write docker socket's blast radius (anyone on the LAN could restart the
-  entire stack or trigger a Kometa run with no credential at all). That gap is closed now: this
-  was one of the two highest-priority services to migrate behind Traefik/Authelia (alongside
-  Dozzle, the other docker.sock holder), with no code change needed on control-panel's own side
-  - the gate sits entirely in front of it at the network layer.
+- **No auth, LAN-only** (see [Security note](#security-note)) - the same exception this always
+  ran under before [9.0.0](CHANGELOG.md)'s network-security layer, given the read-write docker
+  socket's blast radius (anyone who can reach this panel can restart the entire stack or trigger
+  a Kometa run with no credential at all). [9.0.0](CHANGELOG.md) briefly closed that gap by
+  gating this behind Traefik/Authelia; [10.0.0](CHANGELOG.md) reverted the whole layer, so this
+  is unauthenticated again. What does stay: [7.2.0](CHANGELOG.md)'s Origin/Host check (see
+  `verify_same_origin` in `app.py`), which blocks a *different* attack - a malicious website a
+  LAN browser visits firing a forged POST at this panel - but doesn't gate a person or device
+  that's actually on the LAN and means to be here.
 - **Activity log** - every action fired from the page (not just the one you're looking at)
   logs a timestamped line to a persistent console strip at the bottom of the page, so you can
   see what's actually happened rather than trusting a single button's own status line.

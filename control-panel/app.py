@@ -3,15 +3,13 @@ Control Panel - the single dashboard for The Stack: live container status
 and start/stop/restart control, host system stats, Zilean's own indexed-hash
 count, one-click operational actions, and a direct Zilean search with
 grab-to-Decypharr. Supersedes the old Homepage+Control Panel split - see
-README.md's Control Panel section.
+TECHNICAL.md's Control Panel section.
 
 Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
 HTTP API (Plex, Radarr, Sonarr, Bazarr, Zilean), Glances (host stats), and
 zilean-postgres directly (hash count - Zilean has no stats API of its own).
-No auth at the app layer itself - gated at the network layer by Traefik +
-Authelia like every other service in this stack (see README.md "Security
-note"). Deliberately still no in-app auth: adding it here would duplicate
-what the network layer already enforces in front of every request.
+No auth - LAN-only, matches every other service in this stack (see
+TECHNICAL.md's "Security note").
 """
 import os
 import re
