@@ -134,6 +134,7 @@ CONTAINER_LABELS = {
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
     "dozzle": ("Dozzle", "read-only live log viewer"),
+    "maintainerr": ("Maintainerr", "Plex library lifecycle - rule-based cleanup, wired but rules start disabled"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 

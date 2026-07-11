@@ -743,6 +743,45 @@ services:
     mem_reservation: 64m
     cpus: 2
 
+  # Plex library lifecycle management - auto-removes watched/stale content on
+  # rules configured through its own UI (e.g. "delete movies X days after
+  # watched", "remove episodes X days after airing"), keeping the Zurg/
+  # Decypharr mount and local ./media footprint from growing unbounded
+  # without manual pruning. Complements Seerr (handles the request side);
+  # this handles the other end of the lifecycle. All server connections
+  # (Plex, Radarr, Sonarr, Seerr) are configured post-boot via its own
+  # Settings UI, not environment variables - see README.md's Maintainerr
+  # section for the exact setup steps.
+  maintainerr:
+    restart: unless-stopped
+    logging: *common-logging
+    image: ghcr.io/maintainerr/maintainerr:latest
+    container_name: maintainerr
+    profiles: [extras]
+    networks: [stacknet]
+    # Data dir must be owned by the same uid/gid it runs as (1000:1000,
+    # matching PUID/PGID everywhere else in this stack) - it isn't a
+    # PUID/PGID-env-var image like the LinuxServer-style ones, it just runs
+    # as whatever `user:` is set to.
+    user: "${PUID}:${PGID}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6246/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/maintainerr:/opt/data
+    ports:
+      - "6246:6246"
+    # No prior ceiling - simple companion app, modest observed footprint,
+    # cheap insurance, same reasoning as Tautulli above.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
+
   # Single dashboard for this stack: live container status/control, host
   # stats, Zilean hash count, one-click ops actions, and a Quick Links panel
   # to every service's own web UI. That last part is what let Heimdall and

@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.2.0**
+Current version: **v10.3.0**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -274,9 +274,10 @@ Every service currently defined in `docker-compose.yml`, in the order they appea
 | 30 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
 | 31 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
 | 32 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
+| 33 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
 
 `docker compose up -d` brings up the 17 core services; `docker compose --profile extras up -d`
-adds the other 15. Both commands are safe to run repeatedly — Compose only recreates what's
+adds the other 16. Both commands are safe to run repeatedly — Compose only recreates what's
 actually out of sync with `docker-compose.yml`.
 
 ## The *arr apps
@@ -1025,6 +1026,65 @@ for those. See [Image pinning policy](#image-pinning-policy).
   of `dmm-mysql`. Chosen over phpMyAdmin for a smaller attack surface; previously the only way to
   inspect DMM's data was `docker exec -it dmm-mysql mysql ...`.
 
+## Maintainerr: Plex library lifecycle
+
+Added after evaluating [RandomNinjaAtk/arr-scripts](https://github.com/RandomNinjaAtk/arr-scripts)
+for anything worth adopting — almost none of it fit (it requires LinuxServer.io's
+`/custom-services.d`/`/custom-cont-init.d` init-hook directories, which the hotio-based
+Radarr/Sonarr/Whisparr images here don't have; its headline features either reverse a past
+decision — Recyclarr, removed in v3.0.0 — duplicate something already native and better here
+(PlexNotify → this stack's own Plex webhook hooks; its Queue Cleaner → Control Panel's Unstick), or
+introduce direct-scraping tools (`deemix`, `tidal-dl`, `yt-dlp` trailers) that conflict with this
+stack's Usenet+debrid-only, zero-local-disk architecture). **Maintainerr** was the one idea from
+that research that's genuinely a good fit: API-driven, its own container, no base-image
+dependency.
+
+```yaml
+# docker-compose.yml
+maintainerr:
+  image: ghcr.io/maintainerr/maintainerr:latest
+  user: "${PUID}:${PGID}"
+  volumes:
+    - ./config/maintainerr:/opt/data
+  ports:
+    - "6246:6246"
+```
+
+It handles the other half of the request lifecycle Seerr starts — removing watched/stale content
+on rules you define, so the Zurg/Decypharr mount and local `./media` footprint don't grow
+unbounded without manual pruning. All server connections (Plex, Radarr, Sonarr, Seerr, Tautulli)
+are configured through its own settings API/UI, not environment variables:
+
+```bash
+# Plex requires the auth token saved first, separately from the rest of the connection details
+curl -X POST -H "Content-Type: application/json" http://localhost:6246/api/settings/plex/token \
+  -d "{\"plex_auth_token\": \"$PLEX_TOKEN\"}"
+curl -X PATCH -H "Content-Type: application/json" http://localhost:6246/api/settings \
+  -d '{"plex_hostname":"192.168.4.105","plex_port":32400,"plex_ssl":0,
+       "plex_machine_id":"72ecc884f6bcd5f8bc4e4562b6b81e03ea9209e5","plex_manual_mode":1}'
+
+# Radarr/Sonarr/Seerr/Tautulli are simpler - one call each
+curl -X POST -H "Content-Type: application/json" http://localhost:6246/api/settings/radarr \
+  -d "{\"serverName\":\"Radarr\",\"url\":\"http://radarr:7878\",\"apiKey\":\"$RADARR_API_KEY\"}"
+```
+
+**Lidarr/Readarr/Whisparr aren't supported by Maintainerr at all** — its own settings controller
+only exposes `/radarr` and `/sonarr` connection endpoints, nothing for the other three `*arr`
+apps. Not a gap in this stack's setup; a real limitation of what Maintainerr itself connects to.
+
+**Two starter rules were imported from Maintainerr's community rule library** (the highest-karma
+entries for a Seerr-based setup, 980/980) — one per Movies (library 4) and TV Shows (library 1):
+"seen by the Seerr requester & older than 30 days, OR unwatched & older than 90 days." **Both were
+created with `isActive: false`** — Maintainerr's rule engine runs on a real cron schedule
+(`rules_handler_job_cron`, every 8 hours by default) and actually deletes matching media, so
+nothing was left enabled without a human reviewing the exact rule first. Review and flip them on
+in the UI (`Rules` tab) once you're satisfied they match what you actually want kept/removed:
+
+```bash
+curl -s http://localhost:6246/api/rules | \
+  python3 -c "import sys,json; [print(r['id'], r['name'], r['isActive']) for r in json.load(sys.stdin)]"
+```
+
 ## Control Panel
 
 `control-panel/` — a custom-built FastAPI app (`build: ./control-panel`, not a pulled image), the
@@ -1260,6 +1320,25 @@ One webhook (`DISCORD_WEBHOOK_URL` in `.env`) backs several independent alert pa
 - **Plex removals** — `scripts/plex-library-report.py`, every 30 minutes (Plex has no "item
   removed" webhook event, so this is still a poll-and-diff rather than instant).
 - **`*arr` backups** — one embed per day covering both the native-backup trigger above.
+- **Grab/import/upgrade/health events from all five `*arr` apps** — configured as each app's own
+  native **Discord** notification connection (not a script), pointed at the same
+  `DISCORD_WEBHOOK_URL`. Event selection differs slightly per app's own naming
+  (Radarr/Sonarr/Whisparr: `onGrab`/`onDownload`/`onUpgrade`; Lidarr/Readarr:
+  `onGrab`/`onReleaseImport`/`onUpgrade`, plus `onDownloadFailure`/`onImportFailure` since neither
+  exposes a Sonarr/Radarr-style "manual interaction required" event), but all five also fire on
+  `onHealthIssue` and `onApplicationUpdate`. Verified live via each app's own
+  `POST /api/v{1,3}/notification/test` — a real message reaches the channel.
+
+  ```bash
+  curl -H "X-Api-Key: $RADARR_API_KEY" http://localhost:7878/api/v3/notification/3 | \
+    curl -X POST -H "X-Api-Key: $RADARR_API_KEY" -H "Content-Type: application/json" \
+      -d @- http://localhost:7878/api/v3/notification/test
+  ```
+
+  **Known tradeoff, not yet addressed**: this shares one channel with Watchtower/backup/health
+  alerts above — five apps' worth of grab/import noise lands in the same place as the alerts you
+  actually want to notice quickly. Worth a second webhook/channel if it gets noisy; not done here
+  since the ask was specifically "the existing webhook," not a new one.
 
 ## Image pinning policy
 
@@ -1538,7 +1617,7 @@ unrelated to whether a proxy sits in front of anything. NZBGet — a real local 
 wired up with a real provider, found not to match the actual "no disk storage" goal, and replaced
 within the same session by NzbDAV's WebDAV-streaming approach (v10.1.0).
 
-**v10.2.0 (current) — Bazarr removed; Lidarr, Readarr, and Whisparr reinstated; Calibre-Web
+**v10.2.0 — Bazarr removed; Lidarr, Readarr, and Whisparr reinstated; Calibre-Web
 added.** The most recent batch of changes, not yet given its own dated CHANGELOG entry before this
 document absorbed the changelog format entirely:
 
@@ -1569,6 +1648,24 @@ document absorbed the changelog format entirely:
   `lidarr`/`readarr`/`whisparr` alongside `radarr`/`sonarr`; the setup wizard's `POST_BOOT_KEYS`
   now covers all five apps' API keys, matching Control Panel's API surface which already supported
   them.
+- A **Whisparr "Unlimited" quality profile** was added, mirroring Radarr/Sonarr's own
+  (720p-and-up allowed, cutoff at Remux-2160p, upgrades enabled) — Whisparr previously only had its
+  stock `Any`/`SD`/`HD-*` profiles, none matching the other two apps' actual policy.
+
+**v10.3.0 (current) — Maintainerr added; native Discord notifications on all five `*arr` apps.**
+Evaluated [RandomNinjaAtk/arr-scripts](https://github.com/RandomNinjaAtk/arr-scripts) for anything
+worth adopting (see [Maintainerr](#maintainerr-plex-library-lifecycle) for why almost none of it
+fit) and built the two things that did:
+
+- **Maintainerr** (`ghcr.io/maintainerr/maintainerr:latest`, port 6246) — Plex library lifecycle
+  management, wired to Plex/Radarr/Sonarr/Seerr/Tautulli via its own settings API. Two
+  highest-karma community rules (Seerr-requester-watched-30d-or-unwatched-90d, one per Movies/TV)
+  were imported but left `isActive: false` deliberately — its rule engine really does delete
+  matching media on a real cron schedule, so nothing runs until a human reviews and enables it.
+- **Native Discord notification connections** added to Radarr/Sonarr/Lidarr/Readarr/Whisparr,
+  reusing the existing `DISCORD_WEBHOOK_URL` — grab/import/upgrade/health-issue/app-update events,
+  verified live via each app's own `/notification/test`. Shares one channel with the
+  Watchtower/backup/health alerts from [Alerting](#alerting-discord); a known tradeoff, not a bug.
 
 ---
 
