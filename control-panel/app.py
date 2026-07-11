@@ -35,6 +35,8 @@ DECYPHARR_MANUAL_CATEGORY = "manual"
 GLANCES_URL = "http://glances:61208"
 BAZARR_URL = "http://bazarr:6767"
 BAZARR_API_KEY = os.environ.get("BAZARR_API_KEY")
+NZBDAV_URL = "http://nzbdav:3000"
+NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
 ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
 HOST_IP = os.environ.get("HOST_IP")
 # Matches Decypharr's own hexRegex (pkg/internal/utils/magnet.go) - its
@@ -525,6 +527,53 @@ def bazarr_search_wanted():
 
 
 # ---------------------------------------------------------------------
+# NzbDAV - Usenet streaming layer (WebDAV + rclone, no local disk - see
+# CHANGELOG.md [10.1.0]). Talks to its own SABnzbd-compatible query API
+# (mode=queue/mode=history) rather than a dedicated REST API - it doesn't
+# have one beyond that.
+# ---------------------------------------------------------------------
+def nzbdav_api(mode: str, **params) -> dict:
+    if not NZBDAV_API_KEY:
+        fail("NzbDAV isn't configured (NZBDAV_API_KEY not set)", status_code=503)
+    try:
+        r = httpx.get(
+            f"{NZBDAV_URL}/api",
+            params={"mode": mode, "output": "json", "apikey": NZBDAV_API_KEY, **params},
+            timeout=15,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"NzbDAV {mode} lookup failed: {e}")
+    return r.json()
+
+
+@app.get("/api/nzbdav/queue")
+def nzbdav_queue():
+    slots = nzbdav_api("queue").get("queue", {}).get("slots", [])
+    return [{
+        "name": s.get("filename"),
+        "category": s.get("cat"),
+        "status": s.get("status"),
+        "percentage": s.get("percentage"),
+        "size_mb": s.get("mb"),
+        "size_left_mb": s.get("mbleft"),
+    } for s in slots]
+
+
+@app.get("/api/nzbdav/history")
+def nzbdav_history(limit: int = 20):
+    slots = nzbdav_api("history", limit=limit).get("history", {}).get("slots", [])
+    return [{
+        "name": s.get("name"),
+        "category": s.get("category"),
+        "status": s.get("status"),
+        "size": human_size(s.get("bytes")),
+        "fail_message": s.get("fail_message") or None,
+        "path": s.get("storage"),
+    } for s in slots]
+
+
+# ---------------------------------------------------------------------
 # Zilean - direct search against its own index, bypassing Prowlarr/*arr
 # entirely. Talks to Zilean's own /dmm/search endpoint (AllowAnonymous,
 # no API key needed - only /dmm/on-demand-scrape requires one).
@@ -784,6 +833,119 @@ def arr_manual_import_execute(app_name: str, payload: ManualImportFile):
         fail(f"{cfg['label']} manual import failed: {e}")
     name = payload.path.rsplit("/", 1)[-1]
     return ok(f'Import started for "{name}" in {cfg["label"]}.')
+
+
+@app.post("/api/arr/{app_name}/manual-import-all")
+def arr_manual_import_all(app_name: str):
+    """Bulk version of manual-import above - imports every candidate
+    arr_manual_import_candidates currently lists (across all stuck queue
+    items) in a single ManualImport command, instead of one API call per
+    file."""
+    cfg = require_queue_app(app_name)
+    files = [c["file"] for c in arr_manual_import_candidates(app_name)]
+    if not files:
+        return ok(f"No importable files in {cfg['label']}.")
+    body = {"name": "ManualImport", "files": files}
+    try:
+        r = httpx.post(f"{cfg['url']}/api/{cfg['api']}/command", json=body, headers={"X-Api-Key": cfg["key"]}, timeout=30)
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        detail = e.response.text.strip() or str(e)
+        fail(f"{cfg['label']} bulk import failed: {detail}")
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} bulk import failed: {e}")
+    return ok(f"Import started for {len(files)} file(s) in {cfg['label']}.", count=len(files))
+
+
+def parse_air_date(value: str | None):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+@app.get("/api/arr/{app_name}/missing-aired")
+def arr_missing_aired(app_name: str):
+    """Monitored + no file + already aired/released, excluding upcoming
+    items that can't have a file yet. Sonarr's own Wanted/Missing list has
+    no way to do this itself - confirmed against its actual frontend
+    bundle, customFilterType only covers series/calendar/queue/history/
+    blocklist/releases, not the missing-episodes page - so without this,
+    that list is buried under ~300k not-yet-aired episodes from daily/
+    ongoing shows (soaps, game shows, etc.). Radarr already has a native
+    equivalent (monitored + !hasFile + isAvailable, saved as a custom
+    filter on the movie list); this mirrors that same logic for both apps
+    in one place.
+    """
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}'.", status_code=404)
+    cfg = ARR_APPS[app_name]
+
+    if app_name == "radarr":
+        try:
+            r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/movie", headers={"X-Api-Key": cfg["key"]}, timeout=30)
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"{cfg['label']} movie lookup failed: {e}")
+        results = []
+        for m in r.json():
+            if not m.get("monitored") or m.get("hasFile") or not m.get("isAvailable"):
+                continue
+            released = m.get("digitalRelease") or m.get("physicalRelease") or m.get("inCinemas")
+            results.append({"title": m.get("title"), "year": m.get("year"), "aired": released})
+        results.sort(key=lambda x: x["aired"] or "", reverse=True)
+        return results
+
+    # Sonarr: paginate ascending by air date and stop as soon as a future
+    # (unaired) episode is hit, rather than scanning the whole ~300k list -
+    # everything after that point in ascending order is also future.
+    cutoff = datetime.now(timezone.utc)
+    results = []
+    page = 1
+    page_size = 250
+    while True:
+        try:
+            r = httpx.get(
+                f"{cfg['url']}/api/{cfg['api']}/wanted/missing",
+                params={
+                    "page": page,
+                    "pageSize": page_size,
+                    "sortKey": "airDateUtc",
+                    "sortDirection": "ascending",
+                    "includeSeries": "true",
+                },
+                headers={"X-Api-Key": cfg["key"]},
+                timeout=30,
+            )
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"{cfg['label']} missing lookup failed: {e}")
+        data = r.json()
+        records = data.get("records", [])
+        if not records:
+            break
+        hit_future = False
+        for ep in records:
+            air = parse_air_date(ep.get("airDateUtc"))
+            if air is None:
+                continue  # TBA - can't tell if it's aired, skip rather than guess
+            if air > cutoff:
+                hit_future = True
+                break
+            series = ep.get("series") or {}
+            results.append({
+                "series": series.get("title"),
+                "episode": f"S{ep['seasonNumber']:02d}E{ep['episodeNumber']:02d}",
+                "title": ep.get("title"),
+                "aired": ep.get("airDateUtc"),
+            })
+        if hit_future or page * page_size >= data.get("totalRecords", 0):
+            break
+        page += 1
+    results.sort(key=lambda x: x["aired"] or "", reverse=True)
+    return results
 
 
 # ---------------------------------------------------------------------
