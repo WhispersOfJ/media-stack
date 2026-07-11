@@ -687,6 +687,7 @@ services:
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
       BAZARR_API_KEY: ${BAZARR_API_KEY}
+      NZBDAV_API_KEY: ${NZBDAV_API_KEY}
       # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
       # the same credential Zilean itself already has, no new secret.
       ZILEAN_POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
