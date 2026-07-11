@@ -369,6 +369,118 @@ services:
     ports:
       - "8989:8989"
 
+  # Reinstated (was removed in 7.0.0) - music library management.
+  lidarr:
+    <<: *common
+    image: ghcr.io/hotio/lidarr:release
+    container_name: lidarr
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8686/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/lidarr:/config
+      - /mnt/zurg:/mnt/zurg:rslave
+      - /mnt/decypharr:/mnt/decypharr:rslave
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
+      - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./media/music:/data/music
+    ports:
+      - "8686:8686"
+
+  # Reinstated (was removed in 7.0.0) - ebook library management. Actual
+  # reading/browsing happens via Calibre-Web below, since Plex has no
+  # book/ebook agent support at all (confirmed via /system/agents).
+  # Upstream Readarr itself is officially retired ("lack of developers...
+  # decided to retire the project", per linuxserver.io's own deprecation
+  # notice) - hotio doesn't publish an image at all, and linuxserver's own
+  # moving develop/nightly tags no longer resolve to a valid manifest for
+  # this platform. Pinned to the last version tag that's actually pullable
+  # instead - won't ever get updates, which is the accurate state of the
+  # underlying project, not a mistake here.
+  readarr:
+    <<: *common
+    image: lscr.io/linuxserver/readarr:0.4.19-nightly
+    container_name: readarr
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8787/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/readarr:/config
+      - /mnt/zurg:/mnt/zurg:rslave
+      - /mnt/decypharr:/mnt/decypharr:rslave
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
+      - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./media/books:/data/books
+    ports:
+      - "8787:8787"
+
+  # Reinstated (was removed in 4.0.0 - "too problematic" at the time, a real
+  # DownloadedEpisodesScan bug in that build plus a root-folder regression;
+  # same bug class already hit and fixed once this session for Sonarr, so
+  # watch for it here too). Adult content management.
+  whisparr:
+    <<: *common
+    # v3 (aka "eros"), not the default "latest" tag - that maps to v2, the
+    # older movie-style build. v3 is Sonarr-codebase-based (series/episode
+    # tracking of scenes), the actively developed line. Rolling within-major
+    # tag, matching this stack's existing hotio convention for Radarr/
+    # Sonarr/Lidarr's own ":release" tags (also rolling, not commit-pinned).
+    image: ghcr.io/hotio/whisparr:v3
+    container_name: whisparr
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6969/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/whisparr:/config
+      - /mnt/zurg:/mnt/zurg:rslave
+      - /mnt/decypharr:/mnt/decypharr:rslave
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
+      - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./media/adult:/data/adult
+    ports:
+      - "6969:6969"
+
+  # Ebook reader/library UI - Plex has no ebook agent (verified live via
+  # /system/agents, no book/ebook identifier present), so Readarr's actual
+  # content needs a real reader app rather than a fake Plex library.
+  calibre-web:
+    restart: unless-stopped
+    logging: *common-logging
+    image: lscr.io/linuxserver/calibre-web:latest
+    container_name: calibre-web
+    networks: [stacknet]
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      DOCKER_MODS: linuxserver/mods:universal-calibre
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/calibre-web:/config
+      - ./media/books:/books
+    ports:
+      - "8083:8083"
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
+
   # ---------------------------------------------------------------------
   # Usenet - streaming, no local disk (NzbDAV: WebDAV filesystem + rclone
   # mount, same "virtual filesystem" pattern as Zurg/rclone-alldebrid do
@@ -564,36 +676,6 @@ services:
   # Optional / recommended extras - start with:
   #   docker compose --profile extras up -d
   # =======================================================================
-  bazarr:
-    <<: *common
-    image: ghcr.io/hotio/bazarr:release
-    container_name: bazarr
-    profiles: [extras]
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6767/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/bazarr:/config
-      - /mnt:/mnt:rslave
-      # Identical paths to Radarr/Sonarr's own root folders - avoids needing
-      # Bazarr's Path Mappings feature, same reasoning as the *arr apps'
-      # shared /app/downloads path above.
-      - ./media/movies:/data/movies
-      - ./media/shows:/data/shows
-    # 141 PIDs observed at rest - far more threads/processes than any other
-    # container here, likely per-provider subtitle-search workers. Not
-    # obviously a leak (RAM stayed modest, ~230MB), but cheap insurance
-    # given nothing was capping it before.
-    ports:
-      - "6767:6767"
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
-
   # Replaced FlareSolverr in 3.4.0 - same role (Cloudflare challenge solver,
   # registered as Prowlarr's Indexer Proxy), same port, same FlareSolverr-
   # compatible /v1 API (Prowlarr's proxy type is still literally named
@@ -653,8 +735,8 @@ services:
       start_period: 30s
     volumes:
       - ./config/tautulli:/config
-    # No prior ceiling - same defensive reasoning as Bazarr above (simple
-    # companion app, modest observed footprint, cheap insurance).
+    # No prior ceiling - simple companion app, modest observed footprint,
+    # cheap insurance.
     ports:
       - "8182:8181"
     mem_limit: 512m
@@ -686,7 +768,9 @@ services:
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
-      BAZARR_API_KEY: ${BAZARR_API_KEY}
+      LIDARR_API_KEY: ${LIDARR_API_KEY}
+      READARR_API_KEY: ${READARR_API_KEY}
+      WHISPARR_API_KEY: ${WHISPARR_API_KEY}
       NZBDAV_API_KEY: ${NZBDAV_API_KEY}
       # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
       # the same credential Zilean itself already has, no new secret.
@@ -701,7 +785,7 @@ services:
       # restarts, not just reads status. Runs as root in-container (no
       # PUID/PGID) since root is what the socket needs; no other privilege
       # escalation beyond that. No auth - LAN-only, matches every other
-      # service in this stack (see TECHNICAL.md's Security note); the
+      # service in this stack (see README.md's Security section); the
       # elevated blast radius here (exec/restart the whole stack from one
       # unauthenticated endpoint) is mitigated by the Origin/Host check
       # below, not by a login gate.
@@ -818,6 +902,13 @@ services:
       UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
       UN_SONARR_0_URL: http://sonarr:8989
       UN_SONARR_0_API_KEY: ${SONARR_API_KEY}
+      # Lidarr/Readarr/Whisparr reinstated in 10.2.0 - same pattern.
+      UN_LIDARR_0_URL: http://lidarr:8686
+      UN_LIDARR_0_API_KEY: ${LIDARR_API_KEY}
+      UN_READARR_0_URL: http://readarr:8787
+      UN_READARR_0_API_KEY: ${READARR_API_KEY}
+      UN_WHISPARR_0_URL: http://whisparr:6969
+      UN_WHISPARR_0_API_KEY: ${WHISPARR_API_KEY}
     volumes:
       - /mnt:/mnt:rslave
       # Same mounts every arr app already has (see Sonarr/Radarr above) - /mnt alone doesn't

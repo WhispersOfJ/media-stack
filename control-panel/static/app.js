@@ -55,18 +55,14 @@ const PRIMARY_ACTIONS = [
     endpoint: "/api/plex/clean-bundles",
     icon: "broom",
   },
-  {
-    id: "bazarr-search-wanted",
-    title: "Search all wanted subtitles",
-    desc: "Runs Bazarr's missing-subtitle search for every series and movie now, bypassing the 6-hour schedule.",
-    endpoint: "/api/bazarr/search-wanted",
-    icon: "search",
-  },
 ];
 
 const ARR_APPS = [
   { id: "radarr", label: "Radarr", port: 7878, queue: true },
   { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
+  { id: "lidarr", label: "Lidarr", port: 8686, queue: true },
+  { id: "readarr", label: "Readarr", port: 8787, queue: true },
+  { id: "whisparr", label: "Whisparr", port: 6969, queue: true },
 ];
 
 /* Every service's own web UI - replaces Heimdall/Homepage as the link
@@ -82,9 +78,12 @@ const QUICK_LINKS = [
   { id: "zurg", label: "Zurg", port: 9999 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
+  { id: "lidarr", label: "Lidarr", port: 8686 },
+  { id: "readarr", label: "Readarr", port: 8787 },
+  { id: "whisparr", label: "Whisparr", port: 6969 },
   { id: "nzbdav", label: "NzbDAV", port: 3001 },
+  { id: "calibre-web", label: "Calibre-Web", port: 8083 },
   { id: "seerr", label: "Seerr", port: 5055 },
-  { id: "bazarr", label: "Bazarr", port: 6767 },
   { id: "byparr", label: "Byparr", port: 8191 },
   { id: "tautulli", label: "Tautulli", port: 8182 },
   { id: "glances", label: "Glances", port: 61208 },

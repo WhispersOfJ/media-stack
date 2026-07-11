@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """One-off: enables Radarr/Sonarr's own Recycle Bin so a repeat of the
-unexplained mass-deletion event (CHANGELOG v4.13.0, TODO.md) lands
-recoverable content in a real folder instead of disappearing outright. Not a
-fix for that event's still-unknown root cause - a blast-radius mitigation.
+unexplained mass-deletion event (see README.md's Known gaps and limitations
+section) lands recoverable content in a real folder instead of disappearing
+outright. Not a fix for that event's still-unknown root cause - a
+blast-radius mitigation.
 
 Each app's recycle bin lives inside its own writable root (/data/movies,
 /data/shows) rather than a new bind mount, so Radarr/Sonarr can hardlink

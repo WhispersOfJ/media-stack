@@ -3,13 +3,13 @@ Control Panel - the single dashboard for The Stack: live container status
 and start/stop/restart control, host system stats, Zilean's own indexed-hash
 count, one-click operational actions, and a direct Zilean search with
 grab-to-Decypharr. Supersedes the old Homepage+Control Panel split - see
-TECHNICAL.md's Control Panel section.
+README.md's Control Panel section.
 
 Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
-HTTP API (Plex, Radarr, Sonarr, Bazarr, Zilean), Glances (host stats), and
-zilean-postgres directly (hash count - Zilean has no stats API of its own).
-No auth - LAN-only, matches every other service in this stack (see
-TECHNICAL.md's "Security note").
+HTTP API (Plex, Radarr, Sonarr, Lidarr, Readarr, Whisparr, Zilean), Glances
+(host stats), and zilean-postgres directly (hash count - Zilean has no stats
+API of its own). No auth - LAN-only, matches every other service in this
+stack (see README.md's "Security" section).
 """
 import os
 import re
@@ -33,8 +33,6 @@ ZILEAN_URL = "http://zilean:8181"
 DECYPHARR_URL = "http://decypharr:8282"
 DECYPHARR_MANUAL_CATEGORY = "manual"
 GLANCES_URL = "http://glances:61208"
-BAZARR_URL = "http://bazarr:6767"
-BAZARR_API_KEY = os.environ.get("BAZARR_API_KEY")
 NZBDAV_URL = "http://nzbdav:3000"
 NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
 ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
@@ -63,12 +61,39 @@ ARR_APPS = {
         "search_command": "MissingEpisodeSearch",
         "label": "Sonarr",
     },
+    # Lidarr/Readarr/Whisparr reinstated in 10.2.0 (originally removed in
+    # 7.0.0/4.0.0) - api version and search_command name both differ per
+    # app, confirmed live against each app's own /command endpoint rather
+    # than assumed (Whisparr v3's is "MissingMoviesSearch", matching Radarr
+    # naming despite tracking scenes, not "MissingEpisodeSearch" like
+    # Sonarr would suggest from its Sonarr-codebase heritage).
+    "lidarr": {
+        "url": "http://lidarr:8686",
+        "api": "v1",
+        "key": os.environ["LIDARR_API_KEY"],
+        "search_command": "MissingAlbumSearch",
+        "label": "Lidarr",
+    },
+    "readarr": {
+        "url": "http://readarr:8787",
+        "api": "v1",
+        "key": os.environ["READARR_API_KEY"],
+        "search_command": "MissingBookSearch",
+        "label": "Readarr",
+    },
+    "whisparr": {
+        "url": "http://whisparr:6969",
+        "api": "v3",
+        "key": os.environ["WHISPARR_API_KEY"],
+        "search_command": "MissingMoviesSearch",
+        "label": "Whisparr",
+    },
 }
 
-# Unstick/manual-import only make sense for apps with a download queue that
-# actually gets stuck on import matching - just Radarr/Sonarr now that
-# Lidarr/Readarr are gone.
-QUEUE_ARR_APPS = ("radarr", "sonarr")
+# All five now have a real download queue (Decypharr + NzbDAV wired to
+# each as of 10.2.0) - Unstick/manual-import work identically on all of
+# them, same reasoning 7.0.0 used when this was just Radarr/Sonarr.
+QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "readarr", "whisparr")
 
 # Display-only labels/notes for the container grid - NOT an allow-list.
 # Which containers actually exist, and which actions are valid on them, is
@@ -81,7 +106,10 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 CONTAINER_LABELS = {
     "radarr": ("Radarr", "also clears the stale Zurg mount issue (v4.0.1)"),
     "sonarr": ("Sonarr", None),
-    "bazarr": ("Bazarr", None),
+    "lidarr": ("Lidarr", "music"),
+    "readarr": ("Readarr", "ebooks - upstream retired, last pinned build"),
+    "whisparr": ("Whisparr", "adult, v3"),
+    "calibre-web": ("Calibre-Web", "ebook reader/library UI"),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
     "zurg": ("Zurg", "Real-Debrid mount"),
@@ -166,6 +194,11 @@ class ManualImportFile(BaseModel):
     movieId: int | None = None
     seriesId: int | None = None
     episodeIds: list[int] | None = None
+    artistId: int | None = None
+    albumId: int | None = None
+    trackIds: list[int] | None = None
+    authorId: int | None = None
+    bookId: int | None = None
 
 
 def own_container():
@@ -498,38 +531,8 @@ def plex_updates():
 
 
 # ---------------------------------------------------------------------
-# Bazarr - runs its own "Search for Missing Series/Movies Subtitles" tasks
-# every 6 hours on a schedule; this bypasses that wait the same way Kometa's
-# run button bypasses its own 05:00 schedule. Uses Bazarr's generic
-# scheduler endpoint (POST /api/system/tasks, taskid=<job_id>) rather than a
-# per-item subtitle-search call - one click searches the whole library's
-# wanted list, matching the arr apps' own "Search missing" pattern below.
-# ---------------------------------------------------------------------
-def bazarr_headers():
-    if not BAZARR_API_KEY:
-        fail("Bazarr isn't configured (BAZARR_API_KEY not set)", status_code=503)
-    return {"X-API-KEY": BAZARR_API_KEY}
-
-
-@app.post("/api/bazarr/search-wanted")
-def bazarr_search_wanted():
-    for task_id in ("wanted_search_missing_subtitles_series", "wanted_search_missing_subtitles_movies"):
-        try:
-            r = httpx.post(
-                f"{BAZARR_URL}/api/system/tasks",
-                data={"taskid": task_id},
-                headers=bazarr_headers(),
-                timeout=15,
-            )
-            r.raise_for_status()
-        except httpx.HTTPError as e:
-            fail(f"Bazarr search-wanted ({task_id}) failed: {e}")
-    return ok("Bazarr is searching for every missing series and movie subtitle now.")
-
-
-# ---------------------------------------------------------------------
 # NzbDAV - Usenet streaming layer (WebDAV + rclone, no local disk - see
-# CHANGELOG.md [10.1.0]). Talks to its own SABnzbd-compatible query API
+# README.md's Usenet Pipeline section). Talks to its own SABnzbd-compatible query API
 # (mode=queue/mode=history) rather than a dedicated REST API - it doesn't
 # have one beyond that.
 # ---------------------------------------------------------------------
@@ -806,8 +809,10 @@ def arr_manual_import_candidates(app_name: str):
             # whole list - the others are still worth showing.
             continue
         for f in r.json():
-            match = f.get("movie") or f.get("series")
+            match = f.get("movie") or f.get("series") or f.get("artist") or f.get("author")
             episodes = f.get("episodes") or []
+            tracks = f.get("tracks") or []
+            books = f.get("books") or []
             file_payload = {
                 "path": f.get("path"),
                 "folderName": f.get("folderName"),
@@ -816,11 +821,18 @@ def arr_manual_import_candidates(app_name: str):
                 "releaseGroup": f.get("releaseGroup"),
                 "downloadId": f.get("downloadId"),
             }
-            if app_name == "radarr":
+            if app_name == "radarr" or app_name == "whisparr":
                 file_payload["movieId"] = match.get("id") if match else None
-            else:
+            elif app_name == "sonarr":
                 file_payload["seriesId"] = (match or {}).get("id") or (episodes[0]["seriesId"] if episodes else None)
                 file_payload["episodeIds"] = [e["id"] for e in episodes]
+            elif app_name == "lidarr":
+                file_payload["artistId"] = match.get("id") if match else None
+                file_payload["albumId"] = f.get("album", {}).get("id")
+                file_payload["trackIds"] = [t["id"] for t in tracks]
+            elif app_name == "readarr":
+                file_payload["authorId"] = match.get("id") if match else None
+                file_payload["bookId"] = books[0]["id"] if books else None
             episode_label = None
             if episodes:
                 e = episodes[0]
