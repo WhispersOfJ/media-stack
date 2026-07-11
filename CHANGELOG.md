@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v9.1.1**.
+retroactive pass) was never versioned under. Current version: **v10.0.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,59 @@ retroactive pass) was never versioned under. Current version: **v9.1.1**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [10.0.0] — Network security layer fully reverted: Traefik + Authelia + CrowdSec removed, direct ports restored
+
+Owner call, not a bug fix: after living with [9.0.0](CHANGELOG.md)'s login+2FA-in-front-of-
+everything for a day, the day-to-day friction (a password+TOTP prompt in front of Sonarr/Radarr/
+etc. for a stack that's genuinely LAN-only anyway, three extra services to keep healthy, plus the
+firewall bug in [9.1.1](CHANGELOG.md) that took Plex down through the proxy) wasn't worth what it
+bought. Reverted the whole layer back to [8.2.0](CHANGELOG.md)'s model: every web UI publishes
+its port directly on the host again, no login gate, LAN/Tailscale trust only - the same model
+this stack ran under from [3.1.0](CHANGELOG.md) through [8.2.0](CHANGELOG.md).
+
+This is a revert of the *network security layer specifically*, not a revert of everything that
+shipped alongside it in [9.0.0](CHANGELOG.md)/[9.1.0](CHANGELOG.md)/[9.1.1](CHANGELOG.md): the
+README/TECHNICAL.md documentation split, and every unrelated fix from the rest of that same day
+(Discord webhook posting, Pinchflat/Lidarr/Readarr/Whisparr cleanup, CI gates, off-site backup,
+Control Panel's CSRF/Origin-Host hardening, restart-all ordering) all stay exactly as they were -
+see each entry below for those individually.
+
+### Removed
+- **Traefik, Authelia, CrowdSec** - all three services, their `docker-compose.yml` blocks, and
+  the `authelia/`, `crowdsec/`, `traefik/` config directories deleted outright.
+- **`docker-compose.yml` labels → `ports:`** - every `traefik.*` label removed; all 18 services
+  [9.0.0](CHANGELOG.md) migrated behind Traefik got their direct host `ports:` mapping back,
+  identical to what they ran before that migration. Adminer (added in [9.0.0](CHANGELOG.md)
+  itself, so it never had a direct port before) got a new one - `8081:8080`, since `8080` is
+  already Dozzle's.
+- **`.env`/`.env.example`** - `AUTHELIA_SESSION_SECRET`, `AUTHELIA_STORAGE_ENCRYPTION_KEY`,
+  `AUTHELIA_JWT_SECRET`, `CROWDSEC_BOUNCER_API_KEY` all removed. `HOST_IP` stays - Control
+  Panel's CSRF check and Watchtower's notification hostname both still use it independently of
+  Traefik.
+- **`scripts/setup_wizard.py`** - the three `AUTHELIA_*` keys removed from `AUTO_GENERATE_KEYS`.
+- **Host firewall** - `/etc/nftables.conf`'s default-deny `inet filter` table (host-level, not
+  tracked in this repo) removed live via the rollback command documented in its own header
+  comment (`sudo nft delete table inet filter`), and `nftables.service` disabled so it doesn't
+  reapply on the next boot. Docker's own iptables-nft tables and Tailscale's `ts-input`/
+  `ts-forward` chains were never touched by this table and remain exactly as they were.
+- **README.md/TECHNICAL.md** - the `https://*.cave.internal` + hosts-file instructions and the
+  2FA walkthrough replaced with the direct `http://<ip>:<port>` table; TECHNICAL.md's Security
+  note, Control Panel section, and setup-wizard section rewritten to describe the reverted state
+  instead of the removed one.
+
+### Kept
+- **[7.2.0](CHANGELOG.md)'s CSRF/Origin-Host validation** on Control Panel's POST endpoints.
+  Deliberately not part of this revert - it isn't the network-security layer, it closes a
+  same-origin-POST gap that exists regardless of whether Traefik/Authelia are in front of
+  anything. See the updated [Security note](TECHNICAL.md#security-note) for the distinction.
+
+### Verified live
+- `docker compose config` validated clean after every `docker-compose.yml` edit.
+- `traefik`, `authelia`, `crowdsec` containers stopped and removed; the 18 direct-port services
+  plus Adminer recreated via `docker compose up -d` and confirmed healthy.
+- `sudo nft list ruleset` confirmed the `inet filter` table is gone and Docker/Tailscale's own
+  tables are untouched.
 
 ## [9.1.1] — Fixed: Plex unreachable from any stacknet container (Traefik 502s, silent Radarr/Sonarr notification failures) - firewall hairpin-NAT gap
 

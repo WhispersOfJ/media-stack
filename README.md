@@ -76,60 +76,45 @@ earlier:
    you only need to paste in these three new values.
 4. Run `docker compose up -d --force-recreate control-panel` to pick up the change.
 
-## How everything is protected
+## Security note
 
-Every app in this stack sits behind a real login screen with two-factor authentication (2FA) —
-the kind where you type a password *and* a rotating 6-digit code from an app on your phone, the
-same idea as logging into a bank. This is handled by a piece of the stack called **Authelia**,
-and it's already set up for you.
+There's no login screen in front of any of these apps — this stack trusts whoever can reach it,
+same as a printer or a smart TV on your network. That's a deliberate, simple choice for a
+home server used only on your own network, not an oversight.
 
-- The first time you open any of the apps below, you'll be sent to a login page. Log in with
-  the account you were given when this was set up.
-- You'll be asked to set up two-factor authentication the first time — this means scanning a QR
-  code with an authenticator app on your phone (Google Authenticator, Authy, or similar are all
-  fine, free apps).
-- After that, you stay logged in for a while — you won't have to do this on every visit.
-
-Two things worth knowing:
-- Everything is reached through **`https://` addresses** (the padlock-in-the-browser kind),
-  not the plain `http://<ip>:<port>` addresses older setups use. This is safer.
+- Everything is reached through plain **`http://<ip>:<port>`** addresses — no certificate to
+  install, no account to create.
 - These addresses only work from devices on your home network, or connected to your
   [Tailscale](https://tailscale.com) network if you have one set up — nothing here is reachable
-  from the public internet by default. That's intentional and is the safer default; see
-  [TECHNICAL.md](TECHNICAL.md) if you ever want to change that.
+  from the public internet unless you specifically set that up yourself.
+- **Control Panel** and **Dozzle** are worth knowing about specifically — they can restart or
+  inspect any container in this stack. Don't put this stack on a network you don't trust, and
+  don't forward any of these ports to the public internet. See [TECHNICAL.md](TECHNICAL.md) if
+  you ever want to add a login layer back in front of everything.
 
 ## Opening everything in your browser
 
-Each app has its own address, in the form `https://<name>.cave.internal`. For your browser to
-find these addresses, add this line to your computer's **hosts file** once (a plain text file
-your computer already checks before looking anything up on the internet):
+Each app has its own address, in the form `http://<this computer's local network address>:<port>`
+— find your computer's local address with `hostname -I` (Linux) or by checking your router's
+connected-devices list, then just add `:` and the port number below. For example, if your
+server's address is `192.168.1.50`, Seerr is at `http://192.168.1.50:5055`.
 
-```
-<this computer's local network address>  traefik.cave.internal authelia.cave.internal prowlarr.cave.internal zilean.cave.internal decypharr.cave.internal decypharr-alldebrid.cave.internal zurg.cave.internal radarr.cave.internal sonarr.cave.internal nzbget.cave.internal seerr.cave.internal bazarr.cave.internal byparr.cave.internal tautulli.cave.internal control-panel.cave.internal debridmediamanager.cave.internal cleanuparr.cave.internal neutarr.cave.internal dozzle.cave.internal plex.cave.internal glances.cave.internal adminer.cave.internal
-```
-
-- On Linux/Mac, that file is `/etc/hosts`; on Windows it's
-  `C:\Windows\System32\drivers\etc\hosts`. You'll need administrator/root access to edit it.
-- Replace `<this computer's local network address>` with the actual local IP address of the
-  computer running the stack (something like `192.168.x.x`).
-- Do this on every device you want to use these addresses from (your laptop, your phone, etc).
-
-| App | Address | What it's for, in plain English |
+| App | Port | What it's for, in plain English |
 |---|---|---|
-| **Seerr** | `https://seerr.cave.internal` | **Start here day to day.** Search for a movie or show and click Request — everything else happens automatically. |
-| **Plex** | `https://plex.cave.internal` | Your actual streaming app — this is what you watch things on. |
-| **Radarr** | `https://radarr.cave.internal` | Manages your movie library behind the scenes. |
-| **Sonarr** | `https://sonarr.cave.internal` | Manages your TV show library behind the scenes. |
-| **Bazarr** | `https://bazarr.cave.internal` | Automatically finds subtitles for what you watch. |
-| **Tautulli** | `https://tautulli.cave.internal` | Shows stats on what's been watched, by whom. |
-| **Control Panel** | `https://control-panel.cave.internal` | One dashboard with links to everything, plus quick buttons for common tasks. |
-| **DebridMediaManager** | `https://debridmediamanager.cave.internal` | Browse your Real-Debrid/AllDebrid account directly. |
-| Prowlarr | `https://prowlarr.cave.internal` | Behind-the-scenes indexer — you generally won't need to open this. |
-| Zilean, Decypharr, Zurg | `https://zilean.cave.internal`, `https://decypharr.cave.internal`, `https://zurg.cave.internal` | Behind-the-scenes plumbing that connects Real-Debrid/AllDebrid to your library. Rarely need to be opened directly. |
-| NZBGet | `https://nzbget.cave.internal` | A backup download method for the rare thing debrid doesn't have. |
+| **Seerr** | `5055` | **Start here day to day.** Search for a movie or show and click Request — everything else happens automatically. |
+| **Plex** | `32400/web` | Your actual streaming app — this is what you watch things on. |
+| **Radarr** | `7878` | Manages your movie library behind the scenes. |
+| **Sonarr** | `8989` | Manages your TV show library behind the scenes. |
+| **Bazarr** | `6767` | Automatically finds subtitles for what you watch. |
+| **Tautulli** | `8182` | Shows stats on what's been watched, by whom. |
+| **Control Panel** | `8420` | One dashboard with links to everything, plus quick buttons for common tasks. |
+| **DebridMediaManager** | `3000` | Browse your Real-Debrid/AllDebrid account directly. |
+| Prowlarr | `9696` | Behind-the-scenes indexer — you generally won't need to open this. |
+| Zilean, Decypharr, Zurg | `8181`, `8282`, `9999` | Behind-the-scenes plumbing that connects Real-Debrid/AllDebrid to your library. Rarely need to be opened directly. |
+| NZBGet | `6789` | A backup download method for the rare thing debrid doesn't have. |
 | Byparr, Cleanuparr, NeutArr | — | Quiet background helpers with no reason to visit day to day. |
-| Glances, Dozzle | `https://glances.cave.internal`, `https://dozzle.cave.internal` | Technical stats/logs — only useful if something's wrong. |
-| Adminer | `https://adminer.cave.internal` | A database viewer — only needed for advanced troubleshooting. |
+| Glances, Dozzle | `61208`, `8080` | Technical stats/logs — only useful if something's wrong. |
+| Adminer | `8081` | A database viewer — only needed for advanced troubleshooting. |
 
 You genuinely only need **Seerr** and **Plex** for everyday use. Everything else runs quietly in
 the background.
@@ -147,7 +132,7 @@ its own.
 
 ## If something goes wrong
 
-- **Check Control Panel first** (`https://control-panel.cave.internal`) — it shows every app's
+- **Check Control Panel first** (`http://<your server's address>:8420`) — it shows every app's
   status at a glance and lets you restart anything with one click.
 - **`docker compose up -d`** is always safe to run again — it only touches anything that's
   actually not running correctly, and won't disturb apps that are already fine.

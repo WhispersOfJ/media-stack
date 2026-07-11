@@ -1,8 +1,0 @@
-# Static acquisition config - git-tracked, no secrets (just tells CrowdSec
-# where to read logs from and what parser labels to apply). Runtime state
-# (crowdsec.db, downloaded hub collections) lives under config/crowdsec/,
-# gitignored same as every other app's stateful config in this stack.
-filenames:
-  - /var/log/traefik/access.log
-labels:
-  type: traefik
