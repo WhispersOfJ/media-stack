@@ -1,10 +1,10 @@
 # The Stack
 
-Current version: **v10.3.0**
+Current version: **v10.5.0**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
-downloaded) when nothing's cached, and serves the result through a containerized Plex. 32
+downloaded) when nothing's cached, and serves the result through a containerized Plex. 35
 services, one compose file, every image pinned and healthchecked, one custom-built dashboard
 (Control Panel) and one custom CLI (`stack-*` fish functions) as the two operator surfaces.
 
@@ -249,34 +249,35 @@ Every service currently defined in `docker-compose.yml`, in the order they appea
 | 5 | `decypharr-alldebrid` | `cy01/blackhole:v2.3` | 8283 | core |
 | 6 | `zurg` | `ghcr.io/debridmediamanager/zurg@sha256:924f17...` | 9999 | core |
 | 7 | `rclone-alldebrid` | `rclone/rclone:1.74.4` | — | core |
-| 8 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
-| 9 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
-| 10 | `lidarr` | `ghcr.io/hotio/lidarr:release` | 8686 | core |
-| 11 | `readarr` | `lscr.io/linuxserver/readarr:0.4.19-nightly` | 8787 | core |
-| 12 | `whisparr` | `ghcr.io/hotio/whisparr:v3` | 6969 | core |
-| 13 | `calibre-web` | `lscr.io/linuxserver/calibre-web:latest` | 8083 | core |
-| 14 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
-| 15 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | — | core |
-| 16 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
-| 17 | `plex` | `plexinc/pms-docker:1.43.2.10687-563d026ea` | 32400 (host net) | core |
-| 18 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
-| 19 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
-| 20 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 21 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
-| 22 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
-| 23 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
-| 24 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
-| 25 | `dmm-mysql` | `mysql:8.4` | — | extras |
-| 26 | `dmm-redis` | `redis:7-alpine` | — | extras |
-| 27 | `adminer` | `adminer:5.4.2-standalone` | 8081 | extras |
-| 28 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
-| 29 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 30 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 31 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 32 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
-| 33 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 8 | `rclone-alldebrid-anime` | `rclone/rclone:1.74.4` | — | core |
+| 9 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
+| 10 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
+| 11 | `lidarr` | `ghcr.io/hotio/lidarr:release` | 8686 | core |
+| 12 | `readarr` | `lscr.io/linuxserver/readarr:0.4.19-nightly` | 8787 | core |
+| 13 | `whisparr` | `ghcr.io/hotio/whisparr:v3` | 6969 | core |
+| 14 | `calibre-web` | `lscr.io/linuxserver/calibre-web:latest` | 8083 | core |
+| 15 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
+| 16 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | — | core |
+| 17 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
+| 18 | `plex` | `plexinc/pms-docker:1.43.2.10687-563d026ea` | 32400 (host net) | core |
+| 19 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
+| 20 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
+| 21 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 22 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
+| 23 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
+| 24 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
+| 25 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
+| 26 | `dmm-mysql` | `mysql:8.4` | — | extras |
+| 27 | `dmm-redis` | `redis:7-alpine` | — | extras |
+| 28 | `adminer` | `adminer:5.4.2-standalone` | 8081 | extras |
+| 29 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
+| 30 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 31 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 32 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 33 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
+| 34 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
 
-`docker compose up -d` brings up the 17 core services; `docker compose --profile extras up -d`
+`docker compose up -d` brings up the 18 core services; `docker compose --profile extras up -d`
 adds the other 16. Both commands are safe to run repeatedly — Compose only recreates what's
 actually out of sync with `docker-compose.yml`.
 
@@ -489,6 +490,15 @@ is a catch-all regex (`/.*/`) that must sort last** — every more specific grou
 ```yaml
 # config/zurg/config.yml (real, token/plex_token redacted)
 directories:
+  # Checked before the generic "shows" group below (has_episodes: true would
+  # otherwise claim these first) - matches well-known fansub/release-group
+  # tags plus an episode-number marker, so it only catches episodic anime.
+  # Anime movies fall through to anime-movies below instead.
+  anime-shows:
+    group: media
+    group_order: 8
+    filters:
+      - regex: /(?i)\[(SubsPlease|Erai-raws|Judas|EMBER|HorribleSubs|Commie|ASW|GJM|Yameii|Tsundere-Raws|ReinForce|DKB|Anime Time|Golumpa|Beatrice-Raws|Kawaiika-Raws|Chihiro|Doki|UTW|Underwater|DameDesuYo|ToonsHub|NC-Raws|PAS)\].*(-\s?\d{2,3}(\D|$)|\bE\d{2,3}\b|S\d{1,2}E\d{1,3})/
   shows:
     group: media
     group_order: 10
@@ -513,6 +523,15 @@ directories:
     group_order: 17
     filters:
       - regex: /(?i)\bXXX\b/
+  # Same fansub-tag list as anime-shows, without the episode-marker
+  # requirement - episodic anime is already claimed by anime-shows (lower
+  # group_order, checked first), so whatever matches this tag list by the
+  # time it's checked is movie-style anime.
+  anime-movies:
+    group: media
+    group_order: 19
+    filters:
+      - regex: /(?i)\[(SubsPlease|Erai-raws|Judas|EMBER|HorribleSubs|Commie|ASW|GJM|Yameii|Tsundere-Raws|ReinForce|DKB|Anime Time|Golumpa|Beatrice-Raws|Kawaiika-Raws|Chihiro|Doki|UTW|Underwater|DameDesuYo|ToonsHub|NC-Raws|PAS)\]/
   movies:
     filters:
       - regex: /.*/
@@ -520,10 +539,43 @@ directories:
     group_order: 20
 ```
 
-`shows` (10) < `music` (12) < `books` (14) < `adult` (17) < `movies` (20) — the exact ordering
-that keeps the catch-all from swallowing everything above it. These same two groups (`music`,
-`books`) existed once before, were removed as dead routing when Lidarr/Readarr were pulled (see
-[History](#history)), and are now restored to feed the reinstated apps.
+`anime-shows` (8) < `shows` (10) < `music` (12) < `books` (14) < `adult` (17) < `anime-movies` (19)
+< `movies` (20) — the exact ordering that keeps the catch-all from swallowing everything above it.
+`music`/`books` existed once before, were removed as dead routing when Lidarr/Readarr were pulled
+(see [History](#history)), and are now restored to feed the reinstated apps. `anime-shows`/
+`anime-movies` are new, added for a dedicated Plex Anime library — see
+[Plex](#plex) for the library setup and the fansub-tag regex's real-world accuracy so far.
+
+**The fansub-tag list is deliberately not exhaustive** — it covers the release groups that
+actually showed up in this account's cache (`SubsPlease`, `Erai-raws`, and others), not every
+fansub group that exists. New groups that appear in future grabs and aren't in the list will fall
+through to `shows`/`movies` instead of `anime-shows`/`anime-movies` — extend the regex's
+alternation list when that happens rather than treating it as a bug.
+
+### Zurg's mount is a supervised rclone subprocess, not built into the binary directly
+
+Despite the container having `/dev/fuse`, `cap_add: SYS_ADMIN`, and `apparmor:unconfined` (which
+look like Zurg mounts `/mnt/zurg` itself), the actual FUSE mount is a **separate rclone process
+that Zurg spawns and supervises**, controlled by two config keys that were missing from
+`config.yml` entirely until this was diagnosed:
+
+```yaml
+# config/zurg/config.yml
+mount_path: /mnt/zurg
+rclone_enabled: true
+```
+
+**Real incident, not a hypothetical**: without these two keys, Zurg's own dashboard shows the
+mount as "Stopped ... Disabled in config," and a plain `docker restart zurg` leaves `/mnt/zurg`
+completely empty afterward — silently, with no error surfaced anywhere in Plex or any `*arr` app,
+just an empty directory. This apparently was only ever toggled on live through Zurg's own
+dashboard UI (an in-memory setting that isn't written back to `config.yml`), so it looked like it
+was "just working" until the next restart discarded it. Confirmed live: adding these two keys and
+restarting produced `rclone started with mount /mnt/zurg` and `Mount verification successful` in
+the logs, and every directory (`movies`, `shows`, `music`, `books`, `adult`, and the two new anime
+groups) repopulated immediately. Same failure *class* as the `rclone-alldebrid` bug below, but a
+different root cause and a real permanent fix rather than a recovery procedure — written into
+`config.yml` now specifically so it can't silently regress to "in-memory only" again.
 
 ### Zilean ingestion from Zurg (a second hash source)
 
@@ -789,9 +841,82 @@ plex:
   | 3 | Music | artist | `tv.plex.agents.music` | `/mnt/zurg/music`, `/home/bear/Stack/media/music` |
   | 8 | Audiobooks | artist | `tv.plex.agents.none` | `/home/bear/Stack/media/audiobooks` |
   | 9 | Adult | movie | `tv.plex.agents.movie` | `/mnt/zurg/adult` |
+  | 10 | Anime Movies | movie | `tv.plex.agents.movie` | `/mnt/zurg/anime-movies`, `/home/bear/Stack/media/anime-movies` |
+  | 11 | Anime Shows | show | `tv.plex.agents.series` | `/mnt/all-anime`, `/mnt/zurg/anime-shows`, `/home/bear/Stack/media/anime-shows` |
 
   `./media` is mounted at its identical host absolute path (`/home/bear/Stack/media`) so every arr
   app's writable root folder is reachable the moment it's added as a library location.
+
+### Plex "Anime Movies" and "Anime Shows" libraries
+
+Two libraries backed by Zurg's `anime-movies`/`anime-shows` content-routing groups (see
+[The debrid pipeline](#the-debrid-pipeline-zurg--decypharr)) — stock Plex agents (`tv.plex.agents.movie`,
+`tv.plex.agents.series`), not a dedicated anime metadata agent (Plex ships none by default; adding
+one like HAMA would be a separate plugin-installation project, not done here).
+
+Created directly via the Plex API rather than the web UI (faster, no coordinate-dependent
+clicking):
+
+```bash
+curl -X POST "http://192.168.4.105:32400/library/sections?X-Plex-Token=$PLEX_TOKEN" \
+  --data-urlencode "name=Anime Shows" --data-urlencode "type=show" \
+  --data-urlencode "agent=tv.plex.agents.series" --data-urlencode "scanner=Plex TV Series" \
+  --data-urlencode "language=en-US" \
+  --data-urlencode "location=/mnt/zurg/anime-shows" \
+  --data-urlencode "location=/home/bear/Stack/media/anime-shows"
+```
+
+Note the multi-`location` gotcha: `curl --data-urlencode` posting the params as a form body
+returns a bare `400 Bad Request` with no explanation — Plex expects repeated `location=` params in
+the **query string** itself (`POST` with an empty body), not the request body. Updating an
+*existing* section's locations via `PUT /library/sections/{id}` has the same gotcha, plus it
+silently 400s unless `name`/`agent`/`scanner`/`language` are also repeated in the same request —
+a partial payload isn't treated as a partial update.
+
+**`Anime Shows` also includes `/mnt/all-anime`** — a second, purpose-built rclone mount
+(`rclone-alldebrid-anime`) exposing an `--include`-filtered view of the AllDebrid `all:magnets`
+remote, using the same fansub-tag list as Zurg's two groups. AllDebrid has no content-routing-groups
+feature of its own like Zurg does, so getting a filtered anime-only view out of it needed a whole
+second rclone process (glob `--include` patterns, brackets escaped) rather than one more config
+entry — this list has to be kept in sync by hand across two different filter syntaxes (Zurg's
+regex vs. rclone's glob) since they can't share a single definition. See
+[The debrid pipeline](#the-debrid-pipeline-zurg--decypharr) for the container definition.
+
+**`Anime Movies` deliberately does *not* include `/mnt/all-anime`** — unlike Zurg (which splits
+episodic vs. movie-style anime into two separate mount paths via the episode-marker regex), the
+AllDebrid-side filter is a single flat mount with no equivalent split; rclone's glob syntax can't
+express "has this tag AND lacks an episode-number pattern" as cleanly as Zurg's regex does. Adding
+it to *both* libraries was tried first and immediately produced real false positives — Plex's
+**movie** scanner matched raw episode files (`Honzuki No Gekokujou S4 13`, `Lord of Mysteries
+02v3`, `Dr Stone New World 01/02`, etc.) as if each were its own standalone film, since nothing in
+that flat directory tells a movie-type scanner "this is actually episodic." Caught and removed
+within the same session — the corrected fix (this section's location list) plus the still-open
+question this raises (real anime *movies* from AllDebrid currently have no path into this library
+at all) are recorded in [Known gaps and limitations](#known-gaps-and-limitations).
+
+**First-scan result, verified live**: 10 folders matched into `anime-shows` from Zurg's existing
+Real-Debrid cache the moment the mount came back (see the mount-outage note above), then 19 more
+distinct releases appeared from `/mnt/all-anime` once the AllDebrid-side filter mount was added —
+all correctly anime-tagged (`SubsPlease`/`Erai-raws`/`Yameii`), zero false positives from either
+source *once* `/mnt/all-anime` was scoped to `Anime Shows` only. 6 titles had auto-resolved Plex
+metadata within the first couple of scan passes (*Classroom of the Elite*, *Dr. STONE*, *Mobile
+Suit Gundam: The Witch from Mercury*, *One Piece*, *Star Blazers 2199*, plus one more) — the rest
+sat unmatched, which is ordinary Plex-agent behavior for raw fansub-style folder names against
+TheTVDB, not a filter problem; they need a manual **Match** in Plex's UI like any niche title
+would. `anime-movies` had zero matches from Zurg on this first pass — no anime-movie-style release
+happened to be cached on Real-Debrid yet, and (per above) AllDebrid isn't wired into this library
+at all right now.
+
+**This needs periodic re-checking as more content gets grabbed** — the fansub-tag list (see above)
+only covers release groups seen so far in this account's cache, and there's only been one real
+data point (Zurg's 10, then AllDebrid's 19) to validate against. Re-run the same spot-check
+periodically, against both sources:
+
+```bash
+ls /mnt/zurg/anime-shows/ /mnt/zurg/anime-movies/ /mnt/all-anime/
+curl -s -H "X-Plex-Token: $PLEX_TOKEN" http://192.168.4.105:32400/library/sections/11/all | \
+  grep -oP 'title="[^"]*"'
+```
 
 ### Plex "Audiobooks" and "Adult" libraries
 
@@ -802,8 +927,13 @@ since Plex has no dedicated audiobook library type or agent. It's pointed at
 `/home/bear/Stack/media/audiobooks` — that directory exists on disk but is currently empty, since
 nothing populates it automatically (no `*arr` app manages audiobooks specifically).
 
-**Adult** (library key 9) is a plain **Movie-type** library pointed at `/mnt/zurg/adult`, serving
-as the Plex-side destination for Whisparr's output, matching Zurg's `adult` content-routing group.
+**Adult** (library key 9) is a plain **Movie-type** library, originally pointed only at
+`/mnt/zurg/adult` (matching Zurg's `adult` content-routing group). **Real bug, found and fixed
+in v10.5.0**: that single location was always empty, and Whisparr's actual (and only) root
+folder — the local writable mount `/mnt/zurg` never receives writes through — was never added
+as a second `Location`, so every file Whisparr had grabbed and imported was invisible in Plex.
+Now has both `/mnt/zurg/adult` and `/home/bear/Stack/media/adult`, matching every other content
+type's dual-path pattern (see [Architecture](#architecture)).
 
 Both were verified live, not just configured:
 
@@ -891,10 +1021,16 @@ curl -s -H "X-Api-Key: $RADARR_API_KEY" \
 ```
 
 This replaced an earlier Recyclarr + TRaSH-Guides sync (41/40 per-quality-tier custom formats,
-synced daily) that was removed entirely — quality selection here is simple enough (one profile,
-one blocklist format) that the daily sync and its dozens of moving parts were judged more overhead
-than value. See [History](#history) for the full Recyclarr story, including the two real
-Postgres/Recyclarr major-version migrations it took along the way.
+synced daily) that was removed entirely for a long stretch — quality selection here was judged
+simple enough (one profile, one blocklist format) that the daily sync and its dozens of moving
+parts were more overhead than value. **Recyclarr was reinstated in v10.5.0**, but scoped much
+narrower than before: it targets this same `Unlimited` profile directly rather than its own
+competing profile, and only syncs five resolution-agnostic hygiene custom formats (Scene,
+Obfuscated, Retags, No-RlsGroup, Bad Dual Groups) rather than the old 41/40-format full catalog
+— `reset_unmatched_scores` is deliberately left off so the manual blocklist format above stays
+untouched by every sync. See [History](#history) for the full Recyclarr story, including the two
+real Postgres/Recyclarr major-version migrations the original sync took along the way, and the
+v10.5.0 entry for why it came back scoped the way it did.
 
 Lidarr carries its own additional custom format, **"Blocked Uploader (88 tag)"** — a regex
 (`(?<!\d)88(?:cube)?\s*$`) rejecting a specific low-trust uploader's release-title tag
@@ -1652,7 +1788,7 @@ document absorbed the changelog format entirely:
   (720p-and-up allowed, cutoff at Remux-2160p, upgrades enabled) — Whisparr previously only had its
   stock `Any`/`SD`/`HD-*` profiles, none matching the other two apps' actual policy.
 
-**v10.3.0 (current) — Maintainerr added; native Discord notifications on all five `*arr` apps.**
+**v10.3.0 — Maintainerr added; native Discord notifications on all five `*arr` apps.**
 Evaluated [RandomNinjaAtk/arr-scripts](https://github.com/RandomNinjaAtk/arr-scripts) for anything
 worth adopting (see [Maintainerr](#maintainerr-plex-library-lifecycle) for why almost none of it
 fit) and built the two things that did:
@@ -1666,6 +1802,71 @@ fit) and built the two things that did:
   reusing the existing `DISCORD_WEBHOOK_URL` — grab/import/upgrade/health-issue/app-update events,
   verified live via each app's own `/notification/test`. Shares one channel with the
   Watchtower/backup/health alerts from [Alerting](#alerting-discord); a known tradeoff, not a bug.
+
+**v10.4.0 — Anime Movies/Shows added; a real Zurg mount outage found and fixed.**
+
+- **Two new Zurg content-routing groups** (`anime-shows`, `anime-movies`) and matching Plex
+  libraries — see [Zurg's content-routing groups](#zurgs-content-routing-groups) and
+  [Plex "Anime Movies" and "Anime Shows" libraries](#plex-anime-movies-and-anime-shows-libraries)
+  for the fansub-tag regex, the ordering rationale, and the first live scan's results (10 shows
+  matched, zero false positives, only 2 auto-resolved Plex metadata).
+- **Found and fixed a real incident while doing that work**: restarting Zurg to pick up the new
+  groups left `/mnt/zurg` completely empty — not just the two new anime folders, *every* existing
+  directory (`movies`, `shows`, `music`, `books`, `adult`). Root cause: Zurg's `/mnt/zurg` mount is
+  a supervised rclone subprocess gated by `mount_path`/`rclone_enabled` config keys that were never
+  actually written to `config.yml` — apparently only ever toggled live through Zurg's own
+  dashboard, an in-memory setting that a plain `docker restart` silently discards with zero error
+  surfaced anywhere. Fixed by adding both keys to `config.yml` directly, so it can't regress to
+  "in-memory only" again. See
+  [Zurg's mount is a supervised rclone subprocess](#zurgs-mount-is-a-supervised-rclone-subprocess-not-built-into-the-binary-directly).
+- **Sonarr's `/data/anime` migration for all 1,505 existing `Anime`-genre series started** via
+  `PUT /api/v3/series/editor`, but the async `BulkMoveSeries` command got stuck queued behind a
+  long-running `ProcessMonitoredDownloads` job for the rest of that session — see v10.5.0 below
+  for how it actually resolved.
+
+**v10.5.0 (current) — Sonarr anime migration completed; Plex "Adult" library path bug found and
+fixed; Recyclarr added; arr command-queue backlog visibility.**
+
+- **The v10.4.0 migration stall cleared on its own.** The stuck `ProcessMonitoredDownloads`
+  command (id 13592) completed after 1h15m total (no restart needed); the queued
+  `BulkMoveSeries` command (13591, the 5-series test batch) then ran in under a second once
+  unblocked. Verified clean: all 5 test series had real files physically present at
+  `/data/anime/...`, zero orphaned folders left in `/data/shows`. The remaining 1,500 series
+  were then submitted in one more `PUT /api/v3/series/editor` call (command 14095), which
+  completed in 8 seconds once its own queue position cleared. **Verified complete**: all 1,505
+  `Anime`-genre series now have `path` under `/data/anime`, zero remaining under `/data/shows`,
+  spot-checked several with real episode files physically present on disk.
+- **Found and fixed a real, previously-undiscovered bug in the Plex "Adult" library.** Added in
+  v10.2.0 pointed at `/mnt/zurg/adult` only (empty — 0 entries) — Whisparr's actual, only root
+  folder is the local writable mount `./media/adult` → `/data/adult`, which already had real,
+  organized content (3 studio folders under `movies/`, 51 under `scenes/`). That path was never
+  added as a second library Location, so every file Whisparr had grabbed and imported was
+  invisible in Plex — not a scan failure, a missing `Location` entirely. Every other content
+  type (Movies, TV Shows, Anime Shows, Music) already had both the Zurg path and the local
+  writable path wired in; Adult was the one outlier. Fixed via a direct Plex API `PUT` adding
+  the second location (Plex's library-edit endpoint 400s if `type`/`agent`/`scanner`/`language`
+  aren't resent alongside `location` — a bare location-only `PUT` is treated as an invalid full
+  section redefinition, not a patch), then triggered a rescan.
+- **Recyclarr reinstated** (`profiles: [extras]`), deliberately not via its stock
+  resolution-tiered templates — those create a competing quality profile and hard-block SDR by
+  default, which would fight this stack's actual "Unlimited" policy (no resolution/dynamic-range
+  restriction) on the first sync. `config/recyclarr/recyclarr.yml` targets "Unlimited" directly
+  and only syncs five resolution-agnostic hygiene custom formats (Scene, Obfuscated, Retags,
+  No-RlsGroup, Bad Dual Groups) at TRaSH's own default scores. `reset_unmatched_scores` is left
+  off on purpose — it would zero out the two pre-existing hand-made hard blocks (`-10000` each,
+  sample/low-quality releases and raw Blu-ray discs) that Recyclarr doesn't manage. Validated
+  with `recyclarr sync --preview` before the real sync ran; confirmed live afterward that both
+  manual formats were untouched and the five new ones landed at matching severity. No Whisparr
+  support — TRaSH Guides doesn't publish custom-format guides for it.
+- **Control Panel: `GET /api/arr/{app}/command-backlog`** (plus a matching `stack-arr-backlog
+  <app>` fish function) — surfaces an arr app's internal `/command` queue (status counts,
+  what's currently running, oldest still-queued items). Built directly off the stall above: an
+  arr app's command backlog silently growing for over an hour behind one stuck job had zero
+  visibility anywhere in Control Panel's existing tooling, which only looks at the download
+  queue, not the internal command queue bulk moves/RSS sync/searches all share.
+- **Synced to the public `Stackalicious` repo**, sanitized (real host IP and the real host
+  username in one Plex bind-mount path both genericized) and covering v10.1.0 through this
+  version — see that repo's own `CHANGELOG.md`.
 
 ---
 

@@ -308,6 +308,83 @@ services:
     mem_reservation: 64m
     cpus: 4
 
+  # Same "all:" AllDebrid remote as rclone-alldebrid above, mounted a second
+  # time at a different path with an --include filter so the Anime
+  # libraries can see AllDebrid-cached anime too, not just Real-Debrid via
+  # Zurg. AllDebrid itself has no content-routing-groups feature like
+  # Zurg's directories/filters, so unlike Zurg this needed a second whole
+  # rclone process rather than one more config entry - same fansub-tag list
+  # as Zurg's anime-shows/anime-movies groups (see README's "Zurg's
+  # content-routing groups"), kept in sync by hand since rclone's filter
+  # syntax (glob, brackets escaped) isn't the same as Zurg's regex.
+  rclone-alldebrid-anime:
+    restart: unless-stopped
+    logging: *common-logging
+    image: rclone/rclone:1.74.4
+    container_name: rclone-alldebrid-anime
+    networks: [stacknet]
+    environment:
+      <<: *common-env
+      XDG_CONFIG_HOME: /config
+    entrypoint: ["rclone"]
+    command:
+      - "mount"
+      - "all:magnets"
+      - "/mnt/all-anime"
+      - "--config=/config/rclone/rclone.conf"
+      - "--dir-cache-time=10s"
+      - "--multi-thread-streams=0"
+      - "--cutoff-mode=cautious"
+      - "--vfs-cache-mode=minimal"
+      - "--network-mode"
+      - "--buffer-size=0"
+      - "--read-only"
+      - "--allow-other"
+      - "--allow-non-empty"
+      - "--include=*\\[SubsPlease\\]*/**"
+      - "--include=*\\[Erai-raws\\]*/**"
+      - "--include=*\\[Judas\\]*/**"
+      - "--include=*\\[EMBER\\]*/**"
+      - "--include=*\\[HorribleSubs\\]*/**"
+      - "--include=*\\[Commie\\]*/**"
+      - "--include=*\\[ASW\\]*/**"
+      - "--include=*\\[GJM\\]*/**"
+      - "--include=*\\[Yameii\\]*/**"
+      - "--include=*\\[Tsundere-Raws\\]*/**"
+      - "--include=*\\[ReinForce\\]*/**"
+      - "--include=*\\[DKB\\]*/**"
+      - "--include=*\\[Anime Time\\]*/**"
+      - "--include=*\\[Golumpa\\]*/**"
+      - "--include=*\\[Beatrice-Raws\\]*/**"
+      - "--include=*\\[Kawaiika-Raws\\]*/**"
+      - "--include=*\\[Chihiro\\]*/**"
+      - "--include=*\\[Doki\\]*/**"
+      - "--include=*\\[UTW\\]*/**"
+      - "--include=*\\[Underwater\\]*/**"
+      - "--include=*\\[DameDesuYo\\]*/**"
+      - "--include=*\\[ToonsHub\\]*/**"
+      - "--include=*\\[NC-Raws\\]*/**"
+      - "--include=*\\[PAS\\]*/**"
+    healthcheck:
+      test: ["CMD-SHELL", "mountpoint -q /mnt/all-anime || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/rclone/rclone.conf:/config/rclone/rclone.conf:ro
+      - /mnt:/mnt:rshared
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    # Same reasoning as rclone-alldebrid above.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 4
+
   # ---------------------------------------------------------------------
   # *arr apps
   # ---------------------------------------------------------------------
@@ -366,6 +443,10 @@ services:
       # Sonarr grab was stuck "No files found are eligible for import" with this mount missing.
       - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
       - ./media/shows:/data/shows
+      # Anime-specific root folder (Series Type: Anime) - same host directory
+      # already backing Plex's Anime Shows library location, so no Plex
+      # wiring was needed beyond adding this root folder in Sonarr itself.
+      - ./media/anime-shows:/data/anime
     ports:
       - "8989:8989"
 
@@ -451,6 +532,32 @@ services:
       - ./media/adult:/data/adult
     ports:
       - "6969:6969"
+
+  # Custom Format / Quality Profile sync from TRaSH Guides, for Sonarr and
+  # Radarr only - Recyclarr has no Whisparr support (TRaSH Guides doesn't
+  # publish custom-format guides for it). Runs as a persistent daemon on its
+  # own cron schedule rather than a one-shot job, per Recyclarr's own
+  # reference docker-compose.yml. Config lives in config/recyclarr/
+  # recyclarr.yml - deliberately scoped to only add new custom formats to
+  # the existing "Unlimited" quality profile, not create a competing
+  # profile or touch the two pre-existing manual block formats (see
+  # recyclarr.yml's own comments for why reset_unmatched_scores is left
+  # off).
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:latest
+    restart: unless-stopped
+    logging: *common-logging
+    container_name: recyclarr
+    profiles: [extras]
+    networks: [stacknet]
+    read_only: true
+    tmpfs: [/tmp]
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      CRON_SCHEDULE: "0 6 * * *" # once daily, 6am
+    volumes:
+      - ./config/recyclarr:/config
 
   # Ebook reader/library UI - Plex has no ebook agent (verified live via
   # /system/agents, no book/ebook identifier present), so Readarr's actual
