@@ -1,0 +1,9 @@
+[Unit]
+Description=Full ~/Claude directory snapshot to Dropbox (compressed)
+After=media-stack.service
+OnFailure=notify-failure@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Stack
+ExecStart=%h/Stack/scripts/backup-claude-dir.sh
