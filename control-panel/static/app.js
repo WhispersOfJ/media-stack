@@ -82,7 +82,7 @@ const QUICK_LINKS = [
   { id: "zurg", label: "Zurg", port: 9999 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "nzbget", label: "NZBGet", port: 6789 },
+  { id: "nzbdav", label: "NzbDAV", port: 3001 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "bazarr", label: "Bazarr", port: 6767 },
   { id: "byparr", label: "Byparr", port: 8191 },

@@ -88,7 +88,8 @@ CONTAINER_LABELS = {
     "rclone-alldebrid": ("rclone", "AllDebrid mount"),
     "decypharr": ("Decypharr", "Real-Debrid + AllDebrid"),
     "decypharr-alldebrid": ("Decypharr", "AllDebrid only, Sonarr-exclusive"),
-    "nzbget": ("NZBGet", None),
+    "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),
+    "nzbdav-rclone": ("rclone", "NzbDAV mount"),
     "seerr": ("Seerr", None),
     "tautulli": ("Tautulli", None),
     "byparr": ("Byparr", None),
@@ -727,8 +728,28 @@ def arr_queue(app_name: str) -> list[dict]:
 def stuck_queue_items(app_name: str) -> list[dict]:
     # warning/error is exactly what lights up the warning icon in Radarr's
     # and Sonarr's own Activity/Queue tab - not "importPending", which is
-    # just normal in-progress state.
+    # just normal in-progress state. Used by Unstick only (which removes +
+    # blocklists + re-searches) - deliberately narrower than
+    # import_candidate_queue_items below, since blocklisting a fine
+    # importPending download that just hasn't been processed yet would be
+    # actively harmful.
     return [q for q in arr_queue(app_name) if q.get("trackedDownloadStatus") in ("warning", "error")]
+
+
+def import_candidate_queue_items(app_name: str) -> list[dict]:
+    # Broader than stuck_queue_items - also includes "importPending" (fully
+    # downloaded, waiting on the arr app's own internal queue-processing
+    # command to actually run the import). Found live: this is common, not
+    # rare - a busy arr instance can sit on a completed download for
+    # minutes at a time behind its own command queue, and the previous
+    # warning/error-only filter meant Manual Import always reported "0
+    # importable files" for exactly the downloads a user would most want to
+    # nudge along.
+    return [
+        q for q in arr_queue(app_name)
+        if q.get("trackedDownloadStatus") in ("warning", "error")
+        or q.get("trackedDownloadState") == "importPending"
+    ]
 
 
 @app.post("/api/arr/{app_name}/unstick")
@@ -762,13 +783,13 @@ def arr_unstick(app_name: str):
 @app.get("/api/arr/{app_name}/manual-import")
 def arr_manual_import_candidates(app_name: str):
     """Every importable file the arr app can see across all currently
-    stuck queue items, in the same shape its own Manual Import screen
-    would show - each candidate is echoed straight back on import so the
-    quality/language/match info can't drift from what the arr app itself
-    reported."""
+    stuck-or-importPending queue items, in the same shape its own Manual
+    Import screen would show - each candidate is echoed straight back on
+    import so the quality/language/match info can't drift from what the
+    arr app itself reported."""
     cfg = require_queue_app(app_name)
     candidates = []
-    for q in stuck_queue_items(app_name):
+    for q in import_candidate_queue_items(app_name):
         folder, download_id = q.get("outputPath"), q.get("downloadId")
         if not folder or not download_id:
             continue
