@@ -15,7 +15,7 @@ Docker Compose media-acquisition-and-serving stack on `192.168.4.105` — indexe
 symlinks already-cached content from Real-Debrid / AllDebrid, served by a containerized Plex
 (migrated from a native install in [3.3.0](CHANGELOG.md) — see
 [Plex (containerized)](#plex-containerized) below). Nothing here downloads by default except the
-explicit NZBGet fallback.
+explicit NzbDAV fallback (streamed via WebDAV, not downloaded to local disk either).
 
 > 🤖 **Built with Claude AI.** This isn't a one-line disclaimer — every architectural
 > decision, every registry lookup to verify an image actually exists, every live API call to
@@ -30,8 +30,11 @@ Point it at a Real-Debrid/AllDebrid account and it wires together an indexer
 turn a request into an organized library (Radarr/Sonarr), a debrid gateway that
 symlinks already-cached content instead of downloading it (Decypharr + Zurg), and a
 containerized Plex to actually watch it on — 28 services total, one compose file, every image
-pinned and healthchecked. Usenet (NZBGet) is there as an explicit fallback for anything
-debrid doesn't have cached, not the default path.
+pinned and healthchecked. Usenet (NzbDAV) is there as an explicit fallback for anything
+debrid doesn't have cached, not the default path - like the debrid gateway, it's a WebDAV
+virtual filesystem streamed on demand, not a real local download (see
+[The Usenet caveat](#the-usenet-caveat) below - this replaced NZBGet as of
+[10.1.0](CHANGELOG.md); NZBGet was a genuine local download, which wasn't actually the goal).
 
 As of [4.9.0](CHANGELOG.md) it's genuinely turnkey to stand up: an installer image scaffolds
 the tracked files onto a fresh host, a browser-based setup wizard fills in `.env`, and
@@ -227,7 +230,8 @@ Radarr / Sonarr ──grab──> Decypharr (qBittorrent-compatible API)
    │                                        symlinked into  ▼
    │                                        each app's root folder: ./media/<type> → /data/<type>
    │
-   └──(secondary/fallback)──> NZBGet ──real local download──> ./usenet/downloads ──imported into──> same /data/<type>
+   └──(secondary/fallback)──> NzbDAV (SABnzbd-compatible API) ──streams via WebDAV──> rclone
+                               mount at /mnt/nzbdav ──symlinked into──> same /data/<type>
 
 Zurg (containerized)            → /mnt/zurg/{movies,shows,...}  → read by Plex directly (existing content)
 Decypharr DFS mount             → /mnt/decypharr/{...}          → symlink target, add as Plex location
@@ -299,7 +303,7 @@ Stack/
 ├── config/decypharr/config.json  # debrid API keys filled in (chmod 600)
 ├── config/decypharr/downloads/    # shared into every arr app at /app/downloads (identical path)
 ├── control-panel/                # custom-built one-click ops app (own Dockerfile, see below)
-├── usenet/{downloads,incomplete}  # NZBGet's real local downloads
+├── config/nzbdav/, config/nzbdav-rclone/rclone.conf  # NzbDAV + its rclone mount sidecar
 └── media/{movies,shows}  # every arr app's writable root folder (mounted at /data/<type>)
 ```
 
@@ -607,22 +611,53 @@ noted as **done** where complete. What's left is a preference call, not a techni
 
 ## The Usenet caveat
 
-NZBGet is a **real, local download** — the one piece of this stack that isn't debrid/symlink
-based, per the explicit ask to include it as a minimum component. Its completed files land
-in `./usenet/downloads` on local disk, not in Real-Debrid/AllDebrid's cloud, so:
+NzbDAV ([10.1.0](CHANGELOG.md)) is Usenet's path into this stack — like Decypharr/Zurg for
+debrid, it's a **virtual filesystem, not a real local download**: it exposes Usenet content as
+a WebDAV server, an `rclone` sidecar (`nzbdav-rclone`) mounts that WebDAV at `/mnt/nzbdav`, and
+completed downloads show up there as symlinks streamed on demand rather than files actually
+sitting on disk. Radarr/Sonarr talk to it exactly like SABnzbd (NzbDAV exposes a
+SABnzbd-compatible API), so no *arr-side logic had to change - just the download client type.
 
-- It shares the same `./media/<type>` root folders (mounted at `/data/<type>`) that every arr
-  app now uses for all imports, debrid or not — see [CHANGELOG.md](CHANGELOG.md) v2.2.0. You
-  can't write local files into the Zurg/Decypharr virtual filesystems, which is exactly why
-  these root folders exist on regular disk instead.
-- Plex needs additional library **locations** added for these paths — see
-  [Plex library locations to add](#plex-library-locations-to-add) below. This now matters for
-  *all* newly-imported content, not just NZBGet's.
-- It consumes real disk space, unlike everything else in this stack.
+This replaced **NZBGet**, which briefly ran in this exact role earlier the same session
+before being fully removed - NZBGet is a real local downloader, which wasn't actually the
+goal ("no disk storage" was the explicit ask). Nothing NZBGet ever wrote is used by the
+current setup; its `config/nzbget/` and `usenet/` directories were left on disk untouched
+(not deleted) rather than wired into anything.
 
-Already wired up this way — NZBGet is priority 2 behind Decypharr's priority 1 in all 4 arr
-apps, so debrid is always tried first and NZBGet only fires for things neither debrid
-service has cached.
+Two containers:
+- **`nzbdav`** (`nzbdav/nzbdav:latest`) - the WebDAV server + SABnzbd-compatible API + its own
+  web UI (`:3001` on the host, `:3000` internally - `3000` was already DebridMediaManager's
+  port on this host).
+- **`nzbdav-rclone`** (`rclone/rclone:1.74.4`) - mounts `nzbdav:` at `/mnt/nzbdav` with
+  `--vfs-cache-mode=full` and streaming-tuned flags (`--buffer-size=0M`,
+  `--vfs-read-ahead=512M`), same FUSE pattern (`SYS_ADMIN` + `apparmor:unconfined` +
+  `/dev/fuse`) `rclone-alldebrid` already uses for debrid.
+
+**Provider:** a real block-account news server (Thundernews, `news.thundernews.com:563` TLS)
+is configured as a Usenet provider inside NzbDAV's own UI (Settings → Usenet) - it's stored in
+`config/nzbdav/db.sqlite`'s `ConfigItems` table, not a config file or `.env`. Credentials are
+also recorded in `.env` (`NZBDAV_PROVIDER_*`, `NZBDAV_WEBDAV_*`, `NZBDAV_ADMIN_*`,
+`NZBDAV_API_KEY`) purely as the documented source of truth. Verified live: NzbDAV's own "Test
+Connection" reported success against the real server, and a real movie (Gone Girl, 2014) was
+grabbed by Radarr, downloaded by NzbDAV, and landed as a symlink at
+`/mnt/nzbdav/completed-symlinks/radarr/...` - confirmed via `config/nzbdav/db.sqlite`'s
+`HistoryItems` table (`DownloadStatus=1`, no `FailMessage`) and by checking that `usenet/`
+(NZBGet's old download path) received zero new files throughout.
+
+**Import strategy:** set to "Symlinks — Plex" in NzbDAV's SABnzbd settings, with
+`Rclone Mount Directory` pointed at `/mnt/nzbdav` (matching the rclone sidecar's own mount
+target) - this is what makes Radarr/Sonarr treat completed downloads as importable files at
+all, since without it NzbDAV would only support the STRM-file flow (Emby/Jellyfin, not Plex).
+
+Already wired up this way — NzbDAV is priority 2 behind Decypharr's priority 1 in all 4 arr
+apps, matching NZBGet's old fallback role: debrid is always tried first, NzbDAV only fires
+for things neither debrid service has cached.
+
+A quirk worth knowing: NzbDAV's own "Test Connection"/"Add Provider" UI only submits once
+every field on the form has actually been focused/touched, even ones already holding a valid
+default value - clicking the button while a field still shows its untouched default silently
+does nothing (no request, no error, nothing written to `db.sqlite`). Click or tab through
+every field first.
 
 ## Plex library locations to add
 
@@ -631,14 +666,16 @@ matching how `/mnt/all/magnets` is already an extra TV Shows location:
 
 - **`/home/bear/Stack/media/{movies,shows}`** — required, not optional, as of v2.2.0. Every
   remaining arr app's root folder lives here (regular disk, not Zurg's FUSE mount), so this is
-  where *all* future imports land — Decypharr-symlinked and NZBGet alike. Without this added as
-  a library location, newly-acquired content won't appear in Plex even though it's successfully
-  imported. Confirmed live and working for Sonarr (Blue Bloods S01E03); add the matching
-  location for each library type. (`music`/`books`/`adult` were the equivalent root folders for
-  Lidarr/Readarr/Whisparr - all three apps, and as of [8.0.0](CHANGELOG.md) their `./media`
-  directories too, have been removed.)
+  where *all* future imports land — Decypharr-symlinked and NzbDAV-symlinked alike. Without
+  this added as a library location, newly-acquired content won't appear in Plex even though
+  it's successfully imported. Confirmed live and working for Sonarr (Blue Bloods S01E03); add
+  the matching location for each library type. (`music`/`books`/`adult` were the equivalent
+  root folders for Lidarr/Readarr/Whisparr - all three apps, and as of
+  [8.0.0](CHANGELOG.md) their `./media` directories too, have been removed.)
 - `/mnt/decypharr/...` — Decypharr's own organized mount; the symlinks under `./media/<type>`
   point here, so Plex needs to be able to resolve through to it either way.
+- `/mnt/nzbdav/...` ([10.1.0](CHANGELOG.md)) — same reasoning as Decypharr above, for NzbDAV's
+  WebDAV-backed symlinks instead.
 
 ## Zilean hardware tuning
 
@@ -1487,10 +1524,12 @@ folders, Seerr, etc. all stay exactly as manual as they've always been).
 | Dozzle | Real-time log viewer for every container - the one thing [Control Panel](#control-panel)'s grid can't show |
 | Control Panel | The stack's single dashboard - live container status/control, host stats, a Quick Links panel to every service, one-click ops actions (Kometa now, Plex scan/empty-trash/optimize, *arr RSS sync + search, service restarts) - see below |
 
-Not included but worth knowing about: Decypharr can stream Usenet directly via NNTP with no
-separate download client (a built-in feature), which would make NZBGet unnecessary if a
-fully "nothing touches local disk" setup is ever wanted. Left out here since NZBGet was
-requested specifically.
+**Update ([10.1.0](CHANGELOG.md)):** the "nothing touches local disk" setup this note
+speculated about is exactly what NzbDAV (see [The Usenet caveat](#the-usenet-caveat)) is now -
+NZBGet (a real local downloader) was requested initially, then fully replaced once that turned
+out not to be the actual goal. Decypharr's own built-in NNTP streaming (mentioned here
+previously as an alternative, untried) was not the one picked; NzbDAV was chosen instead as a
+purpose-built, actively maintained tool for exactly this.
 
 ## Dashboard: Control Panel is the single pane of glass
 

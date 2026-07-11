@@ -111,7 +111,7 @@ server's address is `192.168.1.50`, Seerr is at `http://192.168.1.50:5055`.
 | **DebridMediaManager** | `3000` | Browse your Real-Debrid/AllDebrid account directly. |
 | Prowlarr | `9696` | Behind-the-scenes indexer — you generally won't need to open this. |
 | Zilean, Decypharr, Zurg | `8181`, `8282`, `9999` | Behind-the-scenes plumbing that connects Real-Debrid/AllDebrid to your library. Rarely need to be opened directly. |
-| NZBGet | `6789` | A backup download method for the rare thing debrid doesn't have. |
+| NzbDAV | `3001` | A backup source for the rare thing debrid doesn't have - streams, doesn't download. |
 | Byparr, Cleanuparr, NeutArr | — | Quiet background helpers with no reason to visit day to day. |
 | Glances, Dozzle | `61208`, `8080` | Technical stats/logs — only useful if something's wrong. |
 | Adminer | `8081` | A database viewer — only needed for advanced troubleshooting. |

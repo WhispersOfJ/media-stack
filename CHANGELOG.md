@@ -10,7 +10,7 @@ commit that adds new, real information to the record gets a version now, however
 commit that only re-syncs already-documented information into a second file (e.g. copying a
 just-shipped version's summary from CHANGELOG.md into README.md) still doesn't need its own —
 same exception this file's own origin commit ([17e9f47], which wrote v1.0.0–v2.0.1 in one
-retroactive pass) was never versioned under. Current version: **v10.0.0**.
+retroactive pass) was never versioned under. Current version: **v10.1.0**.
 
 > **2026-07-09 — live state found well behind what was already documented.** Before any of the
 > work in [5.1.0], [5.2.0], and [6.0.0] below started, a routine check found
@@ -48,6 +48,72 @@ retroactive pass) was never versioned under. Current version: **v10.0.0**.
 > straight from this file's "Current version" line — a tag actually published in the past
 > under one of the old `2.x` numbers (e.g. a `:v2.9.0` pulled before this date) no longer
 > lines up 1:1 with what that number refers to here now.
+
+## [10.1.0] — Real Usenet provider wired up via NzbDAV (streaming, not NZBGet's local download)
+
+The stack's Usenet path went live for the first time with a real block-account provider
+(Thundernews, `news.thundernews.com:563` TLS) - previously just a placeholder
+(`Server1.Host=my.newsserver.com`) that had never been touched since setup.
+
+**False start, corrected mid-session:** the first pass wired the real credentials into
+**NZBGet** (`config/nzbget/nzbget.conf`), which is a genuine local downloader - real files land
+on disk, then get hardlinked into `./media/<type>`. That's not actually what was wanted; the
+explicit goal was the same "no disk storage" model debrid already has via Zurg/Decypharr.
+While setting NZBGet up, a real bug surfaced along the way and is worth recording even though
+the whole approach was later scrapped: its `MainDir` was left at the image's default
+(`/config/downloads`) instead of the shared `/usenet` mount every arr app actually watches -
+completed downloads and its entire NZB queue (~90 items, one already-completed episode) were
+landing in a location invisible to Radarr/Sonarr. Confirmed live: `docker exec nzbget find
+/config/downloads` showed real content sitting there while `/usenet` (the shared mount) was
+empty. Nothing would have ever imported. This never shipped, so no fix was needed once NZBGet
+itself was removed - noted here only because the same class of bug (a download tool's own
+paths silently diverging from what the rest of the stack watches) is worth remembering if a
+future local-download tool is ever added.
+
+**What actually shipped:** NZBGet removed entirely (its `config/nzbget/` and `usenet/`
+directories left on disk, untouched, not deleted - real content sat there briefly and no data
+was destroyed), replaced by **NzbDAV** (`nzbdav/nzbdav:latest` + an `nzbdav-rclone` sidecar,
+`rclone/rclone:1.74.4`) - a WebDAV server for Usenet content with a SABnzbd-compatible API,
+same "virtual filesystem, not a real download" pattern Zurg/Decypharr already use for debrid.
+See [The Usenet caveat](TECHNICAL.md#the-usenet-caveat) for the full architecture, provider
+setup, and verification details.
+
+- `nzbdav` published on host port `3001` (not `3000` - DebridMediaManager already owns that
+  port on this host); internally still `:3000` for container-to-container calls.
+- `nzbdav-rclone` mounts the WebDAV at `/mnt/nzbdav`, matching this stack's existing
+  `/mnt/<name>` convention (`zurg`, `all`, `decypharr`, `decypharr-alldebrid`).
+- Radarr and Sonarr's download clients swapped from `NZBGet`/`Nzbget` to `NzbDAV`/`Sabnzbd`
+  (SABnzbd-compatible) via each app's own API - same priority-2 fallback-behind-Decypharr role
+  NZBGet held, unchanged.
+- Radarr's volumes gained `/mnt/nzbdav:/mnt/nzbdav:rslave` (it only mounts specific `/mnt/*`
+  subpaths, unlike Sonarr's blanket `/mnt:/mnt:rslave`); both containers confirmed to see the
+  mount live after recreation, no further changes needed for Sonarr/Plex (both already had the
+  full `/mnt` bind).
+- NzbDAV's own Import Strategy set to "Symlinks — Plex" (its SABnzbd settings), Rclone Mount
+  Directory set to `/mnt/nzbdav` - required for Radarr/Sonarr to treat its downloads as
+  importable at all; the alternative (STRM files) is Emby/Jellyfin-only.
+- `removeCompletedDownloads` left `false` on both new download clients, unlike NZBGet's `true`
+  - NZBGet's real local copy was safe to clear from the client's own history once hardlinked
+  elsewhere, but NzbDAV's symlinked content has no independent copy; clearing it from NzbDAV's
+  history risks breaking the very symlink Plex plays through.
+
+**Verified live, end to end:** NzbDAV's own "Test Connection" succeeded against the real
+server; a real movie (Gone Girl, 2014) was grabbed by Radarr, downloaded by NzbDAV, and landed
+as a symlink at `/mnt/nzbdav/completed-symlinks/radarr/...` - confirmed via
+`config/nzbdav/db.sqlite`'s `HistoryItems` table (`DownloadStatus=1`, no `FailMessage`), and
+`usenet/` (NZBGet's old download path) received zero new files throughout, confirming nothing
+touched local disk.
+
+A UI quirk worth knowing for future setup: NzbDAV's "Add Provider"/"Test Connection" form only
+submits once every field has actually been focused/touched, even fields already holding a
+valid default (e.g. the port/connection-type defaults) - clicking the button while any field
+is still in its untouched default state does nothing at all: no request fires, nothing gets
+written to `db.sqlite`, and there's no error message to explain why.
+
+Credentials recorded in `.env` (`NZBDAV_PROVIDER_*`, `NZBDAV_WEBDAV_*`, `NZBDAV_ADMIN_*`,
+`NZBDAV_API_KEY`) as the documented source of truth, though NzbDAV itself only ever reads its
+own `db.sqlite`, never `.env` directly - same "documented but not wired" caveat NZBGet's own
+`.env` entries had.
 
 ## [10.0.0] — Network security layer fully reverted: Traefik + Authelia + CrowdSec removed, direct ports restored
 

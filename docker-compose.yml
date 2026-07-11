@@ -328,7 +328,7 @@ services:
       # TV-only, so Radarr only gets the two mounts it actually needs.
       - /mnt/zurg:/mnt/zurg:rslave
       - /mnt/decypharr:/mnt/decypharr:rslave
-      - ./usenet:/usenet:rslave
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
       # Same path Decypharr uses internally for its qBittorrent-emulated category
       # folders (/app/downloads/<category>) - identical path avoids needing Remote
       # Path Mappings, per Decypharr's own documented best practice.
@@ -354,7 +354,6 @@ services:
     volumes:
       - ./config/sonarr:/config
       - /mnt:/mnt:rslave
-      - ./usenet:/usenet:rslave
       - ./config/decypharr/downloads:/app/downloads:rslave
       # Sonarr's exclusive AllDebrid path (see the decypharr-alldebrid service comment above) -
       # that instance reports outputPath as /app/downloads/<category>/... to Sonarr's API,
@@ -371,26 +370,88 @@ services:
       - "8989:8989"
 
   # ---------------------------------------------------------------------
-  # Usenet (real local downloads - only path that isn't debrid/symlink based)
+  # Usenet - streaming, no local disk (NzbDAV: WebDAV filesystem + rclone
+  # mount, same "virtual filesystem" pattern as Zurg/rclone-alldebrid do
+  # for debrid). Replaces NZBGet (real local downloads) as of CHANGELOG
+  # [10.1.0] - that approach never actually streamed, it wrote real files
+  # to disk, which wasn't the goal.
   # ---------------------------------------------------------------------
-  nzbget:
-    <<: *common
-    image: ghcr.io/hotio/nzbget:release
-    container_name: nzbget
+  nzbdav:
+    restart: unless-stopped
+    logging: *common-logging
+    image: nzbdav/nzbdav:latest
+    container_name: nzbdav
     networks: [stacknet]
-    # NZBGet's web UI requires its own auth, so a plain request 401s - that's
-    # still proof the server is alive and responding, so 401 counts as healthy.
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
     healthcheck:
-      test: ["CMD-SHELL", "code=$$(curl -s -o /dev/null -w '%{http_code}' http://localhost:6789/); echo \"$$code\" | grep -qE '^(2|3|401)' || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    volumes:
+      - ./config/nzbdav:/config
+      - /mnt:/mnt
+    # Host port 3001, not 3000 - DebridMediaManager already owns 3000 on
+    # this host. Internally still :3000 (Radarr/Sonarr/rclone all reach it
+    # as http://nzbdav:3000 over stacknet, unaffected by the host mapping).
+    ports:
+      - "3001:3000"
+
+  nzbdav-rclone:
+    restart: unless-stopped
+    logging: *common-logging
+    image: rclone/rclone:1.74.4
+    container_name: nzbdav-rclone
+    networks: [stacknet]
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    volumes:
+      - ./config/nzbdav-rclone/rclone.conf:/config/rclone/rclone.conf:ro
+      - /mnt:/mnt:rshared
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    depends_on:
+      nzbdav:
+        condition: service_healthy
+    # Same flag rationale as rclone-alldebrid's own mount above, plus the
+    # setup guide's streaming-tuned cache flags (buffer-size=0 avoids
+    # double-caching since the OS/Plex already buffer reads; read-ahead
+    # sized for smooth playback of high-bitrate remuxes).
+    command:
+      - "mount"
+      - "nzbdav:"
+      - "/mnt/nzbdav"
+      - "--config=/config/rclone/rclone.conf"
+      - "--uid=1000"
+      - "--gid=1000"
+      - "--allow-other"
+      - "--allow-non-empty"
+      - "--links"
+      - "--use-cookies"
+      - "--vfs-cache-mode=full"
+      - "--vfs-cache-max-size=20G"
+      - "--vfs-cache-max-age=24h"
+      - "--buffer-size=0M"
+      - "--vfs-read-ahead=512M"
+      - "--dir-cache-time=20s"
+    healthcheck:
+      test: ["CMD-SHELL", "mountpoint -q /mnt/nzbdav || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    volumes:
-      - ./config/nzbget:/config
-      - ./usenet:/usenet
-    ports:
-      - "6789:6789"
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 4
 
   # ---------------------------------------------------------------------
   # Requests
