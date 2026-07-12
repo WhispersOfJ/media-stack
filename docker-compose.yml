@@ -1067,6 +1067,10 @@ services:
       LIDARR_API_KEY: ${LIDARR_API_KEY}
       WHISPARR_API_KEY: ${WHISPARR_API_KEY}
       NZBDAV_API_KEY: ${NZBDAV_API_KEY}
+      # Prowlarr has no other integration in this stack (CONTAINER_LABELS
+      # dashboard entry only) - added specifically so /api/log-levels can
+      # cover all five Servarr-shaped apps, not just the four QUEUE_ARR_APPS.
+      PROWLARR_API_KEY: ${PROWLARR_API_KEY}
       # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
       # the same credential Zilean itself already has, no new secret.
       ZILEAN_POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
@@ -1085,6 +1089,15 @@ services:
       # unauthenticated endpoint) is mitigated by the Origin/Host check
       # below, not by a login gate.
       - /var/run/docker.sock:/var/run/docker.sock
+      # Read-only additions for the stack-* diagnostic endpoints
+      # (resource-check/content-audit/zurg-classify/mount-health/
+      # perms-check/backup-verify/etc.) - none of these need write access,
+      # only visibility into what's already there.
+      - /mnt:/mnt:ro
+      - ./config:/host-config:ro
+      - /home/daddybear/backups:/host-backups:ro
+      - /home/daddybear/Dropbox/stack-restic-repo-offsite:/host-backup-offsite:ro
+      - ./README.md:/host-README.md:ro
     # No prior ceiling despite having docker.sock exec/restart access - a
     # light Flask app, but cheap insurance given its elevated blast radius.
     ports:
