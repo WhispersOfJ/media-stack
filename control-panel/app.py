@@ -1238,9 +1238,20 @@ def arr_missing_aired(app_name: str):
 # was being chewed through fast an hour ago but has since stalled (e.g.
 # an indexer rate-limit, see the WWE-batch incident) doesn't get credited
 # with a pace it isn't currently keeping.
+#
+# RECENT_IMPORT_SAMPLE_SIZE and MIN_RATE_WINDOW_HOURS both guard against
+# the same failure mode, confirmed live: a busy app clears its queue in
+# bursts, not a steady drip - Sonarr once landed 23 imports within the
+# same 6 seconds while working through a large backlog. The original
+# 50-event sample could land entirely inside one such burst, and
+# count/span with a near-zero span extrapolated to 13,800/hr - technically
+# correct arithmetic on a meaningless denominator. A bigger sample dilutes
+# any single burst with more real elapsed time; the floor on span_hours is
+# the hard backstop for whatever a bigger sample doesn't dilute away.
 # ---------------------------------------------------------------------
 RECENT_IMPORT_LOOKBACK_HOURS = 6
-RECENT_IMPORT_SAMPLE_SIZE = 50
+RECENT_IMPORT_SAMPLE_SIZE = 200
+MIN_RATE_WINDOW_HOURS = 0.25
 
 
 def _wanted_missing_total(app_name: str) -> int:
@@ -1282,9 +1293,7 @@ def _recent_import_rate_per_hour(app_name: str) -> tuple[float, int]:
     oldest = datetime.fromisoformat(events[-1]["date"].replace("Z", "+00:00"))
     if (datetime.now(timezone.utc) - newest).total_seconds() > RECENT_IMPORT_LOOKBACK_HOURS * 3600:
         return 0.0, len(events)
-    span_hours = (newest - oldest).total_seconds() / 3600
-    if span_hours <= 0:
-        return 0.0, len(events)
+    span_hours = max((newest - oldest).total_seconds() / 3600, MIN_RATE_WINDOW_HOURS)
     return len(events) / span_hours, len(events)
 
 
