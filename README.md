@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.6.2**
+Current version: **v10.6.3**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1907,7 +1907,7 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   "stalled" when it isn't (large library section, or genuinely stuck) rather than assuming a
   scan sitting at one percentage is broken.
 
-**v10.6.2 (current) — NeutArr wired to all five `*arr` apps.**
+**v10.6.2 — NeutArr wired to all five `*arr` apps.**
 
 - **NeutArr was only hunting for Sonarr and Radarr** despite `config/neutarr/{lidarr,readarr,
   eros}.json` already existing on disk with the correct schema, scaffolded but never
@@ -1921,6 +1921,34 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   neutarr` picked up all three immediately — confirmed live via its own logs
   (`Configured apps: [..., 'lidarr', 'readarr', 'eros']`) and a real triggered search against
   Whisparr in the very next hunt cycle.
+
+**v10.6.3 (current) — NeutArr's Whisparr hunt rate raised after ruling out three false leads.**
+
+- **Whisparr's missing-backlog throughput stayed flat (~1.78/hr) even after being wired into
+  NeutArr**, while Radarr and Sonarr's rates visibly jumped. Chased three explanations in turn
+  before finding the real one:
+  1. *Hourly cap exhaustion* — ruled out live via `config/tally/hourly_cap.json`: `eros` showed
+     `1/20` API hits used, nowhere near its cap (Sonarr was actually the one maxed at `20/20`).
+  2. *Stateful cooldown saturation* — ruled out via `config/stateful/eros/Default.json`: only 2
+     `processed_ids` ever recorded (vs Radarr's 203), so there was no large already-tried pool
+     blocking new hunts either.
+  3. *A dead scheduler thread* — the wrong conclusion, reached by comparing `date -u`'s UTC
+     output against NeutArr's own log timestamps (which are in its container's `TZ=America/
+     New_York`, i.e. EDT, UTC-4) without converting between them - made a "next cycle" that was
+     still ~19 minutes away look like it had been silently skipped for over 3 hours. Restarting
+     NeutArr on this theory wasn't harmful (isolated container, no dependents) but wasn't
+     necessary either - worth remembering that this stack mixes UTC (`date -u`, most API
+     timestamps) and local EDT (NeutArr's own log lines) depending on the source, so a
+     time-gap diagnosis needs both sides in the same zone before trusting it.
+  - **Real cause**: nothing broken at all. `hunt_missing_items: 1` + `sleep_duration: 900`
+    (15 min) caps NeutArr's own theoretical contribution at ~4 items/hour for Whisparr - Radarr
+    and Sonarr only look faster because they have far more *other* throughput stacked on top
+    (RSS sync, a much larger indexer pool, existing automation); for Whisparr, NeutArr's own
+    modest pace was close to the whole story. Raised to `hunt_missing_items: 3` +
+    `sleep_duration: 300` (5 min) in `config/neutarr/eros.json` - theoretical max goes from ~4/hr
+    to ~36/hr, meaning the existing `hourly_cap: 20` (left unchanged) now actually binds instead
+    of never being approached. Confirmed live: the very next cycle post-restart processed 3/3
+    items instead of 1/1.
 
 ---
 
