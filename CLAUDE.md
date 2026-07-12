@@ -4,12 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (34 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (35 services, one `docker-compose.yml`):
 indexes content via Prowlarr + Zilean, requests via Seerr, organizes via five `*arr`-family apps
 (Radarr/Sonarr/Lidarr/Whisparr/Bindery), fetches via a debrid-first pipeline (Zurg + Decypharr
 against Real-Debrid/AllDebrid) with a Usenet fallback (NzbDAV), and serves via a containerized
-Plex. `control-panel/` is the one custom-built component (a FastAPI dashboard); everything else
-is off-the-shelf images wired together in `docker-compose.yml`.
+Plex. Stash catalogs the adult library (performers/studios/tags/StashDB identification) as an
+enrichment layer alongside Plex, not a replacement for it. `control-panel/` is the one
+custom-built component (a FastAPI dashboard); everything else is off-the-shelf images wired
+together in `docker-compose.yml`.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
 to be README/TECHNICAL/CHANGELOG into one document, organized by subsystem, ~2,300 lines with a
@@ -38,7 +40,7 @@ docker compose up -d control-panel
 # pick up a .env change here, it needs force-recreate
 docker compose up -d --force-recreate control-panel
 
-# Bring up the stack: 18 core services, or everything (+16 more behind the `extras` profile)
+# Bring up the stack: 18 core services, or everything (+17 more behind the `extras` profile)
 docker compose up -d
 docker compose --profile extras up -d
 ```
@@ -57,6 +59,15 @@ throughout its history section, and there's no substitute for it here.
   an item's root folder back to `/mnt/zurg/...` in an app's own database, which is invisible to
   git since it's app state, not stack config. If an import mysteriously stalls, check the item's
   resolved root folder before assuming a container/mount problem.
+- **A root folder is 100% symlinks, never real files — any new service that reads one needs the
+  same `/mnt/zurg`, `/mnt/decypharr`, `/mnt/nzbdav` mounts every existing consumer has, not just
+  the root folder itself.** Confirmed as a real bug, not a hypothetical: Stash's first deploy
+  mounted only `./media/adult:/data`, and every symlink under it was dangling from inside that
+  container's own mount namespace — a real library scan completed in seconds with no error and
+  found 0 scenes, because every `readlink` resolved to a path (`/mnt/nzbdav/.ids/...`) that
+  simply didn't exist in that container. Silent, not a crash — check this first if a new
+  container reading an existing root folder reports an empty/tiny library despite the source
+  clearly having content.
 - **FUSE-mount-owning containers and their dependents restart independently, and that's a real
   failure class, not a hypothetical.** `zurg`, `decypharr`, `decypharr-alldebrid`,
   `rclone-alldebrid`, `rclone-alldebrid-anime`, and `nzbdav-rclone` each own a mount under `/mnt`;
@@ -91,4 +102,30 @@ throughout its history section, and there's no substitute for it here.
 - **`config/<app>/` holds real plaintext secrets** (`config/decypharr/config.json`,
   `config/zurg/config.yml`), is gitignored, and is not reproducible by `docker compose up` or
   re-pulling images — it's the one thing the backup scripts under `scripts/`/`systemd/` actually
-  exist to protect.
+  exist to protect. It has a real off-site leg now too (`BACKUP_REMOTE_REPOSITORY` in `.env`, a
+  second restic repo riding on this host's own Dropbox sync) — don't treat
+  `scripts/backup-claude-dir.sh`'s Dropbox tar as the off-site protection if you're touching
+  backup tooling; it's a cruder, unretained whole-`~/Claude`-tree snapshot that has failed
+  silently before, not the real disaster-recovery mechanism.
+- **Zurg's content-routing (`config/zurg/config.yml`, gitignored) checks groups in `group_order`
+  sequence, first match wins — a misrouted-content report can be either a missing keyword *or* a
+  wrong `group_order`, and they look identical from the user's side.** `shows` uses a generic
+  `has_episodes: true` heuristic; content numbered like a series (e.g. `Family.Swap.10.2023`)
+  can get claimed by `shows` before a more specific group like `adult` ever runs, if `adult`'s
+  `group_order` is higher (checked later). No keyword-list fix can catch that case — the group
+  never receives the file to test against its regex at all. Check `group_order` first, not just
+  the keyword list, when a report doesn't match any obvious missing-keyword pattern.
+- **A service can be fully connected at the `docker-compose.yml` level and still not actually be
+  wired into the *app* it's talking to.** Cleanuparr and NeutArr both auto-discover which
+  `*arr` apps exist, but each still needs its own internal instance registration (Cleanuparr's
+  own `arr_instances` DB table; NeutArr's own per-app JSON config) before it actually does
+  anything for that app — found live as a real gap: Lidarr and Whisparr had network access to
+  Cleanuparr and config-type placeholders, but no connected instance, so queue-cleaning/strikes
+  silently weren't covering either app. When auditing "is X wired to Y," check the receiving
+  app's own config/API for a real instance entry, not just that the container can reach it.
+- **Every service should have `mem_limit`/`cpus` — verify with `docker stats`, not by grepping for
+  the string `mem_limit:` near a service block.** The `x-common` anchor (`<<: *common`) does not
+  set either; ten services silently had neither for an unknown stretch of this project's history,
+  confirmed live via `docker stats` reporting the full host memory ceiling as several containers'
+  limit instead of a real number. A new service needs its own explicit `mem_limit`/`cpus` lines
+  regardless of whether it uses `<<: *common`.
