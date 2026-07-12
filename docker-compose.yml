@@ -558,6 +558,62 @@ services:
     ports:
       - "6969:6969"
 
+  # Performer/studio/tag cataloging and metadata scraping for the adult
+  # library Whisparr owns above - not a Plex replacement, Plex still streams
+  # ./media/adult directly. Extras profile: enrichment on top of an already-
+  # working library, not required for the acquisition pipeline to function.
+  stash:
+    restart: unless-stopped
+    logging: *common-logging
+    # Real semver release tag, matching this stack's version-tag pinning
+    # tier (same category as Zilean/Bindery) - not :latest.
+    image: stashapp/stash:v0.31.1
+    container_name: stash
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+      STASH_STASH: /data/
+      STASH_GENERATED: /generated/
+      STASH_METADATA: /metadata/
+      STASH_CACHE: /cache/
+      STASH_PORT: 9999
+    # curl doesn't exist in this image (Alpine-based, confirmed live: exec
+    # returns "executable file not found in $PATH", so a curl-based check
+    # here would report unhealthy forever despite the app working fine).
+    # wget is present instead.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --spider http://localhost:9999/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/stash/config:/root/.stash
+      - ./config/stash/metadata:/metadata
+      - ./config/stash/cache:/cache
+      - ./config/stash/blobs:/blobs
+      - ./config/stash/generated:/generated
+      # Read-only on purpose: Stash's scan/tag/scrape flow never needs write
+      # access to the source library, and its own opt-in "Organize" task
+      # renames/moves files - not something to allow by accident onto a
+      # library Whisparr independently manages the layout of. Drop :ro
+      # deliberately if Organize is ever wanted.
+      - ./media/adult:/data:ro
+    ports:
+      # 9999 is Zurg's port on this stack - remapped on the host side only,
+      # same pattern as nzbdav-rclone's 3001->3000. Container-internal port
+      # stays 9999 (STASH_PORT above), so this is host-mapping-only.
+      - "9998:9999"
+    # No PUID/PGID here - unlike the LSIO/hotio images elsewhere in this
+    # stack, the stock stashapp/stash image doesn't document PUID/PGID
+    # support (confirmed against its own reference docker-compose.yml).
+    # Runs as root inside the container; ./config/stash/* will be root-owned
+    # on the host as a result.
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 4
+
   # Custom Format / Quality Profile sync from TRaSH Guides, for Sonarr and
   # Radarr only - Recyclarr has no Whisparr support (TRaSH Guides doesn't
   # publish custom-format guides for it). Runs as a persistent daemon on its

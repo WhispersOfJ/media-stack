@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.8.0**
+Current version: **v10.9.0**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -36,6 +36,7 @@ section below shows the actual request.
 - [Requests: Seerr](#requests-seerr)
 - [Plex](#plex)
 - [Calibre-Web: ebooks](#calibre-web-ebooks)
+- [Stash: adult library cataloging](#stash-adult-library-cataloging)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [DebridMediaManager (self-hosted)](#debridmediamanager-self-hosted)
 - [Automation extras: Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-cleanuparr-neutarr-unpackerr-watchtower)
@@ -263,25 +264,26 @@ Every service currently defined in `docker-compose.yml`, in the order they appea
 | 16 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | — | core |
 | 17 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
 | 18 | `plex` | `plexinc/pms-docker:1.43.2.10687-563d026ea` | 32400 (host net) | core |
-| 19 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
-| 20 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
-| 21 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 22 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
-| 23 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
-| 24 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
-| 25 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
-| 26 | `dmm-mysql` | `mysql:8.4` | — | extras |
-| 27 | `dmm-redis` | `redis:7-alpine` | — | extras |
-| 28 | `adminer` | `adminer:5.4.2-standalone` | 8081 | extras |
-| 29 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
-| 30 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 31 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 32 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 33 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
-| 34 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 19 | `stash` | `stashapp/stash:v0.31.1` | 9998→9999 | extras |
+| 20 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
+| 21 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
+| 22 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 23 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
+| 24 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
+| 25 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
+| 26 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
+| 27 | `dmm-mysql` | `mysql:8.4` | — | extras |
+| 28 | `dmm-redis` | `redis:7-alpine` | — | extras |
+| 29 | `adminer` | `adminer:5.4.2-standalone` | 8081 | extras |
+| 30 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
+| 31 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 32 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 33 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 34 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
+| 35 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
 
 `docker compose up -d` brings up the 18 core services; `docker compose --profile extras up -d`
-adds the other 16. Both commands are safe to run repeatedly — Compose only recreates what's
+adds the other 17. Both commands are safe to run repeatedly — Compose only recreates what's
 actually out of sync with `docker-compose.yml`.
 
 ## The *arr apps
@@ -1079,6 +1081,60 @@ CALIBRE_WEB_ADMIN_PASSWORD=changeme
 
 The real value lives only in `.env` (chmod-restricted, gitignored) — never in this document.
 
+## Stash: adult library cataloging
+
+Plex handles `./media/adult` (Whisparr's own root folder) as an ordinary video library — no
+performer/studio/tag metadata, no scene identification. **[Stash](https://github.com/stashapp/stash)**
+(`stashapp/stash:v0.31.1`) fills that gap by scraping and cataloging the same library Plex
+already streams from — it's an enrichment layer alongside Plex, not a replacement for it:
+
+```yaml
+# docker-compose.yml
+stash:
+  image: stashapp/stash:v0.31.1
+  environment:
+    TZ: ${TZ}
+    STASH_STASH: /data/
+    STASH_GENERATED: /generated/
+    STASH_METADATA: /metadata/
+    STASH_CACHE: /cache/
+    STASH_PORT: 9999
+  volumes:
+    - ./config/stash/config:/root/.stash
+    - ./config/stash/metadata:/metadata
+    - ./config/stash/cache:/cache
+    - ./config/stash/blobs:/blobs
+    - ./config/stash/generated:/generated
+    - ./media/adult:/data:ro     # read-only - see below
+  ports:
+    - "9998:9999"                # 9999 is Zurg's port on this stack; remapped host-side only
+```
+
+**Mounted `:ro` deliberately.** Stash's scan/tag/scrape flow never needs write access to the
+source library. Its own opt-in "Organize" task renames and moves files — not something to allow
+by accident onto a library Whisparr independently manages the layout of. Drop the `:ro` only if
+Organize is deliberately wanted.
+
+**No PUID/PGID support.** Unlike the LSIO/hotio images elsewhere in this stack, the stock
+`stashapp/stash` image doesn't document PUID/PGID env vars (confirmed against its own reference
+`docker-compose.yml`) — it runs as root inside the container, so `./config/stash/*` ends up
+root-owned on the host.
+
+**No auth configured**, consistent with every other web UI in this stack (see
+[Security](#security)) — Stash does support an optional built-in password if that's ever wanted.
+
+**Healthcheck needs `wget`, not `curl`.** The stock image is Alpine-based but doesn't bundle
+`curl` — a `curl`-based `CMD-SHELL` healthcheck (this stack's usual pattern for every other app)
+fails immediately with `executable file not found in $PATH`, confirmed live via `docker exec`,
+and the container sits reporting `unhealthy` forever despite the app itself working fine.
+`wget -qO- --spider http://localhost:9999/` is the working equivalent, confirmed against the
+same image.
+
+**Resource limits are a starting estimate, not observed.** `mem_limit: 2g` / `cpus: 4` — scene
+thumbnail/sprite/preview generation is real ffmpeg transcoding work, but this hasn't been run
+against the actual library size yet. Revisit against real `docker stats` once a full scan has run,
+same as every other limit in [Resource limits](#resource-limits).
+
 ## Custom formats and quality profiles
 
 Radarr and Sonarr each carry exactly one custom format, **"Block - Sample, Russian, Low-Quality
@@ -1662,8 +1718,8 @@ Every image is pinned, using whichever approach doesn't change what's actually r
   supports. Whisparr is pinned to `:v3` specifically (a major-version channel, not just `:release`)
   for the reason described in [The *arr apps](#the-arr-apps).
 - **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
-  `nickfedor/watchtower:1.19.0`, `ghcr.io/vavallee/bindery:v1.25.0`) where the upstream
-  project tags real releases and the current running image matches.
+  `nickfedor/watchtower:1.19.0`, `ghcr.io/vavallee/bindery:v1.25.0`, `stashapp/stash:v0.31.1`)
+  where the upstream project tags real releases and the current running image matches.
 - **Digest pins** (`@sha256:...`) for Seerr, Glances, Kometa, Unpackerr, and Byparr — in every one
   of these cases the currently-running `:latest` build is *ahead* of the newest tagged release
   upstream has cut, so no tag exists that wouldn't be a downgrade. Byparr specifically doesn't
@@ -2221,7 +2277,7 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   directly off disk, the same path Bindery's own root folder now points at, so the ebook reader
   kept working straight through the swap underneath it.
 
-**v10.8.0 (current) — Live per-app API hit counter; `/api/containers` sped up 60x; a real
+**v10.8.0 — Live per-app API hit counter; `/api/containers` sped up 60x; a real
 stack outage found and fixed.**
 
 - **Added a live "API" badge to every container card** for each app Control Panel actually talks
@@ -2257,6 +2313,24 @@ stack outage found and fixed.**
   wave restarted and confirmed healthy before `MOUNT_PROVIDERS` (which now includes
   `nzbdav-rclone`) starts. See
   [Whole-stack restart: mount-order aware](#whole-stack-restart-mount-order-aware) above.
+
+**v10.9.0 (current) — Stash added: performer/studio/tag cataloging for the adult library.**
+
+- **[Stash](https://github.com/stashapp/stash)** (`stashapp/stash:v0.31.1`) added to the `extras`
+  profile, reading `./media/adult` (Whisparr's own root folder) read-only alongside Plex — an
+  enrichment/cataloging layer, not a Plex replacement. See
+  [Stash: adult library cataloging](#stash-adult-library-cataloging).
+- **Wired into Control Panel's dashboard** the same way every other service is:
+  `CONTAINER_LABELS` entry for the container grid, `QUICK_LINKS` entry (port 9998, host-side
+  remapped since 9999 is Zurg's port on this stack) for the link launcher.
+- **One real bug found bringing it up live**: the stock image has no `curl` (Alpine-based, but
+  doesn't bundle it — confirmed via `docker exec`, `exec: "curl": executable file not found in
+  $PATH`), so this stack's usual `curl`-based `CMD-SHELL` healthcheck pattern reported the
+  container permanently `unhealthy` despite the app itself working fine (confirmed serving `HTTP
+  200` throughout). Fixed with `wget -qO- --spider` instead, which the image does have.
+- **First-run setup left as a manual step, on principle** — same precedent as Bindery's own
+  admin-account creation in [v10.7.0](#history): Stash's setup wizard (config path, credentials if
+  wanted) is a one-time step handed back rather than done on the user's behalf.
 
 ---
 
