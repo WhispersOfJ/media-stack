@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.9.5**
+Current version: **v10.9.6**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1696,6 +1696,43 @@ function stack-arr --description 'Trigger an *arr app maintenance action'
 `stack-bazarr-search` was removed entirely along with Bazarr itself — it called
 `/api/bazarr/search-wanted`, an endpoint that no longer exists in `control-panel/app.py`.
 
+**Twenty more commands, added after a live resource+wiring audit turned up real, previously
+invisible gaps** (10 containers with no `mem_limit`, 5 apps stuck on debug logging, a Zurg
+`group_order` bug, Cleanuparr missing two `arr_instances`) — each one turns a manual
+diagnostic session into a real command instead of a one-off `curl`/`sqlite3`/`journalctl`
+session:
+
+```fish
+stack-resource-check                            # containers missing mem_limit/cpus
+stack-log-levels                                # or `reset` to set every debug app back to info
+stack-content-audit movies                      # or shows - content untracked by the matching *arr app
+stack-zurg-classify "Family.Swap.5.2022.720p"   # test a filename against the current routing config
+stack-mount-health                              # every known FUSE mountpoint, checked for a stale one
+stack-oom-check                                 # containers Docker has recorded an OOM-kill for
+stack-perms-check                               # config files unreadable by group/other
+stack-backup-verify                             # latest snapshot age, local + off-site repos
+stack-backup-restore-test                       # actually restores one file, confirms restores work
+stack-cleanuparr-instances                      # which *arr apps Cleanuparr actually has connected
+stack-neutarr-status                            # per-app enabled state from NeutArr's own config
+stack-decypharr-health decypharr                # or decypharr-alldebrid
+stack-stash-scan                                # trigger a Stash library scan
+stack-stash-identify                            # trigger a full-library StashDB identify run
+stack-arr-logs radarr 200                       # tail a container's log directly, no Dozzle needed
+stack-plex-empty-trash "TV Shows"               # scoped to one library, or every library if none given
+stack-image-check                               # digest/exact-version-pinned images vs their registry
+stack-disk-usage                                # per-app config/ directory size, largest first
+stack-version                                   # README's declared version + live container count
+stack-whisparr-hunt                             # force NeutArr to run an immediate hunt pass
+```
+
+**This whole CLI (all 36 commands now), plus a standalone, restyled Control Panel and a
+credential-entry installer, has been spun off into its own repo:
+[`StackScripts`](https://github.com/WhispersOfJ/StackScripts).** Unlike `Stackalicious` (the
+sanitized *mirror* of this exact repo), `StackScripts` is a *generalized* redistribution —
+no hardcoded IP or host paths, config collected through a browser-based setup wizard instead
+of assumed from this repo's own `.env`. See `AGENTS.md` above: every new `stack-*` command
+added here needs to be mirrored into both siblings in the same pass, not deferred.
+
 ## Backups
 
 `./config` holds every app's settings, database, and plaintext API keys — none of it is in git,
@@ -2550,7 +2587,7 @@ both Movies and TV Shows, for two different reasons.**
   itself is confirmed correct at the source regardless of how long Plex's own UI takes to
   reflect it.
 
-**v10.9.5 (current) — Resource-limit and log-level audit: ten containers found running with no
+**v10.9.5 — Resource-limit and log-level audit: ten containers found running with no
 memory/CPU ceiling at all.**
 
 - **Ten services had zero `mem_limit`/`cpus`** despite [Resource limits](#resource-limits)
@@ -2561,6 +2598,33 @@ memory/CPU ceiling at all.**
   verification.
 - **Same audit found Radarr, Sonarr, Lidarr, Whisparr, and Prowlarr running `logLevel: debug`**
   in production — set back to `info` on all five.
+
+**v10.9.6 (current) — Twenty new `stack-*` commands; the whole CLI + a generalized Control
+Panel spun off into a standalone `StackScripts` repo.**
+
+- **Twenty new diagnostic/action endpoints added to `control-panel/app.py`**, each backing a
+  new `stack-*` command — see [CLI](#cli-the-stack--fish-functions) above for the full list.
+  Needed three new read-only mounts (`/mnt`, `./config`, both restic repos), `restic` added
+  to the Control Panel image, and `PyYAML` added for parsing Zurg's config live. Also wired
+  `PROWLARR_API_KEY` through so `stack-log-levels` covers all five Servarr-shaped apps, not
+  just the four already integrated.
+- **Three real bugs found verifying these live, before committing**: `disk-usage`/
+  `perms-check` were resolving symlinks in `config/decypharr/downloads` out to the multi-TB
+  debrid mount (fixed with `lstat` + `followlinks=False`); `disk-usage` was then using
+  `st_size` instead of `st_blocks`, wildly overstating usage against Decypharr's sparse
+  cache files (confirmed against real `du` output — decypharr reported 349GB against an
+  actual 11GB); `backup-verify`/`backup-restore-test` failed outright against the read-only
+  repo mounts until restic calls got `--no-lock`, and the restore test crashed on the first
+  binary file it happened to pick until raw bytes stopped being force-decoded as UTF-8.
+- **The entire CLI (all 36 commands now) plus a generalized, restyled Control Panel and a
+  credential-entry installer spun off into a new, standalone repo,
+  [`StackScripts`](https://github.com/WhispersOfJ/StackScripts)** — every script verified
+  live against a real running control panel, not just syntax-checked, which caught two real
+  shell bugs: an unset-positional-parameter crash under `set -u` in both shells' shared API
+  helper, and zsh's `read -p` silently meaning "read from a coprocess" instead of "show a
+  prompt" (never populating the confirmation variable in `stack-restart-all.zsh`). `AGENTS.md`
+  added to this repo, `Stackalicious`, and `StackScripts` itself, codifying the sync
+  obligation: a new `stack-*` command isn't done until it exists in all three.
 
 ---
 
