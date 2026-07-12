@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.9.0**
+Current version: **v10.9.1**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1105,6 +1105,10 @@ stash:
     - ./config/stash/cache:/cache
     - ./config/stash/blobs:/blobs
     - ./config/stash/generated:/generated
+    # See "the library is 100% symlinks" below - these three are not optional.
+    - /mnt/zurg:/mnt/zurg:rslave
+    - /mnt/decypharr:/mnt/decypharr:rslave
+    - /mnt/nzbdav:/mnt/nzbdav:rslave
     - ./media/adult:/data:ro     # read-only - see below
   ports:
     - "9998:9999"                # 9999 is Zurg's port on this stack; remapped host-side only
@@ -1114,6 +1118,19 @@ stash:
 source library. Its own opt-in "Organize" task renames and moves files — not something to allow
 by accident onto a library Whisparr independently manages the layout of. Drop the `:ro` only if
 Organize is deliberately wanted.
+
+**The library is 100% symlinks, and the first deploy missed that.** `./media/adult` is Whisparr's
+root folder, and per this stack's own architecture (see [Architecture](#architecture)) a root
+folder never holds real files — every entry is a symlink into `/mnt/zurg`, `/mnt/decypharr`, or
+`/mnt/nzbdav`. The initial `docker-compose.yml` only mounted `./media/adult:/data:ro` and none of
+those three FUSE mounts, so every symlink was dangling from inside the Stash container's own mount
+namespace. Not an obvious failure: a real library scan **completed successfully in seconds** and
+reported 0 scenes/images found, no error anywhere. Root-caused by `readlink` on a sample symlink
+(`/data/scenes/.../*.mp4` → `/mnt/nzbdav/.ids/...`) resolving to a path that simply didn't exist
+inside the container, confirmed with `stat -L` failing "No such file or directory". Fixed by adding
+the same three mounts every other consumer of this library already has (Whisparr, Radarr, Plex,
+etc. above) — `stat -L` on the same symlink then resolved to a real 2.5GB file, and a rescan
+correctly found all 530 of 531 files.
 
 **No PUID/PGID support.** Unlike the LSIO/hotio images elsewhere in this stack, the stock
 `stashapp/stash` image doesn't document PUID/PGID env vars (confirmed against its own reference
@@ -1272,6 +1289,25 @@ Servarr REST shape, and Bindery's API isn't that shape.
 > an unauthenticated auth-bypass that leaked every connected `*arr` app's API keys in cleartext,
 > then took the repo private and banned users raising the issue. Never add Huntarr proper to this
 > stack; NeutArr's whole reason for existing is that vetted alternative.
+
+`config/neutarr/whisparr.json` was a second, orphaned config file for the same app — NeutArr's
+real slot for Whisparr is internally named `eros` (standard Huntarr-lineage terminology, matching
+the `:v3` "eros" pin), confirmed live via its own `settings_manager` log line (`Configured apps:
+['sonarr', 'radarr', 'lidarr', 'eros']` — no `whisparr` entry at all). The orphaned file had
+`"enabled": true` with blank `api_url`/`api_key`, which reads as a live bug at a glance but was
+never actually read by NeutArr. Deleted rather than left as confusing clutter.
+
+**Cleanuparr had a real, live gap found this session**: its own `arr_instances` table only had
+Sonarr and Radarr actually connected — Lidarr and Whisparr had config-type placeholders
+(`arr_configs`) but no instance, so queue-cleaning, strike-tracking, and malware-blocking weren't
+covering either app at all despite both being fully functional `*arr` apps in this stack. Found by
+querying `config/cleanuparr/cleanuparr.db` directly (`SELECT * FROM arr_instances`) since
+Cleanuparr's REST API isn't straightforwardly discoverable (same limitation noted in [Known
+gaps](#known-gaps-and-limitations) re: its stale Readarr reference). Fixed by adding both through
+Cleanuparr's own **Settings → Lidarr/Whisparr → Add Instance** UI — confirmed connection-tested and
+persisted. All four Servarr-shaped apps are now covered by Sonarr/Radarr/Lidarr/Whisparr across
+Cleanuparr, NeutArr, and Unpackerr consistently; Bindery and Stash remain correctly excluded from
+all three (see their respective sections above) since neither is Servarr-shaped.
 
 **Unpackerr** (`golift/unpackerr@sha256:4ec141...`) auto-extracts RAR'd releases across the four
 Servarr-shaped `*arr` apps:
@@ -1897,6 +1933,14 @@ Documented honestly rather than swept under the rug:
   wasn't quickly discoverable (`/api/instances` returns an HTML shell, not JSON, unlike every other
   app's REST API in this stack) so this was flagged rather than reverse-engineered on the spot —
   a manual follow-up, not a blocker.
+- **Cleanuparr logs a recurring `Error creating download service for Decypharr`** against both
+  Sonarr and Radarr (`[QueueCleaner] [Radarr] Error creating download service for Decypharr`,
+  every cleaner cycle), alongside an occasional `401 (Unauthorized)` and, separately, a `Name or
+  service not known (decypharr:8282)` DNS failure — confirmed present in logs going back to at
+  least 2026-07-11, so pre-existing, not caused by any wiring done this session. Possibly the same
+  root cause as Bindery's Decypharr auth gap above (Decypharr's real auth is a Bearer token, not
+  the cookie-based login a generic client integration might assume) but not confirmed — flagged
+  rather than chased down, same as the stale-Readarr gap above.
 - **Bindery has no native Discord notification connection wired up**, unlike the four
   Servarr-shaped apps (see [Alerting](#alerting-discord)) — it wasn't carried over from Readarr's
   setup and hasn't been requested separately.
@@ -2314,7 +2358,7 @@ stack outage found and fixed.**
   `nzbdav-rclone`) starts. See
   [Whole-stack restart: mount-order aware](#whole-stack-restart-mount-order-aware) above.
 
-**v10.9.0 (current) — Stash added: performer/studio/tag cataloging for the adult library.**
+**v10.9.0 — Stash added: performer/studio/tag cataloging for the adult library.**
 
 - **[Stash](https://github.com/stashapp/stash)** (`stashapp/stash:v0.31.1`) added to the `extras`
   profile, reading `./media/adult` (Whisparr's own root folder) read-only alongside Plex — an
@@ -2328,9 +2372,35 @@ stack outage found and fixed.**
   $PATH`), so this stack's usual `curl`-based `CMD-SHELL` healthcheck pattern reported the
   container permanently `unhealthy` despite the app itself working fine (confirmed serving `HTTP
   200` throughout). Fixed with `wget -qO- --spider` instead, which the image does have.
-- **First-run setup left as a manual step, on principle** — same precedent as Bindery's own
-  admin-account creation in [v10.7.0](#history): Stash's setup wizard (config path, credentials if
-  wanted) is a one-time step handed back rather than done on the user's behalf.
+- **First-run setup wizard completed** (library path `/data`, blobs path `/blobs`, database at
+  the default `/root/.stash/stash-go.sqlite`) — its account/password step is optional and the
+  wizard never actually presents one, so nothing credential-related was set on the user's behalf,
+  consistent with every other app in this stack having no login. A full library scan afterward
+  correctly indexed 530 of 531 files (see the mount-order bug below).
+
+**v10.9.1 (current) — Stash's missing `/mnt` mounts fixed; Cleanuparr's missing Lidarr/Whisparr
+wiring found and fixed; an orphaned NeutArr config file removed.**
+
+- **Stash's first real scan found 0 scenes** despite completing in seconds with no error — root
+  cause and fix are documented in
+  [Stash: adult library cataloging](#stash-adult-library-cataloging) above (missing `/mnt/zurg`,
+  `/mnt/decypharr`, `/mnt/nzbdav` mounts left every symlink in `./media/adult` dangling). After the
+  fix, a rescan correctly indexed 530 of 531 files.
+- **Cleanuparr was only actually connected to Sonarr and Radarr** — Lidarr and Whisparr had
+  config-type placeholders but no real instance, found by querying its SQLite config directly.
+  Added both through its own UI, connection-tested. See
+  [Automation extras](#automation-extras-kometa-cleanuparr-neutarr-unpackerr-watchtower) above.
+- **A second, orphaned NeutArr config file for Whisparr removed** (`config/neutarr/whisparr.json`)
+  — NeutArr's real slot for Whisparr is internally named `eros`; the orphaned file had blank
+  credentials despite `"enabled": true`, which reads as a bug at a glance but was never actually
+  read by NeutArr, confirmed via its own startup log.
+- **A separate, pre-existing Cleanuparr↔Decypharr issue found but not fixed** — a recurring
+  `Error creating download service for Decypharr` predating this session (confirmed in logs back to
+  2026-07-11). Documented in [Known gaps](#known-gaps-and-limitations) rather than chased down, same
+  as Cleanuparr's other undiscoverable-API limitation.
+- **Recyclarr and Unpackerr audited and confirmed already correctly scoped** — Recyclarr to
+  Sonarr/Radarr only (no TRaSH Guides custom-format support for other apps), Unpackerr to all four
+  Servarr-shaped apps. No changes needed to either.
 
 ---
 

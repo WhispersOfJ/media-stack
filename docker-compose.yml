@@ -594,6 +594,17 @@ services:
       - ./config/stash/cache:/cache
       - ./config/stash/blobs:/blobs
       - ./config/stash/generated:/generated
+      # Same three FUSE mounts every other app that reads Whisparr's root
+      # folder needs (Radarr/Sonarr/Plex/etc. above) - ./media/adult itself
+      # is never real files, only symlinks Whisparr writes pointing into
+      # these. Missing this entirely on first deploy meant every symlink
+      # under /data was dangling from Stash's mount namespace - confirmed
+      # live: a real scan completed in seconds and found 0 scenes/images,
+      # readlink -f on a sample symlink resolved to
+      # /mnt/nzbdav/.ids/... which didn't exist inside this container at all.
+      - /mnt/zurg:/mnt/zurg:rslave
+      - /mnt/decypharr:/mnt/decypharr:rslave
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
       # Read-only on purpose: Stash's scan/tag/scrape flow never needs write
       # access to the source library, and its own opt-in "Organize" task
       # renames/moves files - not something to allow by accident onto a
