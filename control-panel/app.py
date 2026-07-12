@@ -1041,15 +1041,55 @@ def _bucket_nzbdav_item(s: dict, prev_mbleft: dict[str, float]) -> tuple[str, di
     return "stalled", item
 
 
+# Plex has no byte size to drain - its own /activities progress (0-100)
+# for library scans, deep media analysis, thumbnail generation, etc. is
+# the equivalent signal, measured the same way (live delta over the same
+# sample window, not trusted as-is - unlike the download clients above
+# Plex's own progress numbers are usually real and moving, but a scan can
+# still sit at one percentage for a while on a large/slow library section).
+def _plex_activities() -> list[dict]:
+    try:
+        r = httpx.get(f"{PLEX_URL}/activities", headers=plex_headers(), timeout=15)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Plex activities lookup failed: {e}")
+    return r.json().get("MediaContainer", {}).get("Activity", [])
+
+
+def _plex_progress_snapshot() -> dict[str, int]:
+    try:
+        return {a["uuid"]: a.get("progress", 0) for a in _plex_activities()}
+    except HTTPException:
+        return {}
+
+
+def _bucket_plex_activity(a: dict, prev_progress: dict[str, int]) -> tuple[str, dict]:
+    title = a.get("title") or "?"
+    if a.get("subtitle"):
+        title = f"{title}: {a['subtitle']}"
+    progress = a.get("progress", 0)
+    item = {"title": title, "progress": f"{progress}%"}
+    prev = prev_progress.get(a["uuid"])
+    if prev is not None and progress > prev:
+        rate = (progress - prev) / QUEUE_SAMPLE_SECONDS  # percent per second
+        eta = (100 - progress) / rate if rate > 0 else float("inf")
+        item["eta"] = format_eta(eta)
+        return "downloading", item
+    item["note"] = "no progress observed (large section, or genuinely stalled)"
+    return "stalled", item
+
+
 @app.get("/api/queue-status")
 def queue_status():
-    """Every *arr app's download queue plus NzbDAV's, bucketed into
-    downloading/stalled/queued/importing with a real speed and ETA for
-    anything actually observed to be draining - see the module comment
-    above for why this measures live instead of trusting each app's own
-    timeleft."""
+    """Every *arr app's download queue plus NzbDAV's and Plex's own
+    background activities (library scans, media analysis, etc), bucketed
+    into downloading/stalled/queued/importing with a real speed/progress
+    and ETA for anything actually observed to be draining - see the
+    module comment above for why this measures live instead of trusting
+    each app's own timeleft."""
     before_arr = {app_name: _arr_sizeleft_snapshot(app_name) for app_name in QUEUE_ARR_APPS}
     before_nzbdav = _nzbdav_mbleft_snapshot()
+    before_plex = _plex_progress_snapshot()
     time.sleep(QUEUE_SAMPLE_SECONDS)
 
     result = {}
@@ -1078,6 +1118,17 @@ def queue_status():
         result["nzbdav"] = {"label": "NzbDAV", "total": len(slots), **buckets}
     except HTTPException:
         result["nzbdav"] = {"label": "NzbDAV", "error": "unreachable"}
+
+    try:
+        activities = _plex_activities()
+        buckets = {"downloading": [], "stalled": [], "queued": [], "importing": []}
+        for a in activities:
+            bucket, item = _bucket_plex_activity(a, before_plex)
+            buckets[bucket].append(item)
+        grand_total += len(activities)
+        result["plex"] = {"label": "Plex", "total": len(activities), **buckets}
+    except HTTPException:
+        result["plex"] = {"label": "Plex", "error": "unreachable"}
 
     active = sum(len(v.get("downloading", [])) for v in result.values())
     return ok(

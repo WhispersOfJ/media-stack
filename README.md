@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.6.0**
+Current version: **v10.6.1**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1868,7 +1868,7 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   username in one Plex bind-mount path both genericized) and covering v10.1.0 through this
   version — see that repo's own `CHANGELOG.md`.
 
-**v10.6.0 (current) — Live queue speed/ETA and wanted/missing backlog throughput ETA.**
+**v10.6.0 — Live queue speed/ETA and wanted/missing backlog throughput ETA.**
 
 - **Control Panel: `GET /api/queue-status`** (plus `stack-queue-status`) — every download queue
   (Radarr/Sonarr/Lidarr/Readarr/Whisparr + NzbDAV) bucketed into downloading/stalled/queued/
@@ -1891,6 +1891,16 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   like the Radarr-lineage apps (Radarr/Sonarr/Whisparr) - Readarr's was unverifiable (zero
   history at the time, unused), so it checks both candidate names instead of guessing wrong and
   silently reporting zero forever.
+
+**v10.6.1 (current) — Plex's own activities added to `queue-status`.**
+
+- **`GET /api/queue-status` now includes Plex** as a 7th queue, covering its own `/activities`
+  (library scans, deep media analysis, thumbnail generation, etc.) alongside the five arr apps
+  and NzbDAV. Piggybacks on the same before/sleep/after sample window the rest of the endpoint
+  already takes, so this adds no extra latency. Plex has no byte size to drain, so `progress`
+  (0-100) is the measured signal instead - real speed/ETA when it's climbing between samples,
+  "stalled" when it isn't (large library section, or genuinely stuck) rather than assuming a
+  scan sitting at one percentage is broken.
 
 ---
 
