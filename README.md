@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.9.1**
+Current version: **v10.9.2**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1933,14 +1933,12 @@ Documented honestly rather than swept under the rug:
   wasn't quickly discoverable (`/api/instances` returns an HTML shell, not JSON, unlike every other
   app's REST API in this stack) so this was flagged rather than reverse-engineered on the spot —
   a manual follow-up, not a blocker.
-- **Cleanuparr logs a recurring `Error creating download service for Decypharr`** against both
-  Sonarr and Radarr (`[QueueCleaner] [Radarr] Error creating download service for Decypharr`,
-  every cleaner cycle), alongside an occasional `401 (Unauthorized)` and, separately, a `Name or
-  service not known (decypharr:8282)` DNS failure — confirmed present in logs going back to at
-  least 2026-07-11, so pre-existing, not caused by any wiring done this session. Possibly the same
-  root cause as Bindery's Decypharr auth gap above (Decypharr's real auth is a Bearer token, not
-  the cookie-based login a generic client integration might assume) but not confirmed — flagged
-  rather than chased down, same as the stale-Readarr gap above.
+- ~~Cleanuparr logs a recurring `Error creating download service for Decypharr`~~ **Fixed in
+  v10.9.2** — root cause was a plain stale/wrong password in Cleanuparr's own stored credential
+  (`ai9_Y_5sOgmg_vbjoS-slg`), not a Bindery-style Bearer-vs-cookie protocol mismatch as first
+  suspected. Confirmed directly with `curl` against Decypharr's login endpoint (`401` with the
+  stored password, `200` with the real one from `.env`) before touching anything. See
+  [History](#history).
 - **Bindery has no native Discord notification connection wired up**, unlike the four
   Servarr-shaped apps (see [Alerting](#alerting-discord)) — it wasn't carried over from Readarr's
   setup and hasn't been requested separately.
@@ -2378,7 +2376,7 @@ stack outage found and fixed.**
   consistent with every other app in this stack having no login. A full library scan afterward
   correctly indexed 530 of 531 files (see the mount-order bug below).
 
-**v10.9.1 (current) — Stash's missing `/mnt` mounts fixed; Cleanuparr's missing Lidarr/Whisparr
+**v10.9.1 — Stash's missing `/mnt` mounts fixed; Cleanuparr's missing Lidarr/Whisparr
 wiring found and fixed; an orphaned NeutArr config file removed.**
 
 - **Stash's first real scan found 0 scenes** despite completing in seconds with no error — root
@@ -2394,13 +2392,28 @@ wiring found and fixed; an orphaned NeutArr config file removed.**
   — NeutArr's real slot for Whisparr is internally named `eros`; the orphaned file had blank
   credentials despite `"enabled": true`, which reads as a bug at a glance but was never actually
   read by NeutArr, confirmed via its own startup log.
-- **A separate, pre-existing Cleanuparr↔Decypharr issue found but not fixed** — a recurring
-  `Error creating download service for Decypharr` predating this session (confirmed in logs back to
-  2026-07-11). Documented in [Known gaps](#known-gaps-and-limitations) rather than chased down, same
-  as Cleanuparr's other undiscoverable-API limitation.
+- **A separate, pre-existing Cleanuparr↔Decypharr issue found, flagged, then actually fixed
+  immediately after** — see v10.9.2 below.
 - **Recyclarr and Unpackerr audited and confirmed already correctly scoped** — Recyclarr to
   Sonarr/Radarr only (no TRaSH Guides custom-format support for other apps), Unpackerr to all four
   Servarr-shaped apps. No changes needed to either.
+
+**v10.9.2 (current) — Cleanuparr's Decypharr download client fixed: a stale password, not a
+protocol mismatch.**
+
+- **Root cause was simpler than first suspected.** v10.9.1 flagged a recurring `Error creating
+  download service for Decypharr` (`401 Unauthorized` on qBittorrent-compat login) and initially
+  guessed it might be the same Bearer-vs-cookie-auth mismatch documented for Bindery's own
+  Decypharr integration attempt. It wasn't — Radarr's own working Decypharr connection uses the
+  same cookie-based username/password auth successfully, ruling out a protocol issue. The real
+  cause: Cleanuparr's stored password (`ai9_Y_5sOgmg_vbjoS-slg`, likely a stale leftover from
+  before a Decypharr admin-password rotation) simply didn't match the real one
+  (`DECYPHARR_ADMIN_PASSWORD` in `.env`). Confirmed directly with two `curl` calls against
+  Decypharr's own `/api/v2/auth/login` before touching Cleanuparr at all — `401` with the stored
+  password, `200` with the real one.
+- **Fixed through Cleanuparr's own Settings → Download Clients → Edit UI**, not a direct database
+  write — verified the new password persisted in `cleanuparr.db` and confirmed healthy
+  (`Client ... health changed: Healthy`) on the next restart.
 
 ---
 
