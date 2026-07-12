@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.6.1**
+Current version: **v10.6.2**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1110,7 +1110,12 @@ missing" buttons already do by hand, on a schedule, for the whole library. Roles
 split: Cleanuparr owns strikes (3-strike failed-import detection), a community malware blocklist
 checked hourly, and stalled-download cleanup; NeutArr owns missing-content/quality-upgrade
 hunting exclusively — Cleanuparr's own built-in proactive search stays disabled so the two apps
-don't redundantly hunt the same libraries against the same indexers.
+don't redundantly hunt the same libraries against the same indexers. NeutArr is wired to all
+five `*arr` apps (Sonarr, Radarr, Lidarr, Readarr, Whisparr — configured as its "Whisparr V3"
+app type, not V2, matching this stack's `:v3` "eros" pin), each instance's URL/API key set
+directly in `config/neutarr/{sonarr,radarr,lidarr,readarr,eros}.json` (a straight host bind
+mount at `/config`, editable without going through NeutArr's own UI — its own "Apps" settings
+page hits the same files).
 
 > **NeutArr, not Huntarr.** NeutArr is a hardened fork tracing through `elfhosted/newtarr`'s fork
 > of Huntarr v6.6.3 — the last clean release before Huntarr's own maintainer suppressed reports of
@@ -1892,7 +1897,7 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   history at the time, unused), so it checks both candidate names instead of guessing wrong and
   silently reporting zero forever.
 
-**v10.6.1 (current) — Plex's own activities added to `queue-status`.**
+**v10.6.1 — Plex's own activities added to `queue-status`.**
 
 - **`GET /api/queue-status` now includes Plex** as a 7th queue, covering its own `/activities`
   (library scans, deep media analysis, thumbnail generation, etc.) alongside the five arr apps
@@ -1901,6 +1906,21 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   (0-100) is the measured signal instead - real speed/ETA when it's climbing between samples,
   "stalled" when it isn't (large library section, or genuinely stuck) rather than assuming a
   scan sitting at one percentage is broken.
+
+**v10.6.2 (current) — NeutArr wired to all five `*arr` apps.**
+
+- **NeutArr was only hunting for Sonarr and Radarr** despite `config/neutarr/{lidarr,readarr,
+  eros}.json` already existing on disk with the correct schema, scaffolded but never
+  populated (`api_url`/`api_key` both empty, so `settings_manager` never counted them as
+  configured — confirmed live via `Configured apps: ['sonarr', 'radarr']` repeating in its own
+  logs). Filled in all three directly (same host bind mount NeutArr's own "Apps" settings page
+  writes to), matching Radarr's already-working instance shape exactly. Whisparr is configured
+  under NeutArr's "Whisparr V3" app type (`eros.json`) — NeutArr also has a "Whisparr V2" slot
+  (`whisparr.json`, left untouched/disabled), and picking the wrong one would silently hunt
+  against an API shape this stack's Whisparr (`:v3` "eros" pin) doesn't speak. `docker restart
+  neutarr` picked up all three immediately — confirmed live via its own logs
+  (`Configured apps: [..., 'lidarr', 'readarr', 'eros']`) and a real triggered search against
+  Whisparr in the very next hunt cycle.
 
 ---
 
