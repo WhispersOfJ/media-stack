@@ -616,6 +616,14 @@ services:
       # same pattern as nzbdav-rclone's 3001->3000. Container-internal port
       # stays 9999 (STASH_PORT above), so this is host-mapping-only.
       - "9998:9999"
+    # This host's iGPU (/dev/dri/renderD128) - the bundled ffmpeg confirmed
+    # VAAPI-capable live (`ffmpeg -hwaccels` lists it, h264/hevc_vaapi
+    # encoders present), and generate tasks (previews/sprites/thumbnails)
+    # are real ffmpeg transcoding work Plex's own HW-decode path never
+    # touches. transcode_hardware_acceleration enabled via the config
+    # below to actually use it.
+    devices:
+      - /dev/dri:/dev/dri
     # No PUID/PGID here - unlike the LSIO/hotio images elsewhere in this
     # stack, the stock stashapp/stash image doesn't document PUID/PGID
     # support (confirmed against its own reference docker-compose.yml).

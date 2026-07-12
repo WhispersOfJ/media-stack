@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.9.2**
+Current version: **v10.9.3**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1152,6 +1152,43 @@ thumbnail/sprite/preview generation is real ffmpeg transcoding work, but this ha
 against the actual library size yet. Revisit against real `docker stats` once a full scan has run,
 same as every other limit in [Resource limits](#resource-limits).
 
+### Configuration audit (v10.9.3)
+
+Checked against a real 530-scene scan, not just the defaults:
+
+- **`parallel_tasks` was `1`** despite the host having 16 cores and this container being allowed
+  4 — every scan/generate task was fully serialized. Bumped to `4` via
+  `mutation { configureGeneral(input: {parallelTasks: 4}) }`; confirmed live in the next generate
+  job's own log line (`Generate started with 4 parallel tasks`).
+- **Hardware transcoding attempted, found genuinely broken, left on anyway.** The bundled ffmpeg
+  is VAAPI-capable (`-hwaccels` lists it, `h264_vaapi`/`hevc_vaapi` encoders present) and this
+  host has a real iGPU (`/dev/dri/renderD128`), so `/dev/dri` was passed through and
+  `transcode_hardware_acceleration` enabled. A direct decode test against that device failed
+  outright (`Failed to initialise VAAPI connection: -1 (unknown libva error)`) — the stock
+  Alpine-based image is missing the actual userspace VAAPI driver package (e.g.
+  `mesa-va-drivers`), ffmpeg having the API compiled in isn't the same as a working runtime.
+  **Confirmed harmless, not confirmed beneficial**: a real generate job (previews) completed
+  successfully with valid output either way, no errors in Stash's own logs — software fallback,
+  not a break. Left the device mount and setting in place as a foundation for a future custom
+  image; fixing this for real needs building a custom Stash image layering the driver package on
+  top, which no other third-party app in this stack currently does.
+- **`config/stash/cache` and `config/stash/generated` added to the restic exclude list** (see
+  [Backups](#backups)) — same fully-regenerable reasoning as Plex's own cache exclusions, closed
+  before either directory had a chance to grow large enough to matter.
+- **`config/stash/config/config.yml` was unreadable by the backup user** (`640`, root-only,
+  running the real off-site backup verification caught it directly:
+  `permission denied` in the restic run). Fixed with `sudo chmod 644` — worth re-checking if a
+  future Stash settings change somehow reverts it. The actual data that matters,
+  `stash-go.sqlite`, was already `644` and has always been covered; this only affected the
+  settings file, which is regeneratable via the setup wizard in a few minutes if ever lost.
+- **The real gap: zero scrapers or StashDB connection configured.** All 530 scenes were cataloged
+  from filename alone — no performers, no studios, no tags, no scene identification, despite that
+  being Stash's actual reason for existing over a plain file browser. Not fixed here: connecting
+  [StashDB](https://stashdb.org) (the canonical, free metadata source, especially strong on this
+  library's mostly-mainstream studios) needs a personal account — the same category of
+  intentionally-not-automated step as Bindery's own admin-account creation in
+  [v10.7.0](#history). This is the single highest-value thing left to do to this app.
+
 ## Custom formats and quality profiles
 
 Radarr and Sonarr each carry exactly one custom format, **"Block - Sample, Russian, Low-Quality
@@ -1667,17 +1704,19 @@ re-pulling images.
 - **`scripts/backup-config.sh`** — dumps `zilean-postgres` (`pg_dump`) and `dmm-mysql`
   (`mysqldump`) first, then `restic backup ./config`, then `restic forget --prune` (`--keep-daily
   7 --keep-weekly 4 --keep-monthly 6`). Repo at `~/backups/stack-restic-repo`, restic-encrypted.
-  Run daily at 03:30 by `systemd/stack-backup.timer`, before Watchtower's 4am updates. An optional
-  off-site leg mirrors the same backup to any restic-supported remote (`BACKUP_REMOTE_REPOSITORY`
-  in `.env`) with its own retention pass and Discord tag, left unset by default. A monthly
-  `restic check --read-data-subset=10%` integrity check runs on the 1st of the month against both
-  the local repo and the remote one if configured.
+  Run daily at 03:30 by `systemd/stack-backup.timer`, before Watchtower's 4am updates. An off-site
+  leg mirrors the same backup to any restic-supported remote (`BACKUP_REMOTE_REPOSITORY` in
+  `.env`) with its own retention pass and Discord tag, and is now configured (see the Known
+  limitation note below) with its own monthly `restic check --read-data-subset=10%` integrity
+  check on the 1st of the month, same as the local repo.
 - **Excluded from the restic backup**: `decypharr/cache` and `decypharr-alldebrid/cache` (fully
   regenerable FUSE caches), every app's `logs`/`log` directory, `zilean-postgres`'s and
   `dmm-mysql`'s raw datadirs (the `pg_dump`/`mysqldump` logical dumps above cover those instead —
   file-level copying a *running* database's data directory can produce an inconsistent restore),
-  and several regenerable Plex subdirectories (`Metadata` — 28GB of re-fetchable posters/art,
-  `Cache`, `Codecs`, `Logs`, `Crash Reports`, plus the sibling `plex-transcode` directory).
+  `stash/cache` and `stash/generated` (regenerable via Scan/Generate against the still-real source
+  library, same reasoning as Plex's exclusions), and several regenerable Plex subdirectories
+  (`Metadata` — 28GB of re-fetchable posters/art, `Cache`, `Codecs`, `Logs`, `Crash Reports`, plus
+  the sibling `plex-transcode` directory).
 - **`scripts/arr-app-backup.py`** + `systemd/stack-arr-backup.timer` (daily, 03:40) — triggers
   each `*arr` app's own native `Backup` command (`POST /api/v3/command` or `/api/v1/command`),
   producing the same portable `.zip` each app's own Settings → Backup screen would, which is what
@@ -1692,15 +1731,28 @@ re-pulling images.
   overwritten in place each run rather than dated/retained. Deliberately distinct from
   `backup-config.sh`'s incremental, retained restic run — this is a coarse whole-tree copy, and
   needs passwordless `sudo` since the tree includes container-owned files (`dmm-mysql`/
-  `zilean-postgres` data directories) a normal user can't read.
-- **Known limitation**: this host has a single physical disk (btrfs, one NVMe) — the local restic
-  repo protects against config corruption and accidental deletion, not disk failure. The off-site
-  leg above closes that gap when configured; it isn't by default.
+  `zilean-postgres` data directories) a normal user can't read. **This is not reliable enough to
+  be the stack's actual off-site protection** — confirmed live: one run failed outright (4h41m,
+  exit 1, no output file produced at all) with no earlier successful run under the current
+  `-latest` naming still present to fall back on. Kept as a coarse convenience snapshot of the
+  whole `~/Claude` tree (not just this repo), not the disaster-recovery mechanism — see the real
+  off-site leg above for that.
+- **Known limitation, now closed**: this host has a single physical disk (one NVMe) — the local
+  restic repo protects against config corruption and accidental deletion, not disk failure on its
+  own. Found and fixed live: the local repo *and* the `backup-claude-dir.sh` Dropbox tar (the
+  previous de facto off-site copy) both lived on that same single disk, and the tar leg had
+  silently stopped producing valid output. The off-site leg is now a second restic repository
+  inside this host's already-running, already-authenticated Dropbox sync folder
+  (`~/Dropbox/stack-restic-repo-offsite`) — Dropbox's own client handles the actual off-site
+  replication, no new cloud account or `rclone` install needed. Same password file as the primary
+  repo (`BACKUP_REMOTE_PASSWORD_FILE` left unset, falls back to `~/backups/.restic-password`).
 
 Verify anytime:
 
 ```bash
 RESTIC_PASSWORD_FILE=~/backups/.restic-password restic -r ~/backups/stack-restic-repo snapshots
+# off-site leg:
+RESTIC_PASSWORD_FILE=~/backups/.restic-password restic -r ~/Dropbox/stack-restic-repo-offsite snapshots
 ```
 
 ## Alerting (Discord)
@@ -1942,6 +1994,13 @@ Documented honestly rather than swept under the rug:
 - **Bindery has no native Discord notification connection wired up**, unlike the four
   Servarr-shaped apps (see [Alerting](#alerting-discord)) — it wasn't carried over from Readarr's
   setup and hasn't been requested separately.
+- **NeutArr's own `python3` process gets OOM-killed inside its 512MB cgroup limit on a tight,
+  regular ~30-minute cycle** — 15 kills confirmed in one overnight window
+  (`journalctl | grep oom-killer`, `Memory cgroup out of memory: Killed process ... (python3)`,
+  memcg-scoped to NeutArr's own container). Invisible from Control Panel's dashboard or a plain
+  `docker ps` since `restart: unless-stopped` silently brings it back each time — looks healthy at
+  any single glance, isn't actually stable. Not yet root-caused (leak vs. a task that just needs
+  more headroom) or fixed; flagged from a live audit, not from a user report.
 - **Zurg/Real-Debrid can hit transient rate-limiting under heavy simultaneous use** — a burst of
   grabs, manual-import scans, and concurrent Plex streams all resolving through the same mount at
   once can transiently slow down against Real-Debrid's own API limits. Self-recovers via
@@ -2398,7 +2457,7 @@ wiring found and fixed; an orphaned NeutArr config file removed.**
   Sonarr/Radarr only (no TRaSH Guides custom-format support for other apps), Unpackerr to all four
   Servarr-shaped apps. No changes needed to either.
 
-**v10.9.2 (current) — Cleanuparr's Decypharr download client fixed: a stale password, not a
+**v10.9.2 — Cleanuparr's Decypharr download client fixed: a stale password, not a
 protocol mismatch.**
 
 - **Root cause was simpler than first suspected.** v10.9.1 flagged a recurring `Error creating
@@ -2414,6 +2473,35 @@ protocol mismatch.**
 - **Fixed through Cleanuparr's own Settings → Download Clients → Edit UI**, not a direct database
   write — verified the new password persisted in `cleanuparr.db` and confirmed healthy
   (`Client ... health changed: Healthy`) on the next restart.
+
+**v10.9.3 (current) — Off-site backup actually wired up; Stash configuration audited; NeutArr's
+overnight OOM crash-loop found.**
+
+- **A full-stack audit turned up the single biggest real risk in this whole system: this host's
+  only true off-site backup mechanism had silently stopped working.** `~/backups/stack-restic-repo`
+  (the real, versioned backup) and `backup-claude-dir.sh`'s Dropbox tar (the de facto off-site
+  copy) both lived on the same single physical disk — and the tar leg had failed outright the
+  night before this was found (4h41m run, exit 1, no output file). See
+  [Backups](#backups) for what changed: a genuine off-site restic leg, riding on this host's
+  already-running, already-authenticated Dropbox client, wired up through the
+  `BACKUP_REMOTE_REPOSITORY` mechanism that already existed in `backup-config.sh` but had never
+  been turned on. Verified end-to-end, not just configured: ran the real script for real, confirmed
+  a genuine snapshot landed in the off-site repo (48GB backed up, 44.7GB stored after dedup).
+- **That same verification run caught a second, smaller bug**: `config/stash/config/config.yml`
+  was root-owned `640` and unreadable by the backup user, so Stash's settings file (not its scene
+  data — `stash-go.sqlite` was already `644`) had never actually been covered by either backup
+  leg. Fixed with `chmod 644`.
+- **Stash's configuration audited against a real 530-scene scan** — `parallel_tasks` bumped from
+  `1` to `4`, hardware transcoding attempted and found genuinely non-functional (missing VAAPI
+  driver in the stock image, confirmed harmless via a live generate test, left in place as a
+  foundation rather than reverted), `cache`/`generated` added to the backup exclude list, and the
+  real remaining gap identified: zero scrapers or StashDB connection, meaning every scene so far
+  has zero performer/studio/tag metadata. See
+  [Stash: adult library cataloging](#stash-adult-library-cataloging) above.
+- **A second live-audit finding, unrelated, not yet fixed**: NeutArr's own process getting
+  OOM-killed every ~30 minutes overnight (15 times in one window), silently self-healing via
+  `restart: unless-stopped` and therefore invisible on the dashboard. See
+  [Known gaps](#known-gaps-and-limitations).
 
 ---
 
