@@ -305,9 +305,10 @@ Radarr/Sonarr/Lidarr/Whisparr were reinstated (Lidarr/Readarr in a prior session
 later one) after having been fully removed at various earlier points — see [History](#history)
 for why each was pulled and why each came back. Readarr itself was later **replaced outright by
 Bindery**, not reinstated — see below. Every Servarr-shaped app's queue works identically for
-Control Panel's [Unstick and manual-import](#control-panel) actions; Bindery is queue-visible in
-[queue-status](#control-panel) but not wired into unstick/manual-import (see
-[Known gaps](#known-gaps-and-limitations)).
+Control Panel's [Unstick and manual-import](#control-panel) actions; Bindery isn't in
+`QUEUE_ARR_APPS` at all, so it has no presence in [queue-status](#control-panel),
+[backlog-status](#control-panel), or unstick/manual-import — its API isn't Servarr-shaped, so
+none of that generic machinery applies (see [Known gaps](#known-gaps-and-limitations)).
 
 ### Readarr is gone; Bindery replaced it
 
@@ -2134,8 +2135,8 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   covers the download-client role in the meantime.
 - **Every supporting service rewired to match**: `control-panel/app.py`'s `ARR_APPS` lost its
   `readarr` entry entirely (Bindery isn't Servarr-shaped, so the generic arr_queue/arr_command
-  machinery that dict drives doesn't apply — it's queue-visible via a separate path instead) and
-  `QUEUE_ARR_APPS` dropped to four apps; Unpackerr's `UN_READARR_0_*` env vars removed (Bindery
+  machinery that dict drives doesn't apply, and it has no presence in queue-status/backlog-status
+  either) and `QUEUE_ARR_APPS` dropped to four apps; Unpackerr's `UN_READARR_0_*` env vars removed (Bindery
   isn't a supported Starr app for it); NeutArr's `config/neutarr/readarr.json` set to
   `"enabled": false` and kept as a scaffold rather than deleted; Decypharr's `categories` list
   renamed `readarr` → `bindery`; `scripts/setup_wizard.py`'s `POST_BOOT_KEYS` lost
