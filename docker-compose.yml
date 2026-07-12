@@ -472,34 +472,59 @@ services:
     ports:
       - "8686:8686"
 
-  # Reinstated (was removed in 7.0.0) - ebook library management. Actual
+  # Replaced Readarr in v10.7.0 - ebook library management. Actual
   # reading/browsing happens via Calibre-Web below, since Plex has no
   # book/ebook agent support at all (confirmed via /system/agents).
-  # Upstream Readarr itself is officially retired ("lack of developers...
-  # decided to retire the project", per linuxserver.io's own deprecation
-  # notice) - hotio doesn't publish an image at all, and linuxserver's own
-  # moving develop/nightly tags no longer resolve to a valid manifest for
-  # this platform. Pinned to the last version tag that's actually pullable
-  # instead - won't ever get updates, which is the accurate state of the
-  # underlying project, not a mistake here.
-  readarr:
-    <<: *common
-    image: lscr.io/linuxserver/readarr:0.4.19-nightly
-    container_name: readarr
+  # Upstream Readarr was officially retired June 2025: its sole metadata
+  # backend (api.bookinfo.club) went permanently offline (confirmed live -
+  # clean NXDOMAIN, not a transient outage), and the maintainers state
+  # outright the project's metadata became unusable and their own migration
+  # to Open Library stalled. Bindery is a clean-room Go rewrite built
+  # specifically to survive this class of failure - OpenLibrary primary
+  # with five independent fallback sources (Google Books, Hardcover, DNB,
+  # Audnex, Audible), none of them scraped. Nothing to migrate from the old
+  # Readarr instance - it had 0 authors/books tracked the whole time it ran
+  # here.
+  bindery:
+    restart: unless-stopped
+    logging: *common-logging
+    image: ghcr.io/vavallee/bindery:v1.25.0
+    container_name: bindery
     networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8787/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+    # Distroless image, not LSIO's s6-overlay - PUID/PGID env vars alone are
+    # sanity-check assertions only, not user switchers (confirmed in its own
+    # docs). Runs as UID 65532 by default regardless of what those env vars
+    # say, which 403'd on this stack's PUID:PGID=1000:1000-owned bind mounts.
+    # The actual fix is this `user:` override; BINDERY_PUID/PGID below just
+    # make Bindery verify the two agree and fail loudly (not with a bare
+    # permission-denied) if they're ever changed out of sync.
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      BINDERY_PUID: ${PUID}
+      BINDERY_PGID: ${PGID}
+      BINDERY_API_KEY: ${BINDERY_API_KEY}
+      # Matches every other *arr app's mount point in this stack exactly
+      # (see Unpackerr's comment above on why /mnt alone doesn't cover it) -
+      # zero path-remap needed since Decypharr already reports completed
+      # downloads under this same /app/downloads/<category>/... path.
+      BINDERY_DOWNLOAD_DIR: /app/downloads/bindery
+    # No healthcheck: block here on purpose - the image already bakes in
+    # HEALTHCHECK CMD ["/bindery", "healthcheck"] itself. Distroless has no
+    # shell at all (confirmed live: /bin/sh doesn't exist), so a CMD-SHELL
+    # override here would replace a correct built-in check with a broken
+    # one that can never run.
     volumes:
-      - ./config/readarr:/config
+      - ./config/bindery:/config
       - /mnt/zurg:/mnt/zurg:rslave
       - /mnt/decypharr:/mnt/decypharr:rslave
       - /mnt/nzbdav:/mnt/nzbdav:rslave
       - ./config/decypharr/downloads:/app/downloads:rslave
-      - ./media/books:/data/books
+      # Same host directory Calibre-Web already mounts (as /books) - so
+      # whatever Bindery imports is immediately visible there with no
+      # separate wiring. /books is Bindery's own BINDERY_LIBRARY_DIR
+      # default, so no env override needed either.
+      - ./media/books:/books
     ports:
       - "8787:8787"
 
@@ -915,7 +940,6 @@ services:
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
       LIDARR_API_KEY: ${LIDARR_API_KEY}
-      READARR_API_KEY: ${READARR_API_KEY}
       WHISPARR_API_KEY: ${WHISPARR_API_KEY}
       NZBDAV_API_KEY: ${NZBDAV_API_KEY}
       # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
@@ -1048,11 +1072,12 @@ services:
       UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
       UN_SONARR_0_URL: http://sonarr:8989
       UN_SONARR_0_API_KEY: ${SONARR_API_KEY}
-      # Lidarr/Readarr/Whisparr reinstated in 10.2.0 - same pattern.
+      # Lidarr/Whisparr reinstated in 10.2.0 - same pattern. No UN_READARR
+      # entry - Bindery replaced Readarr in v10.7.0 and isn't a supported
+      # Unpackerr "Starr app" (too new for that fixed list). Low-impact:
+      # ebook releases are rarely RAR'd the way video/audio ones are.
       UN_LIDARR_0_URL: http://lidarr:8686
       UN_LIDARR_0_API_KEY: ${LIDARR_API_KEY}
-      UN_READARR_0_URL: http://readarr:8787
-      UN_READARR_0_API_KEY: ${READARR_API_KEY}
       UN_WHISPARR_0_URL: http://whisparr:6969
       UN_WHISPARR_0_API_KEY: ${WHISPARR_API_KEY}
     volumes:
