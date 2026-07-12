@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.9.3**
+Current version: **v10.9.4**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -2474,7 +2474,7 @@ protocol mismatch.**
   write — verified the new password persisted in `cleanuparr.db` and confirmed healthy
   (`Client ... health changed: Healthy`) on the next restart.
 
-**v10.9.3 (current) — Off-site backup actually wired up; Stash configuration audited; NeutArr's
+**v10.9.3 — Off-site backup actually wired up; Stash configuration audited; NeutArr's
 overnight OOM crash-loop found.**
 
 - **A full-stack audit turned up the single biggest real risk in this whole system: this host's
@@ -2502,6 +2502,35 @@ overnight OOM crash-loop found.**
   OOM-killed every ~30 minutes overnight (15 times in one window), silently self-healing via
   `restart: unless-stopped` and therefore invisible on the dashboard. See
   [Known gaps](#known-gaps-and-limitations).
+
+**v10.9.4 (current) — A real content-leak report resolved live: adult content was landing in
+both Movies and TV Shows, for two different reasons.**
+
+- **User-reported, not audit-found**: "Drilling Mommy" showing up in the Movies library.
+  Confirmed via Radarr's own API it was never `*arr`-tracked — untracked content Zurg classifies
+  independently, same failure class as every prior leak in
+  [Zurg content-routing](#the-debrid-pipeline-zurg--decypharr). Cross-checking the rest of
+  `/mnt/zurg/movies` against Radarr's full tracked-title list turned up two more untracked series
+  leaking the same way: `Family Swap` and `The Best of Forbidden Scenes`. Added `Drilling`,
+  `Family[\s._-]?Swap`, and `Forbidden[\s._-]?Scenes` to Zurg's `adult` keyword filter (plus
+  `Cory[\s._-]?Chase`, a performer name spotted in the same sweep) — verified against both the
+  new leaks and existing legitimate titles with the same words (`Mommy Dead and Dearest`,
+  `Goodnight Mommy`, `Double Mommy` all correctly still don't match) before applying.
+- **A second, structural bug found investigating why `Family Swap` was *also* leaking into TV
+  Shows**: `adult`'s `group_order: 17` ran *after* `shows`' generic `has_episodes: true`
+  heuristic (`group_order: 10`), so anything numbered like a series (`Family.Swap.10.2023.720p`)
+  got claimed by `shows` before the adult keyword filter ever ran — no keyword-list fix could
+  have caught this, since it never reached that filter at all. Fixed by moving `adult` to
+  `group_order: 5`, first in the whole sequence.
+- **Applied and verified live, following this stack's own documented mount-restart procedure**:
+  Zurg restarted (config change), Radarr restarted after (its own documented mount fragility),
+  confirmed via direct `stat -L`/`ls` on both host and inside the Plex container that the files
+  physically moved from `/mnt/zurg/{movies,shows}` to `/mnt/zurg/adult`. Plex's own library index
+  took longer to catch up than the underlying fix — a plain library scan only adds new files, it
+  doesn't prune entries whose file disappeared, and this host's ~300k-episode TV library scan is
+  slow enough that `emptyTrash` had nothing to purge yet by the time this was checked. The fix
+  itself is confirmed correct at the source regardless of how long Plex's own UI takes to
+  reflect it.
 
 ---
 
