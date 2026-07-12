@@ -15,6 +15,8 @@ import concurrent.futures
 import os
 import re
 import socket
+import sqlite3
+import subprocess
 import threading
 import time
 from collections import Counter
@@ -24,6 +26,7 @@ from urllib.parse import quote, urlparse
 import docker
 import httpx
 import psycopg2
+import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,12 +36,24 @@ PLEX_URL = (os.environ.get("PLEX_URL") or "").rstrip("/")
 PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
 ZILEAN_URL = "http://zilean:8181"
 DECYPHARR_URL = "http://decypharr:8282"
+DECYPHARR_ALLDEBRID_URL = "http://decypharr-alldebrid:8283"
 DECYPHARR_MANUAL_CATEGORY = "manual"
 GLANCES_URL = "http://glances:61208"
 NZBDAV_URL = "http://nzbdav:3000"
 NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
 ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
 HOST_IP = os.environ.get("HOST_IP")
+STASH_URL = "http://stash:9999"
+PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
+# Read-only host mounts added specifically for the stack-* diagnostic
+# endpoints below (resource-check through neutarr-hunt) - see
+# docker-compose.yml's control-panel volumes for what backs each of these.
+HOST_CONFIG_DIR = "/host-config"
+HOST_MNT_DIR = "/mnt"
+HOST_BACKUP_LOCAL = "/host-backups/stack-restic-repo"
+HOST_BACKUP_OFFSITE = "/host-backup-offsite"
+HOST_RESTIC_PASSWORD_FILE = "/host-backups/.restic-password"
+HOST_README = "/host-README.md"
 # Matches Decypharr's own hexRegex (pkg/internal/utils/magnet.go) - its
 # magnet parser (anacrolix/torrent's metainfo.ParseMagnetUri) 400s with no
 # application-level log line for anything that doesn't match this, so this
@@ -540,10 +555,19 @@ def plex_libraries():
 
 
 @app.post("/api/plex/empty-trash")
-def plex_empty_trash():
+def plex_empty_trash(library: str | None = None):
+    """Empties trash on every library, or just one if `library` (matched
+    case-insensitively against its title) is given - the scoped form is
+    what actually cleared the stale Movies/TV Shows entries after this
+    session's content-routing fix, without touching every other library
+    along with them. A plain scan only adds new files; it never prunes
+    entries whose file disappeared, which is what this actually does."""
     try:
         sections = plex_sections()
-        for s in sections:
+        targets = sections if library is None else [s for s in sections if s["title"].lower() == library.lower()]
+        if not targets:
+            fail(f"No library found matching '{library}'.")
+        for s in targets:
             r = httpx.put(
                 f"{PLEX_URL}/library/sections/{s['key']}/emptyTrash",
                 headers=plex_headers(),
@@ -552,7 +576,7 @@ def plex_empty_trash():
             r.raise_for_status()
     except httpx.HTTPError as e:
         fail(f"Empty trash failed: {e}")
-    return ok(f"Trash emptied on {len(sections)} librar{'y' if len(sections) == 1 else 'ies'}.")
+    return ok(f"Trash emptied on: {', '.join(s['title'] for s in targets)}.")
 
 
 @app.post("/api/plex/optimize-db")
@@ -1533,6 +1557,563 @@ def stack_restart_all():
 
     threading.Thread(target=worker, daemon=True).start()
     return ok(f"Restarting {len(names)} containers (everything except this panel): {', '.join(names)}")
+
+
+# ---------------------------------------------------------------------
+# Diagnostic/audit endpoints - added after a live resource+wiring audit
+# found real, previously-invisible gaps (10 containers with no mem_limit,
+# 5 apps stuck on debug logging, a Zurg group_order bug, Cleanuparr missing
+# two arr_instances). Each of these turns one of those manual investigation
+# steps into a real endpoint instead of a one-off curl/sqlite3 session.
+# ---------------------------------------------------------------------
+
+@app.get("/api/resource-check")
+def resource_check():
+    """Every container missing mem_limit or cpus - the exact gap a live
+    audit found for 10 services (docker stats silently reporting the full
+    host memory as their ceiling instead of a real number)."""
+    me, containers = project_containers()
+    missing = []
+    for c in containers:
+        if c.id == me.id:
+            continue
+        host_config = c.attrs.get("HostConfig", {})
+        mem_limit = host_config.get("Memory") or 0
+        nano_cpus = host_config.get("NanoCpus") or 0
+        if mem_limit == 0 or nano_cpus == 0:
+            missing.append({
+                "name": c.name,
+                "mem_limit_set": mem_limit != 0,
+                "cpus_set": nano_cpus != 0,
+                **container_stats(c),
+            })
+    if not missing:
+        return ok("Every container has both mem_limit and cpus set.", containers=[])
+    return ok(f"{len(missing)} container(s) missing mem_limit and/or cpus.", containers=missing)
+
+
+LOG_LEVEL_APPS = {
+    "radarr": ARR_APPS["radarr"],
+    "sonarr": ARR_APPS["sonarr"],
+    "lidarr": ARR_APPS["lidarr"],
+    "whisparr": ARR_APPS["whisparr"],
+    "prowlarr": {"url": "http://prowlarr:9696", "api": "v1", "key": PROWLARR_API_KEY, "label": "Prowlarr"},
+}
+
+
+@app.get("/api/log-levels")
+def log_levels():
+    """Current logLevel for every Servarr-shaped app - debug left on in
+    production was a real, invisible-until-checked finding this session
+    (100MB+ log directories on 5 apps, likely months old)."""
+    out = {}
+    for name, cfg in LOG_LEVEL_APPS.items():
+        try:
+            r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/config/host", headers={"X-Api-Key": cfg["key"]}, timeout=10)
+            r.raise_for_status()
+            out[name] = r.json().get("logLevel")
+        except Exception as e:
+            out[name] = f"error: {e}"
+    debug_apps = [n for n, lvl in out.items() if lvl == "debug"]
+    msg = f"{len(debug_apps)} app(s) at debug: {', '.join(debug_apps)}" if debug_apps else "All apps at info (or non-debug)."
+    return ok(msg, levels=out)
+
+
+@app.post("/api/log-levels/reset")
+def log_levels_reset():
+    """Sets logLevel back to 'info' on every app currently at 'debug'."""
+    reset = []
+    for name, cfg in LOG_LEVEL_APPS.items():
+        try:
+            r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/config/host", headers={"X-Api-Key": cfg["key"]}, timeout=10)
+            r.raise_for_status()
+            current = r.json()
+            if current.get("logLevel") != "debug":
+                continue
+            current["logLevel"] = "info"
+            httpx.put(
+                f"{cfg['url']}/api/{cfg['api']}/config/host/{current['id']}",
+                headers={"X-Api-Key": cfg["key"], "Content-Type": "application/json"},
+                json=current,
+                timeout=10,
+            ).raise_for_status()
+            reset.append(name)
+        except Exception as e:
+            print(f"log-levels-reset: failed for {name}: {e}")
+    if not reset:
+        return ok("Nothing to reset - no app was at debug.")
+    return ok(f"Reset {len(reset)} app(s) to info: {', '.join(reset)}")
+
+
+@app.get("/api/oom-check")
+def oom_check():
+    """Containers Docker itself has ever recorded an OOM kill for
+    (State.OOMKilled) - the NeutArr finding (15 kills in one overnight
+    window, invisible on the dashboard since restart:unless-stopped
+    self-heals every time) came from journalctl, but Docker tracks this
+    per-container without needing host journal access at all."""
+    me, containers = project_containers()
+    killed = [c.name for c in containers if c.id != me.id and c.attrs.get("State", {}).get("OOMKilled")]
+    if not killed:
+        return ok("No container currently shows an OOM-kill flag.", containers=[])
+    return ok(
+        f"{len(killed)} container(s) have been OOM-killed at least once (flag persists until next "
+        f"recreate, not necessarily still happening): {', '.join(killed)}",
+        containers=killed,
+    )
+
+
+@app.get("/api/disk-usage")
+def disk_usage():
+    """Per-app config/ directory size - would have caught Stash's
+    cache/generated growth (or any future app's) before it became a
+    backup-bloat problem, instead of after."""
+    if not os.path.isdir(HOST_CONFIG_DIR):
+        fail(f"{HOST_CONFIG_DIR} not mounted.")
+    sizes = []
+    for entry in sorted(os.listdir(HOST_CONFIG_DIR)):
+        path = os.path.join(HOST_CONFIG_DIR, entry)
+        if not os.path.isdir(path):
+            continue
+        total = 0
+        # Two real bugs found getting this right, live:
+        # 1. followlinks=False keeps os.walk from descending into a
+        #    symlinked subdirectory, but os.path.getsize() on a file
+        #    that's *itself* a symlink still follows it - config/decypharr/
+        #    downloads holds symlinks into /mnt/decypharr (the debrid FUSE
+        #    mount, real size in the TBs), which getsize() resolved and
+        #    summed, reporting a 349GB "config directory".
+        # 2. Switching to os.lstat().st_size fixed that, but decypharr's
+        #    own cache still reported 152GB against a real (`du`-confirmed)
+        #    11GB - st_size is a file's *logical* size, not actual disk
+        #    consumption; decypharr's FUSE cache uses sparse/preallocated
+        #    files, so st_size vastly overstates real usage. st_blocks
+        #    (512-byte units, matching `du`'s own accounting) is what
+        #    actually answers "how much disk does this use."
+        for dirpath, _, filenames in os.walk(path, followlinks=False):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                try:
+                    total += os.lstat(fp).st_blocks * 512
+                except OSError:
+                    pass
+        sizes.append({"app": entry, "mb": round(total / 1024 / 1024, 1)})
+    sizes.sort(key=lambda x: x["mb"], reverse=True)
+    return ok(f"{len(sizes)} app config directories.", sizes=sizes)
+
+
+def _normalize_release_name(name: str) -> str:
+    name = re.sub(r"\(\d{4}\).*", "", name)
+    name = re.sub(r"[._-]", " ", name)
+    return re.sub(r"\s+", " ", name).strip().lower()
+
+
+CONTENT_AUDIT_APPS = {"movies": ("radarr", "title"), "shows": ("sonarr", "title")}
+
+
+@app.get("/api/content-audit/{library}")
+def content_audit(library: str):
+    """Cross-references Zurg's raw /mnt/zurg/<library> listing against the
+    matching *arr app's tracked titles - the exact manual workflow that
+    found "Drilling Mommy"/"Family Swap"/"Forbidden Scenes" leaking into
+    the wrong Plex library. Untracked ~= raw content Zurg classified
+    independently, not necessarily wrong, but worth a look."""
+    if library not in CONTENT_AUDIT_APPS:
+        fail(f"Unknown library '{library}' - use one of: {', '.join(CONTENT_AUDIT_APPS)}", status_code=400)
+    app_name, _ = CONTENT_AUDIT_APPS[library]
+    cfg = ARR_APPS[app_name]
+    mount_path = os.path.join(HOST_MNT_DIR, "zurg", library)
+    if not os.path.isdir(mount_path):
+        fail(f"{mount_path} not present - mount may be down.")
+    try:
+        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/movie" if app_name == "radarr" else f"{cfg['url']}/api/{cfg['api']}/series",
+                       headers={"X-Api-Key": cfg["key"]}, timeout=30)
+        r.raise_for_status()
+        tracked = {_normalize_release_name(item["title"]) for item in r.json()}
+    except Exception as e:
+        fail(f"Could not reach {cfg['label']}: {e}")
+    untracked = []
+    for entry in sorted(os.listdir(mount_path)):
+        norm = _normalize_release_name(entry)
+        if not any(norm.startswith(t[:20]) or t in norm for t in tracked if len(t) > 3):
+            untracked.append(entry)
+    if not untracked:
+        return ok(f"Every entry in /mnt/zurg/{library} matches a {cfg['label']}-tracked title.", untracked=[])
+    return ok(
+        f"{len(untracked)} entr(ies) in /mnt/zurg/{library} don't match any {cfg['label']}-tracked "
+        f"title - not necessarily wrong, but worth a look (fuzzy match, false positives possible).",
+        untracked=untracked,
+    )
+
+
+@app.get("/api/zurg/classify")
+def zurg_classify(filename: str):
+    """Tests a filename against Zurg's *current* config.yml, in group_order
+    sequence, without needing a real leak sitting on disk to test against -
+    would have made verifying today's adult-filter/group_order fix much
+    faster. Mirrors Zurg's own "first match wins" logic exactly."""
+    config_path = os.path.join(HOST_CONFIG_DIR, "zurg", "config.yml")
+    if not os.path.isfile(config_path):
+        fail(f"{config_path} not present.")
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+    directories = cfg.get("directories", {})
+    ordered = sorted(directories.items(), key=lambda kv: kv[1].get("group_order", 999))
+    for group_name, group_cfg in ordered:
+        for filt in group_cfg.get("filters", []):
+            if "regex" in filt:
+                pattern = filt["regex"].strip("/")
+                # Zurg's own (?i) inline flag works fine in Python's re too.
+                if re.search(pattern, filename):
+                    return ok(f"'{filename}' matches group '{group_name}' (group_order {group_cfg.get('group_order')}).",
+                               group=group_name, group_order=group_cfg.get("group_order"))
+            if filt.get("has_episodes"):
+                # Zurg's own heuristic isn't reimplementable exactly here -
+                # flag it as a possible match rather than silently skipping.
+                if re.search(r"\b[Ss]\d{1,2}[Ee]\d{1,3}\b|\b\d{1,3}x\d{1,3}\b", filename):
+                    return ok(f"'{filename}' likely matches group '{group_name}' via has_episodes heuristic "
+                              f"(approximated here, not Zurg's exact logic).", group=group_name, approximate=True)
+    return ok(f"'{filename}' matches no group with a regex/heuristic filter - would fall through to the catch-all.")
+
+
+KNOWN_MOUNTS = ["zurg", "decypharr", "decypharr-alldebrid", "nzbdav", "all", "all-anime"]
+
+
+@app.get("/api/mount-health")
+def mount_health():
+    """Every known FUSE mountpoint under /mnt, checked for a clean listing -
+    catches a stale mount (registered but dead backing process) before it
+    causes the cascade failure documented in README's mount-cascade section."""
+    results = []
+    for name in KNOWN_MOUNTS:
+        path = os.path.join(HOST_MNT_DIR, name)
+        entry = {"mount": name, "path": path}
+        if not os.path.exists(path):
+            entry["status"] = "missing"
+        else:
+            try:
+                os.listdir(path)
+                entry["status"] = "healthy"
+            except OSError as e:
+                entry["status"] = f"stale: {e}"
+        results.append(entry)
+    unhealthy = [r for r in results if r["status"] != "healthy"]
+    if not unhealthy:
+        return ok("All known mounts resolve cleanly.", mounts=results)
+    return ok(f"{len(unhealthy)} mount(s) not healthy: {', '.join(r['mount'] for r in unhealthy)}", mounts=results)
+
+
+@app.get("/api/perms-check")
+def perms_check():
+    """Config files that are root-owned and unreadable by group/other - the
+    exact class of bug that left Stash's config.yml (mode 640) out of every
+    backup run despite the backup script having no error handling that
+    would have surfaced it. Doesn't need to actually run as that user to
+    check this - just inspects the mode bits directly."""
+    if not os.path.isdir(HOST_CONFIG_DIR):
+        fail(f"{HOST_CONFIG_DIR} not mounted.")
+    unreadable = []
+    # followlinks=False + lstat, same reasoning as disk_usage() above -
+    # config/decypharr/downloads holds symlinks into the multi-TB debrid
+    # mount; stat() would follow them (slow, and checking the wrong
+    # file's permissions entirely - what matters here is the symlink
+    # itself, not whatever it happens to point at).
+    for dirpath, _, filenames in os.walk(HOST_CONFIG_DIR, followlinks=False):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            try:
+                mode = os.lstat(fp).st_mode
+            except OSError:
+                continue
+            # No group or other read bit at all.
+            if not (mode & 0o044):
+                unreadable.append(fp.replace(HOST_CONFIG_DIR, "config", 1))
+    if not unreadable:
+        return ok("No config files found unreadable by group/other.", files=[])
+    return ok(f"{len(unreadable)} file(s) unreadable by group/other (won't be backed up):", files=unreadable[:200])
+
+
+@app.get("/api/image-check")
+def image_check():
+    """For every running container's image, queries the registry directly
+    (no pull) for whether a newer digest exists under the same tag - the
+    digest/exact-version-pinned tier Watchtower never touches on its own.
+    Registry queries can be slow/rate-limited, so this is opt-in, not part
+    of the container grid's own 15s poll."""
+    me, containers = project_containers()
+    results = []
+    for c in containers:
+        if c.id == me.id:
+            continue
+        image_tags = c.image.tags
+        if not image_tags:
+            continue
+        tag_ref = image_tags[0]
+        current_digests = set(c.image.attrs.get("RepoDigests", []))
+        try:
+            registry_data = docker_client.images.get_registry_data(tag_ref)
+            remote_digest = registry_data.attrs.get("Descriptor", {}).get("digest")
+            has_update = bool(remote_digest) and not any(remote_digest in d for d in current_digests)
+            results.append({"name": c.name, "image": tag_ref, "update_available": has_update})
+        except Exception as e:
+            results.append({"name": c.name, "image": tag_ref, "update_available": None, "error": str(e)})
+    updates = [r["name"] for r in results if r.get("update_available")]
+    msg = f"{len(updates)} image(s) with a newer digest available: {', '.join(updates)}" if updates else \
+          "No newer digests found for any currently-pinned tag (or all checks failed - see errors)."
+    return ok(msg, images=results)
+
+
+def _restic(repo_path: str, args: list, text: bool = True) -> subprocess.CompletedProcess:
+    """Both repos are mounted read-only into this container - deliberately,
+    there's no legitimate reason Control Panel needs write access to a
+    backup repo. restic still tries to take a lock file for most commands,
+    including read-only ones, which fails against a read-only mount and
+    retries for a full minute before giving up (confirmed live: every call
+    here failed with "read-only file system" on the lock, not an actual
+    repo problem). --no-lock is correct for every use in this file - none
+    of them write anything - so this fixes it without loosening the mount.
+    text=False for `dump`: it streams a file's raw bytes to stdout, and
+    forcing UTF-8 decoding on that (the default here otherwise) throws
+    UnicodeDecodeError on the first binary file it happens to hit -
+    confirmed live against a real MediaCover image."""
+    env = dict(os.environ)
+    env["RESTIC_REPOSITORY"] = repo_path
+    env["RESTIC_PASSWORD_FILE"] = HOST_RESTIC_PASSWORD_FILE
+    return subprocess.run(["restic", "--no-lock", *args], env=env, capture_output=True, text=text, timeout=60)
+
+
+@app.get("/api/backup-verify")
+def backup_verify():
+    """Latest snapshot age for both the local and off-site restic repos -
+    the check that would have caught the off-site leg silently not existing
+    before this session's audit found it the hard way (a real overnight
+    tar-backup failure, discovered only by chance)."""
+    repos = {"local": HOST_BACKUP_LOCAL, "offsite": HOST_BACKUP_OFFSITE}
+    out = {}
+    for name, path in repos.items():
+        if not os.path.isdir(path):
+            out[name] = {"status": "missing", "path": path}
+            continue
+        try:
+            r = _restic(path, ["snapshots", "--json", "--latest", "1"])
+            if r.returncode != 0:
+                out[name] = {"status": "error", "detail": r.stderr.strip()[:300]}
+                continue
+            import json as _json
+            snaps = _json.loads(r.stdout or "[]")
+            if not snaps:
+                out[name] = {"status": "empty", "path": path}
+                continue
+            out[name] = {"status": "ok", "time": snaps[0].get("time"), "id": snaps[0].get("short_id")}
+        except Exception as e:
+            out[name] = {"status": "error", "detail": str(e)}
+    problems = [n for n, v in out.items() if v.get("status") != "ok"]
+    msg = "Both repos have a recent snapshot." if not problems else f"Problem with: {', '.join(problems)}"
+    return ok(msg, repos=out)
+
+
+@app.post("/api/backup-restore-test")
+def backup_restore_test():
+    """Pulls one small file out of the latest local snapshot into a scratch
+    path inside the container and confirms it's actually readable - this
+    stack has verified backups complete successfully many times, but never
+    that a restore actually works, until now."""
+    if not os.path.isdir(HOST_BACKUP_LOCAL):
+        fail(f"{HOST_BACKUP_LOCAL} not present.")
+    try:
+        r = _restic(HOST_BACKUP_LOCAL, ["ls", "latest", "--json"])
+        if r.returncode != 0:
+            fail(f"restic ls failed: {r.stderr.strip()[:300]}")
+        import json as _json
+        candidate = None
+        for line in r.stdout.splitlines():
+            try:
+                entry = _json.loads(line)
+            except ValueError:
+                continue
+            if entry.get("type") == "file" and 0 < entry.get("size", 0) < 1_000_000:
+                candidate = entry.get("path")
+                break
+        if not candidate:
+            fail("No small file found in the latest snapshot to test-restore.")
+        dump = _restic(HOST_BACKUP_LOCAL, ["dump", "latest", candidate], text=False)
+        if dump.returncode != 0:
+            fail(f"restic dump failed for {candidate}: {dump.stderr.decode(errors='replace').strip()[:300]}")
+        return ok(f"Restore test passed: '{candidate}' ({len(dump.stdout)} bytes) dumped and read successfully.")
+    except subprocess.TimeoutExpired:
+        fail("restic operation timed out.")
+
+
+@app.get("/api/cleanuparr/instances")
+def cleanuparr_instances():
+    """Which *arr apps Cleanuparr actually has a connected arr_instance for,
+    vs. just an arr_configs type placeholder - the exact gap that left
+    Lidarr and Whisparr completely uncovered by queue-cleaning/strikes
+    despite both apps being fully functional."""
+    db_path = os.path.join(HOST_CONFIG_DIR, "cleanuparr", "cleanuparr.db")
+    if not os.path.isfile(db_path):
+        fail(f"{db_path} not present.")
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+    cur.execute("SELECT type FROM arr_configs")
+    configured_types = {row["type"] for row in cur.fetchall()}
+    cur.execute("SELECT name FROM arr_instances")
+    connected = {row["name"].lower() for row in cur.fetchall()}
+    con.close()
+    gaps = sorted(t for t in configured_types if t not in connected and t != "readarr")
+    if not gaps:
+        return ok("Every configured app type has a connected instance.", connected=sorted(connected))
+    return ok(f"{len(gaps)} app(s) have a config placeholder but no connected instance: {', '.join(gaps)}",
+              connected=sorted(connected), gaps=gaps)
+
+
+@app.get("/api/neutarr/status")
+def neutarr_status():
+    """Per-app enabled/disabled state straight from NeutArr's own JSON
+    config files - the same place the orphaned whisparr.json (blank
+    creds, enabled:true, never actually read) was found."""
+    neutarr_dir = os.path.join(HOST_CONFIG_DIR, "neutarr")
+    if not os.path.isdir(neutarr_dir):
+        fail(f"{neutarr_dir} not present.")
+    apps = {}
+    for fname in os.listdir(neutarr_dir):
+        if not fname.endswith(".json") or fname in ("general.json", "swaparr.json", "users.json"):
+            continue
+        try:
+            with open(os.path.join(neutarr_dir, fname)) as f:
+                import json as _json
+                cfg = _json.load(f)
+            instances = cfg.get("instances", [])
+            apps[fname[:-5]] = {
+                "enabled": any(i.get("enabled") for i in instances),
+                "has_credentials": any(i.get("api_url") and i.get("api_key") for i in instances),
+            }
+        except Exception as e:
+            apps[fname[:-5]] = {"error": str(e)}
+    return ok(f"{len(apps)} app config file(s) found in config/neutarr.", apps=apps)
+
+
+DECYPHARR_INSTANCES = {"decypharr": DECYPHARR_URL, "decypharr-alldebrid": DECYPHARR_ALLDEBRID_URL}
+
+
+@app.get("/api/decypharr/health/{instance}")
+def decypharr_health(instance: str):
+    """Directly checks a Decypharr instance's own health endpoint - bypasses
+    whatever's consuming it (Radarr/Sonarr/Cleanuparr/etc.), useful when one
+    of those reports a Decypharr failure and the question is "is it
+    actually Decypharr, or my client's own stored credentials." Root-caused
+    the Cleanuparr↔Decypharr 401 this session - the real problem was a
+    stale password in Cleanuparr's own config, not Decypharr itself."""
+    if instance not in DECYPHARR_INSTANCES:
+        fail(f"Unknown instance '{instance}' - use one of: {', '.join(DECYPHARR_INSTANCES)}", status_code=400)
+    url = DECYPHARR_INSTANCES[instance]
+    try:
+        r = httpx.get(f"{url}/api/v2/app/version", timeout=10)
+        if r.status_code == 200:
+            return ok(f"{instance} is reachable and responding normally.")
+        fail(f"{instance} responded with HTTP {r.status_code}.")
+    except httpx.RequestError as e:
+        fail(f"{instance} unreachable: {e}")
+
+
+@app.post("/api/stash/scan")
+def stash_scan():
+    """Triggers a Stash library scan via its GraphQL API."""
+    try:
+        r = httpx.post(f"{STASH_URL}/graphql", json={"query": "mutation { metadataScan(input: {}) }"}, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("errors"):
+            fail(f"Stash returned an error: {data['errors']}")
+        return ok(f"Scan job queued (id {data['data']['metadataScan']}).")
+    except httpx.RequestError as e:
+        fail(f"Could not reach Stash: {e}")
+
+
+@app.post("/api/stash/identify")
+def stash_identify():
+    """Triggers a full-library StashDB identify run (studio/performer/tag
+    creation enabled) - the same call that took this library from zero
+    metadata to 317 performers/225 studios/791 tags. Requires a StashDB
+    connection already configured in Stash's own Settings - this doesn't
+    create one (that needs the user's own StashDB account)."""
+    query = """
+    mutation {
+      metadataIdentify(input: {
+        sources: [{source: {stash_box_endpoint: "https://stashdb.org/graphql"}}]
+        options: {
+          fieldOptions: [
+            {field: "studio", strategy: MERGE, createMissing: true},
+            {field: "performers", strategy: MERGE, createMissing: true},
+            {field: "tags", strategy: MERGE, createMissing: true}
+          ]
+          setCoverImage: true
+        }
+      })
+    }
+    """
+    try:
+        r = httpx.post(f"{STASH_URL}/graphql", json={"query": query}, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("errors"):
+            fail(f"Stash returned an error: {data['errors']}")
+        return ok(f"Identify job queued (id {data['data']['metadataIdentify']}) against all scenes.")
+    except httpx.RequestError as e:
+        fail(f"Could not reach Stash: {e}")
+
+
+ARR_LOG_CONTAINERS = {"radarr", "sonarr", "lidarr", "whisparr", "bindery", "prowlarr"}
+
+
+@app.get("/api/arr/{app_name}/logs")
+def arr_logs(app_name: str, lines: int = 100):
+    """Tails a container's own docker logs directly - quicker than opening
+    Dozzle for a one-off check."""
+    if app_name not in ARR_LOG_CONTAINERS:
+        fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_LOG_CONTAINERS))}", status_code=400)
+    try:
+        c = docker_client.containers.get(app_name)
+        raw = c.logs(tail=min(lines, 1000)).decode(errors="replace")
+        return ok(f"Last {lines} line(s) from {app_name}.", log=raw)
+    except docker.errors.NotFound:
+        fail(f"Container '{app_name}' not found.")
+
+
+@app.get("/api/version")
+def version():
+    """Current version from README's own declared line, plus a live
+    core/extras container count - a quick doc-vs-reality drift check."""
+    declared = "unknown"
+    if os.path.isfile(HOST_README):
+        with open(HOST_README) as f:
+            for line in f:
+                m = re.match(r"Current version: \*\*(v[\d.]+)\*\*", line)
+                if m:
+                    declared = m.group(1)
+                    break
+    me, containers = project_containers()
+    running = sum(1 for c in containers if c.status == "running")
+    total = len(containers)
+    return ok(f"README declares {declared}. {running}/{total} containers currently running.",
+              version=declared, running=running, total=total)
+
+
+@app.post("/api/neutarr/hunt/eros")
+def neutarr_hunt_eros():
+    """NeutArr (Huntarr-lineage) has no documented "run now" API endpoint
+    for an individual app's hunt cycle - the only reliable trigger is
+    restarting the container, which forces its scheduler to restart from
+    the beginning (including an immediate first pass) rather than waiting
+    out whatever's left of the current interval."""
+    try:
+        c = docker_client.containers.get("neutarr")
+        c.restart(timeout=30)
+        return ok("neutarr restarted - its scheduler will run an immediate hunt pass for every enabled app "
+                  "(eros/Whisparr included), not just eros specifically - NeutArr has no per-app trigger.")
+    except docker.errors.NotFound:
+        fail("Container 'neutarr' not found.")
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
