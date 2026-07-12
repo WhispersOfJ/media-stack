@@ -54,6 +54,7 @@ ARR_APPS = {
         "key": os.environ["RADARR_API_KEY"],
         "search_command": "MissingMoviesSearch",
         "label": "Radarr",
+        "import_events": ("downloadFolderImported",),
     },
     "sonarr": {
         "url": "http://sonarr:8989",
@@ -61,19 +62,28 @@ ARR_APPS = {
         "key": os.environ["SONARR_API_KEY"],
         "search_command": "MissingEpisodeSearch",
         "label": "Sonarr",
+        "import_events": ("downloadFolderImported",),
     },
     # Lidarr/Readarr/Whisparr reinstated in 10.2.0 (originally removed in
     # 7.0.0/4.0.0) - api version and search_command name both differ per
     # app, confirmed live against each app's own /command endpoint rather
     # than assumed (Whisparr v3's is "MissingMoviesSearch", matching Radarr
     # naming despite tracking scenes, not "MissingEpisodeSearch" like
-    # Sonarr would suggest from its Sonarr-codebase heritage).
+    # Sonarr would suggest from its Sonarr-codebase heritage). Same story
+    # for import_events below - confirmed live via each app's own /history
+    # that Lidarr names its per-file-import event "trackFileImported", not
+    # "downloadFolderImported" like the Radarr-lineage apps. Readarr had
+    # zero history to confirm against live (unused, 0 authors tracked at
+    # the time), so it lists both its likely Lidarr-parallel name
+    # ("bookFileImported") and the Radarr-lineage fallback as candidates
+    # rather than guessing a single string that silently never matches.
     "lidarr": {
         "url": "http://lidarr:8686",
         "api": "v1",
         "key": os.environ["LIDARR_API_KEY"],
         "search_command": "MissingAlbumSearch",
         "label": "Lidarr",
+        "import_events": ("trackFileImported",),
     },
     "readarr": {
         "url": "http://readarr:8787",
@@ -81,6 +91,7 @@ ARR_APPS = {
         "key": os.environ["READARR_API_KEY"],
         "search_command": "MissingBookSearch",
         "label": "Readarr",
+        "import_events": ("bookFileImported", "downloadFolderImported"),
     },
     "whisparr": {
         "url": "http://whisparr:6969",
@@ -88,6 +99,7 @@ ARR_APPS = {
         "key": os.environ["WHISPARR_API_KEY"],
         "search_command": "MissingMoviesSearch",
         "label": "Whisparr",
+        "import_events": ("downloadFolderImported",),
     },
 }
 
@@ -932,6 +944,148 @@ def arr_manual_import_all(app_name: str):
     return ok(f"Import started for {len(files)} file(s) in {cfg['label']}.", count=len(files))
 
 
+# ---------------------------------------------------------------------
+# Queue status + ETA - deliberately doesn't trust each app's own
+# timeleft/estimatedCompletionTime (Radarr/Sonarr/etc) or NzbDAV's own
+# timeleft: both are stale "00:00:00" placeholders for nearly everything
+# in this stack, confirmed live. Decypharr's debrid-cached/symlinked
+# downloads jump straight from full size to zero with no gradual
+# byte-by-byte transfer to time (there's no real download happening at
+# that layer to measure), and NzbDAV's SABnzbd-emulation layer doesn't
+# compute a speed field at all even though its mb/mbleft are real.
+# Usenet items pulled through NzbDAV are the one case with an actual
+# gradually-draining transfer. Rather than special-case that, this takes
+# two live size-remaining samples ~4s apart for everything and derives
+# real observed speed from the delta - honest about "no progress
+# observed" (still caching server-side, or genuinely stalled) instead of
+# fabricating an ETA the data can't support.
+# ---------------------------------------------------------------------
+QUEUE_SAMPLE_SECONDS = 4
+
+
+def _arr_sizeleft_snapshot(app_name: str) -> dict[int, int]:
+    try:
+        records = arr_queue(app_name)
+    except HTTPException:
+        return {}
+    return {q["id"]: q.get("sizeleft") or 0 for q in records if q.get("sizeleft")}
+
+
+def _nzbdav_mbleft_snapshot() -> dict[str, float]:
+    try:
+        slots = nzbdav_api("queue").get("queue", {}).get("slots", [])
+    except HTTPException:
+        return {}
+    return {s["nzo_id"]: float(s.get("mbleft") or 0) for s in slots if s.get("status") == "Downloading"}
+
+
+def format_eta(seconds: float) -> str:
+    if seconds == float("inf") or seconds < 0:
+        return "unknown"
+    seconds = int(seconds)
+    # Days case is for the wanted/missing backlog ETA below - a
+    # multi-thousand-item backlog at a modest throughput rate can run into
+    # weeks, unlike a single download's ETA which never needs it.
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, secs = divmod(rem, 60)
+    if days:
+        return f"{days}d{hours:02d}h"
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
+def _bucket_arr_item(q: dict, prev_sizeleft: dict[int, int]) -> tuple[str, dict]:
+    title = q.get("title") or "?"
+    size = q.get("size") or 0
+    sizeleft = q.get("sizeleft") or 0
+    item = {"title": title, "size": human_size(size)}
+    if sizeleft > 0:
+        item["size_left"] = human_size(sizeleft)
+    if q.get("trackedDownloadState") in ("importPending", "importBlocked"):
+        item["note"] = "fully fetched, waiting on import"
+        return "importing", item
+    if sizeleft <= 0:
+        item["note"] = "queued, not yet started"
+        return "queued", item
+    prev = prev_sizeleft.get(q["id"])
+    if prev is not None and prev > sizeleft:
+        speed = (prev - sizeleft) / QUEUE_SAMPLE_SECONDS
+        eta = sizeleft / speed if speed > 0 else float("inf")
+        item["speed"] = f"{human_size(speed)}/s"
+        item["eta"] = format_eta(eta)
+        return "downloading", item
+    item["note"] = "no progress observed (still caching, or stalled)"
+    return "stalled", item
+
+
+def _bucket_nzbdav_item(s: dict, prev_mbleft: dict[str, float]) -> tuple[str, dict]:
+    title = s.get("filename") or "?"
+    mb = float(s.get("mb") or 0)
+    mbleft = float(s.get("mbleft") or 0)
+    item = {"title": title, "size": f"{mb:.0f} MB", "size_left": f"{mbleft:.0f} MB"}
+    if s.get("status") != "Downloading" or mbleft <= 0:
+        item["note"] = "queued, not yet started" if mbleft > 0 else "fully fetched, waiting on import"
+        return ("queued" if mbleft > 0 else "importing"), item
+    prev = prev_mbleft.get(s["nzo_id"])
+    if prev is not None and prev > mbleft:
+        speed_mb = (prev - mbleft) / QUEUE_SAMPLE_SECONDS
+        eta = mbleft / speed_mb if speed_mb > 0 else float("inf")
+        item["speed"] = f"{speed_mb:.1f} MB/s"
+        item["eta"] = format_eta(eta)
+        return "downloading", item
+    item["note"] = "no progress observed (still caching, or stalled)"
+    return "stalled", item
+
+
+@app.get("/api/queue-status")
+def queue_status():
+    """Every *arr app's download queue plus NzbDAV's, bucketed into
+    downloading/stalled/queued/importing with a real speed and ETA for
+    anything actually observed to be draining - see the module comment
+    above for why this measures live instead of trusting each app's own
+    timeleft."""
+    before_arr = {app_name: _arr_sizeleft_snapshot(app_name) for app_name in QUEUE_ARR_APPS}
+    before_nzbdav = _nzbdav_mbleft_snapshot()
+    time.sleep(QUEUE_SAMPLE_SECONDS)
+
+    result = {}
+    grand_total = 0
+    for app_name in QUEUE_ARR_APPS:
+        cfg = ARR_APPS[app_name]
+        try:
+            records = arr_queue(app_name)
+        except HTTPException:
+            result[app_name] = {"label": cfg["label"], "error": "unreachable"}
+            continue
+        buckets = {"downloading": [], "stalled": [], "queued": [], "importing": []}
+        for q in records:
+            bucket, item = _bucket_arr_item(q, before_arr[app_name])
+            buckets[bucket].append(item)
+        grand_total += len(records)
+        result[app_name] = {"label": cfg["label"], "total": len(records), **buckets}
+
+    try:
+        slots = nzbdav_api("queue").get("queue", {}).get("slots", [])
+        buckets = {"downloading": [], "stalled": [], "queued": [], "importing": []}
+        for s in slots:
+            bucket, item = _bucket_nzbdav_item(s, before_nzbdav)
+            buckets[bucket].append(item)
+        grand_total += len(slots)
+        result["nzbdav"] = {"label": "NzbDAV", "total": len(slots), **buckets}
+    except HTTPException:
+        result["nzbdav"] = {"label": "NzbDAV", "error": "unreachable"}
+
+    active = sum(len(v.get("downloading", [])) for v in result.values())
+    return ok(
+        f"{grand_total} item(s) across {len(result)} queues, {active} actively downloading.",
+        queues=result,
+    )
+
+
 def parse_air_date(value: str | None):
     if not value:
         return None
@@ -1021,6 +1175,97 @@ def arr_missing_aired(app_name: str):
         page += 1
     results.sort(key=lambda x: x["aired"] or "", reverse=True)
     return results
+
+
+# ---------------------------------------------------------------------
+# Wanted/missing backlog ETA - a fundamentally different estimate from
+# queue_status above: nothing here is mid-transfer, so there's no size to
+# drain. Instead this measures throughput - how many items each app has
+# actually finished importing recently - from its own /history, and
+# projects that rate forward across the current missing count. Capped to
+# a recent time window (RECENT_IMPORT_LOOKBACK_HOURS) so a backlog that
+# was being chewed through fast an hour ago but has since stalled (e.g.
+# an indexer rate-limit, see the WWE-batch incident) doesn't get credited
+# with a pace it isn't currently keeping.
+# ---------------------------------------------------------------------
+RECENT_IMPORT_LOOKBACK_HOURS = 6
+RECENT_IMPORT_SAMPLE_SIZE = 50
+
+
+def _wanted_missing_total(app_name: str) -> int:
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(
+            f"{cfg['url']}/api/{cfg['api']}/wanted/missing",
+            params={"pageSize": 1},
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} wanted/missing lookup failed: {e}")
+    return r.json().get("totalRecords", 0)
+
+
+def _recent_import_rate_per_hour(app_name: str) -> tuple[float, int]:
+    """Returns (rate_per_hour, sample_count). Rate is 0 if there aren't at
+    least 2 qualifying events, or the newest one is older than
+    RECENT_IMPORT_LOOKBACK_HOURS - both mean "no current pace to report",
+    not "instant" (that would be dividing by a near-zero time span)."""
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(
+            f"{cfg['url']}/api/{cfg['api']}/history",
+            params={"pageSize": RECENT_IMPORT_SAMPLE_SIZE, "sortKey": "date", "sortDirection": "descending"},
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} history lookup failed: {e}")
+    records = r.json().get("records", [])
+    events = [rec for rec in records if rec.get("eventType") in cfg["import_events"]]
+    if len(events) < 2:
+        return 0.0, len(events)
+    newest = datetime.fromisoformat(events[0]["date"].replace("Z", "+00:00"))
+    oldest = datetime.fromisoformat(events[-1]["date"].replace("Z", "+00:00"))
+    if (datetime.now(timezone.utc) - newest).total_seconds() > RECENT_IMPORT_LOOKBACK_HOURS * 3600:
+        return 0.0, len(events)
+    span_hours = (newest - oldest).total_seconds() / 3600
+    if span_hours <= 0:
+        return 0.0, len(events)
+    return len(events) / span_hours, len(events)
+
+
+@app.get("/api/backlog-status")
+def backlog_status():
+    """Every *arr app's wanted/missing count plus a throughput-projected
+    ETA - see the module comment above for why this is rate-based instead
+    of the size/speed math queue_status uses."""
+    result = {}
+    for app_name in QUEUE_ARR_APPS:
+        cfg = ARR_APPS[app_name]
+        try:
+            missing = _wanted_missing_total(app_name)
+            rate_per_hour, sample_count = _recent_import_rate_per_hour(app_name)
+        except HTTPException:
+            result[app_name] = {"label": cfg["label"], "error": "unreachable"}
+            continue
+        item = {
+            "label": cfg["label"],
+            "missing": missing,
+            "recent_imports_sampled": sample_count,
+            "rate_per_hour": round(rate_per_hour, 2),
+        }
+        if missing == 0:
+            item["eta"] = "none - nothing missing"
+        elif rate_per_hour > 0:
+            item["eta"] = format_eta((missing / rate_per_hour) * 3600)
+        else:
+            item["eta"] = f"unknown - no imports in the last {RECENT_IMPORT_LOOKBACK_HOURS}h to measure a rate from"
+        result[app_name] = item
+    total_missing = sum(v.get("missing", 0) for v in result.values())
+    return ok(f"{total_missing} item(s) missing across {len(result)} apps.", apps=result)
 
 
 # ---------------------------------------------------------------------
