@@ -57,11 +57,14 @@ const PRIMARY_ACTIONS = [
   },
 ];
 
+// Bindery (replaced Readarr in v10.7.0) isn't listed here - its API isn't
+// Servarr-shaped, so none of the RSS-sync/search-missing/unstick/manual-
+// import machinery this section wires up against /api/arr/{app}/... applies
+// to it. It's still reachable via Quick Links below.
 const ARR_APPS = [
   { id: "radarr", label: "Radarr", port: 7878, queue: true },
   { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
   { id: "lidarr", label: "Lidarr", port: 8686, queue: true },
-  { id: "readarr", label: "Readarr", port: 8787, queue: true },
   { id: "whisparr", label: "Whisparr", port: 6969, queue: true },
 ];
 
@@ -79,7 +82,7 @@ const QUICK_LINKS = [
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
   { id: "lidarr", label: "Lidarr", port: 8686 },
-  { id: "readarr", label: "Readarr", port: 8787 },
+  { id: "bindery", label: "Bindery", port: 8787 },
   { id: "whisparr", label: "Whisparr", port: 6969 },
   { id: "nzbdav", label: "NzbDAV", port: 3001 },
   { id: "calibre-web", label: "Calibre-Web", port: 8083 },
@@ -388,11 +391,21 @@ function fmtMb(v) {
   return v >= 1024 ? `${(v / 1024).toFixed(2)} GB` : `${v.toFixed(0)} MB`;
 }
 
-function containerCardHtml(c) {
+function containerCardHtml(c, hits) {
   const stateClass = c.state === "running" ? (c.health === "unhealthy" ? "down" : c.health === "starting" ? "unknown" : "up") : c.state === "exited" || c.state === "created" ? "down" : "unknown";
   const healthLabel = c.state !== "running" ? c.state : c.health ? c.health : "running";
   const cpuPct = c.cpu_percent === null || c.cpu_percent === undefined ? null : Math.min(c.cpu_percent, 100);
   const memPct = c.mem_percent === null || c.mem_percent === undefined ? null : Math.min(c.mem_percent, 100);
+  // hits is undefined for containers Control Panel never makes an outbound
+  // API call to (e.g. rclone mounts, Watchtower) - no row for those, rather
+  // than a permanent "0" that never means anything.
+  const hit = hits && hits.counts[c.label];
+  const hitRow = hit === undefined ? "" : `
+        <div class="metric api-hits-metric${hits.justTicked.has(c.label) ? " api-hits-tick" : ""}" title="API calls made to ${escapeHtml(c.label)} since this panel started">
+          <span class="metric-label">API</span>
+          <span class="api-hits-dot"></span>
+          <span class="metric-value api-hits-value">${hit.toLocaleString()}</span>
+        </div>`;
   return `
     <div class="container-card" data-name="${escapeHtml(c.name)}" data-state="${escapeHtml(c.state)}">
       <div class="container-card-head">
@@ -411,7 +424,7 @@ function containerCardHtml(c) {
           <span class="metric-label">MEM</span>
           <div class="stat-bar small"><div class="stat-bar-fill" style="width:${memPct ?? 0}%"></div></div>
           <span class="metric-value">${fmtMb(c.mem_used_mb)}</span>
-        </div>
+        </div>${hitRow}
       </div>
       <div class="container-actions">
         <button class="btn-icon" type="button" data-act="start" title="Start" ${c.state === "running" ? "disabled" : ""}>${svg("start")}</button>
@@ -453,6 +466,25 @@ function wireContainerCard(card, c) {
 }
 
 let containerGridBuilt = false;
+let previousHitCounts = {};
+
+// Best-effort, separate from the containers fetch above: if this fails,
+// every card just renders with no API-hits row rather than losing the
+// whole grid over a cosmetic extra.
+async function fetchHitCounts() {
+  try {
+    const res = await fetch("/api/api-hit-counts");
+    if (!res.ok) return null;
+    const { counts } = await res.json();
+    const justTicked = new Set(
+      Object.keys(counts).filter((label) => counts[label] > (previousHitCounts[label] || 0))
+    );
+    previousHitCounts = counts;
+    return { counts, justTicked };
+  } catch (e) {
+    return null;
+  }
+}
 
 async function refreshContainerGrid() {
   const grid = document.getElementById("container-grid");
@@ -465,13 +497,14 @@ async function refreshContainerGrid() {
     if (!containerGridBuilt) grid.innerHTML = `<div class="zilean-hint error">Could not load containers.</div>`;
     return;
   }
+  const hits = await fetchHitCounts();
   const up = data.filter((c) => c.state === "running" && (c.health === "healthy" || !c.health)).length;
   const containersValue = document.getElementById("stat-containers-value");
   const containersSub = document.getElementById("stat-containers-sub");
   if (containersValue) containersValue.textContent = `${up} / ${data.length}`;
   if (containersSub) containersSub.textContent = up === data.length ? "all healthy" : `${data.length - up} need attention`;
 
-  grid.innerHTML = data.map(containerCardHtml).join("");
+  grid.innerHTML = data.map((c) => containerCardHtml(c, hits)).join("");
   grid.querySelectorAll(".container-card").forEach((card) => {
     const c = data.find((x) => x.name === card.dataset.name);
     wireContainerCard(card, c);
