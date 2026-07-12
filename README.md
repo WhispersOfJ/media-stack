@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.9.4**
+Current version: **v10.9.5**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1849,6 +1849,23 @@ smaller generous ceiling as defensive insurance rather than from observed pressu
 `docker-compose.yml` directly for exact current values, which change more often than this document
 is updated.
 
+**That claim was wrong until v10.9.5.** A live audit (`docker stats` showing several containers
+reporting the full host memory ceiling instead of a real number) found ten services with no
+`mem_limit`/`cpus` at all: **Prowlarr, Radarr, Sonarr, Lidarr, Whisparr, Bindery, Recyclarr,
+NzbDAV, Seerr, and `dmm-migrate`** — including the core acquisition pipeline apps, not edge
+cases. Fixed with limits sized above each one's real observed baseline (Radarr/Sonarr at 2GB
+given Sonarr's ~300,000 episode records, the rest at 1GB or lighter for genuinely lighter apps
+like Bindery and Recyclarr). Verified live: recreated all ten, confirmed every one healthy, and
+confirmed via `docker stats` that the new ceilings are real (e.g. Sonarr reporting `244.9MiB /
+2GiB` instead of the host's full `22.74GiB`).
+
+**Same audit found Radarr, Sonarr, Lidarr, Whisparr, and Prowlarr all running `logLevel: debug`**
+in production, not the default `info` — confirmed via each app's own `/api/*/config/host`.
+Log directories showed the real cost: 101MB (Radarr), 101MB (Sonarr), 101MB (Prowlarr), 65MB
+(Whisparr), 52MB (Lidarr), all at or near Servarr's rolling-log cap. Almost certainly leftover
+from past troubleshooting sessions (this document's own History is full of "confirmed via debug
+log" investigations) and never reset. Set back to `info` on all five via one API call each.
+
 ## Security
 
 Every web UI in this stack publishes its port directly on the host with **no login gate** — the
@@ -2504,7 +2521,7 @@ overnight OOM crash-loop found.**
   `restart: unless-stopped` and therefore invisible on the dashboard. See
   [Known gaps](#known-gaps-and-limitations).
 
-**v10.9.4 (current) — A real content-leak report resolved live: adult content was landing in
+**v10.9.4 — A real content-leak report resolved live: adult content was landing in
 both Movies and TV Shows, for two different reasons.**
 
 - **User-reported, not audit-found**: "Drilling Mommy" showing up in the Movies library.
@@ -2532,6 +2549,18 @@ both Movies and TV Shows, for two different reasons.**
   slow enough that `emptyTrash` had nothing to purge yet by the time this was checked. The fix
   itself is confirmed correct at the source regardless of how long Plex's own UI takes to
   reflect it.
+
+**v10.9.5 (current) — Resource-limit and log-level audit: ten containers found running with no
+memory/CPU ceiling at all.**
+
+- **Ten services had zero `mem_limit`/`cpus`** despite [Resource limits](#resource-limits)
+  claiming full coverage: `prowlarr`, `radarr`, `sonarr`, `lidarr`, `whisparr`, `bindery`,
+  `recyclarr`, `nzbdav`, `seerr`, `dmm-migrate` — found via `docker stats` reporting the full
+  host memory ceiling instead of a real number. Fixed with limits sized above each one's real
+  observed baseline; see [Resource limits](#resource-limits) above for the full table and
+  verification.
+- **Same audit found Radarr, Sonarr, Lidarr, Whisparr, and Prowlarr running `logLevel: debug`**
+  in production — set back to `info` on all five.
 
 ---
 
