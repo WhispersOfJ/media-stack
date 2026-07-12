@@ -37,6 +37,12 @@ services:
       - ./config/prowlarr:/config
     ports:
       - "9696:9696"
+    # No prior limit at all - found live via a resource audit (docker stats
+    # showing the full host ceiling instead of a real number). Sized from
+    # observed baseline (~195MB) with real headroom.
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
 
   zilean-postgres:
     restart: unless-stopped
@@ -416,6 +422,12 @@ services:
       - ./media/movies:/data/movies
     ports:
       - "7878:7878"
+    # No prior limit at all - found live via a resource audit. Sized above
+    # observed baseline (~390MB) with real headroom for a 15,000+ title
+    # library doing an active scan/import.
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 2
 
   sonarr:
     <<: *common
@@ -449,6 +461,12 @@ services:
       - ./media/anime-shows:/data/anime
     ports:
       - "8989:8989"
+    # No prior limit at all - found live via a resource audit. Sized above
+    # observed baseline (~477MB) with real headroom - this instance tracks
+    # close to 300,000 episode records (see Known gaps' missing-aired note).
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 2
 
   # Reinstated (was removed in 7.0.0) - music library management.
   lidarr:
@@ -471,6 +489,11 @@ services:
       - ./media/music:/data/music
     ports:
       - "8686:8686"
+    # No prior limit at all - found live via a resource audit. Sized above
+    # observed baseline (~130MB) with real headroom.
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
 
   # Replaced Readarr in v10.7.0 - ebook library management. Actual
   # reading/browsing happens via Calibre-Web below, since Plex has no
@@ -527,6 +550,11 @@ services:
       - ./media/books:/books
     ports:
       - "8787:8787"
+    # No prior limit at all - found live via a resource audit. Sized above
+    # observed baseline (~58MB) - lightest of the *arr-family apps.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 1
 
   # Reinstated (was removed in 4.0.0 - "too problematic" at the time, a real
   # DownloadedEpisodesScan bug in that build plus a root-folder regression;
@@ -557,6 +585,11 @@ services:
       - ./media/adult:/data/adult
     ports:
       - "6969:6969"
+    # No prior limit at all - found live via a resource audit. Sized above
+    # observed baseline (~274MB) with real headroom.
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
 
   # Performer/studio/tag cataloging and metadata scraping for the adult
   # library Whisparr owns above - not a Plex replacement, Plex still streams
@@ -658,6 +691,12 @@ services:
       CRON_SCHEDULE: "0 6 * * *" # once daily, 6am
     volumes:
       - ./config/recyclarr:/config
+    # No prior limit at all - found live via a resource audit. A scheduled
+    # sync daemon idling most of the day (~3MB observed) - minimum viable
+    # ceiling, not a real constraint.
+    mem_limit: 256m
+    mem_reservation: 32m
+    cpus: 1
 
   # Ebook reader/library UI - Plex has no ebook agent (verified live via
   # /system/agents, no book/ebook identifier present), so Readarr's actual
@@ -718,6 +757,12 @@ services:
     # as http://nzbdav:3000 over stacknet, unaffected by the host mapping).
     ports:
       - "3001:3000"
+    # No prior limit at all - found live via a resource audit. Sized above
+    # observed baseline (~369MB) - WebDAV streaming has real per-connection
+    # buffering cost.
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
 
   nzbdav-rclone:
     restart: unless-stopped
@@ -798,6 +843,11 @@ services:
       - ./config/seerr:/app/config
     ports:
       - "5055:5055"
+    # No prior limit at all - found live via a resource audit. Sized above
+    # observed baseline (~72MB).
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
 
   # ---------------------------------------------------------------------
   # Media server. Containerized from a native install in 3.3.0; the native
@@ -1333,6 +1383,12 @@ services:
     depends_on:
       dmm-mysql:
         condition: service_healthy
+    # No prior limit at all - found live via a resource audit. One-shot and
+    # transient (restart: "no"), but npx/prisma tooling can be memory-hungry
+    # briefly during the actual push - no reservation needed for a job that
+    # doesn't run continuously.
+    mem_limit: 1g
+    cpus: 2
 
   # Built from source - no pre-built image published anywhere (checked GHCR
   # and Docker Hub, neither has one). Pinned to a specific commit rather
