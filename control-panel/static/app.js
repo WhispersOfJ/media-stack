@@ -84,6 +84,7 @@ const QUICK_LINKS = [
   { id: "lidarr", label: "Lidarr", port: 8686 },
   { id: "bindery", label: "Bindery", port: 8787 },
   { id: "whisparr", label: "Whisparr", port: 6969 },
+  { id: "stash", label: "Stash", port: 9998 },
   { id: "nzbdav", label: "NzbDAV", port: 3001 },
   { id: "calibre-web", label: "Calibre-Web", port: 8083 },
   { id: "seerr", label: "Seerr", port: 5055 },

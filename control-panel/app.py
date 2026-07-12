@@ -119,6 +119,7 @@ CONTAINER_LABELS = {
     "lidarr": ("Lidarr", "music"),
     "bindery": ("Bindery", "ebooks - replaced Readarr in v10.7.0"),
     "whisparr": ("Whisparr", "adult, v3"),
+    "stash": ("Stash", "performer/studio/tag cataloging for the adult library"),
     "calibre-web": ("Calibre-Web", "ebook reader/library UI"),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
