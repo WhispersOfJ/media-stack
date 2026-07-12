@@ -1181,13 +1181,14 @@ Checked against a real 530-scene scan, not just the defaults:
   future Stash settings change somehow reverts it. The actual data that matters,
   `stash-go.sqlite`, was already `644` and has always been covered; this only affected the
   settings file, which is regeneratable via the setup wizard in a few minutes if ever lost.
-- **The real gap: zero scrapers or StashDB connection configured.** All 530 scenes were cataloged
-  from filename alone — no performers, no studios, no tags, no scene identification, despite that
-  being Stash's actual reason for existing over a plain file browser. Not fixed here: connecting
-  [StashDB](https://stashdb.org) (the canonical, free metadata source, especially strong on this
-  library's mostly-mainstream studios) needs a personal account — the same category of
-  intentionally-not-automated step as Bindery's own admin-account creation in
-  [v10.7.0](#history). This is the single highest-value thing left to do to this app.
+- **StashDB connected** (`stashBoxes` in `configureGeneral`, `endpoint:
+  https://stashdb.org/graphql`) — the personal account/API key was the user's own step (same
+  category as Bindery's admin-account creation in [v10.7.0](#history)), verified against the real
+  endpoint (`{ me { name } }`) before wiring it in. A full `metadataIdentify` run against all
+  scenes, with `fieldOptions` set to `MERGE`+`createMissing: true` on studio/performers/tags
+  (the default options only fill fields that already have a local match — without
+  `createMissing`, nothing new ever gets created), took the library from zero metadata to
+  **317 performers, 225 studios, 791 tags** across 582 scenes.
 
 ## Custom formats and quality profiles
 
