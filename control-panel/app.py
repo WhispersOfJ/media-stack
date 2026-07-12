@@ -6,7 +6,7 @@ grab-to-Decypharr. Supersedes the old Homepage+Control Panel split - see
 README.md's Control Panel section.
 
 Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
-HTTP API (Plex, Radarr, Sonarr, Lidarr, Readarr, Whisparr, Zilean), Glances
+HTTP API (Plex, Radarr, Sonarr, Lidarr, Whisparr, Zilean), Glances
 (host stats), and zilean-postgres directly (hash count - Zilean has no stats
 API of its own). No auth - LAN-only, matches every other service in this
 stack (see README.md's "Security" section).
@@ -72,11 +72,13 @@ ARR_APPS = {
     # Sonarr would suggest from its Sonarr-codebase heritage). Same story
     # for import_events below - confirmed live via each app's own /history
     # that Lidarr names its per-file-import event "trackFileImported", not
-    # "downloadFolderImported" like the Radarr-lineage apps. Readarr had
-    # zero history to confirm against live (unused, 0 authors tracked at
-    # the time), so it lists both its likely Lidarr-parallel name
-    # ("bookFileImported") and the Radarr-lineage fallback as candidates
-    # rather than guessing a single string that silently never matches.
+    # "downloadFolderImported" like the Radarr-lineage apps.
+    #
+    # Readarr itself was replaced by Bindery in v10.7.0 (upstream Readarr's
+    # sole metadata source died permanently, see docker-compose.yml's
+    # comment on the bindery service) - no entry here since Bindery's API
+    # is a clean-room design, not Servarr-shaped, so none of this generic
+    # arr_queue/arr_command/history-rate-calc machinery applies to it.
     "lidarr": {
         "url": "http://lidarr:8686",
         "api": "v1",
@@ -84,14 +86,6 @@ ARR_APPS = {
         "search_command": "MissingAlbumSearch",
         "label": "Lidarr",
         "import_events": ("trackFileImported",),
-    },
-    "readarr": {
-        "url": "http://readarr:8787",
-        "api": "v1",
-        "key": os.environ["READARR_API_KEY"],
-        "search_command": "MissingBookSearch",
-        "label": "Readarr",
-        "import_events": ("bookFileImported", "downloadFolderImported"),
     },
     "whisparr": {
         "url": "http://whisparr:6969",
@@ -103,10 +97,12 @@ ARR_APPS = {
     },
 }
 
-# All five now have a real download queue (Decypharr + NzbDAV wired to
-# each as of 10.2.0) - Unstick/manual-import work identically on all of
-# them, same reasoning 7.0.0 used when this was just Radarr/Sonarr.
-QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "readarr", "whisparr")
+# These four have a real download queue (Decypharr + NzbDAV wired to each
+# as of 10.2.0) - Unstick/manual-import work identically on all of them,
+# same reasoning 7.0.0 used when this was just Radarr/Sonarr. Bindery
+# (Readarr's v10.7.0 replacement) isn't listed - its API is a clean-room
+# design, not Servarr-shaped, so this generic queue machinery doesn't apply.
+QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "whisparr")
 
 # Display-only labels/notes for the container grid - NOT an allow-list.
 # Which containers actually exist, and which actions are valid on them, is
@@ -120,7 +116,7 @@ CONTAINER_LABELS = {
     "radarr": ("Radarr", "also clears the stale Zurg mount issue (v4.0.1)"),
     "sonarr": ("Sonarr", None),
     "lidarr": ("Lidarr", "music"),
-    "readarr": ("Readarr", "ebooks - upstream retired, last pinned build"),
+    "bindery": ("Bindery", "ebooks - replaced Readarr in v10.7.0"),
     "whisparr": ("Whisparr", "adult, v3"),
     "calibre-web": ("Calibre-Web", "ebook reader/library UI"),
     "prowlarr": ("Prowlarr", None),
@@ -866,7 +862,6 @@ def arr_manual_import_candidates(app_name: str):
             match = f.get("movie") or f.get("series") or f.get("artist") or f.get("author")
             episodes = f.get("episodes") or []
             tracks = f.get("tracks") or []
-            books = f.get("books") or []
             file_payload = {
                 "path": f.get("path"),
                 "folderName": f.get("folderName"),
@@ -884,9 +879,6 @@ def arr_manual_import_candidates(app_name: str):
                 file_payload["artistId"] = match.get("id") if match else None
                 file_payload["albumId"] = f.get("album", {}).get("id")
                 file_payload["trackIds"] = [t["id"] for t in tracks]
-            elif app_name == "readarr":
-                file_payload["authorId"] = match.get("id") if match else None
-                file_payload["bookId"] = books[0]["id"] if books else None
             episode_label = None
             if episodes:
                 e = episodes[0]

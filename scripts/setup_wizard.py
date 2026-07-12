@@ -31,15 +31,19 @@ from urllib.parse import parse_qs
 # needs a running Plex with at least one library item, not just a running
 # container - left unset it silently breaks every Control Panel Plex action.
 POST_BOOT_KEYS = {
-    "RADARR_API_KEY", "SONARR_API_KEY", "LIDARR_API_KEY", "READARR_API_KEY",
+    "RADARR_API_KEY", "SONARR_API_KEY", "LIDARR_API_KEY",
     "WHISPARR_API_KEY", "PLEX_TOKEN",
 }
 
 # Self-issued secrets with no external source - safe to generate for the
-# user instead of asking them to run a command themselves.
+# user instead of asking them to run a command themselves. BINDERY_API_KEY
+# belongs here, not in POST_BOOT_KEYS, because Bindery *seeds* its key from
+# this env var on first launch rather than generating its own the way every
+# other *arr app does - the value can be known and set before first boot.
 AUTO_GENERATE_KEYS = {
     "ZILEAN_POSTGRES_PASSWORD",
     "ZILEAN_API_KEY",
+    "BINDERY_API_KEY",
 }
 
 # Only these actually block `docker compose up` from working at all;
