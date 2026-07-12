@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.6.3**
+Current version: **v10.6.4**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1922,7 +1922,7 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   (`Configured apps: [..., 'lidarr', 'readarr', 'eros']`) and a real triggered search against
   Whisparr in the very next hunt cycle.
 
-**v10.6.3 (current) — NeutArr's Whisparr hunt rate raised after ruling out three false leads.**
+**v10.6.3 — NeutArr's Whisparr hunt rate raised after ruling out three false leads.**
 
 - **Whisparr's missing-backlog throughput stayed flat (~1.78/hr) even after being wired into
   NeutArr**, while Radarr and Sonarr's rates visibly jumped. Chased three explanations in turn
@@ -1949,6 +1949,26 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
     to ~36/hr, meaning the existing `hourly_cap: 20` (left unchanged) now actually binds instead
     of never being approached. Confirmed live: the very next cycle post-restart processed 3/3
     items instead of 1/1.
+
+**v10.6.4 (current) — Fixed a burst-artifact bug in `backlog-status`'s throughput calculation.**
+
+- **`GET /api/backlog-status` could report absurd rates during a large import burst** — caught
+  live checking the v10.6.3 fix's actual effect: Sonarr showed `13,800/hr` (ETA `15h56m`)
+  immediately after clearing a chunk of its backlog. Root cause: the rate was `event_count /
+  (newest_event_time - oldest_event_time)` over a fixed 50-event sample, and a busy app clears
+  its queue in bursts, not a steady drip - all 23 of Sonarr's most recent import events had
+  landed within the same 6-second window while it worked through a large `importPending`
+  backlog. `23 / 6 seconds` extrapolated to a huge but technically-correct-arithmetic hourly
+  rate on a denominator that was never meant to represent a sustained pace. Fixed two ways in
+  `control-panel/app.py`: `RECENT_IMPORT_SAMPLE_SIZE` raised `50 → 200` (a bigger sample
+  naturally spans more real elapsed time, diluting any single burst), plus a new
+  `MIN_RATE_WINDOW_HOURS = 0.25` floor under the observed span as a hard backstop for whatever
+  a bigger sample doesn't dilute away. Confirmed live: Sonarr's rate dropped from the `13,800/hr`
+  artifact to a believable `304/hr`; Radarr's rate (which was never bursty) barely moved,
+  confirming the fix targets the actual failure mode rather than just dampening every number.
+  Bonus effect: with the noise gone, Whisparr's rate increase from the fix immediately above
+  finally became visible (`1.78/hr → 2.85/hr`) - it had been real the whole time, just masked
+  by how noisy the old calculation was.
 
 ---
 
