@@ -19,6 +19,10 @@ linked table of contents. Read the relevant section there before making changes;
 covers what you need to get oriented and the things that aren't obvious from reading one file in
 isolation.
 
+**See `AGENTS.md` for this repo's sync obligations to two siblings** (`../Stackalicious`, a
+sanitized public mirror; `../StackScripts`, a standalone redistribution of the `stack-*` CLI +
+Control Panel) — a new `stack-*` command added here isn't finished until it's mirrored to both.
+
 ## Commands
 
 ```bash
