@@ -1393,7 +1393,7 @@ services:
   dozzle:
     restart: unless-stopped
     logging: *common-logging
-    image: amir20/dozzle:v10.6.8
+    image: amir20/dozzle:v10.6.9
     container_name: dozzle
     profiles: [extras]
     networks: [stacknet]
