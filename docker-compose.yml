@@ -1097,6 +1097,17 @@ services:
       - ./config:/host-config:ro
       - /home/daddybear/backups:/host-backups:ro
       - /home/daddybear/Dropbox/stack-restic-repo-offsite:/host-backup-offsite:ro
+      # Single-file bind mount, not a directory - confirmed live this
+      # session as a real gotcha: Docker binds a specific inode for a
+      # single-file mount, not the directory entry, so an editor that
+      # replaces the file (write-new-inode-then-rename, which most
+      # editors/tools do for atomic writes) leaves the mount pointing at
+      # the old, now-unlinked inode. /api/version reported a stale
+      # declared version through several README edits until this
+      # container was explicitly recreated (`--force-recreate`, not just
+      # `up -d` - a plain `up -d` doesn't recreate a container whose own
+      # config hasn't changed). If /api/version ever looks stale again,
+      # recreate this container before assuming the endpoint logic broke.
       - ./README.md:/host-README.md:ro
     # No prior ceiling despite having docker.sock exec/restart access - a
     # light Flask app, but cheap insurance given its elevated blast radius.
