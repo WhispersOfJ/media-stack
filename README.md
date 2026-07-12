@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.5.0**
+Current version: **v10.6.0**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1824,7 +1824,7 @@ fit) and built the two things that did:
   long-running `ProcessMonitoredDownloads` job for the rest of that session — see v10.5.0 below
   for how it actually resolved.
 
-**v10.5.0 (current) — Sonarr anime migration completed; Plex "Adult" library path bug found and
+**v10.5.0 — Sonarr anime migration completed; Plex "Adult" library path bug found and
 fixed; Recyclarr added; arr command-queue backlog visibility.**
 
 - **The v10.4.0 migration stall cleared on its own.** The stuck `ProcessMonitoredDownloads`
@@ -1867,6 +1867,30 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
 - **Synced to the public `Stackalicious` repo**, sanitized (real host IP and the real host
   username in one Plex bind-mount path both genericized) and covering v10.1.0 through this
   version — see that repo's own `CHANGELOG.md`.
+
+**v10.6.0 (current) — Live queue speed/ETA and wanted/missing backlog throughput ETA.**
+
+- **Control Panel: `GET /api/queue-status`** (plus `stack-queue-status`) — every download queue
+  (Radarr/Sonarr/Lidarr/Readarr/Whisparr + NzbDAV) bucketed into downloading/stalled/queued/
+  importing, with a real speed and ETA for anything actually observed to be draining. Doesn't
+  trust each app's own `timeleft`/`estimatedCompletionTime` - confirmed live those are stale
+  `00:00:00` placeholders for nearly everything in this stack: Decypharr's debrid-cached/
+  symlinked downloads jump straight from full size to zero with no gradual byte-by-byte transfer
+  to time (there's no real download happening at that layer to measure), and NzbDAV's
+  SABnzbd-emulation layer doesn't compute a speed field even though its `mb`/`mbleft` are real.
+  Takes two live size-remaining samples ~4s apart and derives real observed speed from the delta
+  instead - honest about "no progress observed" (still caching server-side, or genuinely
+  stalled) rather than fabricating an ETA the data can't support.
+- **Control Panel: `GET /api/backlog-status`** (plus `stack-backlog-status`) — every arr app's
+  wanted/missing count with a throughput-projected ETA, a fundamentally different estimate from
+  the queue one above: nothing here is mid-transfer, so there's no size to drain. Rate is
+  measured from the last 50 import-completion events in each app's own `/history`, capped to a
+  6-hour lookback so a backlog that was moving fast an hour ago but has since stalled (indexer
+  rate-limit, etc.) doesn't get credited with a pace it isn't currently keeping. Confirmed live
+  that Lidarr names its per-file-import event `trackFileImported`, not `downloadFolderImported`
+  like the Radarr-lineage apps (Radarr/Sonarr/Whisparr) - Readarr's was unverifiable (zero
+  history at the time, unused), so it checks both candidate names instead of guessing wrong and
+  silently reporting zero forever.
 
 ---
 
