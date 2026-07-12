@@ -11,6 +11,7 @@ HTTP API (Plex, Radarr, Sonarr, Lidarr, Whisparr, Zilean), Glances
 API of its own). No auth - LAN-only, matches every other service in this
 stack (see README.md's "Security" section).
 """
+import concurrent.futures
 import os
 import re
 import socket
@@ -18,7 +19,7 @@ import threading
 import time
 from collections import Counter
 from datetime import datetime, timezone
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import docker
 import httpx
@@ -147,6 +148,43 @@ CONTAINER_LABELS = {
     "maintainerr": ("Maintainerr", "Plex library lifecycle - rule-based cleanup, wired but rules start disabled"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
+
+# Live per-app outbound API hit counter - dashboard flourish, not a metrics
+# system (resets on container restart, in-memory only). Wraps httpx.request
+# itself rather than touching every one of this file's ~25 call sites:
+# httpx.get/post/put/delete/patch all funnel through a call to request()
+# internally (confirmed against the pinned 0.28.1). That call resolves
+# against httpx._api's own module globals, not httpx's top-level namespace -
+# reassigning httpx.request alone is a no-op for get/post/etc, silently
+# uncounted (caught live: hit counts stayed at 0 through real traffic).
+# Patching httpx._api.request directly is what get/post/put/delete/patch
+# actually call; httpx.request is reassigned too so anything calling it
+# directly, or a fresh `from httpx import request`, stays consistent.
+_API_HOST_LABELS = {urlparse(cfg["url"]).hostname: cfg["label"] for cfg in ARR_APPS.values()}
+_API_HOST_LABELS.update({
+    urlparse(PLEX_URL).hostname: "Plex",
+    urlparse(ZILEAN_URL).hostname: "Zilean",
+    urlparse(DECYPHARR_URL).hostname: "Decypharr",
+    urlparse(GLANCES_URL).hostname: "Glances",
+    urlparse(NZBDAV_URL).hostname: "NzbDAV",
+})
+# Seeded at 0 for every known app, not left empty until each app's first
+# real hit - otherwise most badges wouldn't appear at all on a fresh
+# restart until something happened to call that specific app (some, like
+# the arr apps, only get called on a manual RSS-sync/search/unstick click),
+# which defeats a dashboard element whose whole point is being visible.
+API_HIT_COUNTS = Counter({label: 0 for label in _API_HOST_LABELS.values()})
+_httpx_request = httpx.request
+
+
+def _counted_request(method, url, *args, **kwargs):
+    host = urlparse(str(url)).hostname
+    API_HIT_COUNTS[_API_HOST_LABELS.get(host, host or "unknown")] += 1
+    return _httpx_request(method, url, *args, **kwargs)
+
+
+httpx.request = _counted_request
+httpx._api.request = _counted_request
 
 app = FastAPI(title="Control Panel")
 docker_client = docker.from_env()
@@ -311,31 +349,55 @@ def status():
     return out
 
 
+def _container_row(me, c) -> dict:
+    label, note = CONTAINER_LABELS.get(c.name, (c.name, None))
+    health = c.attrs.get("State", {}).get("Health", {}).get("Status")
+    image_tags = c.image.tags
+    image = image_tags[0] if image_tags else (c.image.short_id or "")
+    service = c.labels.get("com.docker.compose.service", c.name)
+    return {
+        "name": c.name,
+        "label": label,
+        "note": note,
+        "service": service,
+        "image": image,
+        "state": c.status,
+        "health": health,
+        "is_self": c.id == me.id,
+        **container_stats(c),
+    }
+
+
 @app.get("/api/containers")
 def containers_list():
     """Full container grid data - state, health, image, and live CPU/memory
     for every container in this compose project, discovered live from
-    Docker rather than a hardcoded list."""
+    Docker rather than a hardcoded list.
+
+    Fetched concurrently, not in a sequential loop: each container_stats()
+    call blocks on a real `stats(stream=False)` round-trip to the Docker
+    daemon, which - despite the single-call/no-extra-polling design - still
+    takes the daemon roughly 1-2s per container to return (it internally
+    waits between two samples before responding, regardless of the
+    stream=False flag). Caught live: a sequential loop over 34 containers
+    made this endpoint take 67s, effectively breaking the 15s auto-refresh
+    entirely - the next poll would already be piling up before the previous
+    one returned. A thread pool brings total latency down to roughly the
+    slowest single container's stats() call instead of the sum of all of
+    them, since docker-py's stats() is a blocking call with no async form."""
     me, containers = project_containers()
-    out = []
-    for c in sorted(containers, key=lambda c: c.name):
-        label, note = CONTAINER_LABELS.get(c.name, (c.name, None))
-        health = c.attrs.get("State", {}).get("Health", {}).get("Status")
-        image_tags = c.image.tags
-        image = image_tags[0] if image_tags else (c.image.short_id or "")
-        service = c.labels.get("com.docker.compose.service", c.name)
-        out.append({
-            "name": c.name,
-            "label": label,
-            "note": note,
-            "service": service,
-            "image": image,
-            "state": c.status,
-            "health": health,
-            "is_self": c.id == me.id,
-            **container_stats(c),
-        })
-    return out
+    ordered = sorted(containers, key=lambda c: c.name)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(ordered), 16) or 1) as pool:
+        return list(pool.map(lambda c: _container_row(me, c), ordered))
+
+
+@app.get("/api/api-hit-counts")
+def api_hit_counts():
+    """Live count of every outbound API call this panel has made per app
+    since it started - see the API_HIT_COUNTS module comment above. Visual
+    flourish for the dashboard, not a metrics system: in-memory only, resets
+    on restart."""
+    return {"counts": dict(API_HIT_COUNTS), "total": sum(API_HIT_COUNTS.values())}
 
 
 # ---------------------------------------------------------------------
@@ -1386,7 +1448,19 @@ def container_start(name: str):
 # Radarr in the same sweep reproduces the CHANGELOG v4.0.1 stale-mount bug
 # (see README's "Radarr-specific mount fragility" note). Restart providers
 # first, wait for them to report healthy, then restart the dependents last.
-MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "rclone-alldebrid-anime"}
+#
+# nzbdav-rclone belongs in this set too - it owns the /mnt/nzbdav FUSE mount,
+# same as zurg/decypharr/rclone-alldebrid* own theirs - but it also has its
+# own upstream dependency: its rclone remote talks to nzbdav's own API
+# (docker-compose.yml's `depends_on: nzbdav: condition: service_healthy`),
+# which the plain compose graph enforces but this hand-rolled restart loop
+# doesn't. Restarting nzbdav-rclone before nzbdav is back up healthy fails
+# the mount the same way a stale host mount does (confirmed live: a full
+# stack outage where /mnt/nzbdav was left stale at the host level - see
+# README's mount-cascade note). MOUNT_PREREQS restarts first and is waited
+# on before MOUNT_PROVIDERS, so nzbdav-rclone always finds nzbdav ready.
+MOUNT_PREREQS = {"nzbdav"}
+MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "rclone-alldebrid-anime", "nzbdav-rclone"}
 MOUNT_DEPENDENTS = {"radarr"}
 
 
@@ -1422,11 +1496,20 @@ def stack_restart_all():
         fail("No other containers found in this compose project.")
     names = sorted(c.name for c in targets)
 
+    prereqs = [c for c in targets if c.name in MOUNT_PREREQS]
     providers = [c for c in targets if c.name in MOUNT_PROVIDERS]
     dependents = [c for c in targets if c.name in MOUNT_DEPENDENTS]
-    rest = [c for c in targets if c.name not in MOUNT_PROVIDERS and c.name not in MOUNT_DEPENDENTS]
+    staged = MOUNT_PREREQS | MOUNT_PROVIDERS | MOUNT_DEPENDENTS
+    rest = [c for c in targets if c.name not in staged]
 
     def worker():
+        for c in prereqs:
+            try:
+                c.restart(timeout=30)
+            except Exception as e:
+                print(f"restart-all: failed to restart {c.name}: {e}")
+        for c in prereqs:
+            wait_for_healthy(c)
         for c in providers:
             try:
                 c.restart(timeout=30)

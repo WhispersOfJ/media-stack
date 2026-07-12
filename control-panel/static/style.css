@@ -740,6 +740,31 @@ a:focus-visible {
   text-align: right;
 }
 
+/* API hit counter - visual flourish only, matches the .lamp dot language.
+   Cards are fully re-rendered on every 15s poll (see refreshContainerGrid),
+   so .api-hits-tick just needs to be present at element-creation time for
+   its animation to play - no replay/reflow trick needed. */
+.api-hits-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  justify-self: start;
+}
+.api-hits-value { color: var(--text-dim); }
+.api-hits-tick .api-hits-dot {
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(0, 255, 65, 0.8);
+}
+.api-hits-tick .api-hits-value {
+  color: var(--accent);
+  animation: hit-flash 900ms ease-out;
+}
+@keyframes hit-flash {
+  0% { text-shadow: 0 0 8px rgba(0, 255, 65, 0.9); }
+  100% { text-shadow: none; }
+}
+
 .container-actions {
   display: flex;
   gap: 8px;
@@ -899,4 +924,5 @@ a:focus-visible {
   .btn-icon.spinning svg { animation: none; }
   .card, .btn-primary { transition: none; }
   #matrix-rain { display: none; }
+  .api-hits-tick .api-hits-value { animation: none; }
 }

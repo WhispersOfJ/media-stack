@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.7.0**
+Current version: **v10.8.0**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1350,6 +1350,7 @@ QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "whisparr")
 | `/healthz` | GET | Liveness probe (what the container's own healthcheck uses) |
 | `/api/status` | GET | Running/health state for every container in the compose project |
 | `/api/containers` | GET | Full grid: state, health, image, live CPU/mem per container |
+| `/api/api-hit-counts` | GET | Live per-app outbound API call counter - dashboard flourish, see below |
 | `/api/system/stats` | GET | Host CPU/mem/disk/uptime, proxied from Glances |
 | `/api/zilean/stats` | GET | Total indexed hashes + IMDB-matched count, from `zilean-postgres` directly |
 | `/api/kometa/run` | POST | `docker exec`s a Kometa run, optionally scoped to `{"libraries": [...]}` |
@@ -1366,6 +1367,58 @@ QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "whisparr")
 | `/api/arr/{app}/missing-aired` | GET | Monitored + no file + already-aired (see [The `*arr` apps](#the-arr-apps)) |
 | `/api/container/{name}/start` \| `/stop` \| `/restart` | POST | Individual container control, validated against the live compose project |
 | `/api/stack/restart-all` | POST | Restarts everything except itself, mount providers first (see below) |
+
+### Live API hit counter: a dashboard flourish, not a metrics system
+
+Every container card for an app Control Panel actually talks to over HTTP (the four Servarr-shaped
+`*arr` apps, Plex, Zilean, Decypharr, Glances, NzbDAV) shows a live "API" row - a small dot and a
+running count of outbound calls this panel has made to that app since it last started, ticking up
+and flashing green on real increments. Purely cosmetic (in-memory `Counter`, resets on restart,
+no persistence, no per-endpoint breakdown) - explicitly "for visual effect," not a monitoring
+feature.
+
+```python
+# control-panel/app.py - wraps httpx.request itself rather than touching
+# every one of this file's ~25 call sites individually
+API_HIT_COUNTS = Counter({label: 0 for label in _API_HOST_LABELS.values()})
+_httpx_request = httpx.request
+
+def _counted_request(method, url, *args, **kwargs):
+    host = urlparse(str(url)).hostname
+    API_HIT_COUNTS[_API_HOST_LABELS.get(host, host or "unknown")] += 1
+    return _httpx_request(method, url, *args, **kwargs)
+
+httpx.request = _counted_request
+httpx._api.request = _counted_request
+```
+
+**Two real bugs found building this, neither obvious from the docs:**
+
+- **Reassigning `httpx.request` alone is a silent no-op.** `httpx.get`/`post`/`put`/`delete`/
+  `patch` all internally call a function named `request`, but that name resolves against
+  `httpx._api`'s own module globals (where those functions are actually defined), not `httpx`'s
+  top-level namespace - confirmed via `httpx.get.__globals__ is httpx.__dict__` returning `False`.
+  Caught live: hit counts stayed at exactly `0` through real, confirmed-working traffic. The fix
+  is patching `httpx._api.request` directly (`httpx.request` is reassigned too, for anything that
+  calls it by that name directly).
+- **`/api/containers` was taking 60-90+ seconds**, discovered by accident while checking whether
+  the new hit-counter badges were rendering — the container grid simply never loaded. Root cause:
+  `container_stats()`'s own docstring claims a single `stats(stream=False)` call needs "no extra
+  polling delay," but empirically each call still blocks ~1-2s (the Docker Engine API takes an
+  internal two-sample delta regardless of the `stream` flag), and the endpoint called it in a
+  sequential loop across all 34 containers - `34 × ~2s ≈ 67s` measured directly with `time curl`.
+  This silently broke the grid's 15s auto-refresh entirely (the next poll would already be piling
+  up behind the previous one). Fixed with a `concurrent.futures.ThreadPoolExecutor` (`max_workers`
+  capped at 16) so all containers' stats are fetched in parallel instead of one at a time - total
+  latency dropped to ~6s, bound by the slowest single container rather than the sum of all of them.
+- **Separately, the frontend's own `ARR_APPS`/`QUICK_LINKS` arrays in `app.js`** - a second,
+  independent list from the backend's `ARR_APPS` dict, used only to render the *arr apps section
+  and Quick Links - still had a hardcoded `readarr` entry left over from the Bindery swap
+  ([v10.7.0](#history)), invisible until actually looking at the rendered page: Quick Links linked
+  to a "Readarr" tile that happened to still resolve (Bindery kept the same port), and the *arr
+  apps section rendered a fully interactive "Readarr" row whose buttons would have 404'd against
+  `/api/arr/readarr/...`, which no longer exists server-side. Fixed alongside the hit-counter work
+  since it was found while visually checking it, not left for a separate pass.
 
 ### Grab: a real, non-undoable action
 
@@ -1399,10 +1452,13 @@ on a single click.
 
 ```python
 # control-panel/app.py
-MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid"}
+MOUNT_PREREQS = {"nzbdav"}
+MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "rclone-alldebrid-anime", "nzbdav-rclone"}
 MOUNT_DEPENDENTS = {"radarr"}
 
 def worker():
+    for c in prereqs: c.restart(timeout=30)
+    for c in prereqs: wait_for_healthy(c)
     for c in providers: c.restart(timeout=30)
     for c in providers: wait_for_healthy(c)
     for c in rest: c.restart(timeout=30)
@@ -1416,6 +1472,20 @@ curl -X POST http://192.168.4.105:8420/api/stack/restart-all
 This exists specifically because of the Radarr mount-fragility issue described in
 [Architecture](#architecture) — restarting Radarr before its mount providers have come back
 healthy reproduces that exact bug.
+
+**`nzbdav-rclone` needs its own prereq wave, not just a spot in `MOUNT_PROVIDERS`.** It owns the
+`/mnt/nzbdav` FUSE mount exactly like `zurg`/`decypharr`/`rclone-alldebrid*` own theirs, but unlike
+them it has an upstream dependency of its own: its rclone remote talks to `nzbdav`'s own API
+(`docker-compose.yml`'s `depends_on: nzbdav: condition: service_healthy`), which `docker compose
+up` enforces but this hand-rolled restart loop doesn't know about on its own. Originally
+`nzbdav-rclone` wasn't in `MOUNT_PROVIDERS` at all — found live during a full stack outage where
+`/mnt/nzbdav` was left stale at the **host** level (`Transport endpoint is not connected`,
+registered in the host's mount table with a dead backing process) after a `stack-restart-all` run;
+recovering required `sudo umount -l /mnt/nzbdav` on the host before anything would mount cleanly
+again, since a container restart alone can't clear a stale entry the host itself is holding onto.
+`MOUNT_PREREQS` restarts `nzbdav` first and waits for it healthy before the `MOUNT_PROVIDERS` wave
+(which now includes `nzbdav-rclone`) starts, so `nzbdav-rclone`'s mount always finds `nzbdav` ready
+instead of racing it.
 
 ### Security: CSRF/Origin-Host validation, not auth
 
@@ -2081,7 +2151,7 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
   finally became visible (`1.78/hr → 2.85/hr`) - it had been real the whole time, just masked
   by how noisy the old calculation was.
 
-**v10.7.0 (current) — Readarr replaced outright by Bindery.**
+**v10.7.0 — Readarr replaced outright by Bindery.**
 
 - **Trigger: a real search failure, not a proactive swap.** `Search for 'author:3389' failed.
   Invalid response received from Goodreads` from Readarr turned out to be permanent, not
@@ -2150,6 +2220,43 @@ fixed; Recyclarr added; arr command-queue backlog visibility.**
 - **Calibre-Web needed no changes at all** — it was already reading `./media/books:/books`
   directly off disk, the same path Bindery's own root folder now points at, so the ebook reader
   kept working straight through the swap underneath it.
+
+**v10.8.0 (current) — Live per-app API hit counter; `/api/containers` sped up 60x; a real
+stack outage found and fixed.**
+
+- **Added a live "API" badge to every container card** for each app Control Panel actually talks
+  to over HTTP (the four Servarr-shaped `*arr` apps, Plex, Zilean, Decypharr, Glances, NzbDAV) — a
+  small dot and running count of outbound calls this panel has made to that app since it last
+  started, ticking up and flashing green on real increments. Explicitly a dashboard flourish, not
+  a metrics system: in-memory `Counter`, resets on restart, no persistence. See
+  [Live API hit counter](#live-api-hit-counter-a-dashboard-flourish-not-a-metrics-system) above.
+- **Two real bugs found building it:** reassigning `httpx.request` alone was a silent no-op
+  (`httpx.get`/`post`/etc. resolve `request` against `httpx._api`'s own module globals, not
+  `httpx`'s top-level namespace — hit counts stayed at `0` through real traffic until
+  `httpx._api.request` itself was patched); and `/api/containers` was quietly taking 60-90+
+  seconds — each `container_stats()` call blocks the Docker Engine API for ~1-2s regardless of
+  `stream=False`, and the endpoint called it in a sequential loop across all 34 containers. Fixed
+  with a `ThreadPoolExecutor` (`max_workers` capped at 16); total latency dropped to ~6s, bound by
+  the slowest single container instead of the sum of all of them.
+- **Cleaned up a stale Readarr leftover from v10.7.0**: `app.js`'s own `ARR_APPS`/`QUICK_LINKS`
+  arrays — a second, independent list from the backend's, used only to render the *arr apps
+  section and Quick Links — still had a hardcoded `readarr` entry. Quick Links linked to a
+  "Readarr" tile that happened to still resolve (Bindery kept the same port); the *arr apps
+  section rendered a fully interactive "Readarr" row whose buttons would have 404'd against
+  `/api/arr/readarr/...`, which no longer exists server-side.
+- **A real full-stack outage, found and fixed live**: `/mnt/nzbdav` was left stale at the
+  **host** level (`Transport endpoint is not connected`, registered in the host's mount table
+  with a dead backing process) — the third confirmed instance of the mount-cascade failure class,
+  this time taking down all 32 containers rather than just `nzbdav-rclone`'s dependents. Recovered
+  with `sudo umount -l /mnt/nzbdav` on the host, then mount owners brought up and confirmed
+  healthy before the rest of the stack. Root-caused a real gap in `stack-restart-all`'s own
+  ordering logic while investigating: `nzbdav-rclone` owns a FUSE mount exactly like
+  `zurg`/`decypharr`/`rclone-alldebrid*` do, but wasn't in `MOUNT_PROVIDERS` at all, and it also
+  has its own upstream dependency (`nzbdav` itself) that the hand-rolled restart loop didn't know
+  about the way `docker compose up`'s `depends_on` graph does. Fixed with a new `MOUNT_PREREQS`
+  wave restarted and confirmed healthy before `MOUNT_PROVIDERS` (which now includes
+  `nzbdav-rclone`) starts. See
+  [Whole-stack restart: mount-order aware](#whole-stack-restart-mount-order-aware) above.
 
 ---
 
