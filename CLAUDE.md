@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (35 services, one `docker-compose.yml`):
-indexes content via Prowlarr + Zilean, requests via Seerr, organizes via five `*arr`-family apps
-(Radarr/Sonarr/Lidarr/Whisparr/Bindery), fetches via a debrid-first pipeline (Zurg + Decypharr
+A Docker Compose media-acquisition-and-serving stack (34 services, one `docker-compose.yml`):
+indexes content via Prowlarr + Zilean, requests via Seerr, organizes via four `*arr`-family apps
+(Radarr/Sonarr/Lidarr/Whisparr — Bindery, the ebook `*arr`, was retired in v10.9.8 along with its
+reader Calibre-Web; no ebook app currently in the stack), fetches via a debrid-first pipeline (Zurg + Decypharr
 against Real-Debrid/AllDebrid) with a Usenet fallback (NzbDAV), and serves via a containerized
 Plex. Stash catalogs the adult library (performers/studios/tags/StashDB identification) as an
 enrichment layer alongside Plex, not a replacement for it. `control-panel/` is the one
@@ -84,7 +85,7 @@ throughout its history section, and there's no substitute for it here.
   restart: mount-order aware" section.
 - **Two Decypharr instances exist because Decypharr has no per-provider category scoping** — a
   single instance's whole `debrids[]` list is available to every category on it. `decypharr` (both
-  backends) serves Radarr/Lidarr/Bindery/Whisparr; `decypharr-alldebrid` (AllDebrid only) is
+  backends) serves Radarr/Lidarr/Whisparr; `decypharr-alldebrid` (AllDebrid only) is
   Sonarr's exclusive download client, with its own second mount and a Remote Path Mapping in
   Sonarr to reconcile the two instances reporting identical-looking `/app/downloads/...` paths
   that are actually different host directories.
@@ -133,3 +134,82 @@ throughout its history section, and there's no substitute for it here.
   confirmed live via `docker stats` reporting the full host memory ceiling as several containers'
   limit instead of a real number. A new service needs its own explicit `mem_limit`/`cpus` lines
   regardless of whether it uses `<<: *common`.
+
+## Known current landmines (not historical — still true as of last audit)
+
+- **`control-panel/app.py`'s `MOUNT_DEPENDENTS` restart-ordering set is only `{"radarr"}`.**
+  Lidarr and Whisparr read the exact same FUSE mounts and should logically belong in that set
+  too, but the in-code comment flags this as an unverified gap, not a confirmed-safe omission —
+  don't assume `restart-all` fully protects them until it's checked.
+- **NeutArr gets OOM-killed roughly every 30 minutes inside its 512MB `mem_limit`.** Invisible
+  from any dashboard because `restart: unless-stopped` just quietly restarts it — `docker stats`
+  or `docker inspect` (OOMKilled flag / restart count) is the only way to see this is happening;
+  container "looks up" the whole time.
+- **`rclone-alldebrid` does not survive a plain `docker compose restart` cleanly.** It needs a
+  manual privileged lazy-unmount recovery step, and this is *not* covered by
+  `restart-all`'s mount-ordering logic — treat it as a separate, manual recovery path, not
+  something the cascade-restart machinery already handles.
+- **Zurg's FUSE mount is a supervised rclone subprocess gated by two keys in
+  `config/zurg/config.yml`** that can silently flip the mount to in-memory-only if ever toggled
+  through Zurg's own live dashboard rather than the config file — a change made in the dashboard
+  won't show up in `git diff` and won't be obvious as the cause of a later mount problem.
+- **Kometa's `sleep infinity` entrypoint override is load-bearing, not a placeholder.** Removing
+  it makes every container restart trigger a full unwanted Kometa run against the whole library.
+- **`/api/decypharr/grab` (control-panel) can only target the primary Real-Debrid `decypharr`
+  instance — it has no path to `decypharr-alldebrid`.** A grab intended for Sonarr's dedicated
+  AllDebrid instance needs a different route/manual approach; don't assume this endpoint is
+  instance-agnostic.
+- **DMM's Dockerfile needs its specific `build`-stage target plus an openssl workaround to avoid
+  a real crash-loop** — this isn't cosmetic pinning, changing the build stage or dropping the
+  workaround has previously broken the container outright.
+
+## Backup/DR details beyond "restic + a Dropbox tarball"
+
+- **`scripts/backup-config.sh` does a logical `pg_dump`/`mysqldump` of `zilean-postgres` and
+  `dmm-mysql` before the restic run runs**, because the restic exclude list skips raw Postgres/
+  MySQL datadirs (file-level backup of a live datadir is unsafe). **Any new DB-backed service
+  added later gets zero backup coverage by default** unless it's added to this logical-dump step
+  explicitly — following only the "exclude the raw datadir" pattern silently drops it.
+- **restic exit code 3 (some files unreadable/locked) is treated as a soft warning that still
+  lets pruning proceed**, not a hard failure. Discord alerting keyed only on "error"-level restic
+  output will miss a *recurring* partial-backup problem that never escalates past exit code 3.
+- **`scripts/backup-claude-dir.sh` overwrites a single Dropbox tarball in place every run — there
+  is no retained history for that leg at all**, unlike the restic repo's normal snapshot
+  retention. Already established this script isn't the real DR mechanism; this is the specific
+  reason why (one bad run can silently replace the only copy).
+
+## Historical incidents worth knowing before touching related code
+
+- **An unexplained mass Radarr/Sonarr library deletion happened once, with zero trail in either
+  app's API or logs** — root cause was never found. The Recycle Bin setting was turned on
+  afterward purely as forward-looking mitigation, not because the mechanism was identified. If a
+  similar report ever comes in, don't assume Recycle Bin retroactively explains or prevents every
+  case — it wasn't proven to be the actual cause the first time.
+- **Sonarr has a pagination-safe `missing-aired` endpoint that exists but has zero UI wiring and
+  has never been tested against this library's real scale (~300k episode records).** Don't assume
+  it's a validated, ready-to-use path without treating that first real invocation as a genuine
+  test, not a known-safe operation.
+
+## Control-panel gotchas beyond restart ordering and CSRF
+
+- **Cleanuparr's instance-check in `control-panel/app.py` bypasses Cleanuparr's own HTTP API
+  entirely and reads its SQLite DB file directly** — `/api/instances` on Cleanuparr itself
+  returns an HTML shell, not JSON, so there was no API-level way to get this data.
+- **`/api/version` depends on an exact regex match against a specific line format in
+  `README.md`.** This compounds the single-file bind-mount staleness issue already noted above —
+  reformatting that line in README *or* editing README without a `--force-recreate` on
+  `control-panel` can both silently break version reporting.
+
+## Deliberate architecture decisions with non-obvious reasons
+
+- **A full Traefik + Authelia + CrowdSec stack (real 2FA, real CrowdSec ban behavior) was built
+  and verified working, then deliberately reverted** in favor of the current LAN-only,
+  CSRF/Origin-validated model — the full recipe is preserved in README's History section if this
+  is ever revisited, so don't rebuild it from scratch without checking there first.
+- **DMM hard-requires MySQL because of its Prisma schema** — it cannot be consolidated onto the
+  stack's existing Postgres instance (`zilean-postgres`) no matter how appealing running one less
+  database engine sounds.
+- **Sonarr's Remote Path Mapping for the AllDebrid `decypharr-alldebrid` instance is the one
+  deliberate exception to this stack's normal "no Remote Path Mappings" convention** — don't
+  "clean it up" by removing it; it's reconciling two Decypharr instances that legitimately report
+  identical-looking paths pointing at different host directories.

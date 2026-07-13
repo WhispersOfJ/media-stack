@@ -1,0 +1,37 @@
+{
+  "quality_profiles": [
+    {
+      "name": "HD Bluray + WEB",
+      "upgrade_allowed": true,
+      "cutoff": "Bluray-1080p",
+      "items": [
+        "WEBDL-1080p",
+        "WEBRip-1080p",
+        "Bluray-1080p",
+        "Remux-1080p"
+      ],
+      "min_format_score": 0,
+      "cutoff_format_score": 10000
+    },
+    {
+      "name": "Remux + WEB 2160p",
+      "upgrade_allowed": true,
+      "cutoff": "Remux-2160p",
+      "items": [
+        "WEBDL-2160p",
+        "WEBRip-2160p",
+        "Bluray-2160p",
+        "Remux-2160p"
+      ],
+      "min_format_score": 0,
+      "cutoff_format_score": 10000
+    }
+  ],
+  "custom_formats": [
+    {"name": "HDR10+", "score": 30, "specifications": [{"type": "source", "value": "hdr10plus"}]},
+    {"name": "Dolby Vision", "score": 40, "specifications": [{"type": "source", "value": "dv"}]},
+    {"name": "Remux Tier 01", "score": 25, "specifications": [{"type": "release_group", "value": "FraMeSToR"}]},
+    {"name": "x265 (no HDR/DV)", "score": -1000, "specifications": [{"type": "codec", "value": "x265"}, {"type": "hdr", "value": false}]},
+    {"name": "Bad Dual Groups", "score": -10000, "specifications": [{"type": "release_group", "value": "example-bad-group"}]}
+  ]
+}

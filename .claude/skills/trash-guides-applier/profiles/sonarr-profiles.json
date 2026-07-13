@@ -1,0 +1,34 @@
+{
+  "quality_profiles": [
+    {
+      "name": "WEB-1080p",
+      "upgrade_allowed": true,
+      "cutoff": "WEBDL-1080p",
+      "items": [
+        "WEBDL-1080p",
+        "WEBRip-1080p",
+        "Bluray-1080p"
+      ],
+      "min_format_score": 0,
+      "cutoff_format_score": 10000
+    },
+    {
+      "name": "WEB-2160p",
+      "upgrade_allowed": true,
+      "cutoff": "WEBDL-2160p",
+      "items": [
+        "WEBDL-2160p",
+        "WEBRip-2160p",
+        "Bluray-2160p"
+      ],
+      "min_format_score": 0,
+      "cutoff_format_score": 10000
+    }
+  ],
+  "custom_formats": [
+    {"name": "HDR10+", "score": 30, "specifications": [{"type": "source", "value": "hdr10plus"}]},
+    {"name": "Repack/Proper", "score": 5, "specifications": [{"type": "release_title", "value": "repack|proper"}]},
+    {"name": "x265 (HD)", "score": -1000, "specifications": [{"type": "codec", "value": "x265"}, {"type": "resolution", "value": "1080p"}]},
+    {"name": "Anime Dual Audio", "score": 20, "specifications": [{"type": "release_title", "value": "dual"}]}
+  ]
+}
