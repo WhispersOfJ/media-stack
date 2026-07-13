@@ -495,67 +495,6 @@ services:
     mem_reservation: 128m
     cpus: 2
 
-  # Replaced Readarr in v10.7.0 - ebook library management. Actual
-  # reading/browsing happens via Calibre-Web below, since Plex has no
-  # book/ebook agent support at all (confirmed via /system/agents).
-  # Upstream Readarr was officially retired June 2025: its sole metadata
-  # backend (api.bookinfo.club) went permanently offline (confirmed live -
-  # clean NXDOMAIN, not a transient outage), and the maintainers state
-  # outright the project's metadata became unusable and their own migration
-  # to Open Library stalled. Bindery is a clean-room Go rewrite built
-  # specifically to survive this class of failure - OpenLibrary primary
-  # with five independent fallback sources (Google Books, Hardcover, DNB,
-  # Audnex, Audible), none of them scraped. Nothing to migrate from the old
-  # Readarr instance - it had 0 authors/books tracked the whole time it ran
-  # here.
-  bindery:
-    restart: unless-stopped
-    logging: *common-logging
-    image: ghcr.io/vavallee/bindery:v1.25.0
-    container_name: bindery
-    networks: [stacknet]
-    # Distroless image, not LSIO's s6-overlay - PUID/PGID env vars alone are
-    # sanity-check assertions only, not user switchers (confirmed in its own
-    # docs). Runs as UID 65532 by default regardless of what those env vars
-    # say, which 403'd on this stack's PUID:PGID=1000:1000-owned bind mounts.
-    # The actual fix is this `user:` override; BINDERY_PUID/PGID below just
-    # make Bindery verify the two agree and fail loudly (not with a bare
-    # permission-denied) if they're ever changed out of sync.
-    user: "${PUID}:${PGID}"
-    environment:
-      TZ: ${TZ}
-      BINDERY_PUID: ${PUID}
-      BINDERY_PGID: ${PGID}
-      BINDERY_API_KEY: ${BINDERY_API_KEY}
-      # Matches every other *arr app's mount point in this stack exactly
-      # (see Unpackerr's comment above on why /mnt alone doesn't cover it) -
-      # zero path-remap needed since Decypharr already reports completed
-      # downloads under this same /app/downloads/<category>/... path.
-      BINDERY_DOWNLOAD_DIR: /app/downloads/bindery
-    # No healthcheck: block here on purpose - the image already bakes in
-    # HEALTHCHECK CMD ["/bindery", "healthcheck"] itself. Distroless has no
-    # shell at all (confirmed live: /bin/sh doesn't exist), so a CMD-SHELL
-    # override here would replace a correct built-in check with a broken
-    # one that can never run.
-    volumes:
-      - ./config/bindery:/config
-      - /mnt/zurg:/mnt/zurg:rslave
-      - /mnt/decypharr:/mnt/decypharr:rslave
-      - /mnt/nzbdav:/mnt/nzbdav:rslave
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      # Same host directory Calibre-Web already mounts (as /books) - so
-      # whatever Bindery imports is immediately visible there with no
-      # separate wiring. /books is Bindery's own BINDERY_LIBRARY_DIR
-      # default, so no env override needed either.
-      - ./media/books:/books
-    ports:
-      - "8787:8787"
-    # No prior limit at all - found live via a resource audit. Sized above
-    # observed baseline (~58MB) - lightest of the *arr-family apps.
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 1
-
   # Reinstated (was removed in 4.0.0 - "too problematic" at the time, a real
   # DownloadedEpisodesScan bug in that build plus a root-folder regression;
   # same bug class already hit and fixed once this session for Sonarr, so
@@ -698,35 +637,6 @@ services:
     mem_reservation: 32m
     cpus: 1
 
-  # Ebook reader/library UI - Plex has no ebook agent (verified live via
-  # /system/agents, no book/ebook identifier present), so Readarr's actual
-  # content needs a real reader app rather than a fake Plex library.
-  calibre-web:
-    restart: unless-stopped
-    logging: *common-logging
-    image: lscr.io/linuxserver/calibre-web:latest
-    container_name: calibre-web
-    networks: [stacknet]
-    environment:
-      PUID: ${PUID}
-      PGID: ${PGID}
-      TZ: ${TZ}
-      DOCKER_MODS: linuxserver/mods:universal-calibre
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8083/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/calibre-web:/config
-      - ./media/books:/books
-    ports:
-      - "8083:8083"
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
-
   # ---------------------------------------------------------------------
   # Usenet - streaming, no local disk (NzbDAV: WebDAV filesystem + rclone
   # mount, same "virtual filesystem" pattern as Zurg/rclone-alldebrid do
@@ -752,6 +662,17 @@ services:
     volumes:
       - ./config/nzbdav:/config
       - /mnt:/mnt
+      # Repairs feature needs to see the *arr apps' own root folders to scan
+      # for symlinks/*.strm and correlate them back to Radarr/Sonarr entries -
+      # same /data/movies, /data/shows, /data/anime paths those apps report as
+      # their own root folders (see radarr/sonarr services above), so nzbdav's
+      # repair engine's path lookups line up with no remapping needed. Only
+      # Radarr+Sonarr are wired into the Repairs tab today, so only their root
+      # folders are mounted. Read-only - nzbdav repairs via the Radarr/Sonarr
+      # API (delete+research), not by touching the symlinks directly.
+      - ./media/movies:/data/movies:ro
+      - ./media/shows:/data/shows:ro
+      - ./media/anime-shows:/data/anime:ro
     # Host port 3001, not 3000 - DebridMediaManager already owns 3000 on
     # this host. Internally still :3000 (Radarr/Sonarr/rclone all reach it
     # as http://nzbdav:3000 over stacknet, unaffected by the host mapping).
@@ -1067,6 +988,12 @@ services:
       LIDARR_API_KEY: ${LIDARR_API_KEY}
       WHISPARR_API_KEY: ${WHISPARR_API_KEY}
       NZBDAV_API_KEY: ${NZBDAV_API_KEY}
+      # Decypharr's own qBittorrent-compatible API requires its own
+      # username/password login (POST /api/v2/auth/login for a session
+      # cookie) separate from the web UI's cookie session - needed by
+      # decypharr_grab() below since use_auth was turned on.
+      DECYPHARR_ADMIN_USERNAME: ${DECYPHARR_ADMIN_USERNAME}
+      DECYPHARR_ADMIN_PASSWORD: ${DECYPHARR_ADMIN_PASSWORD}
       # Prowlarr has no other integration in this stack (CONTAINER_LABELS
       # dashboard entry only) - added specifically so /api/log-levels can
       # cover all five Servarr-shaped apps, not just the four QUEUE_ARR_APPS.
@@ -1171,10 +1098,26 @@ services:
     container_name: kometa
     profiles: [extras]
     networks: [stacknet]
-    # No web UI/API - checks that the main kometa.py process is still alive
-    # via /proc rather than an HTTP probe.
+    # No run_time is set in config/kometa/config.yml, but the image's default
+    # entrypoint (`python3 kometa.py --`) still runs a full pass immediately
+    # on every container start/restart regardless - confirmed live (a 19+
+    # hour single run since this container's last start, no cron/systemd
+    # timer/webhook trigger found anywhere). That's the only thing that ever
+    # made this "scheduled" rather than on-demand. Overriding entrypoint to
+    # idle instead: Control Panel's /api/kometa/run already runs Kometa
+    # on-demand via `docker exec ... python3 /kometa.py --run` (see
+    # control-panel/app.py's kometa_run()), which works against an idling
+    # container exactly the same as a busy one - exec doesn't care what PID 1
+    # is doing. Don't remove this override without re-adding some other guard
+    # against the auto-run-on-start behavior, or every restart/host reboot
+    # silently kicks off a full run again.
+    entrypoint: ["/tini", "-s", "--"]
+    command: ["sleep", "infinity"]
+    # Matches the command override above - confirms the idle placeholder
+    # process is alive, not kometa.py (which now only ever runs via the
+    # on-demand exec, not as the container's main process).
     healthcheck:
-      test: ["CMD-SHELL", "grep -aq kometa.py /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "grep -aq 'sleep infinity' /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -1183,12 +1126,10 @@ services:
       TZ: ${TZ}
     volumes:
       - ./config/kometa:/config
-    # 642MB observed resident even while "sleeping" between scheduled runs -
-    # the largest idle footprint of any container besides Postgres/Zilean,
-    # mostly inherent to its dependency stack (image processing, several
-    # metadata-agent SDKs) rather than misconfiguration. Real overlay/poster
-    # generation runs can spike further, hence the ceiling rather than just
-    # accepting the idle number as the max.
+    # 642MB was observed resident during an actual run; idling on the
+    # entrypoint override above should sit well under this, but the ceiling
+    # is sized for real overlay/poster-generation runs triggered on demand,
+    # not the idle baseline.
     mem_limit: 2g
     mem_reservation: 256m
     cpus: 4

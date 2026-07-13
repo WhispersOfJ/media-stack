@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.9.6**
+Current version: **v10.9.8**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -35,7 +35,7 @@ section below shows the actual request.
 - [Indexing: Prowlarr, Zilean, Byparr](#indexing-prowlarr-zilean-byparr)
 - [Requests: Seerr](#requests-seerr)
 - [Plex](#plex)
-- [Calibre-Web: ebooks](#calibre-web-ebooks)
+- [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Stash: adult library cataloging](#stash-adult-library-cataloging)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [DebridMediaManager (self-hosted)](#debridmediamanager-self-hosted)
@@ -56,15 +56,16 @@ section below shows the actual request.
 ## What this actually is
 
 Point this at a Real-Debrid and/or AllDebrid account and it wires together: an indexer layer
-(Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), four `*arr` apps plus
-Bindery for ebooks that turn a request into an organized library (Radarr, Sonarr, Lidarr,
-Whisparr, Bindery), a debrid gateway that symlinks already-cached content instead of downloading
-it (Decypharr + Zurg), a Usenet fallback that streams rather than downloads (NzbDAV), a
-containerized Plex to watch/listen to the result on, Calibre-Web to actually read the ebooks
-Bindery organizes, a self-hosted
-DebridMediaManager, and a pile of automation/monitoring extras (Kometa, Cleanuparr, NeutArr,
-Unpackerr, Watchtower, Tautulli, Glances, Dozzle, Adminer) — 32 containers total, one
-`docker-compose.yml`.
+(Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), four `*arr` apps that
+turn a request into an organized library (Radarr, Sonarr, Lidarr, Whisparr), a debrid gateway
+that symlinks already-cached content instead of downloading it (Decypharr + Zurg), a Usenet
+fallback that streams rather than downloads (NzbDAV), a containerized Plex to watch/listen to
+the result on, a self-hosted DebridMediaManager, and a pile of automation/monitoring extras
+(Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli, Glances, Dozzle, Adminer) — 34
+containers total, one `docker-compose.yml`. (Ebooks briefly had a dedicated app, Bindery, plus
+Calibre-Web as its reader; both were retired in v10.9.8 — see
+[Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired) — with no replacement
+currently in the stack.)
 
 The debrid-first design (Zurg + Decypharr) means anything already cached on Real-Debrid/AllDebrid
 shows up as a symlink and plays instantly — no "downloading" step. Usenet (NzbDAV) is there for
@@ -124,8 +125,6 @@ Prowlarr ──indexes──> (your trackers + Zilean's DMM cache-hash list)
    │
    ▼
 Radarr/Sonarr/Lidarr/Whisparr ──grab──> Decypharr (qBittorrent-compatible API)
-Bindery ──grab──> NzbDAV (SABnzbd-compatible, verified) / Decypharr (qBittorrent-compatible,
-                   configured but auth not yet reconciled - see Bindery section below)
    │                                                        │
    │                                                        ├─> Real-Debrid API  (add magnet)
    │                                                        └─> AllDebrid API    (add magnet;
@@ -148,11 +147,10 @@ Plex (network_mode: host, /mnt mounted 1:1 with the host) → Movies: /mnt/zurg/
                                                              TV Shows: /mnt/zurg/shows + /mnt/all/magnets
                                                              Music: /mnt/zurg/music (+ intended Audiobooks,
                                                                     see the Plex section below)
-Calibre-Web → reads ./media/books directly (Bindery's own root folder) - not through Zurg/Decypharr
 ```
 
 **Two Decypharr instances, not one.** `docker-compose.yml` runs `decypharr` (port 8282, both
-debrid backends, Radarr's + Lidarr's + Bindery's + Whisparr's download client) and
+debrid backends, Radarr's + Lidarr's + Whisparr's download client) and
 `decypharr-alldebrid` (port 8283, AllDebrid only, Sonarr's download client). Decypharr has no
 per-provider category scoping — a single instance's `debrids[]` list is available to every
 category on it — so a fully separate instance, with its own config and mount, is the only way to
@@ -196,7 +194,7 @@ mount or container problem.
 
 > **Radarr-specific mount fragility.** Radarr bind-mounts `/mnt/zurg` and `/mnt/decypharr`
 > directly (`/mnt/zurg:/mnt/zurg:rslave`) rather than the parent `/mnt` the way Sonarr/Lidarr/
-> Bindery/Whisparr/Plex do. A direct bind of a FUSE mountpoint doesn't reliably survive that FUSE
+> Whisparr/Plex do. A direct bind of a FUSE mountpoint doesn't reliably survive that FUSE
 > process being recreated underneath it (a Zurg image update, a resource-limit change, etc.) —
 > only Radarr breaks, with `Socket not connected` inside the container and `accessible: false`
 > from `/api/v3/rootfolder`, while every other app keeps working fine. Fix is `docker restart
@@ -288,115 +286,36 @@ actually out of sync with `docker-compose.yml`.
 
 ## The *arr apps
 
-Four of the five follow an identical wiring pattern: Prowlarr pushes indexers down via
+All four follow an identical wiring pattern: Prowlarr pushes indexers down via
 `fullSync`, Decypharr (or `decypharr-alldebrid` for Sonarr) is the priority-1 download client,
 NzbDAV is priority-2 fallback, Unpackerr extracts anything RAR'd, root folder is `./media/<type>`
 mounted at `/data/<type>`, and Control Panel wires up RSS sync / search-missing / unstick /
-manual-import against each one identically. The fifth, Bindery (ebooks), is Servarr-*adjacent*
-rather than Servarr-*shaped* — see below.
+manual-import against each one identically.
 
 | App | Port | Root folder | Content type |
 |---|---|---|---|
 | Radarr | 7878 | `/data/movies` | Movies |
 | Sonarr | 8989 | `/data/shows` | TV |
 | Lidarr | 8686 | `/data/music` | Music |
-| Bindery | 8787 | `/books` | Ebooks |
 | Whisparr | 6969 | `/data/adult` | Adult (v3/"eros", series-style) |
 
 Radarr/Sonarr/Lidarr/Whisparr were reinstated (Lidarr/Readarr in a prior session, Whisparr in a
 later one) after having been fully removed at various earlier points — see [History](#history)
-for why each was pulled and why each came back. Readarr itself was later **replaced outright by
-Bindery**, not reinstated — see below. Every Servarr-shaped app's queue works identically for
-Control Panel's [Unstick and manual-import](#control-panel) actions; Bindery isn't in
-`QUEUE_ARR_APPS` at all, so it has no presence in [queue-status](#control-panel),
-[backlog-status](#control-panel), or unstick/manual-import — its API isn't Servarr-shaped, so
-none of that generic machinery applies (see [Known gaps](#known-gaps-and-limitations)).
+for why each was pulled and why each came back. Every one of these apps' queue works identically
+for Control Panel's [Unstick and manual-import](#control-panel) actions.
 
-### Readarr is gone; Bindery replaced it
-
-```yaml
-# docker-compose.yml
-bindery:
-  restart: unless-stopped
-  logging: *common-logging
-  image: ghcr.io/vavallee/bindery:v1.25.0
-  container_name: bindery
-  networks: [stacknet]
-  user: "${PUID}:${PGID}"
-  environment:
-    TZ: ${TZ}
-    BINDERY_PUID: ${PUID}
-    BINDERY_PGID: ${PGID}
-    BINDERY_API_KEY: ${BINDERY_API_KEY}
-    BINDERY_DOWNLOAD_DIR: /app/downloads/bindery
-  # No healthcheck: block here on purpose - the image bakes in its own
-  # HEALTHCHECK CMD ["/bindery","healthcheck"]; distroless has no shell, so a
-  # CMD-SHELL override would just fail with "/bin/sh: no such file or directory".
-  volumes:
-    - ./config/bindery:/config
-    - /mnt/zurg:/mnt/zurg:rslave
-    - /mnt/decypharr:/mnt/decypharr:rslave
-    - /mnt/nzbdav:/mnt/nzbdav:rslave
-    - ./config/decypharr/downloads:/app/downloads:rslave
-    - ./media/books:/books
-  ports:
-    - "8787:8787"
-```
+### Readarr is gone
 
 Upstream Readarr was **officially retired** — "lack of developers... decided to retire the
 project," per linuxserver.io's own deprecation notice — and the final straw was its Goodreads
 metadata lookup dying permanently when `bookinfo.club` (the scrape target linuxserver's fork
 depended on) expired outright. hotio never published a Readarr image at all, and linuxserver's own
-`develop`/`nightly` tags stopped resolving to a valid manifest. Rather than keep nursing a dead
-project, it was swapped for **[Bindery](https://github.com/vavallee/bindery)**: a Go-based,
-distroless, single-binary Readarr replacement with its own OpenLibrary-primary (+ five fallback:
-Google Books, Hardcover, DNB, Audnex, Audible) metadata pipeline — zero scraping, specifically
-built to survive the exact class of failure that killed Readarr.
-
-Three real deployment gotchas, in the order they were hit:
-
-- **Distroless means no shell and a non-root default UID (65532).** `BINDERY_PUID`/`BINDERY_PGID`
-  env vars are, per Bindery's own docs, "sanity checks, not user switchers" — the container still
-  needs the Compose-level `user: "${PUID}:${PGID}"` override plus a `chown` on the host config
-  directory, or it crashes on startup unable to write `/config`.
-- **Mutating API calls need an extra header.** Every `POST`/`PUT`/`DELETE` against
-  `/api/v1/*` returns `{"error":"forbidden"}` — even with a correct, verified `X-Api-Key` — unless
-  `X-Requested-With: bindery-ui` is also set. Bindery's source
-  (`internal/auth/middleware.go`, `RequireXRequestedWith`) shows this is meant to be optional when
-  authenticated via API key; empirically, against the deployed `v1.25.0`, it wasn't. Every
-  provisioning call in this stack sends the header unconditionally now.
-- **Admin-account creation can't be scripted from here.** Bindery gates its API behind a one-time
-  `/setup` flow (browser-only, sets `setupRequired: false`) before any admin-level call will
-  succeed — creating that account is the one step that has to happen by hand at
-  `http://192.168.4.105:8787/setup`.
-
-Everything past setup — Prowlarr registration + sync, NzbDAV as a working download client, root
-folder — is done the same way as every other app in this stack: real HTTP calls against the
-running API, not config files:
-
-```bash
-# Register and sync Prowlarr (23 indexers synced on the real run, DrunkenSlug's
-# usenet indexer among them)
-curl -X POST -H "X-Api-Key: $BINDERY_API_KEY" -H "X-Requested-With: bindery-ui" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"prowlarr","url":"http://prowlarr:9696","apiKey":"'"$PROWLARR_API_KEY"'"}' \
-  http://192.168.4.105:8787/api/v1/prowlarr
-curl -X POST -H "X-Api-Key: $BINDERY_API_KEY" -H "X-Requested-With: bindery-ui" \
-  http://192.168.4.105:8787/api/v1/prowlarr/1/sync
-
-# NzbDAV as a SABnzbd-compatible download client
-curl -X POST -H "X-Api-Key: $BINDERY_API_KEY" -H "X-Requested-With: bindery-ui" \
-  -H "Content-Type: application/json" \
-  -d '{"type":"sabnzbd","host":"nzbdav","port":3000,"apiKey":"'"$NZBDAV_API_KEY"'"}' \
-  http://192.168.4.105:8787/api/v1/downloadclient
-```
-
-One accepted, documented gap: **Decypharr is not wired in as a Bindery download client.**
-Bindery's generic qBittorrent client type expects real cookie-based username/password login;
-Decypharr's actual working auth is a Bearer API token (confirmed by direct curl — 401 on cookie
-login, 200 on Bearer), which that client type doesn't support. Decypharr's admin password is
-bcrypt-hashed and shared across five other already-working app connections, so it wasn't reset
-just to unblock this one. NzbDAV covers the download-client role for Bindery in the meantime.
+`develop`/`nightly` tags stopped resolving to a valid manifest. It was replaced in v10.7.0 by
+**Bindery**, a Go-based ebook `*arr` — which itself never tracked a single book and was retired
+outright in v10.9.8 along with its reader, Calibre-Web. There is currently no ebook app of any
+kind in this stack. Full detail on Bindery's deployment, its real gotchas, and why it was removed
+is in [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired) and the v10.7.0/v10.9.7/
+v10.9.8 [History](#history) entries.
 
 ### Why Whisparr is pinned to `:v3`, not `:latest`
 
@@ -421,10 +340,7 @@ same regression class Radarr/Sonarr have both hit; watch for it here too.
 ### Real API examples
 
 Every Servarr-shaped app exposes the same REST API shape (`/api/v3` for Radarr/Sonarr/Whisparr,
-`/api/v1` for Lidarr). Bindery also happens to use an `/api/v1` prefix but is a different API
-entirely — different resource names, no `?apikey=` query-param support, and the
-`X-Requested-With` quirk noted above — see the curl examples in the previous section rather than
-assuming Servarr conventions apply:
+`/api/v1` for Lidarr):
 
 ```bash
 # Radarr's own health/liveness endpoint (what every healthcheck in this stack uses)
@@ -500,9 +416,7 @@ avoiding Remote Path Mappings entirely — Decypharr's own documented best pract
 
 ```json
 // config/decypharr/config.json (real, sanitized) - one debrid backend on this
-// instance (Real-Debrid), symlink-only, categories for all five apps (bindery's
-// is registered here for folder-naming consistency even though Bindery itself
-// isn't wired to Decypharr as a download client - see the Bindery section above)
+// instance (Real-Debrid), symlink-only, categories for all four *arr apps
 {
   "debrids": [
     {
@@ -524,18 +438,18 @@ avoiding Remote Path Mappings entirely — Decypharr's own documented best pract
     }
   },
   "default_download_action": "symlink",
-  "categories": ["sonarr", "bindery", "lidarr", "radarr", "whisparr"],
+  "categories": ["sonarr", "lidarr", "radarr", "whisparr"],
   "refresh_interval": "30s",
   "max_downloads": 10
 }
 ```
 
 `allowed_file_types` in that same file was extended when Lidarr/Readarr/Whisparr were reinstated
-to cover audio (`flac`, `mp3`, `m4a`, `ape`, ...), ebook (`epub`, `mobi`, `azw`, `azw3`, `cbr`,
-`cbz`, `pdf`, ...), and remains inclusive of video/subtitle types alongside the original movie/TV
-list — one shared allow-list across every category, not scoped per-app. The `readarr` → `bindery`
-rename in `categories` is cosmetic (folder-naming only, per the note above); the file types
-themselves didn't need to change.
+to cover audio (`flac`, `mp3`, `m4a`, `ape`, ...) and remains inclusive of video/subtitle types
+alongside the original movie/TV list — one shared allow-list across every category, not scoped
+per-app. Ebook extensions (`epub`, `mobi`, `azw`, `azw3`, `cbr`, `cbz`, `pdf`, ...) were added for
+Bindery and never removed after its retirement in v10.9.8 — harmless leftovers now that nothing
+reads that category.
 
 **Restricting a specific app to a specific debrid provider** is a per-arr field, distinct from the
 overall `debrids[]` list:
@@ -544,8 +458,7 @@ overall `debrids[]` list:
 # Radarr is pinned to Real-Debrid only (added to its arrs[] entry in
 # config/decypharr/config.json) - Sonarr/Lidarr/Whisparr are left on
 # source: "auto" with no selected_debrid, so they can still fall through to
-# AllDebrid. (Bindery isn't in this list at all - it isn't wired to Decypharr
-# as a download client, see the Bindery section above.)
+# AllDebrid.
 # config/decypharr/config.json is gitignored (real API keys), so
 # this is a live runtime edit, not something that shows up in git log.
 {
@@ -597,9 +510,10 @@ directories:
     group_order: 12
     filters:
       - regex: /(?i)\b(FLAC|MP3|CDDA|Vinyl|Discography|320kbps|Lossless|WEB-DL.*MP3)\b/
-  # Restored - ebook releases, now routed to Bindery instead of Readarr. Zurg
-  # itself doesn't know which *arr requested a release, so this group didn't
-  # need to change when Readarr was replaced - only which app reads /books did.
+  # Restored (originally for Readarr, later Bindery) - both are gone now
+  # (see Bindery and Calibre-Web: retired) and nothing currently reads
+  # /mnt/zurg/books, but the group is left in place as a harmless leftover
+  # rather than pulled, in case an ebook app returns to this stack.
   books:
     group: media
     group_order: 14
@@ -862,12 +776,10 @@ wrong: Prowlarr currently syncs **15 indexers to Lidarr** (category 3000-range) 
 Whisparr** (6000-range). A live end-to-end test confirmed Lidarr's chain actually works — see
 [Lidarr's indexer + download-client chain is verified working end-to-end](#known-gaps-and-limitations).
 
-Books indexing works differently now that Bindery replaced Readarr: there's no Prowlarr
-Application entry pushing indexers *to* Bindery (Prowlarr has no `syncCategories` concept for it,
-since Bindery isn't Servarr-shaped). Instead Bindery pulls *from* Prowlarr, in the opposite
-direction — it registers Prowlarr as an indexer source via its own API and syncs on demand
-(`POST /api/v1/prowlarr` then `POST /api/v1/prowlarr/{id}/sync`, see the Bindery section above),
-which pulled in 23 indexers on the real run, including a Usenet one (DrunkenSlug).
+Books indexer coverage is moot now: Bindery (the ebook `*arr` that used to pull indexers from
+Prowlarr via its own non-Servarr-shaped API) was retired in v10.9.8 along with its reader,
+Calibre-Web — see [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired). There is
+no ebook indexing path in this stack currently.
 
 Whisparr's 21 indexers do sync correctly, but two live search tests against them (`Test Subjects`,
 then the far more mainstream `Brazzers House`) both returned "0 reports downloaded." The cause
@@ -886,8 +798,8 @@ Torznab indexer definitions, not a bug in this stack's configuration. Details an
 the two projects merged) is the day-to-day entry point: search for a movie or show, click
 Request, everything else happens automatically. Connected to Radarr and Sonarr as default servers
 (the `Unlimited` quality profile on both, `/data/movies`/`/data/shows`). Not connected to
-Lidarr/Bindery/Whisparr — Seerr's own settings API only recognizes `radarr` and `sonarr`; there's
-no music/book/adult-content data model to connect the other three apps to, confirmed directly
+Lidarr/Whisparr — Seerr's own settings API only recognizes `radarr` and `sonarr`; there's
+no music/adult-content data model to connect the other two apps to, confirmed directly
 against its settings schema, not an oversight.
 
 ```bash
@@ -1035,51 +947,27 @@ curl -s -H "X-Plex-Token: $PLEX_TOKEN" http://192.168.4.105:32400/library/sectio
   grep -E 'title="(Audiobooks|Adult)"'
 ```
 
-## Calibre-Web: ebooks
+## Bindery and Calibre-Web: retired
 
-Plex has **no ebook/book agent at all** — confirmed live via `/system/agents`, no book/ebook
-identifier present in the response — so Bindery's actual output needs a real reader app rather
-than a fake Plex library pretending to be one. **Calibre-Web**
-(`lscr.io/linuxserver/calibre-web:latest`) fills that role, reading Bindery's own root folder
-directly:
+**Both retired in v10.9.8; the stack currently has no ebook or comic app of any kind.**
 
-```yaml
-# docker-compose.yml
-calibre-web:
-  image: lscr.io/linuxserver/calibre-web:latest
-  environment:
-    PUID: ${PUID}
-    PGID: ${PGID}
-    TZ: ${TZ}
-    DOCKER_MODS: linuxserver/mods:universal-calibre   # adds calibre-convert for format conversion
-  volumes:
-    - ./config/calibre-web:/config
-    - ./media/books:/books     # same host directory as Bindery's own root folder
-  ports:
-    - "8083:8083"
-```
+Bindery (`ghcr.io/vavallee/bindery`) replaced Readarr in v10.7.0 as the ebook `*arr`, with
+Calibre-Web reading its root folder (`./media/books`) directly as the actual reader/library UI.
+Bindery tracked **zero authors/books the entire time it ran** (see [v10.7.0](#history)) — its
+Decypharr download-client wiring was fixed live in v10.9.7, but no real content ever came in
+through it before both services were removed. With nothing in the library and no working
+acquisition path proven out, keeping an empty ebook manager and its reader running wasn't worth
+the resource/maintenance cost, so both `docker-compose.yml` service blocks were deleted outright
+rather than left idling.
 
-The `universal-calibre` DOCKER_MOD adds the full Calibre conversion toolchain (needed for
-converting between ebook formats, e.g. EPUB↔MOBI, inside the container) — Calibre-Web's base image
-doesn't bundle it by default.
+`config/calibre-web/` is left on disk (not deleted) in case anything ever needs recovering from
+it; `config/bindery/` likewise. `CALIBRE_WEB_ADMIN_USERNAME`/`_PASSWORD` were removed from
+`.env`/`.env.example` since nothing reads them anymore. `control-panel/app.py`'s
+`CONTAINER_LABELS` and `ARR_LOG_CONTAINERS` no longer list either service.
 
-**Default credentials rotated.** Calibre-Web ships with a well-known default (`admin`/`admin123`)
-that must be changed on first login. The new credential is documented in `.env` under
-`CALIBRE_WEB_ADMIN_PASSWORD`, following this stack's established convention (see the NzbDAV
-section above) of naming every real secret in `.env`/`.env.example` as its source of truth even
-when the app itself stores it somewhere else (Calibre-Web's own `config/calibre-web/app.db`, in
-this case):
-
-```bash
-# .env.example
-# ---- Calibre-Web ----
-# Own login DB (config/calibre-web/app.db), not read from .env - documented
-# here as the source of truth only. Default admin/admin123 rotated on setup.
-CALIBRE_WEB_ADMIN_USERNAME=admin
-CALIBRE_WEB_ADMIN_PASSWORD=changeme
-```
-
-The real value lives only in `.env` (chmod-restricted, gitignored) — never in this document.
+No ebook agent exists for Plex either way (confirmed live via `/system/agents`, no book/ebook
+identifier present) — if ebooks come back to this stack, it'll need both a manager and a
+dedicated reader again, same as before.
 
 ## Stash: adult library cataloging
 
@@ -1318,9 +1206,9 @@ app type, not V2, matching this stack's `:v3` "eros" pin), each instance's URL/A
 directly in `config/neutarr/{sonarr,radarr,lidarr,eros}.json` (a straight host bind
 mount at `/config`, editable without going through NeutArr's own UI — its own "Apps" settings
 page hits the same files). `readarr.json` is still present in that directory but
-`"enabled": false` — kept as a scaffold rather than deleted in case a Huntarr-lineage fork ever
-adds native Bindery support, but there's nothing to wire up today: NeutArr drives apps through the
-Servarr REST shape, and Bindery's API isn't that shape.
+`"enabled": false` — a leftover from before Readarr was replaced by Bindery (itself since retired,
+see [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)); there's no ebook app of
+any kind to wire up here today.
 
 > **NeutArr, not Huntarr.** NeutArr is a hardened fork tracing through `elfhosted/newtarr`'s fork
 > of Huntarr v6.6.3 — the last clean release before Huntarr's own maintainer suppressed reports of
@@ -1344,8 +1232,8 @@ Cleanuparr's REST API isn't straightforwardly discoverable (same limitation note
 gaps](#known-gaps-and-limitations) re: its stale Readarr reference). Fixed by adding both through
 Cleanuparr's own **Settings → Lidarr/Whisparr → Add Instance** UI — confirmed connection-tested and
 persisted. All four Servarr-shaped apps are now covered by Sonarr/Radarr/Lidarr/Whisparr across
-Cleanuparr, NeutArr, and Unpackerr consistently; Bindery and Stash remain correctly excluded from
-all three (see their respective sections above) since neither is Servarr-shaped.
+Cleanuparr, NeutArr, and Unpackerr consistently; Stash remains correctly excluded from all three
+(see its own section above) since it isn't Servarr-shaped.
 
 **Unpackerr** (`golift/unpackerr@sha256:4ec141...`) auto-extracts RAR'd releases across the four
 Servarr-shaped `*arr` apps:
@@ -1355,8 +1243,7 @@ UN_RADARR_0_URL: http://radarr:7878
 UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
 UN_LIDARR_0_URL: http://lidarr:8686
 UN_LIDARR_0_API_KEY: ${LIDARR_API_KEY}
-# ...same pattern for sonarr/whisparr. Bindery has no entry here - Unpackerr
-# only supports the Starr-family apps, and Bindery isn't one.
+# ...same pattern for sonarr/whisparr.
 ```
 
 Needs each app's actual `/app/downloads/...` path mounted, not just `/mnt` — the archives it needs
@@ -1375,7 +1262,7 @@ WATCHTOWER_NOTIFICATION_URL: ${DISCORD_WATCHTOWER_SHOUTRRR_URL}
 ```
 
 Digest-pinned images (Seerr, Glances, Kometa, Unpackerr, Byparr) and exact-version-tag-pinned ones
-(Zilean, Decypharr, Watchtower itself, Plex, Bindery) are **not** meaningfully auto-updated by
+(Zilean, Decypharr, Watchtower itself, Plex) are **not** meaningfully auto-updated by
 this — a digest or exact version tag is immutable, so Watchtower never finds anything new to pull
 for those. See [Image pinning policy](#image-pinning-policy).
 
@@ -1434,8 +1321,8 @@ curl -X POST -H "Content-Type: application/json" http://localhost:6246/api/setti
   -d "{\"serverName\":\"Radarr\",\"url\":\"http://radarr:7878\",\"apiKey\":\"$RADARR_API_KEY\"}"
 ```
 
-**Lidarr/Bindery/Whisparr aren't supported by Maintainerr at all** — its own settings controller
-only exposes `/radarr` and `/sonarr` connection endpoints, nothing for the other three `*arr`
+**Lidarr/Whisparr aren't supported by Maintainerr at all** — its own settings controller
+only exposes `/radarr` and `/sonarr` connection endpoints, nothing for the other two `*arr`
 apps. Not a gap in this stack's setup; a real limitation of what Maintainerr itself connects to.
 
 **Two starter rules were imported from Maintainerr's community rule library** (the highest-karma
@@ -1463,9 +1350,6 @@ pairs) be removed entirely — see [History](#history).
 
 ```python
 # control-panel/app.py - the ARR_APPS dict this whole panel is built around.
-# Bindery has no entry here - its API isn't Servarr-shaped (no /api/v3,
-# no MissingXSearch command), so the generic arr_queue/arr_command machinery
-# this dict drives doesn't apply to it. It shows up in queue-status separately.
 ARR_APPS = {
     "radarr":  {"url": "http://radarr:7878",   "api": "v3", "search_command": "MissingMoviesSearch"},
     "sonarr":  {"url": "http://sonarr:8989",   "api": "v3", "search_command": "MissingEpisodeSearch"},
@@ -1617,6 +1501,12 @@ again, since a container restart alone can't clear a stale entry the host itself
 (which now includes `nzbdav-rclone`) starts, so `nzbdav-rclone`'s mount always finds `nzbdav` ready
 instead of racing it.
 
+**Known gap, pre-existing:** `MOUNT_DEPENDENTS` only ever contains `radarr`, despite Lidarr and
+Whisparr binding the same three FUSE subpaths directly (`/mnt/zurg`, `/mnt/decypharr`,
+`/mnt/nzbdav` — not a blanket `/mnt` bind) and therefore needing the same restart-ordering
+protection Radarr gets. Not introduced or verified safe by any pass so far — flagged here since
+it keeps getting noticed, not fixed.
+
 ### Security: CSRF/Origin-Host validation, not auth
 
 ```python
@@ -1679,9 +1569,7 @@ Added "Dune Part Two" to Decypharr - will appear once Real-Debrid/AllDebrid fini
 
 `stack-arr`, `stack-arr-import-candidates`, and `stack-arr-import` accept
 `radarr`/`sonarr`/`lidarr`/`whisparr` as their app argument, matching Control Panel's own
-`/api/arr/{app}/...` endpoints and `QUEUE_ARR_APPS` set exactly. Bindery dropped out of this list
-when it replaced Readarr — it isn't Servarr-shaped, so it was never a `QUEUE_ARR_APPS` member
-under its own name and doesn't inherit Readarr's slot:
+`/api/arr/{app}/...` endpoints and `QUEUE_ARR_APPS` set exactly:
 
 ```fish
 # ~/.dotfiles/.config/fish/functions/stack-arr.fish
@@ -1725,7 +1613,17 @@ stack-version                                   # README's declared version + li
 stack-whisparr-hunt                             # force NeutArr to run an immediate hunt pass
 ```
 
-**This whole CLI (all 36 commands now), plus a standalone, restyled Control Panel and a
+**Three more added in v10.9.8, filling gaps found while auditing this list against Control
+Panel's actual endpoint set** — `/api/plex/updates`, `/api/arr/{app}/manual-import-all`, and
+`/api/arr/{app}/missing-aired` had no CLI wrapper at all before this:
+
+```fish
+stack-plex-updates                              # check for a Plex update (check only, doesn't apply it)
+stack-arr-import-all whisparr                    # import every stuck queue file in one go, not just one
+stack-arr-missing-aired sonarr                   # monitored + missing + already aired/released
+```
+
+**This whole CLI (all 40 commands now), plus a standalone, restyled Control Panel and a
 credential-entry installer, has been spun off into its own repo:
 [`StackScripts`](https://github.com/WhispersOfJ/StackScripts).** Unlike `Stackalicious` (the
 sanitized *mirror* of this exact repo), `StackScripts` is a *generalized* redistribution —
@@ -1819,9 +1717,7 @@ One webhook (`DISCORD_WEBHOOK_URL` in `.env`) backs several independent alert pa
   `onGrab`/`onReleaseImport`/`onUpgrade`, plus `onDownloadFailure`/`onImportFailure` since it
   doesn't expose a Sonarr/Radarr-style "manual interaction required" event), but all four also fire
   on `onHealthIssue` and `onApplicationUpdate`. Verified live via each app's own
-  `POST /api/v{1,3}/notification/test` — a real message reaches the channel. Bindery isn't wired
-  into this shared webhook — it wasn't carried over from Readarr's setup and hasn't been requested
-  separately (see [Known gaps](#known-gaps-and-limitations)).
+  `POST /api/v{1,3}/notification/test` — a real message reaches the channel.
 
   ```bash
   curl -H "X-Api-Key: $RADARR_API_KEY" http://localhost:7878/api/v3/notification/3 | \
@@ -1881,7 +1777,7 @@ defensive insurance otherwise:
 | `dmm-mysql` | 2GB | 2 | Holds low-millions-of-rows IMDB index with `@@fulltext` indexes to maintain |
 | `debridmediamanager` | 1.5GB | 2 | Runs from the `build` stage (full devDependencies), not the leaner deploy stage |
 
-Everything else (Seerr, all five `*arr` apps, NzbDAV, Adminer, Dozzle, Watchtower, etc.) carries a
+Everything else (Seerr, all four `*arr` apps, NzbDAV, Adminer, Dozzle, Watchtower, etc.) carries a
 smaller generous ceiling as defensive insurance rather than from observed pressure — see
 `docker-compose.yml` directly for exact current values, which change more often than this document
 is updated.
@@ -2000,9 +1896,10 @@ Five fields genuinely can't be collected before first boot — each Servarr-shap
 generates its own API key on first start, and `PLEX_TOKEN` needs a running Plex with at least one
 library item. These render in a highlighted "⚠ Fill in after first boot" section and default to
 `changeme`; re-running `--setup` loads the real `.env` as defaults, so a second pass only means
-retyping what's actually new. `BINDERY_API_KEY` isn't in this set — unlike the Servarr apps,
-Bindery *seeds* its key from the env var on first launch instead of generating its own, so it can
-be safely auto-generated up front alongside the Zilean secrets.
+retyping what's actually new. `BINDERY_API_KEY` is still listed in `AUTO_GENERATE_KEYS` in the
+wizard's own source — a harmless leftover from when Bindery *seeded* its key from the env var
+instead of generating its own; `.env.example` has no `BINDERY_API_KEY` line since v10.9.8, so the
+wizard silently has nothing to act on for that entry.
 
 ## Known gaps and limitations
 
@@ -2027,14 +1924,6 @@ Documented honestly rather than swept under the rug:
   the available public XXX-category Torznab indexer definitions, not a wiring defect; a real fix
   would mean sourcing indexers with proper movie-search support. See
   [Indexing](#indexing-prowlarr-zilean-byparr).
-- **Bindery isn't wired to Decypharr as a download client** — its generic qBittorrent client type
-  expects real cookie-based username/password login, but Decypharr's actual working auth is a
-  Bearer API token (confirmed by direct curl: 401 on cookie login, 200 on Bearer). Decypharr's
-  admin password is bcrypt-hashed and shared across five other already-working app connections, so
-  it wasn't reset just to unblock this one client type. NzbDAV covers Bindery's download-client
-  role in the meantime — Prowlarr sync (23 indexers, including a Usenet one) and root folder are
-  both confirmed working; no live end-to-end grab test has been run yet. See
-  [The *arr apps](#the-arr-apps).
 - **Cleanuparr still has a stale Readarr reference** in its own SQLite-backed config
   (`config/cleanuparr/cleanuparr.db`) left over from before the Bindery swap. Its API surface
   wasn't quickly discoverable (`/api/instances` returns an HTML shell, not JSON, unlike every other
@@ -2046,9 +1935,6 @@ Documented honestly rather than swept under the rug:
   suspected. Confirmed directly with `curl` against Decypharr's login endpoint (`401` with the
   stored password, `200` with the real one from `.env`) before touching anything. See
   [History](#history).
-- **Bindery has no native Discord notification connection wired up**, unlike the four
-  Servarr-shaped apps (see [Alerting](#alerting-discord)) — it wasn't carried over from Readarr's
-  setup and hasn't been requested separately.
 - **NeutArr's own `python3` process gets OOM-killed inside its 512MB cgroup limit on a tight,
   regular ~30-minute cycle** — 15 kills confirmed in one overnight window
   (`journalctl | grep oom-killer`, `Memory cgroup out of memory: Killed process ... (python3)`,
@@ -2599,7 +2485,7 @@ memory/CPU ceiling at all.**
 - **Same audit found Radarr, Sonarr, Lidarr, Whisparr, and Prowlarr running `logLevel: debug`**
   in production — set back to `info` on all five.
 
-**v10.9.6 (current) — Twenty new `stack-*` commands; the whole CLI + a generalized Control
+**v10.9.6 — Twenty new `stack-*` commands; the whole CLI + a generalized Control
 Panel spun off into a standalone `StackScripts` repo.**
 
 - **Twenty new diagnostic/action endpoints added to `control-panel/app.py`**, each backing a
@@ -2625,6 +2511,75 @@ Panel spun off into a standalone `StackScripts` repo.**
   prompt" (never populating the confirmation variable in `stack-restart-all.zsh`). `AGENTS.md`
   added to this repo, `Stackalicious`, and `StackScripts` itself, codifying the sync
   obligation: a new `stack-*` command isn't done until it exists in all three.
+
+**v10.9.7 — Bindery's Decypharr download client fixed: same root cause as
+Cleanuparr's, not the Bearer-token protocol limitation it was assumed to be.**
+
+- **The "accepted gap" from v10.7.0 was wrong, the same way Cleanuparr's was in v10.9.2.**
+  A live `qBittorrent auth failed (HTTP 401)` report from Bindery's own poller prompted a
+  fresh look instead of re-citing the old conclusion. Bindery's `download_clients` row for
+  Decypharr had its API key stuffed into `username` with `password` empty — never real
+  admin credentials. Fixed through Bindery's own Settings → Download Clients → Edit UI
+  (`admin` / the real `DECYPHARR_ADMIN_PASSWORD`), confirmed live: the 401s stopped
+  immediately and `/api/v1/downloadclient/1`'s health flipped from `error` to `ok`.
+  Decypharr's cookie-based qBittorrent-compat auth works fine — it always did, for every
+  other app already wired to it.
+- **A second, unrelated gap surfaced once auth was fixed**: `config/decypharr/downloads/bindery`
+  had never been created (Decypharr only creates a category's folder on that category's first
+  real download, and Bindery had never gotten far enough to trigger one). Created manually
+  (`1000:1000`, `755`, matching every sibling category folder) — confirmed via Bindery's Test
+  button: `Connection successful!`.
+- **Write endpoints on Bindery's own API (`PUT`/`DELETE`) return a blanket `403 forbidden`
+  under API-key auth**, even with the right key — only reads work that way. Mutating anything
+  needs a real browser session against the UI, same as this fix. Noted here since it cost a
+  few failed `curl` attempts before landing on the UI approach that actually worked.
+- **`scripts/enable-recycle-bin.py` extended to Lidarr and Whisparr** — a Servarr-docs review
+  found both had `recycleBin: ""` (completely unset) while Radarr/Sonarr had it configured since
+  the original mass-deletion incident (see `2026-07-09` note in [History](#history)). Lidarr
+  needed its own `api_version` field added to the script (`/api/v1/config/mediamanagement`, not
+  `/api/v3/` like the other three) — confirmed live, not assumed from Radarr/Sonarr's shape. Both
+  now set to `.recyclebin` under their own root (`/data/music`, `/data/adult`), 7-day cleanup,
+  confirmed via a fresh `GET` against each app's own API afterward, not just the script's own exit
+  code.
+
+**v10.9.8 (current) — Bindery and Calibre-Web retired outright; Decypharr's admin-auth gap
+generalized past Bindery's own fix; Kometa's silent auto-run-on-restart stopped; NzbDAV's
+Repairs tab wired to see Radarr/Sonarr's root folders.**
+
+- **Bindery and Calibre-Web both removed, `docker-compose.yml` service blocks deleted for
+  good** — see [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired). Bindery
+  never tracked a single author/book across its entire run (v10.7.0 through this version, even
+  after v10.9.7's real Decypharr-auth fix), so there was nothing in Calibre-Web's library either;
+  keeping both running idle wasn't worth it. `config/bindery/` and `config/calibre-web/` left on
+  disk, not deleted. `CALIBRE_WEB_ADMIN_USERNAME`/`_PASSWORD` dropped from `.env`/`.env.example`.
+  `control-panel/app.py`'s `CONTAINER_LABELS` and `ARR_LOG_CONTAINERS` no longer list either
+  service; `MOUNT_DEPENDENTS`/backup/Unpackerr/Maintainerr/Cleanuparr/NeutArr/Discord references
+  to Bindery removed throughout this document accordingly.
+- **Recycle Bin gap from v10.9.7's Servarr audit closed in the same pass** (see the
+  `enable-recycle-bin.py` entry directly above) — bundled into this version rather than its own,
+  since both landed in the same working session.
+- **Control Panel's `/api/decypharr/grab` (manual-grab) endpoint hit the same 401 Bindery's own
+  fix in v10.9.7 diagnosed** — Decypharr's `/api/v2/*` torrent API needs its own qBittorrent-style
+  session (`POST /api/v2/auth/login` with `DECYPHARR_ADMIN_USERNAME`/`_PASSWORD`, a separate SID
+  cookie from the web UI's own `/login`), not just a bare POST. `decypharr_grab()` now logs in
+  first via a shared `httpx.Client` before `createCategory`/`add`; `DECYPHARR_ADMIN_USERNAME`/
+  `_PASSWORD` added to `control-panel`'s environment in `docker-compose.yml`. Confirmed live: the
+  endpoint 401'd unnoticed before this fix since it's arm/confirm-gated and rarely exercised.
+- **Kometa was silently doing a full run on every container start/restart, not just on a
+  schedule** — no `run_time` is set in `config/kometa/config.yml`, but the image's default
+  entrypoint (`python3 kometa.py --`) runs a complete pass immediately regardless, confirmed live
+  (a 19+ hour single run since the container's last start, no cron/systemd timer/webhook trigger
+  anywhere). Overridden to `entrypoint: ["/tini", "-s", "--"]` / `command: ["sleep", "infinity"]`
+  so restarts idle instead; Control Panel's `/api/kometa/run` already execs `python3 /kometa.py
+  --run` on-demand regardless of what the container's PID 1 is doing, so this changes nothing
+  about how real runs actually happen. Healthcheck updated to match (`grep -aq 'sleep infinity'`
+  instead of `grep -aq kometa.py`).
+- **NzbDAV's Repairs tab needs to see the `*arr` apps' own root folders to correlate symlinks
+  back to Radarr/Sonarr entries** — `./media/movies`, `./media/shows`, `./media/anime-shows`
+  mounted read-only into `nzbdav` at the same `/data/movies`/`/data/shows`/`/data/anime` paths
+  those apps already report as their own root folders. Only Radarr and Sonarr are wired into the
+  Repairs tab as of this version, so only their root folders are mounted; repairs happen via the
+  Radarr/Sonarr API (delete+research), not by touching symlinks directly, so this is read-only.
 
 ---
 
