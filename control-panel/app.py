@@ -38,6 +38,8 @@ ZILEAN_URL = "http://zilean:8181"
 DECYPHARR_URL = "http://decypharr:8282"
 DECYPHARR_ALLDEBRID_URL = "http://decypharr-alldebrid:8283"
 DECYPHARR_MANUAL_CATEGORY = "manual"
+DECYPHARR_ADMIN_USERNAME = os.environ.get("DECYPHARR_ADMIN_USERNAME")
+DECYPHARR_ADMIN_PASSWORD = os.environ.get("DECYPHARR_ADMIN_PASSWORD")
 GLANCES_URL = "http://glances:61208"
 NZBDAV_URL = "http://nzbdav:3000"
 NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
@@ -132,10 +134,8 @@ CONTAINER_LABELS = {
     "radarr": ("Radarr", "also clears the stale Zurg mount issue (v4.0.1)"),
     "sonarr": ("Sonarr", None),
     "lidarr": ("Lidarr", "music"),
-    "bindery": ("Bindery", "ebooks - replaced Readarr in v10.7.0"),
     "whisparr": ("Whisparr", "adult, v3"),
     "stash": ("Stash", "performer/studio/tag cataloging for the adult library"),
-    "calibre-web": ("Calibre-Web", "ebook reader/library UI"),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
     "zurg": ("Zurg", "Real-Debrid mount"),
@@ -743,18 +743,25 @@ def decypharr_grab(payload: GrabRequest):
     title = (payload.title or info_hash).strip()
     magnet = f"magnet:?xt=urn:btih:{info_hash}&dn={quote(title)}"
     try:
-        # Idempotent - safe to call before every add rather than tracking
-        # whether it already exists.
-        httpx.post(
-            f"{DECYPHARR_URL}/api/v2/torrents/createCategory",
-            data={"category": DECYPHARR_MANUAL_CATEGORY, "savePath": f"/app/downloads/{DECYPHARR_MANUAL_CATEGORY}"},
-            timeout=15,
-        )
-        r = httpx.post(
-            f"{DECYPHARR_URL}/api/v2/torrents/add",
-            data={"urls": magnet, "category": DECYPHARR_MANUAL_CATEGORY},
-            timeout=30,
-        )
+        # Decypharr's v2 API needs its own qBittorrent-style session (a
+        # separate SID cookie from the web UI's own /login) - a bare POST
+        # with no prior login 401s once use_auth is on, confirmed live.
+        with httpx.Client(timeout=15) as client:
+            client.post(
+                f"{DECYPHARR_URL}/api/v2/auth/login",
+                data={"username": DECYPHARR_ADMIN_USERNAME, "password": DECYPHARR_ADMIN_PASSWORD},
+            )
+            # Idempotent - safe to call before every add rather than tracking
+            # whether it already exists.
+            client.post(
+                f"{DECYPHARR_URL}/api/v2/torrents/createCategory",
+                data={"category": DECYPHARR_MANUAL_CATEGORY, "savePath": f"/app/downloads/{DECYPHARR_MANUAL_CATEGORY}"},
+            )
+            r = client.post(
+                f"{DECYPHARR_URL}/api/v2/torrents/add",
+                data={"urls": magnet, "category": DECYPHARR_MANUAL_CATEGORY},
+                timeout=30,
+            )
         r.raise_for_status()
     except httpx.HTTPStatusError as e:
         # Surface Decypharr's own response body (its actual error message)
@@ -1484,6 +1491,9 @@ def container_start(name: str):
 # stack outage where /mnt/nzbdav was left stale at the host level - see
 # README's mount-cascade note). MOUNT_PREREQS restarts first and is waited
 # on before MOUNT_PROVIDERS, so nzbdav-rclone always finds nzbdav ready.
+# NOTE: Lidarr/Whisparr bind the same three subpaths directly too and are
+# conspicuously absent from this set - a pre-existing gap, not something
+# this pass introduced or has verified is actually safe.
 MOUNT_PREREQS = {"nzbdav"}
 MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "rclone-alldebrid-anime", "nzbdav-rclone"}
 MOUNT_DEPENDENTS = {"radarr"}
@@ -2064,7 +2074,7 @@ def stash_identify():
         fail(f"Could not reach Stash: {e}")
 
 
-ARR_LOG_CONTAINERS = {"radarr", "sonarr", "lidarr", "whisparr", "bindery", "prowlarr"}
+ARR_LOG_CONTAINERS = {"radarr", "sonarr", "lidarr", "whisparr", "prowlarr"}
 
 
 @app.get("/api/arr/{app_name}/logs")

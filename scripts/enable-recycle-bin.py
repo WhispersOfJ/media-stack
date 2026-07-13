@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""One-off: enables Radarr/Sonarr's own Recycle Bin so a repeat of the
+"""One-off: enables every Servarr app's own Recycle Bin so a repeat of the
 unexplained mass-deletion event (see README.md's Known gaps and limitations
 section) lands recoverable content in a real folder instead of disappearing
 outright. Not a fix for that event's still-unknown root cause - a
 blast-radius mitigation.
 
 Each app's recycle bin lives inside its own writable root (/data/movies,
-/data/shows) rather than a new bind mount, so Radarr/Sonarr can hardlink
-into it instead of copying. Not a recurring job - run once, or again after
-a config reset. Reuses the env_get()/api_request() pattern from
-arr-app-backup.py.
+/data/shows, /data/music, /data/adult) rather than a new bind mount, so
+every app can hardlink into it instead of copying. Not a recurring job -
+run once, or again after a config reset. Reuses the env_get()/api_request()
+pattern from arr-app-backup.py. Lidarr's media-management config lives at
+/api/v1/, not /api/v3/ like the other four apps - confirmed live, not an
+assumption.
 """
 import json
 import sys
@@ -34,10 +36,22 @@ APPS = {
     "radarr": {
         "url": "http://localhost:7878", "key": env_get("RADARR_API_KEY"), "label": "Radarr",
         "recycle_bin": "/data/movies/.recyclebin", "host_recycle_bin": STACK_DIR / "media/movies/.recyclebin",
+        "api_version": "v3",
     },
     "sonarr": {
         "url": "http://localhost:8989", "key": env_get("SONARR_API_KEY"), "label": "Sonarr",
         "recycle_bin": "/data/shows/.recyclebin", "host_recycle_bin": STACK_DIR / "media/shows/.recyclebin",
+        "api_version": "v3",
+    },
+    "lidarr": {
+        "url": "http://localhost:8686", "key": env_get("LIDARR_API_KEY"), "label": "Lidarr",
+        "recycle_bin": "/data/music/.recyclebin", "host_recycle_bin": STACK_DIR / "media/music/.recyclebin",
+        "api_version": "v1",
+    },
+    "whisparr": {
+        "url": "http://localhost:6969", "key": env_get("WHISPARR_API_KEY"), "label": "Whisparr",
+        "recycle_bin": "/data/adult/.recyclebin", "host_recycle_bin": STACK_DIR / "media/adult/.recyclebin",
+        "api_version": "v3",
     },
 }
 
@@ -58,15 +72,16 @@ def api_request(base_url, api_key, method, path, body=None):
 def enable_recycle_bin(app_name, cfg):
     if not cfg["key"] or cfg["key"] == "changeme":
         return False, f"{cfg['label']} API key not configured in .env"
+    api = cfg["api_version"]
     try:
-        current = api_request(cfg["url"], cfg["key"], "GET", "/api/v3/config/mediamanagement")
+        current = api_request(cfg["url"], cfg["key"], "GET", f"/api/{api}/config/mediamanagement")
     except (urllib.error.URLError, urllib.error.HTTPError) as e:
         return False, f"{cfg['label']} config read failed: {e}"
 
     if current.get("recycleBin"):
         return True, f"{cfg['label']} recycle bin already set ({current['recycleBin']}), left alone"
 
-    # Radarr/Sonarr both validate the path exists and is writable before
+    # Every app here validates the path exists and is writable before
     # accepting it - PUID/PGID-owned already via the same host directory
     # each app's root folder already lives under, so no chown needed.
     cfg["host_recycle_bin"].mkdir(parents=True, exist_ok=True)
@@ -74,7 +89,7 @@ def enable_recycle_bin(app_name, cfg):
     current["recycleBin"] = cfg["recycle_bin"]
     current.setdefault("recycleBinCleanupDays", 7)
     try:
-        api_request(cfg["url"], cfg["key"], "PUT", "/api/v3/config/mediamanagement/1", current)
+        api_request(cfg["url"], cfg["key"], "PUT", f"/api/{api}/config/mediamanagement/1", current)
     except (urllib.error.URLError, urllib.error.HTTPError) as e:
         return False, f"{cfg['label']} config write failed: {e}"
     return True, f"{cfg['label']} recycle bin set to {cfg['recycle_bin']} (cleanup after {current['recycleBinCleanupDays']}d)"
