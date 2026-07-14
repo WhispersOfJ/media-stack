@@ -82,11 +82,9 @@ const QUICK_LINKS = [
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "byparr", label: "Byparr", port: 8191 },
   { id: "tautulli", label: "Tautulli", port: 8182 },
-  { id: "glances", label: "Glances", port: 61208 },
   { id: "debridmediamanager", label: "DebridMediaManager", port: 3000 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
   { id: "neutarr", label: "NeutArr", port: 9705 },
-  { id: "dozzle", label: "Dozzle", port: 8080 },
   { id: "maintainerr", label: "Maintainerr", port: 6246 },
 ];
 
@@ -702,35 +700,7 @@ function armIconButton(btn, iconName, onConfirm) {
   });
 }
 
-/* ---------- Overview strip: host stats, Zilean hash count, Plex version ---------- */
-async function refreshSystemStats() {
-  try {
-    const res = await fetch("/api/system/stats");
-    const d = await res.json();
-    const cpuVal = document.getElementById("stat-cpu-value");
-    const cpuBar = document.getElementById("stat-cpu-bar");
-    const memVal = document.getElementById("stat-mem-value");
-    const memBar = document.getElementById("stat-mem-bar");
-    const diskVal = document.getElementById("stat-disk-value");
-    const diskBar = document.getElementById("stat-disk-bar");
-    const uptimeVal = document.getElementById("stat-uptime-value");
-    if (!d.available) {
-      [cpuVal, memVal, diskVal].forEach((el) => (el.textContent = "unavailable"));
-      uptimeVal.textContent = "unavailable";
-      return;
-    }
-    cpuVal.textContent = fmtPercent(d.cpu_percent);
-    cpuBar.style.width = `${Math.min(d.cpu_percent ?? 0, 100)}%`;
-    memVal.textContent = d.mem_total_gb ? `${fmtPercent(d.mem_percent)} (${d.mem_used_gb}/${d.mem_total_gb} GB)` : fmtPercent(d.mem_percent);
-    memBar.style.width = `${Math.min(d.mem_percent ?? 0, 100)}%`;
-    diskVal.textContent = d.disk_total_gb ? `${fmtPercent(d.disk_percent)} (${d.disk_used_gb}/${d.disk_total_gb} GB)` : fmtPercent(d.disk_percent);
-    diskBar.style.width = `${Math.min(d.disk_percent ?? 0, 100)}%`;
-    uptimeVal.textContent = d.uptime || "—";
-  } catch (_) {
-    /* leave last-known values on screen rather than blanking on one failed poll */
-  }
-}
-
+/* ---------- Overview strip: Zilean hash count, Plex version ---------- */
 async function refreshZileanStats() {
   const val = document.getElementById("stat-zilean-value");
   const sub = document.getElementById("stat-zilean-sub");
@@ -848,8 +818,6 @@ refreshStatus();
 setInterval(refreshStatus, 20000);
 refreshContainerGrid();
 setInterval(refreshContainerGrid, 15000);
-refreshSystemStats();
-setInterval(refreshSystemStats, 10000);
 refreshZileanStats();
 setInterval(refreshZileanStats, 60000);
 logLine("ok", "Control panel ready.");

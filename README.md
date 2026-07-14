@@ -40,7 +40,7 @@ section below shows the actual request.
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [DebridMediaManager (self-hosted)](#debridmediamanager-self-hosted)
 - [Automation extras: Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-cleanuparr-neutarr-unpackerr-watchtower)
-- [Monitoring extras: Tautulli, Glances, Dozzle](#monitoring-extras-tautulli-glances-dozzle)
+- [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
 - [Backups](#backups)
@@ -51,7 +51,6 @@ section below shows the actual request.
 - [CI](#ci)
 - [Installer image and setup wizard](#installer-image-and-setup-wizard)
 - [Known gaps and limitations](#known-gaps-and-limitations)
-- [Proposed: Monitoring (Prometheus + Grafana)](#proposed-monitoring-prometheus--grafana)
 - [History](#history)
 
 ## What this actually is
@@ -63,7 +62,7 @@ in v10.9.9, see [History](#history)), a debrid gateway
 that symlinks already-cached content instead of downloading it (Decypharr + Zurg), a Usenet
 fallback that streams rather than downloads (NzbDAV), a containerized Plex to watch/listen to
 the result on, a self-hosted DebridMediaManager, and a pile of automation/monitoring extras
-(Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli, Glances, Dozzle) — 32
+(Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli) — 30
 containers total, one `docker-compose.yml`. (Ebooks briefly had a dedicated app, Bindery, plus
 Calibre-Web as its reader; both were retired in v10.9.8 — see
 [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired) — with no replacement
@@ -99,7 +98,7 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 docker compose up -d
 
 # 4. Everything else (recommended - Byparr, Tautulli, Kometa, Unpackerr,
-#    Watchtower, Cleanuparr, NeutArr, Dozzle, Control Panel, DMM)
+#    Watchtower, Cleanuparr, NeutArr, Control Panel, DMM)
 docker compose --profile extras up -d
 ```
 
@@ -265,25 +264,24 @@ Every service currently defined in `docker-compose.yml`, in the order they appea
 | 17 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
 | 18 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
 | 19 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 20 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
-| 21 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
-| 22 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
-| 23 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
-| 24 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | — | extras |
-| 25 | `dmm-mysql` | `mysql:8.4` | — | extras |
-| 26 | `dmm-redis` | `redis:7-alpine` | — | extras |
-| 27 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
-| 28 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 29 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 30 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 31 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
-| 32 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 20 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
+| 21 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
+| 22 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
+| 23 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | — | extras |
+| 24 | `dmm-mysql` | `mysql:9.7` | — | extras |
+| 25 | `dmm-redis` | `redis:8-alpine` | — | extras |
+| 26 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
+| 27 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 28 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 29 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 30 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
 
 `docker compose up -d` brings up the 15 core services; `docker compose --profile extras up -d`
-adds the other 17. Both commands are safe to run repeatedly — Compose only recreates what's
+adds the other 15. Both commands are safe to run repeatedly — Compose only recreates what's
 actually out of sync with `docker-compose.yml`. (`bindery`/`calibre-web` were retired in v10.9.8
-and no longer appear here; `recyclarr` was previously missing from this table despite being a
-live service since well before this session — both fixed 2026-07-14.)
+and no longer appear here; `glances`/`dozzle` removed entirely in v10.9.9, no data preserved;
+`recyclarr` was previously missing from this table despite being a live service since well
+before this session — fixed 2026-07-14.)
 
 ## The *arr apps
 
@@ -1280,28 +1278,28 @@ WATCHTOWER_NOTIFICATIONS: "shoutrrr"
 WATCHTOWER_NOTIFICATION_URL: ${DISCORD_WATCHTOWER_SHOUTRRR_URL}
 ```
 
-Digest-pinned images (Seerr, Glances, Kometa, Unpackerr, Byparr) and exact-version-tag-pinned ones
+Digest-pinned images (Seerr, Kometa, Unpackerr, Byparr) and exact-version-tag-pinned ones
 (Zilean, Decypharr, Watchtower itself, Plex) are **not** meaningfully auto-updated by
 this — a digest or exact version tag is immutable, so Watchtower never finds anything new to pull
 for those. See [Image pinning policy](#image-pinning-policy).
 
-## Monitoring extras: Tautulli, Glances, Dozzle
+## Monitoring extras: Tautulli
 
 - **Tautulli** (`ghcr.io/hotio/tautulli:release`, port 8182) — Plex watch-history/stats dashboard.
-- **Glances** (`nicolargo/glances@sha256:5bc5b6...`, port 61208) — real *host* CPU/memory/
-  disk/uptime, not container-scoped (`pid: host` + a read-only `/:/rootfs` mount). Control Panel
-  proxies this for its overview strip.
-- **Dozzle** (`amir20/dozzle:v10.6.8`, port 8080) — real-time log viewer for every container, the
-  one thing Control Panel's grid can't show (state/health/CPU/mem, not log content). Read-only
-  `docker.sock` mount.
+
+**Glances and Dozzle were both removed entirely in v10.9.9** — full removal, no data was kept
+(neither had a config volume to begin with, so there was nothing to preserve). Glances powered
+Control Panel's Overview "Host CPU/memory/disk/uptime" tiles via `/api/system/stats`; that
+endpoint and those tiles are gone too, not just left silently degraded. Dozzle was a standalone
+container-log viewer with read-only `docker.sock` access; Control Panel's per-app log tailing
+(`/api/arr/{app}/logs`) is unaffected, it never depended on Dozzle. A Prometheus + Grafana
+monitoring stack was also researched and briefly proposed in this same version, then cancelled
+before any of it was built — nothing was ever added to `docker-compose.yml`.
 
 **Adminer was removed in v10.9.9, with no replacement.** It briefly became CloudBeaver
 (`dbeaver/cloudbeaver:24.3.0`) the same day, but that was reverted immediately — not a fit for
 this stack. There's currently no web GUI for `zilean-postgres`/`dmm-mysql`; inspecting either
-means `docker exec -it <db> psql/mysql ...`, same as before Adminer ever existed. See
-[Proposed: Monitoring (Prometheus + Grafana)](#proposed-monitoring-prometheus--grafana) for the
-separate, still-unimplemented metrics/dashboards proposal — a DB admin GUI isn't part of that
-plan either.
+means `docker exec -it <db> psql/mysql ...`, same as before Adminer ever existed.
 
 ## Maintainerr: Plex library lifecycle
 
@@ -1391,7 +1389,6 @@ QUEUE_ARR_APPS = ("radarr", "sonarr", "whisparr")
 | `/api/status` | GET | Running/health state for every container in the compose project |
 | `/api/containers` | GET | Full grid: state, health, image, live CPU/mem per container |
 | `/api/api-hit-counts` | GET | Live per-app outbound API call counter - dashboard flourish, see below |
-| `/api/system/stats` | GET | Host CPU/mem/disk/uptime, proxied from Glances |
 | `/api/zilean/stats` | GET | Total indexed hashes + IMDB-matched count, from `zilean-postgres` directly |
 | `/api/kometa/run` | POST | `docker exec`s a Kometa run, optionally scoped to `{"libraries": [...]}` |
 | `/api/plex/scan` \| `/empty-trash` \| `/optimize-db` \| `/clean-bundles` | POST | Plex maintenance actions |
@@ -1411,7 +1408,7 @@ QUEUE_ARR_APPS = ("radarr", "sonarr", "whisparr")
 ### Live API hit counter: a dashboard flourish, not a metrics system
 
 Every container card for an app Control Panel actually talks to over HTTP (the three Servarr-shaped
-`*arr` apps, Plex, Zilean, Decypharr, Glances, NzbDAV) shows a live "API" row - a small dot and a
+`*arr` apps, Plex, Zilean, Decypharr, NzbDAV) shows a live "API" row - a small dot and a
 running count of outbound calls this panel has made to that app since it last started, ticking up
 and flashing green on real increments. Purely cosmetic (in-memory `Counter`, resets on restart,
 no persistence, no per-endpoint breakdown) - explicitly "for visual effect," not a monitoring
@@ -1633,7 +1630,7 @@ stack-neutarr-status                            # per-app enabled state from Neu
 stack-decypharr-health decypharr                # or decypharr-alldebrid
 stack-stash-scan                                # trigger a Stash library scan
 stack-stash-identify                            # trigger a full-library StashDB identify run
-stack-arr-logs radarr 200                       # tail a container's log directly, no Dozzle needed
+stack-arr-logs radarr 200                       # tail a container's log directly
 stack-plex-empty-trash "TV Shows"               # scoped to one library, or every library if none given
 stack-image-check                               # digest/exact-version-pinned images vs their registry
 stack-disk-usage                                # per-app config/ directory size, largest first
@@ -1770,7 +1767,7 @@ Every image is pinned, using whichever approach doesn't change what's actually r
 - **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
   `nickfedor/watchtower:1.19.0`, `stashapp/stash:v0.31.1`)
   where the upstream project tags real releases and the current running image matches.
-- **Digest pins** (`@sha256:...`) for Seerr, Glances, Kometa, Unpackerr, and Byparr — in every one
+- **Digest pins** (`@sha256:...`) for Seerr, Kometa, Unpackerr, and Byparr — in every one
   of these cases the currently-running `:latest` build is *ahead* of the newest tagged release
   upstream has cut, so no tag exists that wouldn't be a downgrade. Byparr specifically doesn't
   publish clean `vX.Y.Z` tags on GHCR at all (only `:latest`, `:main`, and commit-sha/arch-specific
@@ -1805,7 +1802,7 @@ defensive insurance otherwise:
 | `dmm-mysql` | 2GB | 2 | Holds low-millions-of-rows IMDB index with `@@fulltext` indexes to maintain |
 | `debridmediamanager` | 1.5GB | 2 | Runs from the `build` stage (full devDependencies), not the leaner deploy stage |
 
-Everything else (Seerr, all three `*arr` apps, NzbDAV, Dozzle, Watchtower, etc.) carries a
+Everything else (Seerr, all three `*arr` apps, NzbDAV, Watchtower, etc.) carries a
 smaller generous ceiling as defensive insurance rather than from observed pressure — see
 `docker-compose.yml` directly for exact current values, which change more often than this document
 is updated.
@@ -1837,10 +1834,9 @@ same model this stack has landed on twice now after trying and reverting a full 
 - These addresses only work from devices on the home LAN, or a [Tailscale](https://tailscale.com)
   network if configured — nothing here is reachable from the public internet unless you
   specifically set that up.
-- **Control Panel** and **Dozzle** are worth knowing about specifically — both hold read-write (or
-  read-only, for Dozzle) `docker.sock` access and can restart or inspect any container in this
-  stack. Don't put this stack on a network you don't trust, and don't forward any of these ports
-  publicly.
+- **Control Panel** is worth knowing about specifically — it holds read-write `docker.sock`
+  access and can restart or inspect any container in this stack. Don't put this stack on a
+  network you don't trust, and don't forward any of these ports publicly.
 - Control Panel's own CSRF/Origin-Host validation (see [Control Panel](#control-panel)) is *not*
   auth — it closes a specific cross-origin-POST gap, not a login requirement. It's the one piece
   of the earlier network-security effort that was deliberately kept when the rest was reverted.
@@ -1988,44 +1984,6 @@ Documented honestly rather than swept under the rug:
   cause was never identified. As a blast-radius mitigation (not a fix), both apps' native Recycle
   Bin is now enabled (`/data/movies/.recyclebin`, `/data/shows/.recyclebin`, 7-day cleanup), so a
   repeat lands recoverable content in a real folder instead of disappearing outright.
-
-## Proposed: Monitoring (Prometheus + Grafana)
-
-**Not implemented — this is a proposal only, researched and phased out but not yet built.**
-Nothing below exists in `docker-compose.yml` today; treat this section as a plan to execute
-later, not a description of current architecture.
-
-**Exporters:**
-
-- **cAdvisor** — container-level CPU/mem, directly addresses this stack's known gap of several
-  services lacking real `mem_limit`/`cpus` (see [Resource limits](#resource-limits)).
-- **node-exporter** — host-level CPU/mem/disk/uptime, alongside (not a replacement for) Glances.
-- **postgres_exporter** — scoped to `zilean-postgres`.
-- **mysqld_exporter** — scoped to `dmm-mysql`.
-- **exportarr** (stretch goal) — per-`*arr`-app metrics (Radarr/Sonarr/Whisparr).
-- **A custom textfile-collector script** (stretch goal) — no exporter natively detects FUSE mount
-  staleness, so this would need a purpose-built script polling `zurg`/`decypharr`/`nzbdav`'s mount
-  health and writing Prometheus textfile-collector output. This directly targets the stack's
-  documented [mount-cascade-restart failure class](#whole-stack-restart-mount-order-aware).
-
-**Dashboards** (Grafana community IDs): 1860 (Node Exporter Full), 893/14282 (cAdvisor), 9628
-(Postgres), 7362 (MySQL).
-
-**Retention:** 15–30 days local Prometheus TSDB retention — no remote-write or long-term store
-needed at this scale.
-
-**Resource footprint estimate:** roughly 400–700MB RAM, well under 1 CPU core steady-state,
-5–8GB disk growth for the retention window.
-
-**Phased rollout:**
-
-1. `prometheus` + `grafana` + `cadvisor` + `node-exporter` scaffolding, each with
-   `mem_limit`/`cpus` set per this repo's convention (see [Resource limits](#resource-limits)).
-2. DB exporters (`postgres_exporter`, `mysqld_exporter`), each with a dedicated read-only DB user
-   rather than reusing an app's existing credentials.
-3. The FUSE-staleness textfile collector.
-4. Stretch goals: Control Panel's own `/metrics` via `prometheus-fastapi-instrumentator`,
-   `exportarr`, a Tautulli-to-Prometheus bridge for Plex watch stats.
 
 ## History
 
@@ -2645,9 +2603,10 @@ Repairs tab wired to see Radarr/Sonarr's root folders.**
   Repairs tab as of this version, so only their root folders are mounted; repairs happen via the
   Radarr/Sonarr API (delete+research), not by touching symlinks directly, so this is read-only.
 
-**v10.9.9 (current) — Lidarr removed entirely; Adminer removed with no replacement; Plex's
-"Adult" library removed in favor of Stash; Plex bumped to 1.43.3; Control Panel's UI restyled;
-a Prometheus + Grafana monitoring stack researched and proposed (not yet implemented).**
+**v10.9.9 (current) — Lidarr, Glances, and Dozzle all removed entirely; Adminer removed with no
+replacement; Plex's "Adult" library removed in favor of Stash; Plex bumped to 1.43.3; Control
+Panel's UI restyled; a Prometheus + Grafana monitoring stack was researched, proposed, then
+cancelled before anything was built.**
 
 - **Lidarr removed entirely** — `docker-compose.yml` service block gone, `config/lidarr`
   deleted, `control-panel/app.py`'s `ARR_APPS`/`QUEUE_ARR_APPS`/`CONTAINER_LABELS`/
@@ -2665,7 +2624,7 @@ a Prometheus + Grafana monitoring stack researched and proposed (not yet impleme
   live, confirmed healthy and responding on :8081, but reverted immediately at the user's request
   (not a fit for this stack) before ever reaching real use; `config/cloudbeaver` was also deleted.
   There is currently no web DB GUI in this stack — `docker exec -it <db> psql/mysql ...` again.
-  See [Monitoring extras](#monitoring-extras-tautulli-glances-dozzle).
+  See [Monitoring extras](#monitoring-extras-tautulli).
 - **Plex's "Adult" library removed** via the Plex API — files under `./media/adult` were not
   touched, only the Plex library entry. Justification: Stash now fully covers this content
   type's cataloging, so a second, metadata-poor Plex library browsing the same files stopped
@@ -2698,9 +2657,17 @@ a Prometheus + Grafana monitoring stack researched and proposed (not yet impleme
 - **`control-panel`'s `uvicorn` bumped 0.34.0→0.51.0** (`requirements.txt`) - rebuilt (it's
   `build:`, a `--force-recreate` alone wouldn't pick up a requirements change), came up healthy,
   spot-checked the dashboard, `/api/version`, and a live `*arr` queue route afterward.
-- **A Grafana + Prometheus monitoring stack was researched and a concrete phased plan produced,
-  but not implemented in code** — added as a clearly-marked proposal, not a current-architecture
-  claim. See [Proposed: Monitoring (Prometheus + Grafana)](#proposed-monitoring-prometheus--grafana).
+- **Glances and Dozzle removed entirely, no data preserved** — both `docker-compose.yml` service
+  blocks deleted, containers stopped and removed live; neither had a config volume, so there was
+  nothing on disk to clean up. `control-panel/app.py`'s `GLANCES_URL`, `system_stats()` endpoint,
+  and `CONTAINER_LABELS`/`_API_HOST_LABELS` entries for both removed; `static/app.js`'s Quick
+  Links entries and the Overview strip's Host CPU/memory/disk/uptime tiles (their only data
+  source) removed from both `app.js` and `index.html`. Rebuilt and redeployed Control Panel,
+  verified live in a browser afterward.
+- **A Grafana + Prometheus monitoring stack was researched and a concrete phased plan drafted,
+  then cancelled before any of it was built** — no exporters, no Prometheus, no Grafana were ever
+  added to `docker-compose.yml`; the proposal section that briefly existed in this document has
+  been removed along with it.
 
 ---
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (32 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (30 services, one `docker-compose.yml`):
 indexes content via Prowlarr + Zilean, requests via Seerr, organizes via three `*arr`-family apps
 (Radarr/Sonarr/Whisparr — Lidarr was removed entirely in v10.9.9, see below; Bindery, the ebook
 `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app currently in the
@@ -150,6 +150,12 @@ throughout its history section, and there's no substitute for it here.
   request — not a fan of the tool, no substitute picked yet. There is currently no web DB GUI
   in this stack; inspecting `zilean-postgres`/`dmm-mysql` means `docker exec -it <db> psql/mysql
   ...` again, same as before Adminer existed.
+- **Glances and Dozzle removed entirely in v10.9.9, no data preserved.** Neither had a config
+  volume, so there was nothing on disk to clean up. Glances powered Control Panel's Overview
+  "Host CPU/memory/disk/uptime" tiles via `/api/system/stats` — that endpoint and those tiles
+  are gone too, not just left degraded. A Prometheus + Grafana monitoring stack was also
+  researched and briefly proposed the same session, then cancelled before anything was built or
+  added to `docker-compose.yml`.
 
 ## Known current landmines (not historical — still true as of last audit)
 

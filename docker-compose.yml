@@ -1015,42 +1015,6 @@ services:
     mem_reservation: 64m
     cpus: 2
 
-  # Real host-level CPU/memory/disk/uptime, proxied into Control Panel's
-  # overview strip (a container's own /proc only reports its own usage -
-  # this is what actually sees the host). pid: host + the read-only rootfs
-  # mount are both required for it to see the host rather than itself.
-  # Also has its own web UI, so it's linked directly in Quick Links too.
-  glances:
-    restart: unless-stopped
-    logging: *common-logging
-    # Digest-pinned: upstream's newest tagged release (4.5.5) doesn't match
-    # what's actually shipped as :latest - no matching tag exists to pin to
-    # without downgrading, so this freezes exactly what's running today.
-    # Bump this digest deliberately when ready to take a newer release.
-    image: nicolargo/glances@sha256:5bc5b6cf2e7b992910cfd9e19799a540d8460e9356bc506c2f1af58f3bd9cb0e
-    container_name: glances
-    profiles: [extras]
-    networks: [stacknet]
-    pid: host
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:61208/api/4/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-      GLANCES_OPT: "-w"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/rootfs:ro
-    ports:
-      - "61208:61208"
-    # No prior ceiling - lightweight monitoring agent, cheap insurance.
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-
   # Automated Plex collections/metadata/overlays. Official image only - the
   # LinuxServer fork resets /config ownership to PUID/PGID (or 911:911 if
   # unset) on every start, which the official image doesn't do and most of
@@ -1442,33 +1406,4 @@ services:
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
-
-  # Read-only live log viewer - the one thing Control Panel's container
-  # grid can't do (shows state/health/CPU/mem, not actual log content).
-  # Direct :ro docker.sock mount, same pattern Control Panel/Watchtower
-  # already use - no socket-proxy in this stack yet (a possible later
-  # hardening project, not bundled with this addition). Stateless: no
-  # config volume, no PUID/PGID (the image doesn't use either).
-  dozzle:
-    restart: unless-stopped
-    logging: *common-logging
-    image: amir20/dozzle:v10.6.9
-    container_name: dozzle
-    profiles: [extras]
-    networks: [stacknet]
-    environment:
-      TZ: ${TZ}
-    healthcheck:
-      test: ["CMD", "/dozzle", "healthcheck"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "8080:8080"
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1
 

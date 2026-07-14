@@ -1,15 +1,15 @@
 """
 Control Panel - the single dashboard for The Stack: live container status
-and start/stop/restart control, host system stats, Zilean's own indexed-hash
-count, one-click operational actions, and a direct Zilean search with
-grab-to-Decypharr. Supersedes the old Homepage+Control Panel split - see
-README.md's Control Panel section.
+and start/stop/restart control, Zilean's own indexed-hash count, one-click
+operational actions, and a direct Zilean search with grab-to-Decypharr.
+Supersedes the old Homepage+Control Panel split - see README.md's Control
+Panel section.
 
 Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
-HTTP API (Plex, Radarr, Sonarr, Whisparr, Zilean), Glances
-(host stats), and zilean-postgres directly (hash count - Zilean has no stats
-API of its own). No auth - LAN-only, matches every other service in this
-stack (see README.md's "Security" section).
+HTTP API (Plex, Radarr, Sonarr, Whisparr, Zilean), and zilean-postgres
+directly (hash count - Zilean has no stats API of its own). No auth -
+LAN-only, matches every other service in this stack (see README.md's
+"Security" section).
 """
 import concurrent.futures
 import os
@@ -40,7 +40,6 @@ DECYPHARR_ALLDEBRID_URL = "http://decypharr-alldebrid:8282"
 DECYPHARR_MANUAL_CATEGORY = "manual"
 DECYPHARR_ADMIN_USERNAME = os.environ.get("DECYPHARR_ADMIN_USERNAME")
 DECYPHARR_ADMIN_PASSWORD = os.environ.get("DECYPHARR_ADMIN_PASSWORD")
-GLANCES_URL = "http://glances:61208"
 NZBDAV_URL = "http://nzbdav:3000"
 NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
 ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
@@ -139,7 +138,6 @@ CONTAINER_LABELS = {
     "kometa": ("Kometa", None),
     "zilean": ("Zilean", None),
     "zilean-postgres": ("Zilean Postgres", None),
-    "glances": ("Glances", None),
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
     "debridmediamanager": ("DebridMediaManager", None),
@@ -148,7 +146,6 @@ CONTAINER_LABELS = {
     "dmm-migrate": ("DMM Migrate", "one-shot Prisma migration - exits after running, not a bug if shown stopped"),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
-    "dozzle": ("Dozzle", "read-only live log viewer"),
     "maintainerr": ("Maintainerr", "Plex library lifecycle - rule-based cleanup, wired but rules start disabled"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
@@ -169,7 +166,6 @@ _API_HOST_LABELS.update({
     urlparse(PLEX_URL).hostname: "Plex",
     urlparse(ZILEAN_URL).hostname: "Zilean",
     urlparse(DECYPHARR_URL).hostname: "Decypharr",
-    urlparse(GLANCES_URL).hostname: "Glances",
     urlparse(NZBDAV_URL).hostname: "NzbDAV",
 })
 # Seeded at 0 for every known app, not left empty until each app's first
@@ -405,45 +401,12 @@ def api_hit_counts():
 
 
 # ---------------------------------------------------------------------
-# Overview strip: live host stats (proxied from Glances - this container
-# has no host pid namespace of its own, Glances already does via pid: host)
-# and Zilean's own indexed-hash count (queried straight from
+# Overview strip: Zilean's own indexed-hash count (queried straight from
 # zilean-postgres - Zilean has no stats API of its own; every endpoint
 # guessed at (/health, /api/stats, /dmm/status) 404s, see README.md
-# "Zilean hash sources"). Both are best-effort: an unreachable Glances or
-# Postgres degrades this one stat tile, not the whole page.
+# "Zilean hash sources"). Best-effort: an unreachable Postgres degrades
+# this one stat tile, not the whole page.
 # ---------------------------------------------------------------------
-@app.get("/api/system/stats")
-def system_stats():
-    try:
-        r = httpx.get(f"{GLANCES_URL}/api/4/all", timeout=8)
-        r.raise_for_status()
-        data = r.json()
-    except httpx.HTTPError:
-        return {"available": False}
-    try:
-        cpu = data.get("cpu", {})
-        mem = data.get("mem", {})
-        fs_list = data.get("fs", []) or []
-        root_fs = next((f for f in fs_list if f.get("mnt_point") == "/"), fs_list[0] if fs_list else {})
-        uptime = data.get("uptime")
-        load = data.get("load", {})
-        return {
-            "available": True,
-            "cpu_percent": cpu.get("total"),
-            "load_1min": load.get("min1"),
-            "mem_percent": mem.get("percent"),
-            "mem_used_gb": round(mem["used"] / 1024**3, 1) if mem.get("used") else None,
-            "mem_total_gb": round(mem["total"] / 1024**3, 1) if mem.get("total") else None,
-            "disk_percent": root_fs.get("percent"),
-            "disk_used_gb": round(root_fs["used"] / 1024**3, 1) if root_fs.get("used") else None,
-            "disk_total_gb": round(root_fs["size"] / 1024**3, 1) if root_fs.get("size") else None,
-            "uptime": uptime,
-        }
-    except Exception:
-        return {"available": False}
-
-
 @app.get("/api/zilean/stats")
 def zilean_stats():
     if not ZILEAN_POSTGRES_PASSWORD:
@@ -2061,8 +2024,7 @@ ARR_LOG_CONTAINERS = {"radarr", "sonarr", "whisparr", "prowlarr"}
 
 @app.get("/api/arr/{app_name}/logs")
 def arr_logs(app_name: str, lines: int = 100):
-    """Tails a container's own docker logs directly - quicker than opening
-    Dozzle for a one-off check."""
+    """Tails a container's own docker logs directly for a one-off check."""
     if app_name not in ARR_LOG_CONTAINERS:
         fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_LOG_CONTAINERS))}", status_code=400)
     try:
