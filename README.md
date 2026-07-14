@@ -40,7 +40,7 @@ section below shows the actual request.
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [DebridMediaManager (self-hosted)](#debridmediamanager-self-hosted)
 - [Automation extras: Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-cleanuparr-neutarr-unpackerr-watchtower)
-- [Monitoring extras: Tautulli, Glances, Dozzle, CloudBeaver](#monitoring-extras-tautulli-glances-dozzle-cloudbeaver)
+- [Monitoring extras: Tautulli, Glances, Dozzle](#monitoring-extras-tautulli-glances-dozzle)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
 - [Backups](#backups)
@@ -63,7 +63,7 @@ in v10.9.9, see [History](#history)), a debrid gateway
 that symlinks already-cached content instead of downloading it (Decypharr + Zurg), a Usenet
 fallback that streams rather than downloads (NzbDAV), a containerized Plex to watch/listen to
 the result on, a self-hosted DebridMediaManager, and a pile of automation/monitoring extras
-(Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli, Glances, Dozzle, CloudBeaver) — 34
+(Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli, Glances, Dozzle) — 32
 containers total, one `docker-compose.yml`. (Ebooks briefly had a dedicated app, Bindery, plus
 Calibre-Web as its reader; both were retired in v10.9.8 — see
 [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired) — with no replacement
@@ -99,7 +99,7 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 docker compose up -d
 
 # 4. Everything else (recommended - Byparr, Tautulli, Kometa, Unpackerr,
-#    Watchtower, Cleanuparr, NeutArr, Dozzle, Control Panel, DMM, CloudBeaver)
+#    Watchtower, Cleanuparr, NeutArr, Dozzle, Control Panel, DMM)
 docker compose --profile extras up -d
 ```
 
@@ -273,13 +273,12 @@ Every service currently defined in `docker-compose.yml`, in the order they appea
 | 25 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
 | 26 | `dmm-mysql` | `mysql:8.4` | — | extras |
 | 27 | `dmm-redis` | `redis:7-alpine` | — | extras |
-| 28 | `cloudbeaver` | `dbeaver/cloudbeaver:24.3.0` | 8081→8978 | extras |
-| 29 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
-| 30 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 31 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 32 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 33 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
-| 34 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 28 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
+| 29 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 30 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 31 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 32 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
+| 33 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
 
 `docker compose up -d` brings up the 17 core services; `docker compose --profile extras up -d`
 adds the other 17. Both commands are safe to run repeatedly — Compose only recreates what's
@@ -1281,7 +1280,7 @@ Digest-pinned images (Seerr, Glances, Kometa, Unpackerr, Byparr) and exact-versi
 this — a digest or exact version tag is immutable, so Watchtower never finds anything new to pull
 for those. See [Image pinning policy](#image-pinning-policy).
 
-## Monitoring extras: Tautulli, Glances, Dozzle, CloudBeaver
+## Monitoring extras: Tautulli, Glances, Dozzle
 
 - **Tautulli** (`ghcr.io/hotio/tautulli:release`, port 8182) — Plex watch-history/stats dashboard.
 - **Glances** (`nicolargo/glances@sha256:5bc5b6...`, port 61208) — real *host* CPU/memory/
@@ -1290,13 +1289,14 @@ for those. See [Image pinning policy](#image-pinning-policy).
 - **Dozzle** (`amir20/dozzle:v10.6.8`, port 8080) — real-time log viewer for every container, the
   one thing Control Panel's grid can't show (state/health/CPU/mem, not log content). Read-only
   `docker.sock` mount.
-- **CloudBeaver** (`dbeaver/cloudbeaver:24.3.0`, port 8081→8978) — multi-user database browser in
-  front of both `zilean-postgres` and `dmm-mysql` from one tool, with real auth. **Replaced
-  Adminer in v10.9.9** — Adminer covered only `dmm-mysql` and had no auth at all; CloudBeaver
-  covers both databases and has a real admin-account login. Deployed live and confirmed healthy
-  on :8081. `./config/cloudbeaver:/opt/cloudbeaver/workspace`, `mem_limit: 768m`.
-  **First-run setup (create the admin account, add the Postgres and MySQL connections) is a
-  manual step done once in the browser** — not automated by the compose change itself.
+
+**Adminer was removed in v10.9.9, with no replacement.** It briefly became CloudBeaver
+(`dbeaver/cloudbeaver:24.3.0`) the same day, but that was reverted immediately — not a fit for
+this stack. There's currently no web GUI for `zilean-postgres`/`dmm-mysql`; inspecting either
+means `docker exec -it <db> psql/mysql ...`, same as before Adminer ever existed. See
+[Proposed: Monitoring (Prometheus + Grafana)](#proposed-monitoring-prometheus--grafana) for the
+separate, still-unimplemented metrics/dashboards proposal — a DB admin GUI isn't part of that
+plan either.
 
 ## Maintainerr: Plex library lifecycle
 
@@ -1800,7 +1800,7 @@ defensive insurance otherwise:
 | `dmm-mysql` | 2GB | 2 | Holds low-millions-of-rows IMDB index with `@@fulltext` indexes to maintain |
 | `debridmediamanager` | 1.5GB | 2 | Runs from the `build` stage (full devDependencies), not the leaner deploy stage |
 
-Everything else (Seerr, all three `*arr` apps, NzbDAV, CloudBeaver, Dozzle, Watchtower, etc.) carries a
+Everything else (Seerr, all three `*arr` apps, NzbDAV, Dozzle, Watchtower, etc.) carries a
 smaller generous ceiling as defensive insurance rather than from observed pressure — see
 `docker-compose.yml` directly for exact current values, which change more often than this document
 is updated.
@@ -2640,7 +2640,7 @@ Repairs tab wired to see Radarr/Sonarr's root folders.**
   Repairs tab as of this version, so only their root folders are mounted; repairs happen via the
   Radarr/Sonarr API (delete+research), not by touching symlinks directly, so this is read-only.
 
-**v10.9.9 (current) — Lidarr removed entirely; Adminer replaced with CloudBeaver; Plex's
+**v10.9.9 (current) — Lidarr removed entirely; Adminer removed with no replacement; Plex's
 "Adult" library removed in favor of Stash; a Prometheus + Grafana monitoring stack researched
 and proposed (not yet implemented).**
 
@@ -2653,13 +2653,12 @@ and proposed (not yet implemented).**
   risky to hand-edit directly; remove it via Cleanuparr's own UI later. The `*arr` app family in
   this stack is now Radarr/Sonarr/Whisparr only. See [The *arr apps](#the-arr-apps) and the many
   places throughout this document that referenced Lidarr as a current app.
-- **Adminer replaced with CloudBeaver** — `adminer:5.4.2-standalone` (port 8081→8080) swapped for
-  `dbeaver/cloudbeaver:24.3.0` (port 8081→8978, `./config/cloudbeaver:/opt/cloudbeaver/workspace`,
-  `mem_limit: 768m`). Reason: CloudBeaver covers both `zilean-postgres` and `dmm-mysql` from one
-  tool with real multi-user auth, vs. Adminer's none. Deployed live, confirmed healthy and
-  responding on :8081. First-run setup (create admin account, add the two DB connections) is a
-  manual browser step still owed. See
-  [Monitoring extras](#monitoring-extras-tautulli-glances-dozzle-cloudbeaver).
+- **Adminer removed, no replacement** — `adminer:5.4.2-standalone` (port 8081→8080) service block
+  deleted. Briefly replaced with CloudBeaver (`dbeaver/cloudbeaver:24.3.0`) the same day — deployed
+  live, confirmed healthy and responding on :8081, but reverted immediately at the user's request
+  (not a fit for this stack) before ever reaching real use; `config/cloudbeaver` was also deleted.
+  There is currently no web DB GUI in this stack — `docker exec -it <db> psql/mysql ...` again.
+  See [Monitoring extras](#monitoring-extras-tautulli-glances-dozzle).
 - **Plex's "Adult" library removed** via the Plex API — files under `./media/adult` were not
   touched, only the Plex library entry. Justification: Stash now fully covers this content
   type's cataloging, so a second, metadata-poor Plex library browsing the same files stopped
