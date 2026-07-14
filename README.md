@@ -2606,7 +2606,8 @@ Repairs tab wired to see Radarr/Sonarr's root folders.**
 **v10.9.9 (current) — Lidarr, Glances, and Dozzle all removed entirely; Adminer removed with no
 replacement; Plex's "Adult" library removed in favor of Stash; Plex bumped to 1.43.3; Control
 Panel's UI restyled; a Prometheus + Grafana monitoring stack was researched, proposed, then
-cancelled before anything was built.**
+cancelled before anything was built; 20 new Control Panel endpoints + matching `stack-*` fish
+commands added after a live "why haven't my shows been processed" session.**
 
 - **Lidarr removed entirely** — `docker-compose.yml` service block gone, `config/lidarr`
   deleted, `control-panel/app.py`'s `ARR_APPS`/`QUEUE_ARR_APPS`/`CONTAINER_LABELS`/
@@ -2668,6 +2669,23 @@ cancelled before anything was built.**
   then cancelled before any of it was built** — no exporters, no Prometheus, no Grafana were ever
   added to `docker-compose.yml`; the proposal section that briefly existed in this document has
   been removed along with it.
+- **20 new Control Panel endpoints + matching `stack-*` fish commands added in one pass**,
+  triggered by a real "why haven't my shows been processed" session that took manually querying
+  Sonarr's command queue to answer. Highlights: `stack-command-queue-summary` (the aggregate
+  version of that manual query), `stack-plex-duplicates` (found - and, in a separate live
+  cleanup, removed - ~700GB of redundant movie copies this same session), `stack-recently-added`,
+  `stack-cutoff-unmet`, `stack-cleanuparr-strikes`, `stack-dmm-status`, `stack-plex-sessions`,
+  `stack-seerr-requests`, `stack-tautulli-history`. New dependencies: `pymysql`+`cryptography`
+  (DMM's MySQL needs `caching_sha2_password` support). Two new env vars threaded through to
+  Control Panel: `DMM_MYSQL_ROOT_PASSWORD`, `DISCORD_WEBHOOK_URL` (both already existed in
+  `.env`, just never passed into this container before). Tautulli's and Seerr's own API keys are
+  read live from their mounted config files, not stored anywhere new. All 20 endpoints verified
+  live end-to-end; three real bugs found and fixed in the process - `plex_duplicates()` initially
+  flagged 74 false positives from a single file appearing twice via this library's two configured
+  root paths (fixed by de-duplicating on exact byte size before counting); `plex_sessions()` and
+  `plex_recently-added()` both 500'd on their first deploy (assumed XML, `plex_headers()` actually
+  requests JSON); and the fish-side `stack-seerr-requests` silently broke on `status`, a real
+  fish special variable (same trap class as zsh's `path`) - renamed to `req_status`.
 
 ---
 

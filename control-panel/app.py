@@ -26,6 +26,7 @@ from urllib.parse import quote, urlparse
 import docker
 import httpx
 import psycopg2
+import pymysql
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -46,6 +47,40 @@ ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
 HOST_IP = os.environ.get("HOST_IP")
 STASH_URL = "http://stash:9999"
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
+TAUTULLI_URL = "http://tautulli:8181"
+SEERR_URL = "http://seerr:5055"
+MAINTAINERR_URL = "http://maintainerr:6246"
+DMM_MYSQL_ROOT_PASSWORD = os.environ.get("DMM_MYSQL_ROOT_PASSWORD")
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
+
+
+def _tautulli_key() -> str | None:
+    """Tautulli generates its own API key on first boot and stores it in
+    config.ini - never an env var in this stack (see .env.example), so
+    this reads it live off the mounted config each call rather than
+    caching one at import time that'd go stale after a key regeneration."""
+    path = os.path.join(HOST_CONFIG_DIR, "tautulli", "config.ini")
+    if not os.path.isfile(path):
+        return None
+    with open(path) as f:
+        for line in f:
+            if line.strip().startswith("api_key"):
+                return line.split("=", 1)[1].strip()
+    return None
+
+
+def _seerr_key() -> str | None:
+    """Same story as Tautulli - Seerr generates its own key on first setup
+    and only stores it in settings.json, never in .env."""
+    import json as _json
+    path = os.path.join(HOST_CONFIG_DIR, "seerr", "settings.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path) as f:
+            return _json.load(f).get("main", {}).get("apiKey")
+    except (ValueError, OSError):
+        return None
 # Read-only host mounts added specifically for the stack-* diagnostic
 # endpoints below (resource-check through neutarr-hunt) - see
 # docker-compose.yml's control-panel volumes for what backs each of these.
@@ -2068,6 +2103,483 @@ def neutarr_hunt_eros():
                   "(eros/Whisparr included), not just eros specifically - NeutArr has no per-app trigger.")
     except docker.errors.NotFound:
         fail("Container 'neutarr' not found.")
+
+
+# ---------------------------------------------------------------------
+# 20 new diagnostic/read endpoints, added in one pass to back a matching
+# set of new stack-* fish commands. Each follows an existing pattern in
+# this file rather than inventing a new one - see the comment on each for
+# which.
+# ---------------------------------------------------------------------
+
+
+@app.get("/api/arr/command-queue-summary")
+def arr_command_queue_summary():
+    """Same idea as arr_command_backlog() above, but across every *arr app
+    at once instead of one at a time - built after a real session where
+    the answer to "why haven't my new shows been processed" turned out to
+    be a 775-command backlog that took manually querying Sonarr alone to
+    find; this is that query, generalized to all four apps in one call."""
+    out = {}
+    for name, cfg in {**ARR_APPS, "prowlarr": {
+        "url": "http://prowlarr:9696", "api": "v1", "key": PROWLARR_API_KEY, "label": "Prowlarr",
+    }}.items():
+        try:
+            r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/command", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+            r.raise_for_status()
+            commands = r.json()
+            counts = Counter(c.get("status") for c in commands)
+            out[name] = {"total": len(commands), "queued": counts.get("queued", 0), "running": counts.get("started", 0)}
+        except httpx.HTTPError as e:
+            out[name] = {"error": str(e)}
+    total_queued = sum(v.get("queued", 0) for v in out.values() if "error" not in v)
+    return ok(f"{total_queued} commands queued across {len(out)} apps.", apps=out)
+
+
+@app.get("/api/arr/{app_name}/recently-added")
+def arr_recently_added(app_name: str, limit: int = 10):
+    """Radarr/Sonarr's own "added" timestamp, sorted newest-first - the
+    exact query that answered a real "why haven't my shows been processed"
+    session by showing which shows were added seconds vs hours apart and
+    still had null episode statistics (never even refreshed yet)."""
+    if app_name not in ("radarr", "sonarr"):
+        fail("Only radarr and sonarr have an 'added' concept here - Whisparr and Prowlarr don't fit this shape.",
+             status_code=400)
+    cfg = ARR_APPS[app_name]
+    path = "/api/v3/movie" if app_name == "radarr" else "/api/v3/series"
+    try:
+        r = httpx.get(f"{cfg['url']}{path}", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} lookup failed: {e}")
+    items = sorted(r.json(), key=lambda i: i.get("added") or "", reverse=True)[:limit]
+    out = []
+    for i in items:
+        stats = i.get("statistics") or {}
+        out.append({
+            "title": i.get("title"),
+            "added": i.get("added"),
+            "monitored": i.get("monitored"),
+            "file_count": stats.get("movieFileCount") if app_name == "radarr" else stats.get("episodeFileCount"),
+            "total_count": None if app_name == "radarr" else stats.get("episodeCount"),
+        })
+    return ok(f"{len(out)} most recently added to {cfg['label']}.", items=out)
+
+
+@app.get("/api/plex/duplicates")
+def plex_duplicates(min_gb: float = 5.0):
+    """Scans every movie library for items whose combined file size looks
+    like more than one real release stacked up - the exact shape of a real
+    session where three movies turned out to be carrying 200-300GB each
+    across 3-7 redundant UHD remuxes of the same film. Flags anything
+    whose total size is more than 1.5x its single largest file - a movie
+    with one real multi-version upgrade (2-3 files) rarely trips this;
+    the genuine duplicate cases were 5-10x their largest file."""
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        fail(f"Could not read Plex libraries: {e}")
+    movie_sections = [s for s in sections if s.get("type") == "movie"]
+    flagged = []
+    for s in movie_sections:
+        try:
+            r = httpx.get(f"{PLEX_URL}/library/sections/{s['key']}/all", headers=plex_headers(), timeout=30)
+            r.raise_for_status()
+        except httpx.HTTPError:
+            continue
+        for v in r.json().get("MediaContainer", {}).get("Metadata", []):
+            # De-duped by exact byte size first - this library has two
+            # configured root paths (/mnt/zurg/movies and the Radarr-
+            # symlinked one), so a single real file routinely shows up as
+            # two "Media" entries with identical sizes. Real duplicates
+            # are near-impossible to collide on exact byte size by
+            # accident; that's the whole signal this endpoint relies on.
+            sizes = list({int(p.get("size") or 0) for m in v.get("Media", []) for p in m.get("Part", [])})
+            if len(sizes) < 2:
+                continue
+            total = sum(sizes)
+            largest = max(sizes)
+            if total < min_gb * 1e9 or total < largest * 1.5:
+                continue
+            flagged.append({
+                "title": v.get("title"), "year": v.get("year"), "ratingKey": v.get("ratingKey"),
+                "file_count": len(sizes), "total_gb": round(total / 1e9, 1), "largest_gb": round(largest / 1e9, 1),
+            })
+    flagged.sort(key=lambda f: f["total_gb"], reverse=True)
+    return ok(f"{len(flagged)} movie(s) look like they're carrying redundant duplicate files.", items=flagged)
+
+
+@app.get("/api/prowlarr/indexers")
+def prowlarr_indexers():
+    """Every configured indexer's enabled/priority state in one place -
+    Prowlarr's own UI is the only other place to see this without
+    hitting the API directly."""
+    if not PROWLARR_API_KEY:
+        fail("PROWLARR_API_KEY not set.", status_code=503)
+    try:
+        r = httpx.get("http://prowlarr:9696/api/v1/indexer", headers={"X-Api-Key": PROWLARR_API_KEY}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Prowlarr lookup failed: {e}")
+    items = [{"name": i.get("name"), "enabled": i.get("enable"), "priority": i.get("priority")} for i in r.json()]
+    items.sort(key=lambda i: i["name"] or "")
+    enabled = sum(1 for i in items if i["enabled"])
+    return ok(f"{enabled}/{len(items)} indexers enabled.", items=items)
+
+
+@app.get("/api/plex/sessions")
+def plex_sessions():
+    """Who's watching what right now, direct play vs transcode - Plex's
+    own /status/sessions, not proxied through Tautulli (which only sees
+    what it's been running long enough to have logged)."""
+    try:
+        r = httpx.get(f"{PLEX_URL}/status/sessions", headers=plex_headers(), timeout=10)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Could not read Plex sessions: {e}")
+    sessions = []
+    for v in r.json().get("MediaContainer", {}).get("Metadata", []):
+        user = v.get("User") or {}
+        player = v.get("Player") or {}
+        media = (v.get("Media") or [{}])[0]
+        title = f"{v['grandparentTitle']} - {v['title']}" if v.get("grandparentTitle") else v.get("title")
+        duration = int(v.get("duration") or 1)
+        sessions.append({
+            "title": title,
+            "user": user.get("title"),
+            "player": player.get("product"),
+            "state": player.get("state"),
+            "decision": media.get("videoDecision") or media.get("selected"),
+            "progress_pct": round(int(v.get("viewOffset") or 0) / max(duration, 1) * 100, 1),
+        })
+    return ok(f"{len(sessions)} active session(s).", sessions=sessions)
+
+
+@app.get("/api/seerr/requests")
+def seerr_requests(status: str = "pending"):
+    """Pending (or any-status) media requests sitting in Seerr - the queue
+    a user expects Radarr/Sonarr to eventually pick up automatically, so
+    this is mostly useful for confirming a request actually landed there
+    before chasing why it's not showing up downstream."""
+    key = _seerr_key()
+    if not key:
+        fail("Could not read Seerr's API key from config/seerr/settings.json.", status_code=503)
+    try:
+        r = httpx.get(f"{SEERR_URL}/api/v1/request", params={"filter": status, "take": 25},
+                       headers={"X-Api-Key": key}, timeout=15)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Seerr lookup failed: {e}")
+    data = r.json()
+    items = [{
+        # Seerr's own /api/v1/request response has no title field on its
+        # embedded media object at all (confirmed live) - externalServiceSlug
+        # (Radarr/Sonarr's own URL-safe slug, e.g. "the-ambiguously-gay-duo")
+        # is the only human-readable thing available without a second
+        # per-item API call to /api/v1/media/{id} or TMDB directly.
+        "title": (req.get("media") or {}).get("externalServiceSlug")
+                 or f"tmdb:{(req.get('media') or {}).get('tmdbId')}",
+        "type": (req.get("media") or {}).get("mediaType"),
+        "requestedBy": (req.get("requestedBy") or {}).get("displayName"),
+        "status": req.get("status"),
+        "createdAt": req.get("createdAt"),
+    } for req in data.get("results", [])]
+    return ok(f"{len(items)} {status} request(s) in Seerr.", items=items)
+
+
+@app.get("/api/cleanuparr/strikes")
+def cleanuparr_strikes(limit: int = 15):
+    """Recent strikes Cleanuparr has issued (stalled/slow/malware) - lives
+    in events.db, a separate SQLite file from the arr_instances/arr_configs
+    one cleanuparr_instances() above reads, discovered while wiring this up
+    (Cleanuparr splits its own state across cleanuparr.db and events.db)."""
+    db_path = os.path.join(HOST_CONFIG_DIR, "cleanuparr", "events.db")
+    if not os.path.isfile(db_path):
+        fail(f"{db_path} not present.")
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+    cur.execute(
+        "SELECT s.created_at, s.type, d.title FROM strikes s "
+        "JOIN download_items d ON d.id = s.download_item_id "
+        "ORDER BY s.created_at DESC LIMIT ?", (limit,)
+    )
+    rows = [{"created_at": r["created_at"], "type": r["type"], "title": r["title"]} for r in cur.fetchall()]
+    cur.execute("SELECT COUNT(*) FROM strikes")
+    total = cur.fetchone()[0]
+    con.close()
+    return ok(f"{total} strike(s) total, showing {len(rows)} most recent.", items=rows, total=total)
+
+
+@app.get("/api/dmm/status")
+def dmm_status():
+    """Row counts for DMM's three largest IMDB tables plus a live
+    connection check - the same query run by hand to verify no data loss
+    after this session's mysql 8.4->9.7 major-version upgrade, now a
+    standing command instead of a one-off."""
+    if not DMM_MYSQL_ROOT_PASSWORD:
+        fail("DMM_MYSQL_ROOT_PASSWORD not set.", status_code=503)
+    try:
+        conn = pymysql.connect(host="dmm-mysql", port=3306, user="root",
+                                password=DMM_MYSQL_ROOT_PASSWORD, database="dmm", connect_timeout=5)
+        try:
+            with conn.cursor() as cur:
+                counts = {}
+                for table in ("imdb_title_akas", "imdb_title_basics", "imdb_title_ratings"):
+                    cur.execute(f"SELECT COUNT(*) FROM {table}")
+                    counts[table] = cur.fetchone()[0]
+        finally:
+            conn.close()
+    except Exception as e:
+        fail(f"DMM MySQL connection failed: {e}")
+    return ok(f"DMM database reachable - {counts['imdb_title_akas']:,} akas, "
+              f"{counts['imdb_title_basics']:,} titles, {counts['imdb_title_ratings']:,} ratings.", **counts)
+
+
+@app.get("/api/decypharr/{instance}/torrents")
+def decypharr_torrents(instance: str):
+    """Active items in a Decypharr instance's own qBittorrent-compatible
+    queue - the actual add-a-torrent auth flow decypharr_grab() already
+    uses, reused here read-only for torrents/info instead of torrents/add."""
+    if instance not in DECYPHARR_INSTANCES:
+        fail(f"Unknown instance '{instance}' - use one of: {', '.join(DECYPHARR_INSTANCES)}", status_code=400)
+    url = DECYPHARR_INSTANCES[instance]
+    try:
+        with httpx.Client(timeout=15) as client:
+            client.post(f"{url}/api/v2/auth/login",
+                        data={"username": DECYPHARR_ADMIN_USERNAME, "password": DECYPHARR_ADMIN_PASSWORD})
+            r = client.get(f"{url}/api/v2/torrents/info")
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{instance} lookup failed: {e}")
+    items = [{"name": t.get("name"), "state": t.get("state"), "progress": t.get("progress"),
+              "size": human_size(t.get("size"))} for t in r.json()]
+    return ok(f"{len(items)} item(s) in {instance}'s queue.", items=items)
+
+
+@app.get("/api/tautulli/history")
+def tautulli_history(limit: int = 10):
+    """Recent Plex watch history via Tautulli - what actually got watched,
+    not just what's in the library. Tautulli's own API key, read live from
+    its config.ini (see _tautulli_key() above)."""
+    key = _tautulli_key()
+    if not key:
+        fail("Could not read Tautulli's API key from config/tautulli/config.ini.", status_code=503)
+    try:
+        r = httpx.get(f"{TAUTULLI_URL}/api/v2", params={"apikey": key, "cmd": "get_history", "length": limit},
+                       timeout=15)
+        r.raise_for_status()
+        data = r.json()["response"]["data"]
+    except (httpx.HTTPError, KeyError) as e:
+        fail(f"Tautulli lookup failed: {e}")
+    items = [{"title": h.get("full_title"), "user": h.get("user"), "date": h.get("date"),
+              "percent_complete": h.get("percent_complete")} for h in data.get("data", [])]
+    return ok(f"{len(items)} recent watch(es).", items=items)
+
+
+@app.get("/api/arr/queue-errors")
+def arr_queue_errors():
+    """Only the queue items an arr app has already flagged as a problem
+    itself (trackedDownloadStatus warning/error) across every queue-having
+    app at once - a quick triage view instead of scrolling the full queue
+    grid in each app's own UI looking for the handful that are stuck."""
+    out = {}
+    for app_name in QUEUE_ARR_APPS:
+        try:
+            queue = arr_queue(app_name)
+        except HTTPException:
+            out[app_name] = {"error": "lookup failed"}
+            continue
+        errors = [{
+            "title": q.get("title"),
+            "status": q.get("trackedDownloadStatus"),
+            "messages": [m.get("title") for m in (q.get("statusMessages") or [])],
+        } for q in queue if (q.get("trackedDownloadStatus") or "ok").lower() != "ok"]
+        out[app_name] = errors
+    total = sum(len(v) for v in out.values() if isinstance(v, list))
+    return ok(f"{total} queue item(s) flagged with an error/warning across {len(out)} apps.", apps=out)
+
+
+@app.post("/api/notify/test")
+def notify_test():
+    """Sends a real test message through the same Discord webhook every
+    backup/health-check alert in this stack already uses - confirms the
+    webhook itself still works without waiting for a real failure to find
+    out it doesn't."""
+    if not DISCORD_WEBHOOK_URL:
+        fail("DISCORD_WEBHOOK_URL not set.", status_code=503)
+    try:
+        r = httpx.post(DISCORD_WEBHOOK_URL, json={"content": f"Control Panel test notification - {now()}"}, timeout=10)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Discord webhook test failed: {e}")
+    return ok("Test notification sent to Discord.")
+
+
+@app.get("/api/backup-status")
+def backup_status():
+    """Full snapshot history (not just the latest, see backup_verify()
+    above) for both restic repos - count and oldest/newest timestamps, to
+    catch a repo that's accumulating snapshots but silently stopped
+    pruning, or one that only ever had a single snapshot ever taken."""
+    import json as _json
+    repos = {"local": HOST_BACKUP_LOCAL, "offsite": HOST_BACKUP_OFFSITE}
+    out = {}
+    for name, path in repos.items():
+        if not os.path.isdir(path):
+            out[name] = {"status": "missing", "path": path}
+            continue
+        try:
+            r = _restic(path, ["snapshots", "--json"])
+            if r.returncode != 0:
+                out[name] = {"status": "error", "detail": r.stderr.strip()[:300]}
+                continue
+            snaps = _json.loads(r.stdout or "[]")
+            if not snaps:
+                out[name] = {"status": "empty", "count": 0}
+                continue
+            times = sorted(s["time"] for s in snaps)
+            out[name] = {"status": "ok", "count": len(snaps), "oldest": times[0], "newest": times[-1]}
+        except Exception as e:
+            out[name] = {"status": "error", "detail": str(e)[:300]}
+    return ok("Backup repo snapshot history.", repos=out)
+
+
+@app.get("/api/top")
+def stack_top(by: str = "cpu", limit: int = 10):
+    """Top containers by CPU or memory in one compact list - the same data
+    the container grid already shows per-card, sorted and truncated so a
+    quick "what's using resources right now" doesn't mean scanning 30
+    cards by eye."""
+    if by not in ("cpu", "mem"):
+        fail("'by' must be 'cpu' or 'mem'.", status_code=400)
+    me, containers = project_containers()
+    rows = []
+    for c in containers:
+        if c.id == me.id or c.status != "running":
+            continue
+        stats = container_stats(c)
+        rows.append({
+            "name": c.name,
+            "cpu_percent": stats["cpu_percent"],
+            "mem_percent": stats["mem_percent"],
+            "mem_used_mb": stats["mem_used_mb"],
+        })
+    key = "cpu_percent" if by == "cpu" else "mem_percent"
+    rows = [r for r in rows if r[key] is not None]
+    rows.sort(key=lambda r: r[key], reverse=True)
+    return ok(f"Top {min(limit, len(rows))} containers by {by}.", items=rows[:limit])
+
+
+@app.get("/api/recyclarr/status")
+def recyclarr_status():
+    """Recyclarr is cron-driven with no persistent API of its own (unlike
+    every other app this file talks to), so this is the only way to see
+    its last run: its own container's last log lines, straight from
+    Docker, not a mounted log file."""
+    try:
+        c = docker_client.containers.get("recyclarr")
+    except docker.errors.NotFound:
+        fail("Container 'recyclarr' not found.")
+    lines = c.logs(tail=30).decode("utf-8", errors="replace").splitlines()
+    relevant = [line for line in lines if line.strip()][-15:]
+    return ok(f"Last {len(relevant)} log line(s) from recyclarr.", lines=relevant)
+
+
+@app.get("/api/maintainerr/rules")
+def maintainerr_rules():
+    """Configured Maintainerr rules and their enabled state - README notes
+    rules ship disabled by default, so this is a quick check of whether
+    that's still true without opening its UI."""
+    try:
+        r = httpx.get(f"{MAINTAINERR_URL}/api/rules", timeout=15)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Maintainerr lookup failed: {e}")
+    rules = r.json()
+    items = [{"name": rule.get("name"), "active": rule.get("isActive"),
+              "collection": (rule.get("collection") or {}).get("title")} for rule in rules]
+    return ok(f"{len(items)} rule(s) configured.", items=items)
+
+
+@app.get("/api/arr/{app_name}/cutoff-unmet")
+def arr_cutoff_unmet(app_name: str, limit: int = 20):
+    """Items below their quality profile's cutoff - already have a file,
+    just not yet the target quality, so Radarr/Sonarr will keep
+    upgrade-searching for these. Distinct from missing-aired/wanted
+    (which is about having zero file at all)."""
+    if app_name not in ("radarr", "sonarr"):
+        fail("Only radarr and sonarr have quality cutoffs.", status_code=400)
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/wanted/cutoff",
+                       params={"pageSize": limit, "sortKey": "title"},
+                       headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} lookup failed: {e}")
+    data = r.json()
+    items = [{"title": rec.get("title") or rec.get("series", {}).get("title")} for rec in data.get("records", [])]
+    return ok(f"{data.get('totalRecords', len(items))} item(s) below quality cutoff in {cfg['label']}.",
+              items=items, total=data.get("totalRecords"))
+
+
+@app.get("/api/arr/{app_name}/import-lists")
+def arr_import_lists(app_name: str):
+    """Configured import lists (e.g. Trakt lists, other *arr instances)
+    and whether each is currently enabled - a quick check for "is this
+    list actually still syncing" without opening Settings -> Import Lists."""
+    if app_name not in ("radarr", "sonarr"):
+        fail("Only radarr and sonarr have import lists.", status_code=400)
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/importlist", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} lookup failed: {e}")
+    items = [{"name": lst.get("name"), "enabled": lst.get("enabled"), "enableAutomaticAdd": lst.get("enableAutomaticAdd")}
+             for lst in r.json()]
+    return ok(f"{len(items)} import list(s) configured for {cfg['label']}.", items=items)
+
+
+@app.get("/api/nzbdav/stats")
+def nzbdav_stats():
+    """Aggregate counts instead of the raw queue/history dumps
+    nzbdav_queue()/nzbdav_history() above already provide - queued count
+    and total size left, plus history success/fail counts, in one glance."""
+    queue = nzbdav_api("queue").get("queue", {}).get("slots", [])
+    history = nzbdav_api("history", limit=100).get("history", {}).get("slots", [])
+    fail_count = sum(1 for h in history if (h.get("status") or "").lower() == "failed")
+    mb_left = sum(s.get("mbleft") or 0 for s in queue)
+    return ok(f"{len(queue)} queued ({mb_left:.0f}MB left), {len(history)} in recent history "
+              f"({fail_count} failed).", queued=len(queue), mb_left=round(mb_left), history_count=len(history),
+              history_failed=fail_count)
+
+
+@app.get("/api/plex/recently-added")
+def plex_recently_added(limit: int = 15):
+    """What actually finished importing and became visible in Plex, across
+    every library - complements arr_recently_added() above (which shows
+    what was *added to management*, not necessarily downloaded yet)."""
+    try:
+        r = httpx.get(f"{PLEX_URL}/library/all", params={"sort": "addedAt:desc", "type": 1},
+                       headers=plex_headers(), timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Could not read Plex's recently-added list: {e}")
+    movies = r.json().get("MediaContainer", {}).get("Metadata", [])
+    try:
+        r = httpx.get(f"{PLEX_URL}/library/all", params={"sort": "addedAt:desc", "type": 2},
+                       headers=plex_headers(), timeout=20)
+        r.raise_for_status()
+        shows = r.json().get("MediaContainer", {}).get("Metadata", [])
+    except httpx.HTTPError:
+        shows = []
+    combined = sorted(movies + shows, key=lambda el: el.get("addedAt") or 0, reverse=True)[:limit]
+    items = [{"title": el.get("title"), "year": el.get("year"), "type": el.get("type"),
+              "addedAt": el.get("addedAt"), "librarySectionTitle": el.get("librarySectionTitle")}
+             for el in combined]
+    return ok(f"{len(items)} most recently added item(s) across Plex movie/show libraries.", items=items)
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
