@@ -1201,7 +1201,7 @@ services:
     # MySQL is hard-required by DMM's own Prisma schema (hardcoded
     # provider = "mysql", plus MySQL-specific column types and @@fulltext
     # indexes) - not swappable for Postgres/MariaDB without real risk.
-    image: mysql:8.4
+    image: mysql:9.7
     container_name: dmm-mysql
     profiles: [extras]
     networks: [stacknet]
