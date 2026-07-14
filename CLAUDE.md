@@ -140,10 +140,11 @@ throughout its history section, and there's no substitute for it here.
   `config/lidarr` deleted, `control-panel/app.py`'s `ARR_APPS`/`QUEUE_ARR_APPS`/
   `CONTAINER_LABELS`/`LOG_LEVEL_APPS`/`ARR_LOG_CONTAINERS` all updated, `LIDARR_API_KEY` gone from
   `.env`/`.env.example`, Prowlarr's Lidarr application-sync entry deleted via its own API,
-  NeutArr's Lidarr state/config files deleted. **Known residual gap**: Cleanuparr's SQLite DB
-  still has a stale Lidarr instance row that wasn't touched (it's a live WAL-mode DB, too risky to
-  hand-edit) — remove it via Cleanuparr's own UI when convenient. The `*arr` app family in this
-  stack is now Radarr/Sonarr/Whisparr only.
+  NeutArr's Lidarr state/config files deleted. The stale Lidarr row this left in Cleanuparr's
+  SQLite `arr_instances` table was cleaned up the same day — no REST endpoint exists for that
+  table, so the container was stopped first (avoiding a live WAL-mode write), the row and its
+  orphaned parent `arr_configs` row deleted directly, then restarted healthy. The `*arr` app
+  family in this stack is now Radarr/Sonarr/Whisparr only.
 - **Adminer removed in v10.9.9, no replacement (for now).** Briefly swapped for CloudBeaver
   (`dbeaver/cloudbeaver:24.3.0`) same version, but that was reverted immediately at the user's
   request — not a fan of the tool, no substitute picked yet. There is currently no web DB GUI

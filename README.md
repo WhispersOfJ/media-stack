@@ -256,33 +256,34 @@ Every service currently defined in `docker-compose.yml`, in the order they appea
 | 8 | `rclone-alldebrid-anime` | `rclone/rclone:1.74.4` | — | core |
 | 9 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
 | 10 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
-| 11 | `bindery` | `ghcr.io/vavallee/bindery:v1.25.0` | 8787 | core |
-| 12 | `whisparr` | `ghcr.io/hotio/whisparr:v3` | 6969 | core |
-| 13 | `calibre-web` | `lscr.io/linuxserver/calibre-web:latest` | 8083 | core |
-| 14 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
-| 15 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | — | core |
-| 16 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
-| 17 | `plex` | `plexinc/pms-docker:1.43.2.10687-563d026ea` | 32400 (host net) | core |
-| 18 | `stash` | `stashapp/stash:v0.31.1` | 9998→9999 | extras |
-| 19 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
-| 20 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
-| 21 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 22 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
-| 23 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
-| 24 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
-| 25 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
-| 26 | `dmm-mysql` | `mysql:8.4` | — | extras |
-| 27 | `dmm-redis` | `redis:7-alpine` | — | extras |
-| 28 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
-| 29 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 30 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 31 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 32 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
-| 33 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 11 | `whisparr` | `ghcr.io/hotio/whisparr:v3` | 6969 | core |
+| 12 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
+| 13 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | — | core |
+| 14 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
+| 15 | `plex` | `plexinc/pms-docker:1.43.2.10687-563d026ea` | 32400 (host net) | core |
+| 16 | `stash` | `stashapp/stash:v0.31.1` | 9998→9999 | extras |
+| 17 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
+| 18 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
+| 19 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 20 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
+| 21 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
+| 22 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
+| 23 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
+| 24 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | — | extras |
+| 25 | `dmm-mysql` | `mysql:8.4` | — | extras |
+| 26 | `dmm-redis` | `redis:7-alpine` | — | extras |
+| 27 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
+| 28 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 29 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 30 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 31 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
+| 32 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
 
-`docker compose up -d` brings up the 17 core services; `docker compose --profile extras up -d`
+`docker compose up -d` brings up the 15 core services; `docker compose --profile extras up -d`
 adds the other 17. Both commands are safe to run repeatedly — Compose only recreates what's
-actually out of sync with `docker-compose.yml`.
+actually out of sync with `docker-compose.yml`. (`bindery`/`calibre-web` were retired in v10.9.8
+and no longer appear here; `recyclarr` was previously missing from this table despite being a
+live service since well before this session — both fixed 2026-07-14.)
 
 ## The *arr apps
 
@@ -1244,10 +1245,14 @@ Cleanuparr's own **Settings → Lidarr/Whisparr → Add Instance** UI — confir
 persisted at the time. All four Servarr-shaped apps were covered by Sonarr/Radarr/Lidarr/Whisparr
 across Cleanuparr, NeutArr, and Unpackerr consistently at that point; as of v10.9.9, Lidarr is
 gone entirely (see [History](#history)) and the three remaining apps (Sonarr/Radarr/Whisparr) are
-what's covered. **Known residual gap from the Lidarr removal**: Cleanuparr's own SQLite-backed
-`arr_instances` table still has the stale Lidarr instance row from this fix — it's a live
-WAL-mode DB, too risky to hand-edit directly, so it wasn't touched; remove it via Cleanuparr's own
-UI when convenient. Stash remains correctly excluded from all three (see its own section above)
+what's covered. **The stale Lidarr row this left in Cleanuparr's SQLite `arr_instances` table was
+cleaned up 2026-07-14**: no REST endpoint exists for this table at all (confirmed against
+Cleanuparr 2.9.16's actual API surface — `download_client`, `malware_blocker`, and every other
+`/api/configuration/*` route are unrelated; `arr_instances` is genuinely DB-only), so the fix was
+to stop the container (avoiding any live WAL-mode write), delete the `arr_instances` row and its
+now-orphaned parent `arr_configs` row directly, confirm zero orphaned rows in the six other tables
+that reference `arr_instance_id`, then restart — came back healthy with Sonarr/Radarr/Whisparr
+only, zero errors. Stash remains correctly excluded from all three (see its own section above)
 since it isn't Servarr-shaped.
 
 **Unpackerr** (`golift/unpackerr@sha256:4ec141...`) auto-extracts RAR'd releases across the three
@@ -1763,7 +1768,7 @@ Every image is pinned, using whichever approach doesn't change what's actually r
   supports. Whisparr is pinned to `:v3` specifically (a major-version channel, not just `:release`)
   for the reason described in [The *arr apps](#the-arr-apps).
 - **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
-  `nickfedor/watchtower:1.19.0`, `ghcr.io/vavallee/bindery:v1.25.0`, `stashapp/stash:v0.31.1`)
+  `nickfedor/watchtower:1.19.0`, `stashapp/stash:v0.31.1`)
   where the upstream project tags real releases and the current running image matches.
 - **Digest pins** (`@sha256:...`) for Seerr, Glances, Kometa, Unpackerr, and Byparr — in every one
   of these cases the currently-running `:latest` build is *ahead* of the newest tagged release
@@ -1912,19 +1917,19 @@ POST_BOOT_KEYS = {
     "RADARR_API_KEY", "SONARR_API_KEY",
     "WHISPARR_API_KEY", "PLEX_TOKEN",
 }
-AUTO_GENERATE_KEYS = {"ZILEAN_POSTGRES_PASSWORD", "ZILEAN_API_KEY", "BINDERY_API_KEY"}
+AUTO_GENERATE_KEYS = {"ZILEAN_POSTGRES_PASSWORD", "ZILEAN_API_KEY"}
 ```
 
-`LIDARR_API_KEY` was dropped from this set (and from `.env`/`.env.example` entirely) in v10.9.9
-along with Lidarr itself — see [History](#history). Four fields genuinely can't be collected
-before first boot — each Servarr-shaped `*arr` app
-generates its own API key on first start, and `PLEX_TOKEN` needs a running Plex with at least one
-library item. These render in a highlighted "⚠ Fill in after first boot" section and default to
-`changeme`; re-running `--setup` loads the real `.env` as defaults, so a second pass only means
-retyping what's actually new. `BINDERY_API_KEY` is still listed in `AUTO_GENERATE_KEYS` in the
-wizard's own source — a harmless leftover from when Bindery *seeded* its key from the env var
-instead of generating its own; `.env.example` has no `BINDERY_API_KEY` line since v10.9.8, so the
-wizard silently has nothing to act on for that entry.
+`LIDARR_API_KEY` was dropped from `POST_BOOT_KEYS` (and from `.env`/`.env.example` entirely) in
+v10.9.9 along with Lidarr itself — see [History](#history). `BINDERY_API_KEY` was already gone
+from `AUTO_GENERATE_KEYS` by the time of this edit (2026-07-14) — it was a harmless leftover from
+when Bindery *seeded* its key from the env var instead of generating its own, and had already been
+cleaned up in the wizard's own source even though this doc hadn't caught up until now. Four fields
+genuinely can't be collected before first boot — each Servarr-shaped `*arr` app generates its own
+API key on first start, and `PLEX_TOKEN` needs a running Plex with at least one library item.
+These render in a highlighted "⚠ Fill in after first boot" section and default to `changeme`;
+re-running `--setup` loads the real `.env` as defaults, so a second pass only means retyping
+what's actually new.
 
 ## Known gaps and limitations
 
@@ -2641,16 +2646,18 @@ Repairs tab wired to see Radarr/Sonarr's root folders.**
   Radarr/Sonarr API (delete+research), not by touching symlinks directly, so this is read-only.
 
 **v10.9.9 (current) — Lidarr removed entirely; Adminer removed with no replacement; Plex's
-"Adult" library removed in favor of Stash; a Prometheus + Grafana monitoring stack researched
-and proposed (not yet implemented).**
+"Adult" library removed in favor of Stash; Plex bumped to 1.43.3; Control Panel's UI restyled;
+a Prometheus + Grafana monitoring stack researched and proposed (not yet implemented).**
 
 - **Lidarr removed entirely** — `docker-compose.yml` service block gone, `config/lidarr`
   deleted, `control-panel/app.py`'s `ARR_APPS`/`QUEUE_ARR_APPS`/`CONTAINER_LABELS`/
   `LOG_LEVEL_APPS`/`ARR_LOG_CONTAINERS` all updated, `LIDARR_API_KEY` gone from
   `.env`/`.env.example`, Prowlarr's Lidarr application-sync entry deleted via its own API,
-  NeutArr's Lidarr state/config files deleted. **Known residual gap**: Cleanuparr's own SQLite
-  DB still has a stale Lidarr instance row that wasn't touched — it's a live WAL-mode DB, too
-  risky to hand-edit directly; remove it via Cleanuparr's own UI later. The `*arr` app family in
+  NeutArr's Lidarr state/config files deleted. The stale Lidarr row this left in Cleanuparr's
+  SQLite `arr_instances` table (no REST endpoint exists for that table) was cleaned up the same
+  day — container stopped first to avoid a live WAL-mode write, row and its orphaned parent
+  `arr_configs` row deleted directly, zero orphaned rows confirmed in six other referencing
+  tables, restarted healthy. The `*arr` app family in
   this stack is now Radarr/Sonarr/Whisparr only. See [The *arr apps](#the-arr-apps) and the many
   places throughout this document that referenced Lidarr as a current app.
 - **Adminer removed, no replacement** — `adminer:5.4.2-standalone` (port 8081→8080) service block
@@ -2667,6 +2674,17 @@ and proposed (not yet implemented).**
   used to be "an enrichment layer alongside Plex, not a replacement for it" — as of this version
   it's the sole means of browsing/cataloging this content, since Plex no longer has an Adult
   library at all. See [Plex](#plex) and [Stash](#stash-adult-library-cataloging).
+- **Plex bumped to `plexinc/pms-docker:1.43.3.10828-00f62d37d`** (from `1.43.2.10687-563d026ea`)
+  — pulled, verified the tag exists before repinning, `--force-recreate`d, confirmed healthy and
+  running the new version via `/identity`, all six libraries still reachable afterward. Per this
+  stack's policy this is a deliberate manual bump, not something Watchtower ever does on its own.
+- **Control Panel's dashboard restyled** — replaced the black/phosphor-green "Matrix" theme
+  (`matrix-rain.js` canvas layer, neon-green glows throughout `style.css`) with a modern
+  slate/blue dark theme and materially tighter spacing (smaller card padding, gaps, and font
+  sizes throughout) to fit more status at a glance. `matrix-rain.js` deleted outright, no longer
+  referenced from `index.html`. Verified live in a browser after rebuild — quick links, overview
+  tiles, primary action cards, the `*arr` app list, and the container grid all confirmed rendering
+  correctly with the new theme and zero Lidarr/Bindery/Calibre-Web residue.
 - **A Grafana + Prometheus monitoring stack was researched and a concrete phased plan produced,
   but not implemented in code** — added as a clearly-marked proposal, not a current-architecture
   claim. See [Proposed: Monitoring (Prometheus + Grafana)](#proposed-monitoring-prometheus--grafana).
