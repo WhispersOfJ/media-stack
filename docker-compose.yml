@@ -972,6 +972,12 @@ services:
       # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
       # the same credential Zilean itself already has, no new secret.
       ZILEAN_POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
+      # Read-only row-count check only (dmm_status()) - reuses the same
+      # credential dmm-mysql itself already has, no new secret.
+      DMM_MYSQL_ROOT_PASSWORD: ${DMM_MYSQL_ROOT_PASSWORD}
+      # notify_test() only - reuses the same webhook every backup/health
+      # alert script already posts to, no new secret.
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
       # Origin/Host validation only (see app.py's verify_same_origin) - not
       # auth, just closing the cross-origin-POST hole given this panel's
       # docker.sock access.
