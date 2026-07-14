@@ -2685,6 +2685,19 @@ a Prometheus + Grafana monitoring stack researched and proposed (not yet impleme
   referenced from `index.html`. Verified live in a browser after rebuild — quick links, overview
   tiles, primary action cards, the `*arr` app list, and the container grid all confirmed rendering
   correctly with the new theme and zero Lidarr/Bindery/Calibre-Web residue.
+- **`dmm-mysql` upgraded 8.4→9.7, live and verified.** A real major-version DB upgrade, not a
+  routine bump - took a full `mysqldump --all-databases` backup first, stopped
+  `debridmediamanager` (the one dependent app) before touching MySQL to avoid it hitting a
+  mid-restart connection failure, then `--force-recreate`d `dmm-mysql`. Server completed both its
+  data-dictionary upgrade (`80300`→`90200`) and full server upgrade (`80410`→`90701`) cleanly on
+  first boot, no manual `mysql_upgrade` needed. Verified no data loss via exact `COUNT(*)`
+  against the three largest tables (`imdb_title_akas`/`imdb_title_basics`/`imdb_title_ratings`) -
+  counts came back *higher* than the pre-upgrade baseline (expected, ongoing IMDB ingestion), not
+  lower. Restarted `debridmediamanager`; its own `dmm-migrate` one-shot Prisma step reported "The
+  database is already in sync with the Prisma schema" and the app came up healthy.
+- **`control-panel`'s `uvicorn` bumped 0.34.0→0.51.0** (`requirements.txt`) - rebuilt (it's
+  `build:`, a `--force-recreate` alone wouldn't pick up a requirements change), came up healthy,
+  spot-checked the dashboard, `/api/version`, and a live `*arr` queue route afterward.
 - **A Grafana + Prometheus monitoring stack was researched and a concrete phased plan produced,
   but not implemented in code** — added as a clearly-marked proposal, not a current-architecture
   claim. See [Proposed: Monitoring (Prometheus + Grafana)](#proposed-monitoring-prometheus--grafana).
