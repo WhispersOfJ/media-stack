@@ -1261,39 +1261,6 @@ services:
     mem_reservation: 32m
     cpus: 1
 
-  # Web DB browser for dmm-mysql and zilean-postgres - previously the only
-  # way to inspect either was `docker exec -it <db> mysql/psql ...`.
-  # Replaced Adminer (2026-07-14): CloudBeaver covers both Postgres and
-  # MySQL from one tool with real multi-user auth (Adminer had none beyond
-  # network isolation) and persists saved connections instead of re-entering
-  # server/DB/credentials every visit. Heavier than Adminer's one-PHP-file
-  # footprint (JVM vs single-file PHP), but still trivial next to this
-  # stack's other services. First run needs the setup wizard at :8978 to
-  # create the admin account and add the two DB connections (dmm-mysql,
-  # zilean-postgres) - no credentials are pre-seeded here.
-  cloudbeaver:
-    restart: unless-stopped
-    logging: *common-logging
-    image: dbeaver/cloudbeaver:24.3.0
-    container_name: cloudbeaver
-    profiles: [extras]
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8978/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/cloudbeaver:/opt/cloudbeaver/workspace
-    ports:
-      - "8081:8978"
-    mem_limit: 768m
-    mem_reservation: 128m
-    cpus: 1
-
   # One-shot schema setup - no migration runner in DMM's own package.json,
   # so first-run schema creation needs `prisma db push` run once against a
   # fresh database (no prisma/migrations history to run `migrate deploy`

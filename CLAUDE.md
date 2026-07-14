@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (34 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (32 services, one `docker-compose.yml`):
 indexes content via Prowlarr + Zilean, requests via Seerr, organizes via three `*arr`-family apps
 (Radarr/Sonarr/Whisparr — Lidarr was removed entirely in v10.9.9, see below; Bindery, the ebook
 `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app currently in the
@@ -144,12 +144,11 @@ throughout its history section, and there's no substitute for it here.
   still has a stale Lidarr instance row that wasn't touched (it's a live WAL-mode DB, too risky to
   hand-edit) — remove it via Cleanuparr's own UI when convenient. The `*arr` app family in this
   stack is now Radarr/Sonarr/Whisparr only.
-- **Adminer replaced with CloudBeaver in v10.9.9** — `adminer:5.4.2-standalone` (port 8081→8080)
-  swapped for `dbeaver/cloudbeaver:24.3.0` (port 8081→8978, `./config/cloudbeaver:/opt/cloudbeaver/workspace`,
-  `mem_limit: 768m`), deployed live and confirmed healthy on :8081. Reason: CloudBeaver covers both
-  `zilean-postgres` and `dmm-mysql` from one tool with real multi-user auth, vs. Adminer's none.
-  **First-run setup (create admin account, add the two DB connections) is still a manual
-  browser step** — not automated by this change.
+- **Adminer removed in v10.9.9, no replacement (for now).** Briefly swapped for CloudBeaver
+  (`dbeaver/cloudbeaver:24.3.0`) same version, but that was reverted immediately at the user's
+  request — not a fan of the tool, no substitute picked yet. There is currently no web DB GUI
+  in this stack; inspecting `zilean-postgres`/`dmm-mysql` means `docker exec -it <db> psql/mysql
+  ...` again, same as before Adminer existed.
 
 ## Known current landmines (not historical — still true as of last audit)
 
