@@ -1,10 +1,10 @@
 # The Stack
 
-Current version: **v10.9.8**
+Current version: **v10.9.9**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
-downloaded) when nothing's cached, and serves the result through a containerized Plex. 35
+downloaded) when nothing's cached, and serves the result through a containerized Plex. 34
 services, one compose file, every image pinned and healthchecked, one custom-built dashboard
 (Control Panel) and one custom CLI (`stack-*` fish functions) as the two operator surfaces.
 
@@ -40,7 +40,7 @@ section below shows the actual request.
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [DebridMediaManager (self-hosted)](#debridmediamanager-self-hosted)
 - [Automation extras: Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-cleanuparr-neutarr-unpackerr-watchtower)
-- [Monitoring extras: Tautulli, Glances, Dozzle, Adminer](#monitoring-extras-tautulli-glances-dozzle-adminer)
+- [Monitoring extras: Tautulli, Glances, Dozzle, CloudBeaver](#monitoring-extras-tautulli-glances-dozzle-cloudbeaver)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
 - [Backups](#backups)
@@ -51,17 +51,19 @@ section below shows the actual request.
 - [CI](#ci)
 - [Installer image and setup wizard](#installer-image-and-setup-wizard)
 - [Known gaps and limitations](#known-gaps-and-limitations)
+- [Proposed: Monitoring (Prometheus + Grafana)](#proposed-monitoring-prometheus--grafana)
 - [History](#history)
 
 ## What this actually is
 
 Point this at a Real-Debrid and/or AllDebrid account and it wires together: an indexer layer
-(Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), four `*arr` apps that
-turn a request into an organized library (Radarr, Sonarr, Lidarr, Whisparr), a debrid gateway
+(Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), three `*arr` apps that
+turn a request into an organized library (Radarr, Sonarr, Whisparr — Lidarr was removed entirely
+in v10.9.9, see [History](#history)), a debrid gateway
 that symlinks already-cached content instead of downloading it (Decypharr + Zurg), a Usenet
 fallback that streams rather than downloads (NzbDAV), a containerized Plex to watch/listen to
 the result on, a self-hosted DebridMediaManager, and a pile of automation/monitoring extras
-(Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli, Glances, Dozzle, Adminer) — 34
+(Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli, Glances, Dozzle, CloudBeaver) — 34
 containers total, one `docker-compose.yml`. (Ebooks briefly had a dedicated app, Bindery, plus
 Calibre-Web as its reader; both were retired in v10.9.8 — see
 [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired) — with no replacement
@@ -97,7 +99,7 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 docker compose up -d
 
 # 4. Everything else (recommended - Byparr, Tautulli, Kometa, Unpackerr,
-#    Watchtower, Cleanuparr, NeutArr, Dozzle, Control Panel, DMM, Adminer)
+#    Watchtower, Cleanuparr, NeutArr, Dozzle, Control Panel, DMM, CloudBeaver)
 docker compose --profile extras up -d
 ```
 
@@ -124,7 +126,7 @@ docker compose up -d --force-recreate control-panel
 Prowlarr ──indexes──> (your trackers + Zilean's DMM cache-hash list)
    │
    ▼
-Radarr/Sonarr/Lidarr/Whisparr ──grab──> Decypharr (qBittorrent-compatible API)
+Radarr/Sonarr/Whisparr ──grab──> Decypharr (qBittorrent-compatible API)
    │                                                        │
    │                                                        ├─> Real-Debrid API  (add magnet)
    │                                                        └─> AllDebrid API    (add magnet;
@@ -150,7 +152,7 @@ Plex (network_mode: host, /mnt mounted 1:1 with the host) → Movies: /mnt/zurg/
 ```
 
 **Two Decypharr instances, not one.** `docker-compose.yml` runs `decypharr` (port 8282, both
-debrid backends, Radarr's + Lidarr's + Whisparr's download client) and
+debrid backends, Radarr's + Whisparr's download client) and
 `decypharr-alldebrid` (port 8283, AllDebrid only, Sonarr's download client). Decypharr has no
 per-provider category scoping — a single instance's `debrids[]` list is available to every
 category on it — so a fully separate instance, with its own config and mount, is the only way to
@@ -193,7 +195,7 @@ affected item's root folder resolves to `/mnt/zurg/...` instead of `/data/...` b
 mount or container problem.
 
 > **Radarr-specific mount fragility.** Radarr bind-mounts `/mnt/zurg` and `/mnt/decypharr`
-> directly (`/mnt/zurg:/mnt/zurg:rslave`) rather than the parent `/mnt` the way Sonarr/Lidarr/
+> directly (`/mnt/zurg:/mnt/zurg:rslave`) rather than the parent `/mnt` the way Sonarr/
 > Whisparr/Plex do. A direct bind of a FUSE mountpoint doesn't reliably survive that FUSE
 > process being recreated underneath it (a Zurg image update, a resource-limit change, etc.) —
 > only Radarr breaks, with `Socket not connected` inside the container and `accessible: false`
@@ -254,39 +256,38 @@ Every service currently defined in `docker-compose.yml`, in the order they appea
 | 8 | `rclone-alldebrid-anime` | `rclone/rclone:1.74.4` | — | core |
 | 9 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
 | 10 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
-| 11 | `lidarr` | `ghcr.io/hotio/lidarr:release` | 8686 | core |
-| 12 | `bindery` | `ghcr.io/vavallee/bindery:v1.25.0` | 8787 | core |
-| 13 | `whisparr` | `ghcr.io/hotio/whisparr:v3` | 6969 | core |
-| 14 | `calibre-web` | `lscr.io/linuxserver/calibre-web:latest` | 8083 | core |
-| 15 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
-| 16 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | — | core |
-| 17 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
-| 18 | `plex` | `plexinc/pms-docker:1.43.2.10687-563d026ea` | 32400 (host net) | core |
-| 19 | `stash` | `stashapp/stash:v0.31.1` | 9998→9999 | extras |
-| 20 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
-| 21 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
-| 22 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 23 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
-| 24 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
-| 25 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
-| 26 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
-| 27 | `dmm-mysql` | `mysql:8.4` | — | extras |
-| 28 | `dmm-redis` | `redis:7-alpine` | — | extras |
-| 29 | `adminer` | `adminer:5.4.2-standalone` | 8081 | extras |
-| 30 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
-| 31 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 32 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 33 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 34 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
-| 35 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 11 | `bindery` | `ghcr.io/vavallee/bindery:v1.25.0` | 8787 | core |
+| 12 | `whisparr` | `ghcr.io/hotio/whisparr:v3` | 6969 | core |
+| 13 | `calibre-web` | `lscr.io/linuxserver/calibre-web:latest` | 8083 | core |
+| 14 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
+| 15 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | — | core |
+| 16 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
+| 17 | `plex` | `plexinc/pms-docker:1.43.2.10687-563d026ea` | 32400 (host net) | core |
+| 18 | `stash` | `stashapp/stash:v0.31.1` | 9998→9999 | extras |
+| 19 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
+| 20 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
+| 21 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 22 | `glances` | `nicolargo/glances@sha256:5bc5b6...` | 61208 | extras |
+| 23 | `kometa` | `kometateam/kometa@sha256:98a0df...` | — | extras |
+| 24 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | — | extras |
+| 25 | `watchtower` | `nickfedor/watchtower:1.19.0` | — | extras |
+| 26 | `dmm-mysql` | `mysql:8.4` | — | extras |
+| 27 | `dmm-redis` | `redis:7-alpine` | — | extras |
+| 28 | `cloudbeaver` | `dbeaver/cloudbeaver:24.3.0` | 8081→8978 | extras |
+| 29 | `dmm-migrate` | built from DMM git context, `target: build` | — | extras (one-shot) |
+| 30 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 31 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 32 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 33 | `dozzle` | `amir20/dozzle:v10.6.8` | 8080 | extras |
+| 34 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
 
-`docker compose up -d` brings up the 18 core services; `docker compose --profile extras up -d`
+`docker compose up -d` brings up the 17 core services; `docker compose --profile extras up -d`
 adds the other 17. Both commands are safe to run repeatedly — Compose only recreates what's
 actually out of sync with `docker-compose.yml`.
 
 ## The *arr apps
 
-All four follow an identical wiring pattern: Prowlarr pushes indexers down via
+All three follow an identical wiring pattern: Prowlarr pushes indexers down via
 `fullSync`, Decypharr (or `decypharr-alldebrid` for Sonarr) is the priority-1 download client,
 NzbDAV is priority-2 fallback, Unpackerr extracts anything RAR'd, root folder is `./media/<type>`
 mounted at `/data/<type>`, and Control Panel wires up RSS sync / search-missing / unstick /
@@ -296,13 +297,14 @@ manual-import against each one identically.
 |---|---|---|---|
 | Radarr | 7878 | `/data/movies` | Movies |
 | Sonarr | 8989 | `/data/shows` | TV |
-| Lidarr | 8686 | `/data/music` | Music |
 | Whisparr | 6969 | `/data/adult` | Adult (v3/"eros", series-style) |
 
-Radarr/Sonarr/Lidarr/Whisparr were reinstated (Lidarr/Readarr in a prior session, Whisparr in a
-later one) after having been fully removed at various earlier points — see [History](#history)
-for why each was pulled and why each came back. Every one of these apps' queue works identically
-for Control Panel's [Unstick and manual-import](#control-panel) actions.
+Radarr/Sonarr/Whisparr were reinstated (Whisparr in a later session) after having been fully
+removed at various earlier points — see [History](#history) for why each was pulled and why each
+came back. **Lidarr was reinstated alongside Whisparr in v10.2.0, then removed entirely again in
+v10.9.9** — see [History](#history) for that later removal; the `*arr` app family in this stack
+is Radarr/Sonarr/Whisparr only as of that version. Every one of these apps' queue works
+identically for Control Panel's [Unstick and manual-import](#control-panel) actions.
 
 ### Readarr is gone
 
@@ -332,15 +334,15 @@ whisparr:
 hotio's Whisparr `:latest` resolves to v2 ("vorta", the movie-style build modeled on Radarr).
 `:v3` ("eros") is the Sonarr-codebase-based, series/episode-tracking build and the actively
 developed line — this stack deliberately tracks it, matching the rolling-channel-tag convention
-used for Radarr/Sonarr/Lidarr's own `:release` tags (also rolling, not commit-pinned). Whisparr was
+used for Radarr/Sonarr's own `:release` tags (also rolling, not commit-pinned). Whisparr was
 previously removed once (see [History](#history)) over a real bug in the specific build then
 running (`DownloadedEpisodesScan` throwing on missing `path`) plus a root-folder regression — the
 same regression class Radarr/Sonarr have both hit; watch for it here too.
 
 ### Real API examples
 
-Every Servarr-shaped app exposes the same REST API shape (`/api/v3` for Radarr/Sonarr/Whisparr,
-`/api/v1` for Lidarr):
+Every Servarr-shaped app in this stack exposes the same `/api/v3` REST API shape
+(Radarr/Sonarr/Whisparr):
 
 ```bash
 # Radarr's own health/liveness endpoint (what every healthcheck in this stack uses)
@@ -352,9 +354,6 @@ curl -s -H "X-Api-Key: $RADARR_API_KEY" http://192.168.4.105:7878/api/v3/rootfol
 # Trigger an immediate RSS sync on Sonarr
 curl -X POST -H "X-Api-Key: $SONARR_API_KEY" -H "Content-Type: application/json" \
   -d '{"name":"RssSync"}' http://192.168.4.105:8989/api/v3/command
-
-# Lidarr root folder (API v1, not v3)
-curl -s -H "X-Api-Key: $LIDARR_API_KEY" http://192.168.4.105:8686/api/v1/rootfolder | jq .
 
 # Whisparr v3's missing-search command name is MissingMoviesSearch, matching
 # Radarr's naming despite tracking scenes as episodes - not MissingEpisodeSearch
@@ -416,7 +415,7 @@ avoiding Remote Path Mappings entirely — Decypharr's own documented best pract
 
 ```json
 // config/decypharr/config.json (real, sanitized) - one debrid backend on this
-// instance (Real-Debrid), symlink-only, categories for all four *arr apps
+// instance (Real-Debrid), symlink-only, categories for all three *arr apps
 {
   "debrids": [
     {
@@ -438,7 +437,7 @@ avoiding Remote Path Mappings entirely — Decypharr's own documented best pract
     }
   },
   "default_download_action": "symlink",
-  "categories": ["sonarr", "lidarr", "radarr", "whisparr"],
+  "categories": ["sonarr", "radarr", "whisparr"],
   "refresh_interval": "30s",
   "max_downloads": 10
 }
@@ -447,16 +446,17 @@ avoiding Remote Path Mappings entirely — Decypharr's own documented best pract
 `allowed_file_types` in that same file was extended when Lidarr/Readarr/Whisparr were reinstated
 to cover audio (`flac`, `mp3`, `m4a`, `ape`, ...) and remains inclusive of video/subtitle types
 alongside the original movie/TV list — one shared allow-list across every category, not scoped
-per-app. Ebook extensions (`epub`, `mobi`, `azw`, `azw3`, `cbr`, `cbz`, `pdf`, ...) were added for
-Bindery and never removed after its retirement in v10.9.8 — harmless leftovers now that nothing
-reads that category.
+per-app. Audio extensions are now a harmless leftover the same way the ebook extensions below
+are, since Lidarr's own removal in v10.9.9 (see [History](#history)). Ebook extensions (`epub`,
+`mobi`, `azw`, `azw3`, `cbr`, `cbz`, `pdf`, ...) were added for Bindery and never removed after
+its retirement in v10.9.8 — harmless leftovers now that nothing reads that category.
 
 **Restricting a specific app to a specific debrid provider** is a per-arr field, distinct from the
 overall `debrids[]` list:
 
 ```bash
 # Radarr is pinned to Real-Debrid only (added to its arrs[] entry in
-# config/decypharr/config.json) - Sonarr/Lidarr/Whisparr are left on
+# config/decypharr/config.json) - Sonarr/Whisparr are left on
 # source: "auto" with no selected_debrid, so they can still fall through to
 # AllDebrid.
 # config/decypharr/config.json is gitignored (real API keys), so
@@ -543,7 +543,11 @@ directories:
 `anime-shows` (8) < `shows` (10) < `music` (12) < `books` (14) < `adult` (17) < `anime-movies` (19)
 < `movies` (20) — the exact ordering that keeps the catch-all from swallowing everything above it.
 `music`/`books` existed once before, were removed as dead routing when Lidarr/Readarr were pulled
-(see [History](#history)), and are now restored to feed the reinstated apps. `anime-shows`/
+(see [History](#history)), and were restored to feed the reinstated apps. **`music` is once again
+an orphaned group as of v10.9.9** — Lidarr, its only consumer, was removed entirely (see
+[History](#history)) — left in place as a harmless leftover the same way `books` was after
+Bindery's retirement, rather than pulled, in case a music `*arr` returns to this stack.
+`anime-shows`/
 `anime-movies` are new, added for a dedicated Plex Anime library — see
 [Plex](#plex) for the library setup and the fansub-tag regex's real-world accuracy so far.
 
@@ -696,7 +700,7 @@ anything.
 ## Indexing: Prowlarr, Zilean, Byparr
 
 **Prowlarr** (`ghcr.io/hotio/prowlarr:release`, port 9696) holds every configured tracker and
-pushes them down to all five `*arr` apps via `Settings → Apps` `fullSync`. Zilean is registered as
+pushes them down to all three `*arr` apps via `Settings → Apps` `fullSync`. Zilean is registered as
 a `Generic Torznab` indexer:
 
 ```bash
@@ -767,19 +771,23 @@ Byparr uses Camoufox (a Firefox-based anti-detect browser that patches fingerpri
 instead of FlareSolverr's Selenium + undetected-chromedriver, on the bet that its faster patch
 cadence keeps up with Cloudflare's evolving detection signals better.
 
-### Music/Books/XXX indexer coverage — verified live, not assumed
+### Books/XXX indexer coverage — verified live, not assumed
 
 An earlier version of this document claimed Prowlarr had 0 indexers scoped to Lidarr/Readarr/
 Whisparr's categories. That was checked directly against the live Prowlarr Applications API
 (`GET /api/v1/applications`, which lists each `*arr` app's `syncCategories`) and found to be
-wrong: Prowlarr currently syncs **15 indexers to Lidarr** (category 3000-range) and **21 to
-Whisparr** (6000-range). A live end-to-end test confirmed Lidarr's chain actually works — see
-[Lidarr's indexer + download-client chain is verified working end-to-end](#known-gaps-and-limitations).
+wrong: Prowlarr synced **15 indexers to Lidarr** (category 3000-range) and syncs **21 to
+Whisparr** (6000-range). A live end-to-end test confirmed Lidarr's chain actually worked, back
+when Lidarr was still part of this stack — a real Prowlarr → Lidarr → grab → NzbDAV → import pass
+completed in well under a minute with zero manual intervention.
 
-Books indexer coverage is moot now: Bindery (the ebook `*arr` that used to pull indexers from
-Prowlarr via its own non-Servarr-shaped API) was retired in v10.9.8 along with its reader,
-Calibre-Web — see [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired). There is
-no ebook indexing path in this stack currently.
+Both music and books indexer coverage are moot now. **Lidarr was removed entirely in v10.9.9**
+(see [History](#history)) — Prowlarr's Lidarr application-sync entry was deleted via its own API
+along with it, so there's no music indexing path in this stack currently. Bindery (the ebook
+`*arr` that used to pull indexers from Prowlarr via its own non-Servarr-shaped API) was retired in
+v10.9.8 along with its reader, Calibre-Web — see
+[Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired). There is no ebook indexing
+path in this stack currently either.
 
 Whisparr's 21 indexers do sync correctly, but two live search tests against them (`Test Subjects`,
 then the far more mainstream `Brazzers House`) both returned "0 reports downloaded." The cause
@@ -798,9 +806,9 @@ Torznab indexer definitions, not a bug in this stack's configuration. Details an
 the two projects merged) is the day-to-day entry point: search for a movie or show, click
 Request, everything else happens automatically. Connected to Radarr and Sonarr as default servers
 (the `Unlimited` quality profile on both, `/data/movies`/`/data/shows`). Not connected to
-Lidarr/Whisparr — Seerr's own settings API only recognizes `radarr` and `sonarr`; there's
-no music/adult-content data model to connect the other two apps to, confirmed directly
-against its settings schema, not an oversight.
+Whisparr (nor was it ever connected to Lidarr, before its removal in v10.9.9) — Seerr's own
+settings API only recognizes `radarr` and `sonarr`; there's no adult-content data model to
+connect Whisparr to, confirmed directly against its settings schema, not an oversight.
 
 ```bash
 # Seerr's own settings API accepts its stored API key as X-Api-Key - no session
@@ -845,7 +853,6 @@ plex:
   | 1 | TV Shows | show | `tv.plex.agents.series` | `/mnt/zurg/shows`, `/home/bear/Stack/media/shows`, `/mnt/all/magnets` |
   | 3 | Music | artist | `tv.plex.agents.music` | `/mnt/zurg/music`, `/home/bear/Stack/media/music` |
   | 8 | Audiobooks | artist | `tv.plex.agents.none` | `/home/bear/Stack/media/audiobooks` |
-  | 9 | Adult | movie | `tv.plex.agents.movie` | `/mnt/zurg/adult` |
   | 10 | Anime Movies | movie | `tv.plex.agents.movie` | `/mnt/zurg/anime-movies`, `/home/bear/Stack/media/anime-movies` |
   | 11 | Anime Shows | show | `tv.plex.agents.series` | `/mnt/all-anime`, `/mnt/zurg/anime-shows`, `/home/bear/Stack/media/anime-shows` |
 
@@ -923,7 +930,7 @@ curl -s -H "X-Plex-Token: $PLEX_TOKEN" http://192.168.4.105:32400/library/sectio
   grep -oP 'title="[^"]*"'
 ```
 
-### Plex "Audiobooks" and "Adult" libraries
+### Plex "Audiobooks" library, and the retired "Adult" library
 
 **Audiobooks** (library key 8) is a **Music-type** library using the **"Plex Personal Media"
 agent** (`tv.plex.agents.none`, the modern identifier for the legacy `com.plexapp.agents.none`)
@@ -932,20 +939,20 @@ since Plex has no dedicated audiobook library type or agent. It's pointed at
 `/home/bear/Stack/media/audiobooks` — that directory exists on disk but is currently empty, since
 nothing populates it automatically (no `*arr` app manages audiobooks specifically).
 
-**Adult** (library key 9) is a plain **Movie-type** library, originally pointed only at
-`/mnt/zurg/adult` (matching Zurg's `adult` content-routing group). **Real bug, found and fixed
-in v10.5.0**: that single location was always empty, and Whisparr's actual (and only) root
-folder — the local writable mount `/mnt/zurg` never receives writes through — was never added
-as a second `Location`, so every file Whisparr had grabbed and imported was invisible in Plex.
-Now has both `/mnt/zurg/adult` and `/home/bear/Stack/media/adult`, matching every other content
-type's dual-path pattern (see [Architecture](#architecture)).
-
-Both were verified live, not just configured:
-
 ```bash
 curl -s -H "X-Plex-Token: $PLEX_TOKEN" http://192.168.4.105:32400/library/sections | \
-  grep -E 'title="(Audiobooks|Adult)"'
+  grep -E 'title="Audiobooks"'
 ```
+
+**Plex's "Adult" library was removed entirely in v10.9.9**, via the Plex API (`DELETE
+/library/sections/{key}`) — not just emptied. It was originally a plain **Movie-type** library
+pointed at `/mnt/zurg/adult` and (after a real bug fixed in v10.5.0) also
+`/home/bear/Stack/media/adult`. Stash now fully covers this content type's cataloging
+(performers/studios/tags/StashDB identification — see [Stash](#stash-adult-library-cataloging)),
+so a second, metadata-poor Plex library browsing the exact same files stopped earning its keep.
+**Files under `./media/adult` were not touched** — only the Plex library entry was dropped.
+Whisparr still manages the underlying files and root folder exactly as before; Stash is now the
+sole means of browsing/cataloging this content, Plex no longer has any view into it at all.
 
 ## Bindery and Calibre-Web: retired
 
@@ -971,10 +978,12 @@ dedicated reader again, same as before.
 
 ## Stash: adult library cataloging
 
-Plex handles `./media/adult` (Whisparr's own root folder) as an ordinary video library — no
-performer/studio/tag metadata, no scene identification. **[Stash](https://github.com/stashapp/stash)**
-(`stashapp/stash:v0.31.1`) fills that gap by scraping and cataloging the same library Plex
-already streams from — it's an enrichment layer alongside Plex, not a replacement for it:
+**[Stash](https://github.com/stashapp/stash)** (`stashapp/stash:v0.31.1`) catalogs `./media/adult`
+(Whisparr's own root folder) with real performer/studio/tag metadata and scene identification —
+Plex's own "Adult" library was removed entirely in v10.9.9 (see [Plex](#plex)) once Stash's
+coverage made a second, metadata-poor library redundant, so as of that version **Stash is the
+sole means of browsing/cataloging this content**, not an enrichment layer alongside Plex the way
+it started out as:
 
 ```yaml
 # docker-compose.yml
@@ -1122,11 +1131,12 @@ untouched by every sync. See [History](#history) for the full Recyclarr story, i
 real Postgres/Recyclarr major-version migrations the original sync took along the way, and the
 v10.5.0 entry for why it came back scoped the way it did.
 
-Lidarr carries its own additional custom format, **"Blocked Uploader (88 tag)"** — a regex
+Lidarr used to carry its own additional custom format, **"Blocked Uploader (88 tag)"** — a regex
 (`(?<!\d)88(?:cube)?\s*$`) rejecting a specific low-trust uploader's release-title tag
 (`vtwin88cube` and similar), added after a real corrupted-archive investigation traced a run of
 `rardecode: bad file checksum` failures to that uploader's catalog specifically, not to anything
-in this stack's own download/extraction chain.
+in this stack's own download/extraction chain. Moot as of v10.9.9 — Lidarr was removed entirely
+(see [History](#history)), taking its own quality profile and custom formats with it.
 
 ## DebridMediaManager (self-hosted)
 
@@ -1201,14 +1211,15 @@ split: Cleanuparr owns strikes (3-strike failed-import detection), a community m
 checked hourly, and stalled-download cleanup; NeutArr owns missing-content/quality-upgrade
 hunting exclusively — Cleanuparr's own built-in proactive search stays disabled so the two apps
 don't redundantly hunt the same libraries against the same indexers. NeutArr is wired to the
-four Servarr-shaped `*arr` apps (Sonarr, Radarr, Lidarr, Whisparr — configured as its "Whisparr V3"
+three Servarr-shaped `*arr` apps (Sonarr, Radarr, Whisparr — configured as its "Whisparr V3"
 app type, not V2, matching this stack's `:v3` "eros" pin), each instance's URL/API key set
-directly in `config/neutarr/{sonarr,radarr,lidarr,eros}.json` (a straight host bind
+directly in `config/neutarr/{sonarr,radarr,eros}.json` (a straight host bind
 mount at `/config`, editable without going through NeutArr's own UI — its own "Apps" settings
 page hits the same files). `readarr.json` is still present in that directory but
 `"enabled": false` — a leftover from before Readarr was replaced by Bindery (itself since retired,
-see [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)); there's no ebook app of
-any kind to wire up here today.
+see [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)); `lidarr.json` was
+deleted along with Lidarr's own state/config in v10.9.9 (see [History](#history)); there's no
+ebook app of any kind, and no music app of any kind, to wire up here today.
 
 > **NeutArr, not Huntarr.** NeutArr is a hardened fork tracing through `elfhosted/newtarr`'s fork
 > of Huntarr v6.6.3 — the last clean release before Huntarr's own maintainer suppressed reports of
@@ -1231,19 +1242,23 @@ querying `config/cleanuparr/cleanuparr.db` directly (`SELECT * FROM arr_instance
 Cleanuparr's REST API isn't straightforwardly discoverable (same limitation noted in [Known
 gaps](#known-gaps-and-limitations) re: its stale Readarr reference). Fixed by adding both through
 Cleanuparr's own **Settings → Lidarr/Whisparr → Add Instance** UI — confirmed connection-tested and
-persisted. All four Servarr-shaped apps are now covered by Sonarr/Radarr/Lidarr/Whisparr across
-Cleanuparr, NeutArr, and Unpackerr consistently; Stash remains correctly excluded from all three
-(see its own section above) since it isn't Servarr-shaped.
+persisted at the time. All four Servarr-shaped apps were covered by Sonarr/Radarr/Lidarr/Whisparr
+across Cleanuparr, NeutArr, and Unpackerr consistently at that point; as of v10.9.9, Lidarr is
+gone entirely (see [History](#history)) and the three remaining apps (Sonarr/Radarr/Whisparr) are
+what's covered. **Known residual gap from the Lidarr removal**: Cleanuparr's own SQLite-backed
+`arr_instances` table still has the stale Lidarr instance row from this fix — it's a live
+WAL-mode DB, too risky to hand-edit directly, so it wasn't touched; remove it via Cleanuparr's own
+UI when convenient. Stash remains correctly excluded from all three (see its own section above)
+since it isn't Servarr-shaped.
 
-**Unpackerr** (`golift/unpackerr@sha256:4ec141...`) auto-extracts RAR'd releases across the four
+**Unpackerr** (`golift/unpackerr@sha256:4ec141...`) auto-extracts RAR'd releases across the three
 Servarr-shaped `*arr` apps:
 
 ```yaml
 UN_RADARR_0_URL: http://radarr:7878
 UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
-UN_LIDARR_0_URL: http://lidarr:8686
-UN_LIDARR_0_API_KEY: ${LIDARR_API_KEY}
-# ...same pattern for sonarr/whisparr.
+# ...same pattern for sonarr/whisparr. The UN_LIDARR_0_* pair was removed in v10.9.9
+# along with Lidarr itself (see History).
 ```
 
 Needs each app's actual `/app/downloads/...` path mounted, not just `/mnt` — the archives it needs
@@ -1266,7 +1281,7 @@ Digest-pinned images (Seerr, Glances, Kometa, Unpackerr, Byparr) and exact-versi
 this — a digest or exact version tag is immutable, so Watchtower never finds anything new to pull
 for those. See [Image pinning policy](#image-pinning-policy).
 
-## Monitoring extras: Tautulli, Glances, Dozzle, Adminer
+## Monitoring extras: Tautulli, Glances, Dozzle, CloudBeaver
 
 - **Tautulli** (`ghcr.io/hotio/tautulli:release`, port 8182) — Plex watch-history/stats dashboard.
 - **Glances** (`nicolargo/glances@sha256:5bc5b6...`, port 61208) — real *host* CPU/memory/
@@ -1275,9 +1290,13 @@ for those. See [Image pinning policy](#image-pinning-policy).
 - **Dozzle** (`amir20/dozzle:v10.6.8`, port 8080) — real-time log viewer for every container, the
   one thing Control Panel's grid can't show (state/health/CPU/mem, not log content). Read-only
   `docker.sock` mount.
-- **Adminer** (`adminer:5.4.2-standalone`, port 8081) — single-file PHP database browser in front
-  of `dmm-mysql`. Chosen over phpMyAdmin for a smaller attack surface; previously the only way to
-  inspect DMM's data was `docker exec -it dmm-mysql mysql ...`.
+- **CloudBeaver** (`dbeaver/cloudbeaver:24.3.0`, port 8081→8978) — multi-user database browser in
+  front of both `zilean-postgres` and `dmm-mysql` from one tool, with real auth. **Replaced
+  Adminer in v10.9.9** — Adminer covered only `dmm-mysql` and had no auth at all; CloudBeaver
+  covers both databases and has a real admin-account login. Deployed live and confirmed healthy
+  on :8081. `./config/cloudbeaver:/opt/cloudbeaver/workspace`, `mem_limit: 768m`.
+  **First-run setup (create the admin account, add the Postgres and MySQL connections) is a
+  manual step done once in the browser** — not automated by the compose change itself.
 
 ## Maintainerr: Plex library lifecycle
 
@@ -1321,9 +1340,10 @@ curl -X POST -H "Content-Type: application/json" http://localhost:6246/api/setti
   -d "{\"serverName\":\"Radarr\",\"url\":\"http://radarr:7878\",\"apiKey\":\"$RADARR_API_KEY\"}"
 ```
 
-**Lidarr/Whisparr aren't supported by Maintainerr at all** — its own settings controller
-only exposes `/radarr` and `/sonarr` connection endpoints, nothing for the other two `*arr`
-apps. Not a gap in this stack's setup; a real limitation of what Maintainerr itself connects to.
+**Whisparr isn't supported by Maintainerr at all** (neither was Lidarr, before its removal in
+v10.9.9) — its own settings controller only exposes `/radarr` and `/sonarr` connection endpoints,
+nothing for any other `*arr` app. Not a gap in this stack's setup; a real limitation of what
+Maintainerr itself connects to.
 
 **Two starter rules were imported from Maintainerr's community rule library** (the highest-karma
 entries for a Seerr-based setup, 980/980) — one per Movies (library 4) and TV Shows (library 1):
@@ -1350,13 +1370,14 @@ pairs) be removed entirely — see [History](#history).
 
 ```python
 # control-panel/app.py - the ARR_APPS dict this whole panel is built around.
+# Lidarr's entry (and its v1-API special-casing) was deleted in v10.9.9 along
+# with Lidarr itself - see History.
 ARR_APPS = {
     "radarr":  {"url": "http://radarr:7878",   "api": "v3", "search_command": "MissingMoviesSearch"},
     "sonarr":  {"url": "http://sonarr:8989",   "api": "v3", "search_command": "MissingEpisodeSearch"},
-    "lidarr":  {"url": "http://lidarr:8686",   "api": "v1", "search_command": "MissingAlbumSearch"},
     "whisparr":{"url": "http://whisparr:6969", "api": "v3", "search_command": "MissingMoviesSearch"},
 }
-QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "whisparr")
+QUEUE_ARR_APPS = ("radarr", "sonarr", "whisparr")
 ```
 
 | Endpoint | Method | What it does |
@@ -1384,7 +1405,7 @@ QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "whisparr")
 
 ### Live API hit counter: a dashboard flourish, not a metrics system
 
-Every container card for an app Control Panel actually talks to over HTTP (the four Servarr-shaped
+Every container card for an app Control Panel actually talks to over HTTP (the three Servarr-shaped
 `*arr` apps, Plex, Zilean, Decypharr, Glances, NzbDAV) shows a live "API" row - a small dot and a
 running count of outbound calls this panel has made to that app since it last started, ticking up
 and flashing green on real increments. Purely cosmetic (in-memory `Counter`, resets on restart,
@@ -1501,11 +1522,12 @@ again, since a container restart alone can't clear a stale entry the host itself
 (which now includes `nzbdav-rclone`) starts, so `nzbdav-rclone`'s mount always finds `nzbdav` ready
 instead of racing it.
 
-**Known gap, pre-existing:** `MOUNT_DEPENDENTS` only ever contains `radarr`, despite Lidarr and
-Whisparr binding the same three FUSE subpaths directly (`/mnt/zurg`, `/mnt/decypharr`,
+**Known gap, pre-existing:** `MOUNT_DEPENDENTS` only ever contains `radarr`, despite Whisparr
+binding the same three FUSE subpaths directly (`/mnt/zurg`, `/mnt/decypharr`,
 `/mnt/nzbdav` — not a blanket `/mnt` bind) and therefore needing the same restart-ordering
 protection Radarr gets. Not introduced or verified safe by any pass so far — flagged here since
-it keeps getting noticed, not fixed.
+it keeps getting noticed, not fixed. (Lidarr was in the same boat before its removal in v10.9.9;
+moot now.)
 
 ### Security: CSRF/Origin-Host validation, not auth
 
@@ -1542,7 +1564,7 @@ end
 
 ```fish
 stack-status                                    # live health of every container
-stack-arr lidarr rss-sync                       # radarr/sonarr/lidarr/whisparr; or search-missing / unstick
+stack-arr whisparr rss-sync                     # radarr/sonarr/whisparr; or search-missing / unstick
 stack-arr-import-candidates whisparr            # list files ready to manually import
 stack-arr-import whisparr 0                     # import candidate #0 from the list above
 stack-kometa-run Movies "TV Shows"              # scoped run; no args = every library
@@ -1568,14 +1590,15 @@ Added "Dune Part Two" to Decypharr - will appear once Real-Debrid/AllDebrid fini
 ```
 
 `stack-arr`, `stack-arr-import-candidates`, and `stack-arr-import` accept
-`radarr`/`sonarr`/`lidarr`/`whisparr` as their app argument, matching Control Panel's own
-`/api/arr/{app}/...` endpoints and `QUEUE_ARR_APPS` set exactly:
+`radarr`/`sonarr`/`whisparr` as their app argument, matching Control Panel's own
+`/api/arr/{app}/...` endpoints and `QUEUE_ARR_APPS` set exactly (the `lidarr` case was removed
+along with Lidarr itself in v10.9.9 — see [History](#history)):
 
 ```fish
 # ~/.dotfiles/.config/fish/functions/stack-arr.fish
 function stack-arr --description 'Trigger an *arr app maintenance action'
-    if not contains -- $argv[1] radarr sonarr lidarr whisparr
-        echo "Unknown app '$argv[1]' - use radarr, sonarr, lidarr, or whisparr." >&2
+    if not contains -- $argv[1] radarr sonarr whisparr
+        echo "Unknown app '$argv[1]' - use radarr, sonarr, or whisparr." >&2
         return 1
     end
     ...
@@ -1710,14 +1733,14 @@ One webhook (`DISCORD_WEBHOOK_URL` in `.env`) backs several independent alert pa
 - **Plex removals** — `scripts/plex-library-report.py`, every 30 minutes (Plex has no "item
   removed" webhook event, so this is still a poll-and-diff rather than instant).
 - **`*arr` backups** — one embed per day covering both the native-backup trigger above.
-- **Grab/import/upgrade/health events from the four Servarr-shaped `*arr` apps** — configured as
+- **Grab/import/upgrade/health events from the three Servarr-shaped `*arr` apps** — configured as
   each app's own native **Discord** notification connection (not a script), pointed at the same
-  `DISCORD_WEBHOOK_URL`. Event selection differs slightly per app's own naming
-  (Radarr/Sonarr/Whisparr: `onGrab`/`onDownload`/`onUpgrade`; Lidarr:
-  `onGrab`/`onReleaseImport`/`onUpgrade`, plus `onDownloadFailure`/`onImportFailure` since it
-  doesn't expose a Sonarr/Radarr-style "manual interaction required" event), but all four also fire
-  on `onHealthIssue` and `onApplicationUpdate`. Verified live via each app's own
-  `POST /api/v{1,3}/notification/test` — a real message reaches the channel.
+  `DISCORD_WEBHOOK_URL`. Event selection is `onGrab`/`onDownload`/`onUpgrade` per app's own naming
+  (Radarr/Sonarr/Whisparr all share this shape), and all three also fire on `onHealthIssue` and
+  `onApplicationUpdate`. Verified live via each app's own `POST /api/v3/notification/test` — a
+  real message reaches the channel. (Lidarr had a slightly different event set —
+  `onGrab`/`onReleaseImport`/`onUpgrade` plus `onDownloadFailure`/`onImportFailure` — before its
+  removal in v10.9.9; moot now.)
 
   ```bash
   curl -H "X-Api-Key: $RADARR_API_KEY" http://localhost:7878/api/v3/notification/3 | \
@@ -1735,7 +1758,7 @@ One webhook (`DISCORD_WEBHOOK_URL` in `.env`) backs several independent alert pa
 Every image is pinned, using whichever approach doesn't change what's actually running:
 
 - **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the hotio images (Prowlarr, Radarr,
-  Sonarr, Lidarr, Tautulli) — hotio's whole model is rolling channels identified by git-hash, not
+  Sonarr, Tautulli) — hotio's whole model is rolling channels identified by git-hash, not
   semver, so this is as close to "pin to the stable channel, explicitly" as that upstream
   supports. Whisparr is pinned to `:v3` specifically (a major-version channel, not just `:release`)
   for the reason described in [The *arr apps](#the-arr-apps).
@@ -1777,7 +1800,7 @@ defensive insurance otherwise:
 | `dmm-mysql` | 2GB | 2 | Holds low-millions-of-rows IMDB index with `@@fulltext` indexes to maintain |
 | `debridmediamanager` | 1.5GB | 2 | Runs from the `build` stage (full devDependencies), not the leaner deploy stage |
 
-Everything else (Seerr, all four `*arr` apps, NzbDAV, Adminer, Dozzle, Watchtower, etc.) carries a
+Everything else (Seerr, all three `*arr` apps, NzbDAV, CloudBeaver, Dozzle, Watchtower, etc.) carries a
 smaller generous ceiling as defensive insurance rather than from observed pressure — see
 `docker-compose.yml` directly for exact current values, which change more often than this document
 is updated.
@@ -1886,13 +1909,15 @@ in the wizard with zero code changes anywhere else.
 FIELD_RE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
 SECTION_RE = re.compile(r"^# ---- (.+?) ----$")
 POST_BOOT_KEYS = {
-    "RADARR_API_KEY", "SONARR_API_KEY", "LIDARR_API_KEY",
+    "RADARR_API_KEY", "SONARR_API_KEY",
     "WHISPARR_API_KEY", "PLEX_TOKEN",
 }
 AUTO_GENERATE_KEYS = {"ZILEAN_POSTGRES_PASSWORD", "ZILEAN_API_KEY", "BINDERY_API_KEY"}
 ```
 
-Five fields genuinely can't be collected before first boot — each Servarr-shaped `*arr` app
+`LIDARR_API_KEY` was dropped from this set (and from `.env`/`.env.example` entirely) in v10.9.9
+along with Lidarr itself — see [History](#history). Four fields genuinely can't be collected
+before first boot — each Servarr-shaped `*arr` app
 generates its own API key on first start, and `PLEX_TOKEN` needs a running Plex with at least one
 library item. These render in a highlighted "⚠ Fill in after first boot" section and default to
 `changeme`; re-running `--setup` loads the real `.env` as defaults, so a second pass only means
@@ -1910,10 +1935,6 @@ Documented honestly rather than swept under the rug:
   tracks close to 300,000 episode records, and the endpoint's real-world latency against that full
   scale hasn't been load-tested. It also has zero frontend wiring in Control Panel's UI — curl/API
   access only. See [The *arr apps](#the-arr-apps).
-- **Lidarr's indexer + download-client chain is verified working end-to-end**, not just configured:
-  a live test (add artist → `MissingAlbumSearch` → grab → NzbDAV → import) completed in well under
-  a minute with zero manual intervention. Lidarr has 15 synced Prowlarr indexers, Whisparr has 21
-  — the earlier assumption that these apps had 0 indexers was wrong.
 - **Whisparr's search chain runs correctly but finds nothing for most titles** — confirmed via two
   live tests (`Test Subjects` and the much more mainstream `Brazzers House`), both completing with
   "0 reports downloaded" across all 21 synced indexers. Root cause identified: Prowlarr's own raw
@@ -1962,6 +1983,44 @@ Documented honestly rather than swept under the rug:
   cause was never identified. As a blast-radius mitigation (not a fix), both apps' native Recycle
   Bin is now enabled (`/data/movies/.recyclebin`, `/data/shows/.recyclebin`, 7-day cleanup), so a
   repeat lands recoverable content in a real folder instead of disappearing outright.
+
+## Proposed: Monitoring (Prometheus + Grafana)
+
+**Not implemented — this is a proposal only, researched and phased out but not yet built.**
+Nothing below exists in `docker-compose.yml` today; treat this section as a plan to execute
+later, not a description of current architecture.
+
+**Exporters:**
+
+- **cAdvisor** — container-level CPU/mem, directly addresses this stack's known gap of several
+  services lacking real `mem_limit`/`cpus` (see [Resource limits](#resource-limits)).
+- **node-exporter** — host-level CPU/mem/disk/uptime, alongside (not a replacement for) Glances.
+- **postgres_exporter** — scoped to `zilean-postgres`.
+- **mysqld_exporter** — scoped to `dmm-mysql`.
+- **exportarr** (stretch goal) — per-`*arr`-app metrics (Radarr/Sonarr/Whisparr).
+- **A custom textfile-collector script** (stretch goal) — no exporter natively detects FUSE mount
+  staleness, so this would need a purpose-built script polling `zurg`/`decypharr`/`nzbdav`'s mount
+  health and writing Prometheus textfile-collector output. This directly targets the stack's
+  documented [mount-cascade-restart failure class](#whole-stack-restart-mount-order-aware).
+
+**Dashboards** (Grafana community IDs): 1860 (Node Exporter Full), 893/14282 (cAdvisor), 9628
+(Postgres), 7362 (MySQL).
+
+**Retention:** 15–30 days local Prometheus TSDB retention — no remote-write or long-term store
+needed at this scale.
+
+**Resource footprint estimate:** roughly 400–700MB RAM, well under 1 CPU core steady-state,
+5–8GB disk growth for the retention window.
+
+**Phased rollout:**
+
+1. `prometheus` + `grafana` + `cadvisor` + `node-exporter` scaffolding, each with
+   `mem_limit`/`cpus` set per this repo's convention (see [Resource limits](#resource-limits)).
+2. DB exporters (`postgres_exporter`, `mysqld_exporter`), each with a dedicated read-only DB user
+   rather than reusing an app's existing credentials.
+3. The FUSE-staleness textfile collector.
+4. Stretch goals: Control Panel's own `/metrics` via `prometheus-fastapi-instrumentator`,
+   `exportarr`, a Tautulli-to-Prometheus bridge for Plex watch stats.
 
 ## History
 
@@ -2542,7 +2601,7 @@ Cleanuparr's, not the Bearer-token protocol limitation it was assumed to be.**
   confirmed via a fresh `GET` against each app's own API afterward, not just the script's own exit
   code.
 
-**v10.9.8 (current) — Bindery and Calibre-Web retired outright; Decypharr's admin-auth gap
+**v10.9.8 — Bindery and Calibre-Web retired outright; Decypharr's admin-auth gap
 generalized past Bindery's own fix; Kometa's silent auto-run-on-restart stopped; NzbDAV's
 Repairs tab wired to see Radarr/Sonarr's root folders.**
 
@@ -2580,6 +2639,38 @@ Repairs tab wired to see Radarr/Sonarr's root folders.**
   those apps already report as their own root folders. Only Radarr and Sonarr are wired into the
   Repairs tab as of this version, so only their root folders are mounted; repairs happen via the
   Radarr/Sonarr API (delete+research), not by touching symlinks directly, so this is read-only.
+
+**v10.9.9 (current) — Lidarr removed entirely; Adminer replaced with CloudBeaver; Plex's
+"Adult" library removed in favor of Stash; a Prometheus + Grafana monitoring stack researched
+and proposed (not yet implemented).**
+
+- **Lidarr removed entirely** — `docker-compose.yml` service block gone, `config/lidarr`
+  deleted, `control-panel/app.py`'s `ARR_APPS`/`QUEUE_ARR_APPS`/`CONTAINER_LABELS`/
+  `LOG_LEVEL_APPS`/`ARR_LOG_CONTAINERS` all updated, `LIDARR_API_KEY` gone from
+  `.env`/`.env.example`, Prowlarr's Lidarr application-sync entry deleted via its own API,
+  NeutArr's Lidarr state/config files deleted. **Known residual gap**: Cleanuparr's own SQLite
+  DB still has a stale Lidarr instance row that wasn't touched — it's a live WAL-mode DB, too
+  risky to hand-edit directly; remove it via Cleanuparr's own UI later. The `*arr` app family in
+  this stack is now Radarr/Sonarr/Whisparr only. See [The *arr apps](#the-arr-apps) and the many
+  places throughout this document that referenced Lidarr as a current app.
+- **Adminer replaced with CloudBeaver** — `adminer:5.4.2-standalone` (port 8081→8080) swapped for
+  `dbeaver/cloudbeaver:24.3.0` (port 8081→8978, `./config/cloudbeaver:/opt/cloudbeaver/workspace`,
+  `mem_limit: 768m`). Reason: CloudBeaver covers both `zilean-postgres` and `dmm-mysql` from one
+  tool with real multi-user auth, vs. Adminer's none. Deployed live, confirmed healthy and
+  responding on :8081. First-run setup (create admin account, add the two DB connections) is a
+  manual browser step still owed. See
+  [Monitoring extras](#monitoring-extras-tautulli-glances-dozzle-cloudbeaver).
+- **Plex's "Adult" library removed** via the Plex API — files under `./media/adult` were not
+  touched, only the Plex library entry. Justification: Stash now fully covers this content
+  type's cataloging, so a second, metadata-poor Plex library browsing the same files stopped
+  earning its keep. Whisparr still manages the underlying files/root folder; only the Plex-side
+  library was dropped. **This changes an architectural statement that used to be true**: Stash
+  used to be "an enrichment layer alongside Plex, not a replacement for it" — as of this version
+  it's the sole means of browsing/cataloging this content, since Plex no longer has an Adult
+  library at all. See [Plex](#plex) and [Stash](#stash-adult-library-cataloging).
+- **A Grafana + Prometheus monitoring stack was researched and a concrete phased plan produced,
+  but not implemented in code** — added as a clearly-marked proposal, not a current-architecture
+  claim. See [Proposed: Monitoring (Prometheus + Grafana)](#proposed-monitoring-prometheus--grafana).
 
 ---
 

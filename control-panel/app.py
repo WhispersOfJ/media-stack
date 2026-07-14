@@ -6,7 +6,7 @@ grab-to-Decypharr. Supersedes the old Homepage+Control Panel split - see
 README.md's Control Panel section.
 
 Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
-HTTP API (Plex, Radarr, Sonarr, Lidarr, Whisparr, Zilean), Glances
+HTTP API (Plex, Radarr, Sonarr, Whisparr, Zilean), Glances
 (host stats), and zilean-postgres directly (hash count - Zilean has no stats
 API of its own). No auth - LAN-only, matches every other service in this
 stack (see README.md's "Security" section).
@@ -82,29 +82,18 @@ ARR_APPS = {
         "label": "Sonarr",
         "import_events": ("downloadFolderImported",),
     },
-    # Lidarr/Readarr/Whisparr reinstated in 10.2.0 (originally removed in
-    # 7.0.0/4.0.0) - api version and search_command name both differ per
-    # app, confirmed live against each app's own /command endpoint rather
-    # than assumed (Whisparr v3's is "MissingMoviesSearch", matching Radarr
-    # naming despite tracking scenes, not "MissingEpisodeSearch" like
-    # Sonarr would suggest from its Sonarr-codebase heritage). Same story
-    # for import_events below - confirmed live via each app's own /history
-    # that Lidarr names its per-file-import event "trackFileImported", not
-    # "downloadFolderImported" like the Radarr-lineage apps.
+    # Whisparr reinstated in 10.2.0 (originally removed in 4.0.0) - api
+    # version and search_command name both differ per app, confirmed live
+    # against each app's own /command endpoint rather than assumed
+    # (Whisparr v3's is "MissingMoviesSearch", matching Radarr naming
+    # despite tracking scenes, not "MissingEpisodeSearch" like Sonarr
+    # would suggest from its Sonarr-codebase heritage).
     #
     # Readarr itself was replaced by Bindery in v10.7.0 (upstream Readarr's
     # sole metadata source died permanently, see docker-compose.yml's
     # comment on the bindery service) - no entry here since Bindery's API
     # is a clean-room design, not Servarr-shaped, so none of this generic
     # arr_queue/arr_command/history-rate-calc machinery applies to it.
-    "lidarr": {
-        "url": "http://lidarr:8686",
-        "api": "v1",
-        "key": os.environ["LIDARR_API_KEY"],
-        "search_command": "MissingAlbumSearch",
-        "label": "Lidarr",
-        "import_events": ("trackFileImported",),
-    },
     "whisparr": {
         "url": "http://whisparr:6969",
         "api": "v3",
@@ -120,7 +109,7 @@ ARR_APPS = {
 # same reasoning 7.0.0 used when this was just Radarr/Sonarr. Bindery
 # (Readarr's v10.7.0 replacement) isn't listed - its API is a clean-room
 # design, not Servarr-shaped, so this generic queue machinery doesn't apply.
-QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "whisparr")
+QUEUE_ARR_APPS = ("radarr", "sonarr", "whisparr")
 
 # Display-only labels/notes for the container grid - NOT an allow-list.
 # Which containers actually exist, and which actions are valid on them, is
@@ -133,7 +122,6 @@ QUEUE_ARR_APPS = ("radarr", "sonarr", "lidarr", "whisparr")
 CONTAINER_LABELS = {
     "radarr": ("Radarr", "also clears the stale Zurg mount issue (v4.0.1)"),
     "sonarr": ("Sonarr", None),
-    "lidarr": ("Lidarr", "music"),
     "whisparr": ("Whisparr", "adult, v3"),
     "stash": ("Stash", "performer/studio/tag cataloging for the adult library"),
     "prowlarr": ("Prowlarr", None),
@@ -953,9 +941,8 @@ def arr_manual_import_candidates(app_name: str):
             # whole list - the others are still worth showing.
             continue
         for f in r.json():
-            match = f.get("movie") or f.get("series") or f.get("artist") or f.get("author")
+            match = f.get("movie") or f.get("series") or f.get("author")
             episodes = f.get("episodes") or []
-            tracks = f.get("tracks") or []
             file_payload = {
                 "path": f.get("path"),
                 "folderName": f.get("folderName"),
@@ -969,10 +956,6 @@ def arr_manual_import_candidates(app_name: str):
             elif app_name == "sonarr":
                 file_payload["seriesId"] = (match or {}).get("id") or (episodes[0]["seriesId"] if episodes else None)
                 file_payload["episodeIds"] = [e["id"] for e in episodes]
-            elif app_name == "lidarr":
-                file_payload["artistId"] = match.get("id") if match else None
-                file_payload["albumId"] = f.get("album", {}).get("id")
-                file_payload["trackIds"] = [t["id"] for t in tracks]
             episode_label = None
             if episodes:
                 e = episodes[0]
@@ -1491,7 +1474,7 @@ def container_start(name: str):
 # stack outage where /mnt/nzbdav was left stale at the host level - see
 # README's mount-cascade note). MOUNT_PREREQS restarts first and is waited
 # on before MOUNT_PROVIDERS, so nzbdav-rclone always finds nzbdav ready.
-# NOTE: Lidarr/Whisparr bind the same three subpaths directly too and are
+# NOTE: Whisparr binds the same three subpaths directly too and is
 # conspicuously absent from this set - a pre-existing gap, not something
 # this pass introduced or has verified is actually safe.
 MOUNT_PREREQS = {"nzbdav"}
@@ -1605,7 +1588,6 @@ def resource_check():
 LOG_LEVEL_APPS = {
     "radarr": ARR_APPS["radarr"],
     "sonarr": ARR_APPS["sonarr"],
-    "lidarr": ARR_APPS["lidarr"],
     "whisparr": ARR_APPS["whisparr"],
     "prowlarr": {"url": "http://prowlarr:9696", "api": "v1", "key": PROWLARR_API_KEY, "label": "Prowlarr"},
 }
@@ -2074,7 +2056,7 @@ def stash_identify():
         fail(f"Could not reach Stash: {e}")
 
 
-ARR_LOG_CONTAINERS = {"radarr", "sonarr", "lidarr", "whisparr", "prowlarr"}
+ARR_LOG_CONTAINERS = {"radarr", "sonarr", "whisparr", "prowlarr"}
 
 
 @app.get("/api/arr/{app_name}/logs")

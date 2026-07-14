@@ -31,7 +31,7 @@ from urllib.parse import parse_qs
 # needs a running Plex with at least one library item, not just a running
 # container - left unset it silently breaks every Control Panel Plex action.
 POST_BOOT_KEYS = {
-    "RADARR_API_KEY", "SONARR_API_KEY", "LIDARR_API_KEY",
+    "RADARR_API_KEY", "SONARR_API_KEY",
     "WHISPARR_API_KEY", "PLEX_TOKEN",
 }
 

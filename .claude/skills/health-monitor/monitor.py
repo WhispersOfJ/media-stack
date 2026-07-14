@@ -22,7 +22,6 @@ from pathlib import Path
 HTTP_SERVICES = {
     "radarr": (7878, "/ping"),
     "sonarr": (8989, "/ping"),
-    "lidarr": (8686, "/ping"),
     "whisparr": (6969, "/ping"),
     "prowlarr": (9696, "/ping"),
     "seerr": (5055, "/api/v1/status"),
