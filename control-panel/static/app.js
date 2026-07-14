@@ -57,14 +57,9 @@ const PRIMARY_ACTIONS = [
   },
 ];
 
-// Bindery (replaced Readarr in v10.7.0) isn't listed here - its API isn't
-// Servarr-shaped, so none of the RSS-sync/search-missing/unstick/manual-
-// import machinery this section wires up against /api/arr/{app}/... applies
-// to it. It's still reachable via Quick Links below.
 const ARR_APPS = [
   { id: "radarr", label: "Radarr", port: 7878, queue: true },
   { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
-  { id: "lidarr", label: "Lidarr", port: 8686, queue: true },
   { id: "whisparr", label: "Whisparr", port: 6969, queue: true },
 ];
 
@@ -81,12 +76,9 @@ const QUICK_LINKS = [
   { id: "zurg", label: "Zurg", port: 9999 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "lidarr", label: "Lidarr", port: 8686 },
-  { id: "bindery", label: "Bindery", port: 8787 },
   { id: "whisparr", label: "Whisparr", port: 6969 },
   { id: "stash", label: "Stash", port: 9998 },
   { id: "nzbdav", label: "NzbDAV", port: 3001 },
-  { id: "calibre-web", label: "Calibre-Web", port: 8083 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "byparr", label: "Byparr", port: 8191 },
   { id: "tautulli", label: "Tautulli", port: 8182 },

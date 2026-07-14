@@ -755,13 +755,12 @@ services:
     # Official image, not a LinuxServer-style fork - a PUID/PGID-forcing
     # image would recursively chown the ~33GB library to PUID/PGID on first
     # boot (same reason the Kometa entry below avoids the LinuxServer fork).
-    # The native install ran the Plex Pass (beta) channel at 1.43.3.10793;
-    # the official image only publishes the public channel, whose newest
-    # tag (1.43.2.10687) is slightly behind that. Deliberate, not an
-    # oversight - public channel on the official image is the more
-    # conservative choice for a containerized production library anyway.
+    # public channel, not Plex Pass (beta) - the official image only
+    # publishes the public channel. Deliberate, not an oversight - public
+    # channel on the official image is the more conservative choice for a
+    # containerized production library anyway.
     # Bump this tag deliberately, not via Watchtower (see below).
-    image: plexinc/pms-docker:1.43.2.10687-563d026ea
+    image: plexinc/pms-docker:1.43.3.10828-00f62d37d
     container_name: plex
     # Plex's own guidance for Docker: GDM auto-discovery, DLNA, and
     # remote-access NAT-PMP/UPnP negotiation are all unreliable on bridge
