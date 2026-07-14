@@ -1,11 +1,11 @@
 ---
 name: arr-config-sync
-description: Backup, restore, and diff configuration (root folders, quality profiles, indexers, download-client settings, notification connections) across the Arr-stack apps — Radarr, Sonarr, Lidarr, Whisparr, Prowlarr — via their REST APIs. Use when the user asks to back up an Arr app's config before a change, restore it after something breaks, compare config between two apps, or replicate a setting (e.g. a root folder or download client) across all Arr apps at once. Trigger phrases: "back up radarr config", "sync indexers to all arr apps", "what changed in sonarr's config", "restore radarr settings", "add this root folder to every arr app".
+description: Backup, restore, and diff configuration (root folders, quality profiles, indexers, download-client settings, notification connections) across the Arr-stack apps — Radarr, Sonarr, Whisparr, Prowlarr — via their REST APIs. Use when the user asks to back up an Arr app's config before a change, restore it after something breaks, compare config between two apps, or replicate a setting (e.g. a root folder or download client) across all Arr apps at once. Trigger phrases: "back up radarr config", "sync indexers to all arr apps", "what changed in sonarr's config", "restore radarr settings", "add this root folder to every arr app".
 ---
 
 # Arr Config Sync
 
-Talks to the Radarr/Sonarr/Lidarr/Whisparr/Prowlarr REST APIs (all share the same
+Talks to the Radarr/Sonarr/Whisparr/Prowlarr REST APIs (all share the same
 Servarr API shape — `/api/v3` for the *arr apps, `/api/v1` for Prowlarr) to export,
 diff, and replicate configuration as JSON. This is not a replacement for
 `recyclarr` (already deployed in this stack for TRaSH-Guides quality-profile sync —
@@ -21,12 +21,11 @@ in a command or file):
 ```
 RADARR_URL / RADARR_API_KEY
 SONARR_URL / SONARR_API_KEY
-LIDARR_URL / LIDARR_API_KEY
 WHISPARR_URL / WHISPARR_API_KEY
 PROWLARR_URL / PROWLARR_API_KEY
 ```
 
-`*_URL` defaults to `http://localhost:<default-port>` if unset (7878/8989/8686/6969/9696
+`*_URL` defaults to `http://localhost:<default-port>` if unset (7878/8989/6969/9696
 respectively) — override to the docker-internal hostname (e.g. `http://radarr:7878`) when
 running inside the compose network, or the LAN-facing URL when running from the host.
 Never hardcode a real LAN IP as the default — that must come from the environment.

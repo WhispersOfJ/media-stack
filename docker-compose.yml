@@ -468,33 +468,6 @@ services:
     mem_reservation: 256m
     cpus: 2
 
-  # Reinstated (was removed in 7.0.0) - music library management.
-  lidarr:
-    <<: *common
-    image: ghcr.io/hotio/lidarr:release
-    container_name: lidarr
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8686/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/lidarr:/config
-      - /mnt/zurg:/mnt/zurg:rslave
-      - /mnt/decypharr:/mnt/decypharr:rslave
-      - /mnt/nzbdav:/mnt/nzbdav:rslave
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      - ./media/music:/data/music
-    ports:
-      - "8686:8686"
-    # No prior limit at all - found live via a resource audit. Sized above
-    # observed baseline (~130MB) with real headroom.
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
-
   # Reinstated (was removed in 4.0.0 - "too problematic" at the time, a real
   # DownloadedEpisodesScan bug in that build plus a root-folder regression;
   # same bug class already hit and fixed once this session for Sonarr, so
@@ -505,7 +478,7 @@ services:
     # older movie-style build. v3 is Sonarr-codebase-based (series/episode
     # tracking of scenes), the actively developed line. Rolling within-major
     # tag, matching this stack's existing hotio convention for Radarr/
-    # Sonarr/Lidarr's own ":release" tags (also rolling, not commit-pinned).
+    # Sonarr's own ":release" tags (also rolling, not commit-pinned).
     image: ghcr.io/hotio/whisparr:v3
     container_name: whisparr
     networks: [stacknet]
@@ -985,7 +958,6 @@ services:
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
-      LIDARR_API_KEY: ${LIDARR_API_KEY}
       WHISPARR_API_KEY: ${WHISPARR_API_KEY}
       NZBDAV_API_KEY: ${NZBDAV_API_KEY}
       # Decypharr's own qBittorrent-compatible API requires its own
@@ -1162,12 +1134,10 @@ services:
       UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
       UN_SONARR_0_URL: http://sonarr:8989
       UN_SONARR_0_API_KEY: ${SONARR_API_KEY}
-      # Lidarr/Whisparr reinstated in 10.2.0 - same pattern. No UN_READARR
+      # Whisparr reinstated in 10.2.0 - same pattern. No UN_READARR
       # entry - Bindery replaced Readarr in v10.7.0 and isn't a supported
       # Unpackerr "Starr app" (too new for that fixed list). Low-impact:
       # ebook releases are rarely RAR'd the way video/audio ones are.
-      UN_LIDARR_0_URL: http://lidarr:8686
-      UN_LIDARR_0_API_KEY: ${LIDARR_API_KEY}
       UN_WHISPARR_0_URL: http://whisparr:6969
       UN_WHISPARR_0_API_KEY: ${WHISPARR_API_KEY}
     volumes:
@@ -1291,35 +1261,37 @@ services:
     mem_reservation: 32m
     cpus: 1
 
-  # Single-file PHP DB browser for dmm-mysql - previously the only way to
-  # inspect DMM's Prisma-backed data was `docker exec -it dmm-mysql mysql
-  # ...`. Chosen over phpMyAdmin deliberately: Adminer ships as one PHP
-  # file (far smaller attack surface / CVE history), and it's the one PHP
-  # component in this stack. No credentials stored here - reuses
-  # DMM_MYSQL_PASSWORD at the login screen same as DMM's own Prisma client
-  # does. Added alongside the (now-reverted) network-security-layer work,
-  # so it never had a direct host port before - given 8080 is already
-  # Dozzle's port below, this lands on 8081 instead.
-  adminer:
+  # Web DB browser for dmm-mysql and zilean-postgres - previously the only
+  # way to inspect either was `docker exec -it <db> mysql/psql ...`.
+  # Replaced Adminer (2026-07-14): CloudBeaver covers both Postgres and
+  # MySQL from one tool with real multi-user auth (Adminer had none beyond
+  # network isolation) and persists saved connections instead of re-entering
+  # server/DB/credentials every visit. Heavier than Adminer's one-PHP-file
+  # footprint (JVM vs single-file PHP), but still trivial next to this
+  # stack's other services. First run needs the setup wizard at :8978 to
+  # create the admin account and add the two DB connections (dmm-mysql,
+  # zilean-postgres) - no credentials are pre-seeded here.
+  cloudbeaver:
     restart: unless-stopped
     logging: *common-logging
-    image: adminer:5.4.2-standalone
-    container_name: adminer
+    image: dbeaver/cloudbeaver:24.3.0
+    container_name: cloudbeaver
     profiles: [extras]
     networks: [stacknet]
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8978/status || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 30s
     environment:
       TZ: ${TZ}
-      ADMINER_DEFAULT_SERVER: dmm-mysql
+    volumes:
+      - ./config/cloudbeaver:/opt/cloudbeaver/workspace
     ports:
-      - "8081:8080"
-    mem_limit: 128m
-    mem_reservation: 32m
+      - "8081:8978"
+    mem_limit: 768m
+    mem_reservation: 128m
     cpus: 1
 
   # One-shot schema setup - no migration runner in DMM's own package.json,

@@ -9,9 +9,7 @@ Each app's recycle bin lives inside its own writable root (/data/movies,
 /data/shows, /data/music, /data/adult) rather than a new bind mount, so
 every app can hardlink into it instead of copying. Not a recurring job -
 run once, or again after a config reset. Reuses the env_get()/api_request()
-pattern from arr-app-backup.py. Lidarr's media-management config lives at
-/api/v1/, not /api/v3/ like the other four apps - confirmed live, not an
-assumption.
+pattern from arr-app-backup.py.
 """
 import json
 import sys
@@ -42,11 +40,6 @@ APPS = {
         "url": "http://localhost:8989", "key": env_get("SONARR_API_KEY"), "label": "Sonarr",
         "recycle_bin": "/data/shows/.recyclebin", "host_recycle_bin": STACK_DIR / "media/shows/.recyclebin",
         "api_version": "v3",
-    },
-    "lidarr": {
-        "url": "http://localhost:8686", "key": env_get("LIDARR_API_KEY"), "label": "Lidarr",
-        "recycle_bin": "/data/music/.recyclebin", "host_recycle_bin": STACK_DIR / "media/music/.recyclebin",
-        "api_version": "v1",
     },
     "whisparr": {
         "url": "http://localhost:6969", "key": env_get("WHISPARR_API_KEY"), "label": "Whisparr",

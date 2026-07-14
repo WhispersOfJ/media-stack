@@ -5,14 +5,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Docker Compose media-acquisition-and-serving stack (34 services, one `docker-compose.yml`):
-indexes content via Prowlarr + Zilean, requests via Seerr, organizes via four `*arr`-family apps
-(Radarr/Sonarr/Lidarr/Whisparr — Bindery, the ebook `*arr`, was retired in v10.9.8 along with its
-reader Calibre-Web; no ebook app currently in the stack), fetches via a debrid-first pipeline (Zurg + Decypharr
-against Real-Debrid/AllDebrid) with a Usenet fallback (NzbDAV), and serves via a containerized
-Plex. Stash catalogs the adult library (performers/studios/tags/StashDB identification) as an
-enrichment layer alongside Plex, not a replacement for it. `control-panel/` is the one
-custom-built component (a FastAPI dashboard); everything else is off-the-shelf images wired
-together in `docker-compose.yml`.
+indexes content via Prowlarr + Zilean, requests via Seerr, organizes via three `*arr`-family apps
+(Radarr/Sonarr/Whisparr — Lidarr was removed entirely in v10.9.9, see below; Bindery, the ebook
+`*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app currently in the
+stack), fetches via a debrid-first pipeline (Zurg + Decypharr against Real-Debrid/AllDebrid) with
+a Usenet fallback (NzbDAV), and serves via a containerized Plex. Stash is now the sole means of
+browsing/cataloging the adult content library (performers/studios/tags/StashDB identification) —
+Plex's own Adult library was removed in v10.9.9 (confirmed live via `/library/sections`); Whisparr
+still manages the underlying files/root folder, only the Plex-side library entry was dropped.
+`control-panel/` is the one custom-built component (a FastAPI dashboard); everything else is
+off-the-shelf images wired together in `docker-compose.yml`.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
 to be README/TECHNICAL/CHANGELOG into one document, organized by subsystem, ~2,300 lines with a
@@ -85,7 +87,7 @@ throughout its history section, and there's no substitute for it here.
   restart: mount-order aware" section.
 - **Two Decypharr instances exist because Decypharr has no per-provider category scoping** — a
   single instance's whole `debrids[]` list is available to every category on it. `decypharr` (both
-  backends) serves Radarr/Lidarr/Whisparr; `decypharr-alldebrid` (AllDebrid only) is
+  backends) serves Radarr/Whisparr; `decypharr-alldebrid` (AllDebrid only) is
   Sonarr's exclusive download client, with its own second mount and a Remote Path Mapping in
   Sonarr to reconcile the two instances reporting identical-looking `/app/downloads/...` paths
   that are actually different host directories.
@@ -134,13 +136,28 @@ throughout its history section, and there's no substitute for it here.
   confirmed live via `docker stats` reporting the full host memory ceiling as several containers'
   limit instead of a real number. A new service needs its own explicit `mem_limit`/`cpus` lines
   regardless of whether it uses `<<: *common`.
+- **Lidarr was removed entirely in v10.9.9** — `docker-compose.yml` service block gone,
+  `config/lidarr` deleted, `control-panel/app.py`'s `ARR_APPS`/`QUEUE_ARR_APPS`/
+  `CONTAINER_LABELS`/`LOG_LEVEL_APPS`/`ARR_LOG_CONTAINERS` all updated, `LIDARR_API_KEY` gone from
+  `.env`/`.env.example`, Prowlarr's Lidarr application-sync entry deleted via its own API,
+  NeutArr's Lidarr state/config files deleted. **Known residual gap**: Cleanuparr's SQLite DB
+  still has a stale Lidarr instance row that wasn't touched (it's a live WAL-mode DB, too risky to
+  hand-edit) — remove it via Cleanuparr's own UI when convenient. The `*arr` app family in this
+  stack is now Radarr/Sonarr/Whisparr only.
+- **Adminer replaced with CloudBeaver in v10.9.9** — `adminer:5.4.2-standalone` (port 8081→8080)
+  swapped for `dbeaver/cloudbeaver:24.3.0` (port 8081→8978, `./config/cloudbeaver:/opt/cloudbeaver/workspace`,
+  `mem_limit: 768m`), deployed live and confirmed healthy on :8081. Reason: CloudBeaver covers both
+  `zilean-postgres` and `dmm-mysql` from one tool with real multi-user auth, vs. Adminer's none.
+  **First-run setup (create admin account, add the two DB connections) is still a manual
+  browser step** — not automated by this change.
 
 ## Known current landmines (not historical — still true as of last audit)
 
 - **`control-panel/app.py`'s `MOUNT_DEPENDENTS` restart-ordering set is only `{"radarr"}`.**
-  Lidarr and Whisparr read the exact same FUSE mounts and should logically belong in that set
-  too, but the in-code comment flags this as an unverified gap, not a confirmed-safe omission —
-  don't assume `restart-all` fully protects them until it's checked.
+  Whisparr reads the exact same FUSE mounts and should logically belong in that set too, but the
+  in-code comment flags this as an unverified gap, not a confirmed-safe omission — don't assume
+  `restart-all` fully protects it until it's checked. (Lidarr was in this same boat before its
+  removal in v10.9.9; moot now.)
 - **NeutArr gets OOM-killed roughly every 30 minutes inside its 512MB `mem_limit`.** Invisible
   from any dashboard because `restart: unless-stopped` just quietly restarts it — `docker stats`
   or `docker inspect` (OOMKilled flag / restart count) is the only way to see this is happening;

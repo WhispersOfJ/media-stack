@@ -22,7 +22,6 @@ from pathlib import Path
 APPS = {
     "radarr": {"port": 7878, "api": "v3"},
     "sonarr": {"port": 8989, "api": "v3"},
-    "lidarr": {"port": 8686, "api": "v3"},
     "whisparr": {"port": 6969, "api": "v3"},
     "prowlarr": {"port": 9696, "api": "v1"},
 }
