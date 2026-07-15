@@ -271,6 +271,7 @@ class LetterboxdAddRequest(BaseModel):
     search: bool = True
     root_folder: str | None = None
     quality_profile: str | None = None
+    dry_run: bool = False
 
 
 class LetterboxdListAddRequest(BaseModel):
@@ -280,6 +281,7 @@ class LetterboxdListAddRequest(BaseModel):
     root_folder: str | None = None
     quality_profile: str | None = None
     limit: int | None = None
+    dry_run: bool = False
 
 
 class ManualImportFile(BaseModel):
@@ -944,6 +946,13 @@ def radarr_add_from_letterboxd(payload: LetterboxdAddRequest):
     movie["monitored"] = payload.monitored
     movie["addOptions"] = {"searchForMovie": payload.search}
 
+    if payload.dry_run:
+        return ok(
+            f'Would add "{movie["title"]}" ({movie.get("year")}) to Radarr - dry run, nothing written.',
+            tmdbId=tmdb_id,
+            dryRun=True,
+        )
+
     try:
         add = httpx.post(f"{cfg['url']}/api/{cfg['api']}/movie", json=movie, headers={"X-Api-Key": cfg["key"]}, timeout=30)
         add.raise_for_status()
@@ -1078,6 +1087,11 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest):
         movie["rootFolderPath"] = root_folder_path
         movie["monitored"] = payload.monitored
         movie["addOptions"] = {"searchForMovie": payload.search}
+
+        if payload.dry_run:
+            added.append(movie["title"])
+            continue
+
         try:
             add = httpx.post(f"{cfg['url']}/api/{cfg['api']}/movie", json=movie, headers={"X-Api-Key": cfg["key"]}, timeout=30)
             add.raise_for_status()
@@ -1089,10 +1103,11 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest):
             continue
         added.append(add.json().get("title", movie["title"]))
 
-    summary = f"{len(added)} added, {len(already)} already in Radarr, {len(failed)} failed"
+    verb = "would be added" if payload.dry_run else "added"
+    summary = f"{len(added)} {verb}, {len(already)} already in Radarr, {len(failed)} failed"
     if unmatched:
         summary += f", {len(unmatched)} had no TMDb match"
-    return ok(summary, added=added, alreadyCount=len(already), failed=failed, unmatched=unmatched)
+    return ok(summary, added=added, alreadyCount=len(already), failed=failed, unmatched=unmatched, dryRun=payload.dry_run)
 
 
 # Snapshot of an arr app's own /command queue - not just the download

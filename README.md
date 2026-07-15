@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.10.0**
+Current version: **v10.10.1**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1663,8 +1663,9 @@ stack-letterboxd-radarr-collection https://letterboxd.com/films/in/<collection>/
 stack-letterboxd-radarr-popular                            # currently always empty, see History
 ```
 
-All seven accept `--no-search` (skip triggering a download search), `--no-monitor`, and (list
-variants) `--limit N` to cap how many films are processed.
+All seven accept `--no-search` (skip triggering a download search), `--no-monitor`, `--dry-run`
+(report what would be added, write nothing), and (list variants) `--limit N` to cap how many
+films are processed.
 
 **This whole CLI (all 40 commands now), plus a standalone, restyled Control Panel and a
 credential-entry installer, has been spun off into its own repo:
@@ -2621,7 +2622,11 @@ Repairs tab wired to see Radarr/Sonarr's root folders.**
   Repairs tab as of this version, so only their root folders are mounted; repairs happen via the
   Radarr/Sonarr API (delete+research), not by touching symlinks directly, so this is read-only.
 
-**v10.10.0 (current) — Letterboxd-to-Radarr added: seven new `stack-letterboxd-radarr*`
+**v10.10.1 (current) — `--dry-run` added to every `stack-letterboxd-radarr*` command:
+validates and reports what would be added to Radarr without writing anything, for safely
+verifying a URL/scrape before a real run.**
+
+**v10.10.0 — Letterboxd-to-Radarr added: seven new `stack-letterboxd-radarr*`
 commands scrape a Letterboxd film, list, watchlist, watched-films page, filmography, collection,
 or the popular-films page and add whatever isn't already in Radarr, with no extra container
 (unlike screeny05/letterboxd-list-radarr's Redis-backed adapter service).**
