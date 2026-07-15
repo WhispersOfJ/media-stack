@@ -25,7 +25,7 @@ still manages the underlying files/root folder, only the Plex-side library entry
 off-the-shelf images wired together in `docker-compose.yml`.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
-to be README/TECHNICAL/CHANGELOG into one document, organized by subsystem, ~2,300 lines with a
+to be README/TECHNICAL/CHANGELOG into one document, organized by subsystem, ~1,900 lines with a
 linked table of contents. Read the relevant section there before making changes; this file only
 covers what you need to get oriented and the things that aren't obvious from reading one file in
 isolation.
