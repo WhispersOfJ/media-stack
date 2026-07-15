@@ -32,6 +32,18 @@
     {"name": "Dolby Vision", "score": 40, "specifications": [{"type": "source", "value": "dv"}]},
     {"name": "Remux Tier 01", "score": 25, "specifications": [{"type": "release_group", "value": "FraMeSToR"}]},
     {"name": "x265 (no HDR/DV)", "score": -1000, "specifications": [{"type": "codec", "value": "x265"}, {"type": "hdr", "value": false}]},
-    {"name": "Bad Dual Groups", "score": -10000, "specifications": [{"type": "release_group", "value": "example-bad-group"}]}
+    {"name": "Bad Dual Groups", "score": -10000, "specifications": [{"type": "release_group", "value": "example-bad-group"}]},
+    {
+      "name": "Blocklist: Unwanted Groups/Sources, RU-CN Audio, Blu-ray",
+      "score": -10000,
+      "note": "Applied live to Radarr on 2026-07-13, id=1, score set on every quality profile. Uses real Radarr customformat API specification shape (implementation/fields), unlike the placeholder entries above.",
+      "specifications": [
+        {"name": "Unwanted release groups/sources (user regex)", "implementation": "ReleaseTitleSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": "(?i)\\b(WEB-DL|WEBRip|BDRip|HDRip|DVDRip|HDTV|AMZN|NF|DSNP|CR|YTS|TGX|TorrentGalaxy|FGT|LOL|KILLERS|EPSiLON|Erai-raws)\\b|rartv|rarbg|eztv"}]},
+        {"name": "Blu-ray filename patterns", "implementation": "ReleaseTitleSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": "(?i)\\b(BluRay|Blu-Ray|BDRemux|BR-?Remux|BDMV|BD25|BD50|BD66|BD100|COMPLETE\\.BLURAY|BR-?DISK)\\b"}]},
+        {"name": "Russian language", "implementation": "LanguageSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 11}, {"name": "exceptLanguage", "value": false}]},
+        {"name": "Chinese language", "implementation": "LanguageSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 10}, {"name": "exceptLanguage", "value": false}]},
+        {"name": "Blu-ray source", "implementation": "SourceSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 9}]}
+      ]
+    }
   ]
 }

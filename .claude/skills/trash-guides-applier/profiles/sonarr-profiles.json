@@ -29,6 +29,19 @@
     {"name": "HDR10+", "score": 30, "specifications": [{"type": "source", "value": "hdr10plus"}]},
     {"name": "Repack/Proper", "score": 5, "specifications": [{"type": "release_title", "value": "repack|proper"}]},
     {"name": "x265 (HD)", "score": -1000, "specifications": [{"type": "codec", "value": "x265"}, {"type": "resolution", "value": "1080p"}]},
-    {"name": "Anime Dual Audio", "score": 20, "specifications": [{"type": "release_title", "value": "dual"}]}
+    {"name": "Anime Dual Audio", "score": 20, "specifications": [{"type": "release_title", "value": "dual"}]},
+    {
+      "name": "Blocklist: Unwanted Groups/Sources, RU-CN Audio, Blu-ray",
+      "score": -10000,
+      "note": "Applied live to Sonarr on 2026-07-13, id=1, score set on every quality profile. Uses real Sonarr customformat API specification shape (implementation/fields), unlike the placeholder entries above. Sonarr splits Blu-ray into two source values (Bluray=6, BlurayRaw=7), unlike Radarr's single BLURAY=9.",
+      "specifications": [
+        {"name": "Unwanted release groups/sources (user regex)", "implementation": "ReleaseTitleSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": "(?i)\\b(WEB-DL|WEBRip|BDRip|HDRip|DVDRip|HDTV|AMZN|NF|DSNP|CR|YTS|TGX|TorrentGalaxy|FGT|LOL|KILLERS|EPSiLON|Erai-raws)\\b|rartv|rarbg|eztv"}]},
+        {"name": "Blu-ray filename patterns", "implementation": "ReleaseTitleSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": "(?i)\\b(BluRay|Blu-Ray|BDRemux|BR-?Remux|BDMV|BD25|BD50|BD66|BD100|COMPLETE\\.BLURAY|BR-?DISK)\\b"}]},
+        {"name": "Russian language", "implementation": "LanguageSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 11}, {"name": "exceptLanguage", "value": false}]},
+        {"name": "Chinese language", "implementation": "LanguageSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 10}, {"name": "exceptLanguage", "value": false}]},
+        {"name": "Blu-ray source", "implementation": "SourceSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 6}]},
+        {"name": "Blu-ray raw source", "implementation": "SourceSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 7}]}
+      ]
+    }
   ]
 }
