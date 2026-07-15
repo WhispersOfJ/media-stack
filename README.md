@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.9.9**
+Current version: **v10.10.0**
 
 **A Docker Compose media-acquisition-and-serving stack** — indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1648,6 +1648,24 @@ stack-arr-import-all whisparr                    # import every stuck queue file
 stack-arr-missing-aired sonarr                   # monitored + missing + already aired/released
 ```
 
+**Seven more added in v10.10.0 — Letterboxd-to-Radarr, no extra container needed** (unlike
+screeny05/letterboxd-list-radarr's Redis-backed adapter service). Each film-page fetch scrapes
+the TMDb id Letterboxd links in its sidebar; list/grid variants scrape every poster's
+`data-item-slug` (max 10 pages / 720 films) and bulk-add whatever isn't already in Radarr:
+
+```fish
+stack-letterboxd-radarr https://letterboxd.com/film/inception/
+stack-letterboxd-radarr-list https://letterboxd.com/<user>/list/<slug>/
+stack-letterboxd-radarr-watchlist https://letterboxd.com/<user>/watchlist/
+stack-letterboxd-radarr-watched https://letterboxd.com/<user>/films/
+stack-letterboxd-radarr-filmography actor tom-hanks       # or director / writer / any crew role
+stack-letterboxd-radarr-collection https://letterboxd.com/films/in/<collection>/
+stack-letterboxd-radarr-popular                            # currently always empty, see History
+```
+
+All seven accept `--no-search` (skip triggering a download search), `--no-monitor`, and (list
+variants) `--limit N` to cap how many films are processed.
+
 **This whole CLI (all 40 commands now), plus a standalone, restyled Control Panel and a
 credential-entry installer, has been spun off into its own repo:
 [`StackScripts`](https://github.com/WhispersOfJ/StackScripts).** Unlike `Stackalicious` (the
@@ -2603,7 +2621,39 @@ Repairs tab wired to see Radarr/Sonarr's root folders.**
   Repairs tab as of this version, so only their root folders are mounted; repairs happen via the
   Radarr/Sonarr API (delete+research), not by touching symlinks directly, so this is read-only.
 
-**v10.9.9 (current) — Lidarr, Glances, and Dozzle all removed entirely; Adminer removed with no
+**v10.10.0 (current) — Letterboxd-to-Radarr added: seven new `stack-letterboxd-radarr*`
+commands scrape a Letterboxd film, list, watchlist, watched-films page, filmography, collection,
+or the popular-films page and add whatever isn't already in Radarr, with no extra container
+(unlike screeny05/letterboxd-list-radarr's Redis-backed adapter service).**
+
+- **`POST /api/arr/radarr/add-from-letterboxd`** scrapes a single film page's TMDb id (every
+  matched Letterboxd film links its TMDb entry in the sidebar) and adds it via Radarr's own
+  `/movie/lookup/tmdb` + `POST /movie`, defaulting to this stack's real root folder/quality
+  profile (`/data/movies`, `Unlimited`) when neither is passed. `/movie/lookup/tmdb` doesn't
+  carry a usable `id` for a movie already in the library on the Radarr version this stack runs
+  (confirmed live) — `GET /movie?tmdbId=` is the reliable already-added check instead.
+- **`POST /api/arr/radarr/add-from-letterboxd-list`** does the same for any Letterboxd
+  list/watchlist/watched-films/filmography/collection/popular grid: scrapes every poster's
+  `data-item-slug` off the page (up to a hard 10-page / 720-film cap), resolves each film's TMDb
+  id, and bulk-adds. URLs containing a robots.txt-disallowed sort/filter segment (`/by/`,
+  `/genre/`, `/decade/`, `/films/year/`, `/size/large/`, etc — checked against the live
+  `robots.txt`) are rejected before any request goes out. A page-2+ fetch failure stops
+  pagination and uses what already loaded instead of failing the whole request.
+- **Known limitation: `/films/in/<collection>/` is gated by a genuine Cloudflare JS challenge**
+  on that specific path (confirmed live: a bare UA gets a real "Just a moment..." page, not a
+  plain 403; a full browser-shaped header set passes intermittently, not reliably).
+  `stack-letterboxd-radarr-collection` can fail transiently for reasons that aren't this
+  feature's bug.
+- **Known limitation: `/films/popular/`'s poster grid is pure client-side JS hydration** with
+  zero server-rendered film data at any header combination tried — `stack-letterboxd-radarr-popular`
+  currently always reports "no films found." Left pointed at the real URL (not silently swapped
+  for a different page) so the failure is honest.
+- Seven fish functions (`stack-letterboxd-radarr`, `-list`, `-watchlist`, `-watched`,
+  `-filmography`, `-collection`, `-popular`), their bash equivalents, and the two Control Panel
+  endpoints above were mirrored to Stackalicious and StackScripts the same session; stack-tui's
+  command list was regenerated and its `dist/` binaries rebuilt.
+
+**v10.9.9 — Lidarr, Glances, and Dozzle all removed entirely; Adminer removed with no
 replacement; Plex's "Adult" library removed in favor of Stash; Plex bumped to 1.43.3; Control
 Panel's UI restyled; a Prometheus + Grafana monitoring stack was researched, proposed, then
 cancelled before anything was built; 20 new Control Panel endpoints + matching `stack-*` fish
