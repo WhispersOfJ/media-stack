@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.10.2**
+Current version: **v10.11.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1397,6 +1397,46 @@ stack-letterboxd-radarr-popular                            # currently always em
 All seven accept `--no-search` (skip triggering a download search), `--no-monitor`,
 `--dry-run` (report what would be added, write nothing), and (list variants) `--limit N`.
 
+**Ratings and MDBList list import — added in v10.11.0.** Both OMDb and MDBList API keys are
+read live from Kometa's own `config.yml` (already configured there for Kometa's own metadata
+lookups) - nothing new to sign up for or add to `.env`.
+
+```fish
+stack-rating-imdb tt1375666
+# "Inception" (2010): 8.8/10 (2,811,614 votes)
+
+stack-rating-mdblist tt1375666
+# "Inception" (2010): MDBList score 86/100, IMDb 8.8/10 (2833257 votes)
+
+stack-mdblist-import https://mdblist.com/lists/<user>/<list-name>
+# Radarr: 3 added, 12 already present, 0 failed; Sonarr: 1 added, 4 already present, 0 failed
+```
+
+`stack-rating-imdb`/`stack-rating-mdblist` each take one IMDb id (`tt...`) and print that
+title's rating - use `stack-rating-imdb` for the plain IMDb score/vote count, or
+`stack-rating-mdblist` for MDBList's own aggregate score plus its IMDb sub-rating in one call.
+
+`stack-mdblist-import` takes any public MDBList list URL
+(`https://mdblist.com/lists/<user>/<list-name>`) and, in one call, adds every movie in it to
+Radarr and every TV show to Sonarr - MDBList's own API already returns items split into
+`movies`/`shows` arrays with `imdb_id`/`tvdb_id`/`tmdb_id` attached, so no scraping or
+media-type guessing is needed on this end (unlike the Letterboxd commands, which have to infer
+everything from an HTML poster grid). It accepts the same `--no-search`, `--no-monitor`,
+`--dry-run`, and `--limit N` flags as the Letterboxd list commands above - always dry-run a new
+list first to see what it would do:
+
+```fish
+stack-mdblist-import https://mdblist.com/lists/<user>/<list-name> --dry-run --limit 10
+```
+
+Direct IMDb list import (pasting an `imdb.com/list/ls.../` URL directly) isn't supported and
+isn't planned - IMDb's list and CSV-export pages sit behind a real AWS WAF JS challenge
+(confirmed live: the response carries an `x-amzn-waf-action: challenge` header), the same class
+of problem as Letterboxd's Cloudflare-gated pages, just on Amazon's infrastructure instead. If
+you specifically want IMDb-sourced content, search MDBList itself for a mirror - e.g.
+`https://mdblist.com/lists/adamosborne01/imdb-top-250` is a community-maintained, fully working
+copy of the IMDb Top 250 reachable through the exact same `stack-mdblist-import` command above.
+
 The full CLI (40 commands), plus a standalone restyled Control Panel and a credential-entry
 installer, is also distributed as its own repo:
 [`StackScripts`](https://github.com/WhispersOfJ/StackScripts). Unlike `Stackalicious` (the
@@ -1937,9 +1977,33 @@ reports "no films found." Mirrored to Stackalicious and StackScripts.
 **v10.10.1**: `--dry-run` added to every `stack-letterboxd-radarr*` command: validates and
 reports what would be added to Radarr without writing anything.
 
-**v10.10.2** (current): `cryptography` bumped 43.0.3 → 49.0.0, clearing 4 open Dependabot
+**v10.10.2**: `cryptography` bumped 43.0.3 → 49.0.0, clearing 4 open Dependabot
 alerts (2 high: a subgroup-validation gap on SECT curves and a vulnerable bundled OpenSSL;
 2 low: the same OpenSSL issue and incomplete DNS name-constraint enforcement). Verified live
 post-rebuild: control-panel starts healthy, DMM's MySQL connection (`caching_sha2_password`,
 the actual consumer of this dependency) still authenticates, and the Letterboxd-to-Radarr
 endpoints still work end to end.
+
+**v10.11.0** (current): Ratings lookups (`stack-rating-imdb`, `stack-rating-mdblist`) and
+MDBList list import (`stack-mdblist-import`) added — three new Control Panel endpoints
+(`/api/ratings/imdb`, `/api/ratings/mdblist`, `/api/mdblist/import-list`) plus a new Sonarr
+add-series path alongside the existing Radarr one. Both OMDb and MDBList API keys are read
+live from Kometa's own `config.yml` (already configured for Kometa's metadata lookups) - no
+new secrets or `.env` entries. Direct IMDb list import was evaluated and dropped: IMDb's list/
+export pages sit behind a genuine AWS WAF JS challenge (confirmed live via the
+`x-amzn-waf-action: challenge` response header, not workable with plain HTTP requests), and
+MDBList's own "external list" API only serves lists a user has already linked to their MDBList
+account through the website - there's no API to import an arbitrary IMDb URL
+programmatically. MDBList's own list search already mirrors common IMDb lists (Top 250 etc)
+under multiple users, reachable through the same working endpoint, which is the practical path
+to that content instead. `_radarr_add_movie`/`_sonarr_add_series` were factored out as shared
+per-item add helpers (bulk existing-ID set passed in once, not one existence check per item) and
+the existing Letterboxd-list loop was refactored onto `_radarr_add_movie` rather than
+duplicating the add logic a third time. Two real bugs caught during this work: MDBList
+fuzzy-matches a well-formed-but-unrecognized IMDb id to an unrelated title instead of erroring,
+and echoes the *requested* id back as its own `imdbid` field on that garbage match - an
+id-equality check doesn't catch it, a real vote-count check does, since a genuine rating always
+carries votes and a garbage match's sub-rating doesn't. Mirrored to Stackalicious and
+StackScripts (which had never received the ratings feature from the prior session at all -
+backfilled in full, not just the new pieces); stack-tui's command list regenerated (69 commands)
+and `dist/` rebuilt.

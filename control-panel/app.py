@@ -81,6 +81,27 @@ def _seerr_key() -> str | None:
             return _json.load(f).get("main", {}).get("apiKey")
     except (ValueError, OSError):
         return None
+
+
+def _kometa_config() -> dict:
+    """Kometa's config.yml already holds user-supplied OMDb/MDBList API
+    keys (both optional, entered once for Kometa's own metadata lookups) -
+    reading them live off the mounted config here means the ratings
+    endpoints below need zero new secrets/.env entries, same reasoning as
+    _tautulli_key/_seerr_key above."""
+    path = os.path.join(HOST_CONFIG_DIR, "kometa", "config.yml")
+    if not os.path.isfile(path):
+        return {}
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+
+def _omdb_key() -> str | None:
+    return _kometa_config().get("omdb", {}).get("apikey") or None
+
+
+def _mdblist_key() -> str | None:
+    return _kometa_config().get("mdblist", {}).get("apikey") or None
 # Read-only host mounts added specifically for the stack-* diagnostic
 # endpoints below (resource-check through neutarr-hunt) - see
 # docker-compose.yml's control-panel volumes for what backs each of these.
@@ -281,6 +302,18 @@ class LetterboxdListAddRequest(BaseModel):
     root_folder: str | None = None
     quality_profile: str | None = None
     limit: int | None = None
+    dry_run: bool = False
+
+
+class MDBListImportRequest(BaseModel):
+    list_url: str
+    monitored: bool = True
+    search: bool = True
+    limit: int | None = None
+    radarr_root_folder: str | None = None
+    radarr_quality_profile: str | None = None
+    sonarr_root_folder: str | None = None
+    sonarr_quality_profile: str | None = None
     dry_run: bool = False
 
 
@@ -681,6 +714,214 @@ def nzbdav_history(limit: int = 20):
 
 
 # ---------------------------------------------------------------------
+# Ratings lookups - OMDb (IMDb) and MDBList. Both keys already live in
+# Kometa's own config.yml (entered once for Kometa's metadata lookups),
+# read live via _omdb_key()/_mdblist_key() rather than duplicated into
+# .env - same reasoning as Tautulli/Seerr's keys above.
+# ---------------------------------------------------------------------
+@app.get("/api/ratings/imdb")
+def rating_imdb(imdb_id: str):
+    key = _omdb_key()
+    if not key:
+        fail("No OMDb API key found in Kometa's config.yml (omdb.apikey).", status_code=500)
+    try:
+        r = httpx.get("https://www.omdbapi.com/", params={"i": imdb_id, "apikey": key}, timeout=15)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"OMDb request failed: {e}")
+    data = r.json()
+    if data.get("Response") == "False":
+        fail(f"OMDb: {data.get('Error', 'no match for that IMDb id')}", status_code=404)
+    rating = data.get("imdbRating")
+    if not rating or rating == "N/A":
+        fail(f'"{data.get("Title")}" has no IMDb rating yet.', status_code=404)
+    return ok(
+        f'"{data.get("Title")}" ({data.get("Year")}): {rating}/10 ({data.get("imdbVotes")} votes)',
+        imdbId=imdb_id,
+        title=data.get("Title"),
+        year=data.get("Year"),
+        rating=rating,
+        votes=data.get("imdbVotes"),
+    )
+
+
+@app.get("/api/ratings/mdblist")
+def rating_mdblist(imdb_id: str):
+    key = _mdblist_key()
+    if not key:
+        fail("No MDBList API key found in Kometa's config.yml (mdblist.apikey).", status_code=500)
+    try:
+        r = httpx.get("https://mdblist.com/api/", params={"apikey": key, "i": imdb_id}, timeout=15)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"MDBList request failed: {e}")
+    data = r.json()
+    if data.get("response") is False:
+        fail(f"MDBList: {data.get('error', 'no match for that IMDb id')}", status_code=404)
+    imdb_entry = next((x for x in data.get("ratings", []) if x.get("source") == "imdb"), None)
+    # MDBList fuzzy-matches an unrecognized-but-well-formed id to an
+    # unrelated title instead of erroring, and even echoes the requested
+    # id back as "imdbid" on that garbage match (confirmed live: a bogus
+    # tt0000000 request "matched" an unrelated show, with the response's
+    # own "imdbid" field reading back tt0000000) - so imdbid can't be used
+    # to detect this. A real rating always carries a vote count; a garbage
+    # match's imdb entry has null votes even when it has a 0 "value" - that
+    # combination is the actual tell.
+    has_real_imdb_rating = bool(imdb_entry and imdb_entry.get("votes"))
+    score = data.get("score")
+    if (score is None or score < 0) and not has_real_imdb_rating:
+        fail(f'"{data.get("title")}" has no rating on MDBList yet.', status_code=404)
+    message = f'"{data.get("title")}" ({data.get("year")}): MDBList score {score}/100'
+    if imdb_entry and imdb_entry.get("value") is not None:
+        message += f', IMDb {imdb_entry["value"]}/10 ({imdb_entry.get("votes")} votes)'
+    return ok(
+        message,
+        imdbId=imdb_id,
+        title=data.get("title"),
+        year=data.get("year"),
+        score=score,
+        imdbRating=imdb_entry.get("value") if imdb_entry else None,
+        imdbVotes=imdb_entry.get("votes") if imdb_entry else None,
+    )
+
+
+# MDBList's own lists already return items pre-split into "movies"/"shows"
+# arrays with imdb_id/tvdb_id/tmdb_id per item - no scraping, no media-type
+# detection needed on this end, unlike the Letterboxd list endpoints (which
+# have to infer everything from an HTML poster grid). Direct IMDb list
+# import was evaluated and dropped: IMDb's list/export pages sit behind a
+# genuine AWS WAF JS challenge (confirmed live via the
+# x-amzn-waf-action: challenge response header - not a bug in this stack,
+# not workable with plain HTTP requests), and MDBList's own "external
+# list" API only serves lists a user has already linked to their MDBList
+# account through the website - there's no API to import an arbitrary
+# IMDb URL programmatically. MDBList's own list search already mirrors
+# common IMDb lists (Top 250 etc) under multiple users, which is the
+# practical path to that content instead.
+MDBLIST_URL_RE = re.compile(r"^https://mdblist\.com/lists/([^/]+)/([^/]+)/?$")
+
+
+@app.post("/api/mdblist/import-list")
+def mdblist_import_list(payload: MDBListImportRequest):
+    key = _mdblist_key()
+    if not key:
+        fail("No MDBList API key found in Kometa's config.yml (mdblist.apikey).", status_code=500)
+
+    match = MDBLIST_URL_RE.match(payload.list_url.strip())
+    if not match:
+        fail(
+            "Not a recognized MDBList list URL - expected something like "
+            "https://mdblist.com/lists/<username>/<listname>.",
+            status_code=400,
+        )
+    username, listname = match.groups()
+
+    # One MDBList request already returns up to 1000 items - this hard cap
+    # bounds worst-case pagination regardless of `limit`, same reasoning as
+    # the Letterboxd list endpoint's 10-page/720-film cap.
+    limit = min(payload.limit, 2000) if payload.limit else 2000
+
+    movies: list[dict] = []
+    shows: list[dict] = []
+    cursor = None
+    while len(movies) + len(shows) < limit:
+        params = {"apikey": key, "limit": min(1000, limit - len(movies) - len(shows))}
+        if cursor:
+            params["cursor"] = cursor
+        try:
+            r = httpx.get(f"https://api.mdblist.com/lists/{username}/{listname}/items", params=params, timeout=20)
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"MDBList request failed: {e}")
+        data = r.json()
+        if isinstance(data, dict) and data.get("error"):
+            fail(f"MDBList: {data['error']}", status_code=404)
+        movies.extend(data.get("movies", []))
+        shows.extend(data.get("shows", []))
+        pagination = data.get("pagination", {})
+        cursor = pagination.get("next_cursor")
+        if not pagination.get("has_more") or not cursor:
+            break
+
+    if not movies and not shows:
+        fail(f'No items found in MDBList list "{username}/{listname}" (or it is private/doesn\'t exist).', status_code=404)
+
+    result = {"radarr": None, "sonarr": None}
+
+    if movies:
+        radarr_cfg = ARR_APPS["radarr"]
+        try:
+            library = httpx.get(
+                f"{radarr_cfg['url']}/api/{radarr_cfg['api']}/movie", headers={"X-Api-Key": radarr_cfg["key"]}, timeout=30
+            )
+            library.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"Couldn't read Radarr's library: {e}")
+        existing_tmdb_ids = {m["tmdbId"] for m in library.json()}
+        radarr_root_folder_path, radarr_quality_profile_id = _radarr_root_folder_and_profile(
+            radarr_cfg, payload.radarr_root_folder, payload.radarr_quality_profile
+        )
+
+        added, already, failed = [], [], []
+        for m in movies:
+            tmdb_id = m.get("ids", {}).get("tmdb")
+            if not tmdb_id:
+                failed.append(f'"{m.get("title")}": no TMDb id from MDBList')
+                continue
+            r = _radarr_add_movie(
+                radarr_cfg, tmdb_id, payload.monitored, payload.search, radarr_root_folder_path, radarr_quality_profile_id,
+                existing_tmdb_ids, dry_run=payload.dry_run,
+            )
+            (added if r["status"] == "added" else already if r["status"] == "already" else failed).append(
+                r.get("title") or r.get("reason") or tmdb_id
+            )
+        result["radarr"] = {"added": added, "alreadyCount": len(already), "failed": failed}
+
+    if shows:
+        sonarr_cfg = ARR_APPS["sonarr"]
+        try:
+            library = httpx.get(
+                f"{sonarr_cfg['url']}/api/{sonarr_cfg['api']}/series", headers={"X-Api-Key": sonarr_cfg["key"]}, timeout=30
+            )
+            library.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"Couldn't read Sonarr's library: {e}")
+        existing_tvdb_ids = {s["tvdbId"] for s in library.json()}
+        sonarr_root_folder_path, sonarr_quality_profile_id = _sonarr_root_folder_and_profile(
+            sonarr_cfg, payload.sonarr_root_folder, payload.sonarr_quality_profile
+        )
+
+        added, already, failed = [], [], []
+        for s in shows:
+            tvdb_id = s.get("ids", {}).get("tvdb")
+            if not tvdb_id:
+                failed.append(f'"{s.get("title")}": no TVDb id from MDBList')
+                continue
+            r = _sonarr_add_series(
+                sonarr_cfg, tvdb_id, payload.monitored, payload.search, sonarr_root_folder_path, sonarr_quality_profile_id,
+                existing_tvdb_ids, dry_run=payload.dry_run,
+            )
+            (added if r["status"] == "added" else already if r["status"] == "already" else failed).append(
+                r.get("title") or r.get("reason") or tvdb_id
+            )
+        result["sonarr"] = {"added": added, "alreadyCount": len(already), "failed": failed}
+
+    verb = "would be added" if payload.dry_run else "added"
+    parts = []
+    if result["radarr"] is not None:
+        parts.append(
+            f"Radarr: {len(result['radarr']['added'])} {verb}, {result['radarr']['alreadyCount']} already present, "
+            f"{len(result['radarr']['failed'])} failed"
+        )
+    if result["sonarr"] is not None:
+        parts.append(
+            f"Sonarr: {len(result['sonarr']['added'])} {verb}, {result['sonarr']['alreadyCount']} already present, "
+            f"{len(result['sonarr']['failed'])} failed"
+        )
+    return ok("; ".join(parts), radarr=result["radarr"], sonarr=result["sonarr"], dryRun=payload.dry_run)
+
+
+# ---------------------------------------------------------------------
 # Zilean - direct search against its own index, bypassing Prowlarr/*arr
 # entirely. Talks to Zilean's own /dmm/search endpoint (AllowAnonymous,
 # no API key needed - only /dmm/on-demand-scrape requires one).
@@ -889,6 +1130,128 @@ def _radarr_root_folder_and_profile(cfg, root_folder: str | None, quality_profil
     return root_folder_path, quality_profile_id
 
 
+def _sonarr_root_folder_and_profile(cfg, root_folder: str | None, quality_profile: str | None) -> tuple[str, int]:
+    try:
+        folders = httpx.get(f"{cfg['url']}/api/{cfg['api']}/rootfolder", headers={"X-Api-Key": cfg["key"]}, timeout=15).json()
+        profiles = httpx.get(
+            f"{cfg['url']}/api/{cfg['api']}/qualityprofile", headers={"X-Api-Key": cfg["key"]}, timeout=15
+        ).json()
+    except httpx.HTTPError as e:
+        fail(f"Couldn't read Sonarr's root folders/quality profiles: {e}")
+
+    # /data/shows and "Any" are this stack's real defaults (confirmed live
+    # against Seerr's own Sonarr connection settings, same source used for
+    # Radarr's /data/movies + "Unlimited" defaults above) - preferred when
+    # present, but not hardcoded as the only option.
+    root_folder_path = (
+        root_folder
+        or next((f["path"] for f in folders if f["path"] == "/data/shows"), None)
+        or (folders[0]["path"] if folders else None)
+    )
+    if not root_folder_path:
+        fail("Sonarr has no root folders configured.", status_code=500)
+
+    wanted_profile = quality_profile or "Any"
+    quality_profile_id = next((p["id"] for p in profiles if p["name"] == wanted_profile), None)
+    if quality_profile_id is None:
+        quality_profile_id = profiles[0]["id"] if profiles else None
+    if quality_profile_id is None:
+        fail("Sonarr has no quality profiles configured.", status_code=500)
+
+    return root_folder_path, quality_profile_id
+
+
+def _radarr_add_movie(
+    cfg, tmdb_id: int, monitored: bool, search: bool, root_folder_path: str, quality_profile_id: int,
+    existing_tmdb_ids: set[int], dry_run: bool = False,
+) -> dict:
+    """Looks up a movie by tmdbId and adds it if not already present.
+    existing_tmdb_ids is a pre-fetched set (one bulk GET /movie call
+    covers a whole list-import, instead of one existence check per item).
+    Returns {"status": "added"|"already"|"failed", "title": ..., ...}."""
+    if tmdb_id in existing_tmdb_ids:
+        return {"status": "already", "title": None, "tmdbId": tmdb_id}
+    try:
+        lookup = httpx.get(
+            f"{cfg['url']}/api/{cfg['api']}/movie/lookup/tmdb",
+            params={"tmdbId": tmdb_id},
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        lookup.raise_for_status()
+        movie = lookup.json()
+    except httpx.HTTPError as e:
+        return {"status": "failed", "reason": f"tmdb {tmdb_id}: lookup failed ({e})"}
+    if not movie or not movie.get("title"):
+        return {"status": "failed", "reason": f"tmdb {tmdb_id}: no Radarr match"}
+
+    movie["qualityProfileId"] = quality_profile_id
+    movie["rootFolderPath"] = root_folder_path
+    movie["monitored"] = monitored
+    movie["addOptions"] = {"searchForMovie": search}
+
+    if dry_run:
+        return {"status": "added", "title": movie["title"]}
+
+    try:
+        add = httpx.post(f"{cfg['url']}/api/{cfg['api']}/movie", json=movie, headers={"X-Api-Key": cfg["key"]}, timeout=30)
+        add.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        return {"status": "failed", "reason": f'"{movie["title"]}": {e.response.text.strip() or e}'}
+    except httpx.HTTPError as e:
+        return {"status": "failed", "reason": f'"{movie["title"]}": {e}'}
+    return {"status": "added", "title": add.json().get("title", movie["title"])}
+
+
+def _sonarr_add_series(
+    cfg, tvdb_id: int, monitored: bool, search: bool, root_folder_path: str, quality_profile_id: int,
+    existing_tvdb_ids: set[int], dry_run: bool = False,
+) -> dict:
+    """Looks up a series by tvdbId and adds it if not already present.
+    existing_tvdb_ids is a pre-fetched set, same reasoning as
+    _radarr_add_movie above. Returns
+    {"status": "added"|"already"|"failed", "title": ..., ...}."""
+    if tvdb_id in existing_tvdb_ids:
+        return {"status": "already", "title": None, "tvdbId": tvdb_id}
+    try:
+        lookup = httpx.get(
+            f"{cfg['url']}/api/{cfg['api']}/series/lookup",
+            params={"term": f"tvdb:{tvdb_id}"},
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        lookup.raise_for_status()
+        results = lookup.json()
+    except httpx.HTTPError as e:
+        return {"status": "failed", "reason": f"tvdb {tvdb_id}: lookup failed ({e})"}
+    if not results:
+        return {"status": "failed", "reason": f"tvdb {tvdb_id}: no Sonarr match"}
+    series = results[0]
+
+    series["qualityProfileId"] = quality_profile_id
+    series["rootFolderPath"] = root_folder_path
+    series["monitored"] = monitored
+    series["seasonFolder"] = True
+    series["addOptions"] = {
+        "monitor": "all" if monitored else "none",
+        "searchForMissingEpisodes": search,
+        "searchForCutoffUnmetEpisodes": False,
+    }
+
+    if dry_run:
+        return {"status": "added", "title": series["title"]}
+
+    try:
+        add = httpx.post(f"{cfg['url']}/api/{cfg['api']}/series", json=series, headers={"X-Api-Key": cfg["key"]}, timeout=30)
+        add.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        return {"status": "failed", "reason": f'"{series["title"]}": {e.response.text.strip() or e}'}
+    except httpx.HTTPError as e:
+        return {"status": "failed", "reason": f'"{series["title"]}": {e}'}
+    added = add.json()
+    return {"status": "added", "title": added.get("title", series["title"])}
+
+
 @app.post("/api/arr/radarr/add-from-letterboxd")
 def radarr_add_from_letterboxd(payload: LetterboxdAddRequest):
     cfg = ARR_APPS["radarr"]
@@ -1064,44 +1427,16 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest):
 
     added, already, failed = [], [], []
     for tmdb_id in tmdb_ids:
-        if tmdb_id in existing_tmdb_ids:
+        result = _radarr_add_movie(
+            cfg, tmdb_id, payload.monitored, payload.search, root_folder_path, quality_profile_id,
+            existing_tmdb_ids, dry_run=payload.dry_run,
+        )
+        if result["status"] == "already":
             already.append(tmdb_id)
-            continue
-        try:
-            lookup = httpx.get(
-                f"{cfg['url']}/api/{cfg['api']}/movie/lookup/tmdb",
-                params={"tmdbId": tmdb_id},
-                headers={"X-Api-Key": cfg["key"]},
-                timeout=20,
-            )
-            lookup.raise_for_status()
-            movie = lookup.json()
-        except httpx.HTTPError as e:
-            failed.append(f"tmdb {tmdb_id}: lookup failed ({e})")
-            continue
-        if not movie or not movie.get("title"):
-            failed.append(f"tmdb {tmdb_id}: no Radarr match")
-            continue
-
-        movie["qualityProfileId"] = quality_profile_id
-        movie["rootFolderPath"] = root_folder_path
-        movie["monitored"] = payload.monitored
-        movie["addOptions"] = {"searchForMovie": payload.search}
-
-        if payload.dry_run:
-            added.append(movie["title"])
-            continue
-
-        try:
-            add = httpx.post(f"{cfg['url']}/api/{cfg['api']}/movie", json=movie, headers={"X-Api-Key": cfg["key"]}, timeout=30)
-            add.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            failed.append(f'"{movie["title"]}": {e.response.text.strip() or e}')
-            continue
-        except httpx.HTTPError as e:
-            failed.append(f'"{movie["title"]}": {e}')
-            continue
-        added.append(add.json().get("title", movie["title"]))
+        elif result["status"] == "added":
+            added.append(result["title"])
+        else:
+            failed.append(result["reason"])
 
     verb = "would be added" if payload.dry_run else "added"
     summary = f"{len(added)} {verb}, {len(already)} already in Radarr, {len(failed)} failed"
