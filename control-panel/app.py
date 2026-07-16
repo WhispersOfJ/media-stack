@@ -185,6 +185,9 @@ CONTAINER_LABELS = {
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
     "maintainerr": ("Maintainerr", "Plex library lifecycle - rule-based cleanup, wired but rules start disabled"),
+    "recyclarr": ("Recyclarr", "TRaSH Guides custom-format sync, Radarr/Sonarr only"),
+    "beszel": ("Beszel", "host/container resource monitoring hub - replaced Glances in v10.9.9"),
+    "beszel-agent": ("Beszel Agent", "reports this host's stats to the beszel hub"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 

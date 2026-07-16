@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (28 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (30 services, one `docker-compose.yml`):
 indexes content via Prowlarr + Zilean, requests via Seerr, organizes via two `*arr`-family apps
 (Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
 Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
@@ -33,6 +33,89 @@ isolation.
 **See `AGENTS.md` for this repo's sync obligations to two siblings** (`../Stackalicious`, a
 sanitized public mirror; `../StackScripts`, a standalone redistribution of the `stack-*` CLI +
 Control Panel) — a new `stack-*` command added here isn't finished until it's mirrored to both.
+
+## Full service inventory (all 30, by subsystem)
+
+Not a duplicate of README's service table (image/port/profile) — this is the *relationship*
+map: what each service actually talks to, so a question about any one container can be
+answered without re-reading `docker-compose.yml` end to end. `core` = no `profiles:` line,
+comes up on a bare `docker compose up -d`; `extras` = needs `--profile extras`.
+
+**Indexing** — `prowlarr` (core, indexer manager, pushes indexers to Radarr/Sonarr via
+`fullSync`) · `zilean-postgres` (core, Postgres 18, backs `zilean` only) · `zilean` (core,
+DMM cache-hash index + Zurg-ingestion second hash source, `depends_on` both
+`zilean-postgres` and `zurg`).
+
+**Debrid gateway** — `decypharr` (core, port 8282, Radarr's qBittorrent-compatible download
+client, both Real-Debrid+AllDebrid) · `decypharr-alldebrid` (core, port 8283, isolated
+second instance, AllDebrid-only, Sonarr's exclusive download client — exists solely because
+Decypharr has no per-provider category scoping within one instance).
+
+**FUSE mount owners** — `zurg` (core, Real-Debrid mount at `/mnt/zurg`) · `rclone-alldebrid`
+(core, AllDebrid mount at `/mnt/all`) · `rclone-alldebrid-anime` (core, second AllDebrid
+mount at `/mnt/all-anime`, `--include`-filtered to a hardcoded fansub-group list — kept in
+sync by hand with Zurg's own anime routing groups, no shared config) · `nzbdav-rclone`
+(core, mounts NzbDAV's own WebDAV filesystem at `/mnt/nzbdav`, `depends_on:
+condition: service_healthy` on `nzbdav` itself, not just compose start-order).
+
+**`*arr` apps** — `radarr` (core, port 7878, movies, `/data/movies`) · `sonarr` (core, port
+8989, TV, `/data/shows` + `/data/anime`, the *only* app wired to `decypharr-alldebrid`) ·
+`recyclarr` (extras, no port, daily-cron TRaSH Guides custom-format sync for both, scoped to
+avoid competing with the manual "Unlimited" quality profile — not a real-time daemon despite
+running as one).
+
+**Usenet fallback** — `nzbdav` (core, port 3001→3000, WebDAV-streamed Usenet, SABnzbd-API
+compatible, priority-2 download client behind Decypharr) · `nzbdav-rclone` (see FUSE mount
+owners above — same container, listed once).
+
+**Requests** — `seerr` (core, port 5055, Radarr/Sonarr only — no adult-content or music/ebook
+data model, moot now that those app families are gone anyway).
+
+**Media server** — `plex` (core, `network_mode: host` — the one deliberate exception to this
+stack's publish-to-0.0.0.0 pattern, per Plex's own Docker guidance on GDM/DLNA/NAT-PMP under
+bridge networking).
+
+**Cloudflare/anti-bot** — `byparr` (extras, port 8191, Prowlarr's Indexer Proxy, Camoufox-based,
+replaced FlareSolverr in v3.4.0 — same `/v1` API shape, Prowlarr's proxy type is still
+literally named "FlareSolverr").
+
+**Monitoring** — `tautulli` (extras, port 8182, Plex stats/history) · `beszel` (extras, port
+8090, host/container resource-monitoring hub, replaced Glances in v10.9.9 — see the Glances
+bullet above, this was undocumented outside `docker-compose.yml` until 2026-07-16) ·
+`beszel-agent` (extras, no port, reports this host to the `beszel` hub over stacknet
+WebSocket, `depends_on: beszel: condition: service_started`).
+
+**Plex lifecycle** — `maintainerr` (extras, port 6246, rule-based watched/stale-content
+cleanup; all server connections configured post-boot via its own UI, not env vars; rules ship
+disabled by default).
+
+**Dashboard** — `control-panel` (extras, port 8420, the one custom-built component —
+`build:` from `./control-panel`, not a pulled image; talks to `docker.sock` plus every app's
+own HTTP API; no auth, CSRF/Origin-Host validated only; see the dedicated gotchas section
+below).
+
+**Metadata/overlays** — `kometa` (extras, no port, `entrypoint: sleep infinity` override is
+load-bearing — see landmines below; runs only via Control Panel's on-demand
+`/api/kometa/run` exec, never as PID 1).
+
+**Post-processing** — `unpackerr` (extras, no port, RAR extraction for Radarr/Sonarr's
+downloads).
+
+**Auto-updates** — `watchtower` (extras, no port, digest/channel-tag images only — Plex and
+Byparr are deliberately excluded from its train, see Image pinning policy).
+
+**DebridMediaManager (self-hosted)** — `dmm-mysql` (extras, hard-required by DMM's Prisma
+schema, cannot be consolidated onto `zilean-postgres`) · `dmm-redis` (extras, rate limiting)
+· `dmm-migrate` (extras, one-shot Prisma schema push, `restart: "no"`, exits after running —
+`docker ps` showing it stopped is correct, not a failure) · `debridmediamanager` (extras,
+port 3000, built from the `build` Dockerfile stage specifically, not `deploy` — see the DMM
+Dockerfile landmine below).
+
+**Queue cleanup / missing-content hunting** — `cleanuparr` (extras, port 11011, strikes +
+malware-block + stalled-download cleanup; its own built-in proactive search should stay
+disabled so it doesn't redundantly hunt alongside NeutArr) · `neutarr` (extras, port 9705,
+hardened Huntarr-lineage fork — missing/upgrade hunting exclusively; never add Huntarr proper,
+see its own compose comment for the auth-bypass history).
 
 ## Commands
 
@@ -55,7 +138,7 @@ docker compose up -d control-panel
 # pick up a .env change here, it needs force-recreate
 docker compose up -d --force-recreate control-panel
 
-# Bring up the stack: 18 core services, or everything (+17 more behind the `extras` profile)
+# Bring up the stack: 14 core services, or everything (+16 more behind the `extras` profile)
 docker compose up -d
 docker compose --profile extras up -d
 ```
@@ -171,9 +254,19 @@ throughout its history section, and there's no substitute for it here.
 - **Glances and Dozzle removed entirely in v10.9.9, no data preserved.** Neither had a config
   volume, so there was nothing on disk to clean up. Glances powered Control Panel's Overview
   "Host CPU/memory/disk/uptime" tiles via `/api/system/stats` — that endpoint and those tiles
-  are gone too, not just left degraded. A Prometheus + Grafana monitoring stack was also
-  researched and briefly proposed the same session, then cancelled before anything was built or
-  added to `docker-compose.yml`.
+  are gone too, not just left degraded (Control Panel itself was never re-wired to Beszel below).
+  A Prometheus + Grafana monitoring stack was also researched and briefly proposed the same
+  session, then cancelled before anything was built or added to `docker-compose.yml`.
+  **Glances' actual replacement is `beszel`/`beszel-agent`** (added later, exact version not
+  dated in this file — check `git log -- docker-compose.yml` if the timing matters), a hub+agent
+  resource/container monitor at `http://<HOST_IP>:8090`. It was undocumented outside
+  `docker-compose.yml` itself until a 2026-07-16 audit found it missing from
+  `control-panel/app.py`'s `CONTAINER_LABELS`, README's service table, and this very bullet —
+  see README's History `[10.12.1]` entry. `beszel` has no healthcheck (scratch-based image, no
+  shell to exec a probe into — confirmed live, `CMD-SHELL` fails with "no such file or
+  directory" despite the endpoint answering fine on a manual curl); don't read "no healthcheck"
+  on this one container as neglect, it's the same class of issue as NeutArr's missing `curl`
+  below, just with no fallback binary at all.
 
 ## Known current landmines (not historical — still true as of last audit)
 
