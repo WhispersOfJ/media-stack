@@ -41,11 +41,6 @@ APPS = {
         "recycle_bin": "/data/shows/.recyclebin", "host_recycle_bin": STACK_DIR / "media/shows/.recyclebin",
         "api_version": "v3",
     },
-    "whisparr": {
-        "url": "http://localhost:6969", "key": env_get("WHISPARR_API_KEY"), "label": "Whisparr",
-        "recycle_bin": "/data/adult/.recyclebin", "host_recycle_bin": STACK_DIR / "media/adult/.recyclebin",
-        "api_version": "v3",
-    },
 }
 
 

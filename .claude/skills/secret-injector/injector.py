@@ -22,7 +22,6 @@ VAR_REF_RE = re.compile(r"\$\{([A-Z0-9_]+)(?::-[^}]*)?\}")
 KEY_PATTERNS: dict[str, tuple[str, str]] = {
     "RADARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
     "SONARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
-    "WHISPARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
     "PROWLARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
     "ZILEAN_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
     "NZBDAV_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
