@@ -1,10 +1,10 @@
 # The Stack
 
-Current version: **v10.12.0**
+Current version: **v10.12.1**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
-downloaded) on cache misses, and serves the result through a containerized Plex. 28 services,
+downloaded) on cache misses, and serves the result through a containerized Plex. 30 services,
 one compose file, every image pinned and healthchecked. Two operator surfaces: a custom
 dashboard (Control Panel) and a custom CLI (`stack-*` fish functions).
 
@@ -236,7 +236,7 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 11 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
 | 12 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | none | core |
 | 13 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
-| 14 | `plex` | `plexinc/pms-docker:1.43.2.10687-563d026ea` | 32400 (host net) | core |
+| 14 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host net) | core |
 | 15 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
 | 16 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
 | 17 | `control-panel` | built from `./control-panel` | 8420 | extras |
@@ -251,9 +251,11 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 26 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
 | 27 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
 | 28 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 29 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
+| 30 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
 
 `docker compose up -d` brings up the 14 core services; `docker compose --profile extras up
--d` adds the other 14. Both are safe to re-run; Compose only recreates what is out of sync
+-d` adds the other 16. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`.
 
 ## The *arr apps
@@ -1899,3 +1901,15 @@ live `config/decypharr/config.json` had `"whisparr"` dropped from its `categorie
 helper scripts (`arr-config-sync`, `docker-compose-manager`, `health-monitor`,
 `secret-injector`) all had their own Whisparr/Stash references removed. The `*arr` app family
 in this stack is now Radarr/Sonarr only; there is no adult content library.
+
+**v10.12.1**: Docs-accuracy pass triggered by a full moving-parts audit for CLAUDE.md. Found
+`beszel`/`beszel-agent` (added at some point after Glances' v10.9.9 removal, per the compose
+file's own comment - "Replaces Glances... hub+agent resource/container monitor") completely
+undocumented outside `docker-compose.yml` itself: absent from `control-panel/app.py`'s
+`CONTAINER_LABELS`, this README's service table, and `CLAUDE.md`'s "Glances and Dozzle
+removed... no replacement" landmine, which was simply wrong by the time this was caught -
+Beszel is the replacement. Fixed in all three places. Also fixed: this README's service table
+still showed Plex pinned to `1.43.2.10687-563d026ea`, a full version behind the
+`1.43.3.10828-00f62d37d` this stack has actually run since the v10.9.9 bump. Service count
+corrected 28 → 30 throughout (the tracked table had silently excluded Beszel's two containers
+since they were added).
