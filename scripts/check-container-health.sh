@@ -39,4 +39,4 @@ if [ -n "$recovered" ]; then
   ./scripts/notify-discord.sh "Container(s) recovered: $(echo "$recovered" | tr '\n' ' ')" info
 fi
 
-echo "$current" > "$state_file"
+echo "$current" >"$state_file"

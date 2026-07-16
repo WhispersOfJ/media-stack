@@ -7,12 +7,16 @@ Usage:
     orchestrator.py retry <client> <item_id>
     orchestrator.py clear-failed <client>
     orchestrator.py reachability
+    orchestrator.py diagnose-stuck-file [--since 6h] [--media-root /data]
 """
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import os
+import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -21,6 +25,20 @@ CLIENTS = {
     "nzbdav": {"port": 8080, "kind": "sabnzbd"},
     "decypharr": {"port": 8282, "kind": "generic"},
 }
+
+# nzbdav-rclone's FUSE mount surfaces a permanently unrecoverable Usenet
+# file (missing articles, no par2 recovery blocks available) as an
+# endlessly repeating "vfs cache ... 404 Not Found" error against the same
+# internal .ids/<uuid> path, every ~10-20s, forever - not a transient
+# blip. Confirmed live 2026-07-16 diagnosing "The Escapees (1981)": the
+# root cause sat in nzbdav's own container logs ("missing articles",
+# "Error executing nntp BODY command"), not in nzbdav-rclone's. This
+# command only diagnoses and reports - it never deletes anything. Fixing
+# a confirmed-broken file means removing that specific *arr app's file
+# record, a real destructive action against library state that needs its
+# own explicit, per-instance confirmation - not something to fold into an
+# automated flag here.
+_ID_RE = re.compile(r"\.ids/[0-9a-f]/[0-9a-f]/[0-9a-f]/[0-9a-f]/[0-9a-f]/([0-9a-f-]{36})")
 
 
 class Client:
@@ -145,6 +163,68 @@ def cmd_reachability() -> None:
             print(f"{name}: DOWN ({e})")
 
 
+def _docker_logs(container: str, since: str) -> str:
+    try:
+        result = subprocess.run(
+            ["docker", "logs", "--since", since, container],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        raise RuntimeError(f"couldn't read logs for {container}: {e}") from e
+    return result.stdout + result.stderr
+
+
+def _resolve_symlink(media_root: str, stuck_id: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["find", media_root, "-type", "l", "-lname", f"*{stuck_id}*"],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return None
+    hit = result.stdout.strip().splitlines()
+    return hit[0] if hit else None
+
+
+def cmd_diagnose_stuck_file(since: str, media_root: str) -> None:
+    """Read-only. Finds the *arr library entry behind a file
+    nzbdav-rclone can't stop retrying, and prints what to check - never
+    deletes anything itself."""
+    rclone_log = _docker_logs("nzbdav-rclone", since)
+    counts: dict[str, int] = collections.Counter(m.group(1) for m in _ID_RE.finditer(rclone_log))
+    if not counts:
+        print(f"No repeating .ids/<uuid> 404 errors found in nzbdav-rclone's logs (last {since}).")
+        return
+
+    print(f"Repeating stuck ids in nzbdav-rclone's logs (last {since}):")
+    for stuck_id, count in counts.most_common():
+        print(f"  {count:>5}x  {stuck_id}")
+
+    top_id, top_count = counts.most_common(1)[0]
+    print(f"\nMost frequent: {top_id} ({top_count} errors) - investigating.")
+
+    nzbdav_log = _docker_logs("nzbdav", since)
+    nntp_lines = [
+        line for line in nzbdav_log.splitlines()
+        if "missing articles" in line.lower() or "nntp" in line.lower()
+    ]
+    if nntp_lines:
+        print("\nnzbdav's own logs show NNTP/article problems in this window (root cause is")
+        print("usually here, not in nzbdav-rclone - the provider doesn't have the data):")
+        for line in nntp_lines[-5:]:
+            print(f"  {line}")
+
+    symlink = _resolve_symlink(media_root, top_id)
+    if not symlink:
+        print(f"\nCouldn't resolve {top_id} to a symlink under {media_root} - it may already")
+        print("have been removed, or media_root needs adjusting for this stack.")
+        return
+    print(f"\nResolves to: {symlink}")
+    print("Check this against Radarr/Sonarr's own API (GET /api/v3/movie or /series, look for")
+    print("a movieFile/episodeFile path matching the above) to find the exact entry, then")
+    print("confirm with the user before deleting anything - this command only diagnoses.")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
@@ -164,6 +244,10 @@ def main() -> int:
 
     sub.add_parser("reachability")
 
+    p_diagnose = sub.add_parser("diagnose-stuck-file")
+    p_diagnose.add_argument("--since", default="6h", help="docker logs --since window (default 6h)")
+    p_diagnose.add_argument("--media-root", default="/data", help="host media root to search for the symlink (default /data)")
+
     args = parser.parse_args()
 
     try:
@@ -177,6 +261,8 @@ def main() -> int:
             cmd_clear_failed(args.client)
         elif args.action == "reachability":
             cmd_reachability()
+        elif args.action == "diagnose-stuck-file":
+            cmd_diagnose_stuck_file(args.since, args.media_root)
     except (RuntimeError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

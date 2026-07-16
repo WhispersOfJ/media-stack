@@ -25,13 +25,13 @@ USAGE
 fi
 
 case "${1:-}" in
-  --setup)
-    [ -f "$TARGET/.env.example" ] || {
-      echo "No .env.example in $TARGET yet - run without --setup first to scaffold files."
-      exit 1
-    }
-    exec python3 /stack/scripts/setup_wizard.py "$TARGET"
-    ;;
+--setup)
+  [ -f "$TARGET/.env.example" ] || {
+    echo "No .env.example in $TARGET yet - run without --setup first to scaffold files."
+    exit 1
+  }
+  exec python3 /stack/scripts/setup_wizard.py "$TARGET"
+  ;;
 esac
 
 FIRST_RUN=false

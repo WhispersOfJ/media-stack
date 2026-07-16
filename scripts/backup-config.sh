@@ -45,7 +45,7 @@ RESTIC_EXCLUDES=(
 # directory name from the excluded config/zilean-postgres path so it's
 # unambiguously not caught by that --exclude below.
 mkdir -p ./config/zilean-postgres-dump
-if ! docker exec zilean-postgres pg_dump -U postgres zilean | gzip > ./config/zilean-postgres-dump/zilean.sql.gz; then
+if ! docker exec zilean-postgres pg_dump -U postgres zilean | gzip >./config/zilean-postgres-dump/zilean.sql.gz; then
   ./scripts/notify-discord.sh "zilean-postgres logical dump failed - config backup below will still run, but the postgres index itself won't be covered by this snapshot" warn
 fi
 
@@ -53,7 +53,7 @@ fi
 # discovered missing later. Only runs if the container exists (extras profile).
 if docker inspect dmm-mysql >/dev/null 2>&1; then
   mkdir -p ./config/dmm-mysql-dump
-  if ! docker exec dmm-mysql sh -c 'exec mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" dmm' | gzip > ./config/dmm-mysql-dump/dmm.sql.gz; then
+  if ! docker exec dmm-mysql sh -c 'exec mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" dmm' | gzip >./config/dmm-mysql-dump/dmm.sql.gz; then
     ./scripts/notify-discord.sh "dmm-mysql logical dump failed - config backup below will still run, but DebridMediaManager's database won't be covered by this snapshot" warn
   fi
 fi

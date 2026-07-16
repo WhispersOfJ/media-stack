@@ -1,6 +1,6 @@
 ---
 name: usenet-torrent-orchestrator
-description: Inspect and manage download-client queues and health across the stack's Usenet/debrid/torrent backends — nzbdav (Usenet), decypharr and zurg (debrid mounts), and any qBittorrent-style clients. Use when the user asks about stuck or failed downloads, wants to see what's queued, needs to clear a jammed queue item, or wants to confirm a download client is actually reachable by the Arr apps before troubleshooting further upstream. Trigger phrases: "what's stuck in the download queue", "check nzbdav status", "clear failed downloads", "is decypharr healthy", "why isn't radarr grabbing anything".
+description: Inspect and manage download-client queues and health across the stack's Usenet/debrid/torrent backends — nzbdav (Usenet), decypharr and zurg (debrid mounts), and any qBittorrent-style clients. Also diagnoses an already-imported file nzbdav-rclone can't stop retrying (permanently missing Usenet articles) and resolves it back to the real Radarr/Sonarr library entry. Use when the user asks about stuck or failed downloads, wants to see what's queued, needs to clear a jammed queue item, wants to confirm a download client is reachable by the Arr apps, or reports a movie/show that "won't play"/"errors out" despite Radarr/Sonarr showing it as already downloaded. Trigger phrases: "what's stuck in the download queue", "check nzbdav status", "clear failed downloads", "is decypharr healthy", "why isn't radarr grabbing anything", "this file won't play", "nzbdav keeps erroring on the same file".
 ---
 
 # Usenet/Torrent Orchestrator
@@ -40,7 +40,21 @@ python3 orchestrator.py failed nzbdav                 # list only failed/error i
 python3 orchestrator.py retry nzbdav <item-id>        # re-queue a failed item
 python3 orchestrator.py clear-failed nzbdav            # remove all failed items (asks first)
 python3 orchestrator.py reachability                   # ping every configured client, report up/down
+python3 orchestrator.py diagnose-stuck-file             # find the *arr entry behind a permanently-broken nzbdav file
+python3 orchestrator.py diagnose-stuck-file --since 24h --media-root /path/to/media
 ```
+
+`diagnose-stuck-file` is **read-only** - it identifies the problem and tells you what to
+check, it never deletes anything. It greps `nzbdav-rclone`'s container logs for the last
+`--since` window (default `6h`) for repeating `vfs cache ... 404 Not Found` errors against
+the same internal `.ids/<uuid>` path - a file whose Usenet articles are gone permanently
+produces this every ~10-20s, forever, not as a transient blip. It then cross-references
+`nzbdav`'s own container logs for `missing articles`/NNTP errors in the same window (that's
+usually where the real root cause shows up, not in nzbdav-rclone's logs), and resolves the
+most-frequent stuck id to a real symlink under `--media-root` (default `/data` - override to
+match this stack's actual host media path) via `readlink`/`find -lname`. Confirmed live
+2026-07-16 against a real case (*The Escapees (1981)*, 2160p UHD remux, missing par2 recovery
+blocks too) - the loop only stopped once that specific Radarr file record was deleted.
 
 ## Interpreting results
 
@@ -53,8 +67,17 @@ python3 orchestrator.py reachability                   # ping every configured c
 - Stuck-but-not-failed items (state unchanged across repeated `queue` calls) often
   correlate with a stale FUSE mount — cross-check with `docker-compose-manager cascade-map`
   before assuming the download client itself is broken.
+- `diagnose-stuck-file` finding zero repeating ids doesn't mean nothing's wrong — it only
+  covers files already imported into a library and being re-read (Plex scans, playback
+  attempts). A download still sitting in the active queue is a different problem; check
+  `queue`/`failed` first.
+- A resolved symlink with no matching Radarr/Sonarr entry usually means the file was
+  already cleaned up since the log window started — re-run with a shorter `--since`.
 
 ## Safety rules
 
 - `clear-failed` prompts for confirmation — it's a bulk destructive action on queue state.
 - `retry` only touches the single item ID given; never retries an entire queue implicitly.
+- `diagnose-stuck-file` never deletes anything — confirm the resolved Radarr/Sonarr entry
+  against the real API yourself, and get explicit user confirmation, before removing any
+  file record it points to.
