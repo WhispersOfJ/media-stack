@@ -32,9 +32,18 @@ level="${2:-info}"
 [ -z "$message" ] && exit 0
 
 case "$level" in
-  error) title="🔴 Stack Error"   ; color=15548997 ;; # DISCORD_RED, matches arr-app-backup.py
-  warn)  title="🟡 Stack Warning" ; color=15105570 ;; # DISCORD_ORANGE, matches plex-library-report.py
-  *)     title="🟢 Stack Notice"  ; color=5763719  ;; # DISCORD_GREEN, matches both of the above
+error)
+  title="🔴 Stack Error"
+  color=15548997
+  ;; # DISCORD_RED, matches arr-app-backup.py
+warn)
+  title="🟡 Stack Warning"
+  color=15105570
+  ;; # DISCORD_ORANGE, matches plex-library-report.py
+*)
+  title="🟢 Stack Notice"
+  color=5763719
+  ;; # DISCORD_GREEN, matches both of the above
 esac
 
 payload=$(python3 -c "

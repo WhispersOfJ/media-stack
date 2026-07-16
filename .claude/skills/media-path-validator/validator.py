@@ -76,13 +76,13 @@ def cmd_writable(path_str: str) -> int:
 
 
 def _report_pair(label: str, download: str, library: str) -> bool:
-    d, l = Path(download), Path(library)
-    exists_d, exists_l = check_exists(d), check_exists(l)
+    d, lib = Path(download), Path(library)
+    exists_d, exists_l = check_exists(d), check_exists(lib)
     if not (exists_d and exists_l):
         print(f"[{label}] {download} exists={exists_d}  {library} exists={exists_l}  -> SKIPPED (missing path)")
         return False
-    writable_l = check_writable(l)
-    linkable, reason = check_hardlink(d, l)
+    writable_l = check_writable(lib)
+    linkable, reason = check_hardlink(d, lib)
     status = "OK" if linkable else "PROBLEM"
     print(f"[{label}] {download} -> {library}: {status} ({reason}); library writable={writable_l}")
     return linkable
