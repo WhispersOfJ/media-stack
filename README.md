@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.10.1**
+Current version: **v10.10.2**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1934,5 +1934,12 @@ request; a page-2+ fetch failure stops pagination and uses what loaded. Limitati
 `/films/popular/` is pure client-side hydration, so `stack-letterboxd-radarr-popular` always
 reports "no films found." Mirrored to Stackalicious and StackScripts.
 
-**v10.10.1** (current): `--dry-run` added to every `stack-letterboxd-radarr*` command:
-validates and reports what would be added to Radarr without writing anything.
+**v10.10.1**: `--dry-run` added to every `stack-letterboxd-radarr*` command: validates and
+reports what would be added to Radarr without writing anything.
+
+**v10.10.2** (current): `cryptography` bumped 43.0.3 → 49.0.0, clearing 4 open Dependabot
+alerts (2 high: a subgroup-validation gap on SECT curves and a vulnerable bundled OpenSSL;
+2 low: the same OpenSSL issue and incomplete DNS name-constraint enforcement). Verified live
+post-rebuild: control-panel starts healthy, DMM's MySQL connection (`caching_sha2_password`,
+the actual consumer of this dependency) still authenticates, and the Letterboxd-to-Radarr
+endpoints still work end to end.
