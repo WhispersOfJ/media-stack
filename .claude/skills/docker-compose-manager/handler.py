@@ -21,9 +21,9 @@ from pathlib import Path
 # docker-compose.yml alone.
 CASCADE_MAP = {
     "zurg": ["decypharr", "decypharr-alldebrid"],
-    "rclone-alldebrid": ["decypharr", "decypharr-alldebrid", "radarr", "sonarr", "whisparr"],
+    "rclone-alldebrid": ["decypharr", "decypharr-alldebrid", "radarr", "sonarr"],
     "rclone-alldebrid-anime": ["radarr", "sonarr"],
-    "nzbdav-rclone": ["nzbdav", "radarr", "sonarr", "whisparr"],
+    "nzbdav-rclone": ["nzbdav", "radarr", "sonarr"],
 }
 
 

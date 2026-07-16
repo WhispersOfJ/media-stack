@@ -468,119 +468,8 @@ services:
     mem_reservation: 256m
     cpus: 2
 
-  # Reinstated (was removed in 4.0.0 - "too problematic" at the time, a real
-  # DownloadedEpisodesScan bug in that build plus a root-folder regression;
-  # same bug class already hit and fixed once this session for Sonarr, so
-  # watch for it here too). Adult content management.
-  whisparr:
-    <<: *common
-    # v3 (aka "eros"), not the default "latest" tag - that maps to v2, the
-    # older movie-style build. v3 is Sonarr-codebase-based (series/episode
-    # tracking of scenes), the actively developed line. Rolling within-major
-    # tag, matching this stack's existing hotio convention for Radarr/
-    # Sonarr's own ":release" tags (also rolling, not commit-pinned).
-    image: ghcr.io/hotio/whisparr:v3
-    container_name: whisparr
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6969/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/whisparr:/config
-      - /mnt/zurg:/mnt/zurg:rslave
-      - /mnt/decypharr:/mnt/decypharr:rslave
-      - /mnt/nzbdav:/mnt/nzbdav:rslave
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      - ./media/adult:/data/adult
-    ports:
-      - "6969:6969"
-    # No prior limit at all - found live via a resource audit. Sized above
-    # observed baseline (~274MB) with real headroom.
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
-
-  # Performer/studio/tag cataloging and metadata scraping for the adult
-  # library Whisparr owns above - not a Plex replacement, Plex still streams
-  # ./media/adult directly. Extras profile: enrichment on top of an already-
-  # working library, not required for the acquisition pipeline to function.
-  stash:
-    restart: unless-stopped
-    logging: *common-logging
-    # Real semver release tag, matching this stack's version-tag pinning
-    # tier (same category as Zilean/Bindery) - not :latest.
-    image: stashapp/stash:v0.31.1
-    container_name: stash
-    profiles: [extras]
-    networks: [stacknet]
-    environment:
-      TZ: ${TZ}
-      STASH_STASH: /data/
-      STASH_GENERATED: /generated/
-      STASH_METADATA: /metadata/
-      STASH_CACHE: /cache/
-      STASH_PORT: 9999
-    # curl doesn't exist in this image (Alpine-based, confirmed live: exec
-    # returns "executable file not found in $PATH", so a curl-based check
-    # here would report unhealthy forever despite the app working fine).
-    # wget is present instead.
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --spider http://localhost:9999/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/stash/config:/root/.stash
-      - ./config/stash/metadata:/metadata
-      - ./config/stash/cache:/cache
-      - ./config/stash/blobs:/blobs
-      - ./config/stash/generated:/generated
-      # Same three FUSE mounts every other app that reads Whisparr's root
-      # folder needs (Radarr/Sonarr/Plex/etc. above) - ./media/adult itself
-      # is never real files, only symlinks Whisparr writes pointing into
-      # these. Missing this entirely on first deploy meant every symlink
-      # under /data was dangling from Stash's mount namespace - confirmed
-      # live: a real scan completed in seconds and found 0 scenes/images,
-      # readlink -f on a sample symlink resolved to
-      # /mnt/nzbdav/.ids/... which didn't exist inside this container at all.
-      - /mnt/zurg:/mnt/zurg:rslave
-      - /mnt/decypharr:/mnt/decypharr:rslave
-      - /mnt/nzbdav:/mnt/nzbdav:rslave
-      # Read-only on purpose: Stash's scan/tag/scrape flow never needs write
-      # access to the source library, and its own opt-in "Organize" task
-      # renames/moves files - not something to allow by accident onto a
-      # library Whisparr independently manages the layout of. Drop :ro
-      # deliberately if Organize is ever wanted.
-      - ./media/adult:/data:ro
-    ports:
-      # 9999 is Zurg's port on this stack - remapped on the host side only,
-      # same pattern as nzbdav-rclone's 3001->3000. Container-internal port
-      # stays 9999 (STASH_PORT above), so this is host-mapping-only.
-      - "9998:9999"
-    # This host's iGPU (/dev/dri/renderD128) - the bundled ffmpeg confirmed
-    # VAAPI-capable live (`ffmpeg -hwaccels` lists it, h264/hevc_vaapi
-    # encoders present), and generate tasks (previews/sprites/thumbnails)
-    # are real ffmpeg transcoding work Plex's own HW-decode path never
-    # touches. transcode_hardware_acceleration enabled via the config
-    # below to actually use it.
-    devices:
-      - /dev/dri:/dev/dri
-    # No PUID/PGID here - unlike the LSIO/hotio images elsewhere in this
-    # stack, the stock stashapp/stash image doesn't document PUID/PGID
-    # support (confirmed against its own reference docker-compose.yml).
-    # Runs as root inside the container; ./config/stash/* will be root-owned
-    # on the host as a result.
-    mem_limit: 2g
-    mem_reservation: 256m
-    cpus: 4
-
   # Custom Format / Quality Profile sync from TRaSH Guides, for Sonarr and
-  # Radarr only - Recyclarr has no Whisparr support (TRaSH Guides doesn't
-  # publish custom-format guides for it). Runs as a persistent daemon on its
+  # Radarr only. Runs as a persistent daemon on its
   # own cron schedule rather than a one-shot job, per Recyclarr's own
   # reference docker-compose.yml. Config lives in config/recyclarr/
   # recyclarr.yml - deliberately scoped to only add new custom formats to
@@ -958,7 +847,6 @@ services:
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
-      WHISPARR_API_KEY: ${WHISPARR_API_KEY}
       NZBDAV_API_KEY: ${NZBDAV_API_KEY}
       # Decypharr's own qBittorrent-compatible API requires its own
       # username/password login (POST /api/v2/auth/login for a session
@@ -1104,12 +992,10 @@ services:
       UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
       UN_SONARR_0_URL: http://sonarr:8989
       UN_SONARR_0_API_KEY: ${SONARR_API_KEY}
-      # Whisparr reinstated in 10.2.0 - same pattern. No UN_READARR
-      # entry - Bindery replaced Readarr in v10.7.0 and isn't a supported
-      # Unpackerr "Starr app" (too new for that fixed list). Low-impact:
-      # ebook releases are rarely RAR'd the way video/audio ones are.
-      UN_WHISPARR_0_URL: http://whisparr:6969
-      UN_WHISPARR_0_API_KEY: ${WHISPARR_API_KEY}
+      # No UN_READARR entry - Bindery replaced Readarr in v10.7.0 and isn't
+      # a supported Unpackerr "Starr app" (too new for that fixed list).
+      # Low-impact: ebook releases are rarely RAR'd the way video/audio
+      # ones are.
     volumes:
       - /mnt:/mnt:rslave
       # Same mounts every arr app already has (see Sonarr/Radarr above) - /mnt alone doesn't

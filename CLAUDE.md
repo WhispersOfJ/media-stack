@@ -12,17 +12,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (30 services, one `docker-compose.yml`):
-indexes content via Prowlarr + Zilean, requests via Seerr, organizes via three `*arr`-family apps
-(Radarr/Sonarr/Whisparr — Lidarr was removed entirely in v10.9.9, see below; Bindery, the ebook
-`*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app currently in the
-stack), fetches via a debrid-first pipeline (Zurg + Decypharr against Real-Debrid/AllDebrid) with
-a Usenet fallback (NzbDAV), and serves via a containerized Plex. Stash is now the sole means of
-browsing/cataloging the adult content library (performers/studios/tags/StashDB identification) —
-Plex's own Adult library was removed in v10.9.9 (confirmed live via `/library/sections`); Whisparr
-still manages the underlying files/root folder, only the Plex-side library entry was dropped.
-`control-panel/` is the one custom-built component (a FastAPI dashboard); everything else is
-off-the-shelf images wired together in `docker-compose.yml`.
+A Docker Compose media-acquisition-and-serving stack (28 services, one `docker-compose.yml`):
+indexes content via Prowlarr + Zilean, requests via Seerr, organizes via two `*arr`-family apps
+(Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
+Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
+currently in the stack), fetches via a debrid-first pipeline (Zurg + Decypharr against
+Real-Debrid/AllDebrid) with a Usenet fallback (NzbDAV), and serves via a containerized Plex. There
+is no adult content library in this stack anymore: Plex's own Adult library was removed in
+v10.9.9 (confirmed live via `/library/sections`), and Whisparr (which managed the underlying
+files/root folder) plus Stash (which cataloged it) were both removed in v10.12.0, along with the
+files themselves. `control-panel/` is the one custom-built component (a FastAPI dashboard);
+everything else is off-the-shelf images wired together in `docker-compose.yml`.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
 to be README/TECHNICAL/CHANGELOG into one document, organized by subsystem, ~1,900 lines with a
@@ -95,7 +95,7 @@ throughout its history section, and there's no substitute for it here.
   restart: mount-order aware" section.
 - **Two Decypharr instances exist because Decypharr has no per-provider category scoping** — a
   single instance's whole `debrids[]` list is available to every category on it. `decypharr` (both
-  backends) serves Radarr/Whisparr; `decypharr-alldebrid` (AllDebrid only) is
+  backends) serves Radarr; `decypharr-alldebrid` (AllDebrid only) is
   Sonarr's exclusive download client, with its own second mount and a Remote Path Mapping in
   Sonarr to reconcile the two instances reporting identical-looking `/app/downloads/...` paths
   that are actually different host directories.
@@ -134,10 +134,13 @@ throughout its history section, and there's no substitute for it here.
   wired into the *app* it's talking to.** Cleanuparr and NeutArr both auto-discover which
   `*arr` apps exist, but each still needs its own internal instance registration (Cleanuparr's
   own `arr_instances` DB table; NeutArr's own per-app JSON config) before it actually does
-  anything for that app — found live as a real gap: Lidarr and Whisparr had network access to
-  Cleanuparr and config-type placeholders, but no connected instance, so queue-cleaning/strikes
-  silently weren't covering either app. When auditing "is X wired to Y," check the receiving
-  app's own config/API for a real instance entry, not just that the container can reach it.
+  anything for that app — found live as a real gap: Lidarr and Whisparr (both since removed) had
+  network access to Cleanuparr and config-type placeholders, but no connected instance, so
+  queue-cleaning/strikes silently weren't covering either app. When auditing "is X wired to Y,"
+  check the receiving app's own config/API for a real instance entry, not just that the container
+  can reach it. NeutArr regenerates a blank-credential placeholder file for any app type it knows
+  about (`eros.json`, `whisparr.json`) on every restart even after that config is deleted — inert
+  (no URL/key means it can never connect), not a sign the removal didn't take.
 - **Every service should have `mem_limit`/`cpus` — verify with `docker stats`, not by grepping for
   the string `mem_limit:` near a service block.** The `x-common` anchor (`<<: *common`) does not
   set either; ten services silently had neither for an unknown stretch of this project's history,
@@ -151,8 +154,15 @@ throughout its history section, and there's no substitute for it here.
   NeutArr's Lidarr state/config files deleted. The stale Lidarr row this left in Cleanuparr's
   SQLite `arr_instances` table was cleaned up the same day — no REST endpoint exists for that
   table, so the container was stopped first (avoiding a live WAL-mode write), the row and its
-  orphaned parent `arr_configs` row deleted directly, then restarted healthy. The `*arr` app
-  family in this stack is now Radarr/Sonarr/Whisparr only.
+  orphaned parent `arr_configs` row deleted directly, then restarted healthy.
+- **Whisparr (and Stash, its cataloging app) were removed entirely in v10.12.0** — same recipe as
+  Lidarr above, plus a few things Lidarr's removal didn't need to touch: `./media/adult` (Whisparr's
+  root folder, 100% symlinks, no real media) deleted; the live Cleanuparr SQLite row deleted in
+  the same pass this time, not left as a residual gap (six referencing tables confirmed zero
+  orphaned rows before deleting); `/api/neutarr/hunt/eros` (an endpoint whose only purpose was
+  triggering Whisparr's hunt cycle) removed outright, not just left orphaned; Decypharr's
+  `categories` list in `config/decypharr/config.json` (gitignored, live config) had `"whisparr"`
+  dropped. The `*arr` app family in this stack is now Radarr/Sonarr only.
 - **Adminer removed in v10.9.9, no replacement (for now).** Briefly swapped for CloudBeaver
   (`dbeaver/cloudbeaver:24.3.0`) same version, but that was reverted immediately at the user's
   request — not a fan of the tool, no substitute picked yet. There is currently no web DB GUI
@@ -167,11 +177,6 @@ throughout its history section, and there's no substitute for it here.
 
 ## Known current landmines (not historical — still true as of last audit)
 
-- **`control-panel/app.py`'s `MOUNT_DEPENDENTS` restart-ordering set is only `{"radarr"}`.**
-  Whisparr reads the exact same FUSE mounts and should logically belong in that set too, but the
-  in-code comment flags this as an unverified gap, not a confirmed-safe omission — don't assume
-  `restart-all` fully protects it until it's checked. (Lidarr was in this same boat before its
-  removal in v10.9.9; moot now.)
 - **NeutArr gets OOM-killed roughly every 30 minutes inside its 512MB `mem_limit`.** Invisible
   from any dashboard because `restart: unless-stopped` just quietly restarts it — `docker stats`
   or `docker inspect` (OOMKilled flag / restart count) is the only way to see this is happening;

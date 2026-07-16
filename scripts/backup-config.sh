@@ -29,13 +29,6 @@ RESTIC_EXCLUDES=(
   --exclude "config/plex/Plex Media Server/Logs"
   --exclude "config/plex/Plex Media Server/Crash Reports"
   --exclude "config/plex-transcode"
-  # Same "regenerable, don't bother backing it up" reasoning as Plex's own
-  # Cache/Codecs exclusions above - cache and generated are fully rebuilt by
-  # re-running Scan/Generate against the still-real source library; blobs
-  # (scene covers) and metadata (config/scraped data) are the only Stash
-  # subdirs actually worth restoring.
-  --exclude "config/stash/cache"
-  --exclude "config/stash/generated"
 )
 
 # Logical dump of zilean-postgres before the restic run below - the raw

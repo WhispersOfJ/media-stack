@@ -6,7 +6,7 @@ Supersedes the old Homepage+Control Panel split - see README.md's Control
 Panel section.
 
 Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
-HTTP API (Plex, Radarr, Sonarr, Whisparr, Zilean), and zilean-postgres
+HTTP API (Plex, Radarr, Sonarr, Zilean), and zilean-postgres
 directly (hash count - Zilean has no stats API of its own). No auth -
 LAN-only, matches every other service in this stack (see README.md's
 "Security" section).
@@ -45,7 +45,6 @@ NZBDAV_URL = "http://nzbdav:3000"
 NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
 ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
 HOST_IP = os.environ.get("HOST_IP")
-STASH_URL = "http://stash:9999"
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 TAUTULLI_URL = "http://tautulli:8181"
 SEERR_URL = "http://seerr:5055"
@@ -137,26 +136,11 @@ ARR_APPS = {
         "label": "Sonarr",
         "import_events": ("downloadFolderImported",),
     },
-    # Whisparr reinstated in 10.2.0 (originally removed in 4.0.0) - api
-    # version and search_command name both differ per app, confirmed live
-    # against each app's own /command endpoint rather than assumed
-    # (Whisparr v3's is "MissingMoviesSearch", matching Radarr naming
-    # despite tracking scenes, not "MissingEpisodeSearch" like Sonarr
-    # would suggest from its Sonarr-codebase heritage).
-    #
     # Readarr itself was replaced by Bindery in v10.7.0 (upstream Readarr's
     # sole metadata source died permanently, see docker-compose.yml's
     # comment on the bindery service) - no entry here since Bindery's API
     # is a clean-room design, not Servarr-shaped, so none of this generic
     # arr_queue/arr_command/history-rate-calc machinery applies to it.
-    "whisparr": {
-        "url": "http://whisparr:6969",
-        "api": "v3",
-        "key": os.environ["WHISPARR_API_KEY"],
-        "search_command": "MissingMoviesSearch",
-        "label": "Whisparr",
-        "import_events": ("downloadFolderImported",),
-    },
 }
 
 # These four have a real download queue (Decypharr + NzbDAV wired to each
@@ -164,7 +148,7 @@ ARR_APPS = {
 # same reasoning 7.0.0 used when this was just Radarr/Sonarr. Bindery
 # (Readarr's v10.7.0 replacement) isn't listed - its API is a clean-room
 # design, not Servarr-shaped, so this generic queue machinery doesn't apply.
-QUEUE_ARR_APPS = ("radarr", "sonarr", "whisparr")
+QUEUE_ARR_APPS = ("radarr", "sonarr")
 
 # Display-only labels/notes for the container grid - NOT an allow-list.
 # Which containers actually exist, and which actions are valid on them, is
@@ -177,8 +161,6 @@ QUEUE_ARR_APPS = ("radarr", "sonarr", "whisparr")
 CONTAINER_LABELS = {
     "radarr": ("Radarr", "also clears the stale Zurg mount issue (v4.0.1)"),
     "sonarr": ("Sonarr", None),
-    "whisparr": ("Whisparr", "adult, v3"),
-    "stash": ("Stash", "performer/studio/tag cataloging for the adult library"),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
     "zurg": ("Zurg", "Real-Debrid mount"),
@@ -1603,7 +1585,7 @@ def arr_manual_import_candidates(app_name: str):
                 "releaseGroup": f.get("releaseGroup"),
                 "downloadId": f.get("downloadId"),
             }
-            if app_name == "radarr" or app_name == "whisparr":
+            if app_name == "radarr":
                 file_payload["movieId"] = match.get("id") if match else None
             elif app_name == "sonarr":
                 file_payload["seriesId"] = (match or {}).get("id") or (episodes[0]["seriesId"] if episodes else None)
@@ -2126,9 +2108,6 @@ def container_start(name: str):
 # stack outage where /mnt/nzbdav was left stale at the host level - see
 # README's mount-cascade note). MOUNT_PREREQS restarts first and is waited
 # on before MOUNT_PROVIDERS, so nzbdav-rclone always finds nzbdav ready.
-# NOTE: Whisparr binds the same three subpaths directly too and is
-# conspicuously absent from this set - a pre-existing gap, not something
-# this pass introduced or has verified is actually safe.
 MOUNT_PREREQS = {"nzbdav"}
 MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "rclone-alldebrid-anime", "nzbdav-rclone"}
 MOUNT_DEPENDENTS = {"radarr"}
@@ -2240,7 +2219,6 @@ def resource_check():
 LOG_LEVEL_APPS = {
     "radarr": ARR_APPS["radarr"],
     "sonarr": ARR_APPS["sonarr"],
-    "whisparr": ARR_APPS["whisparr"],
     "prowlarr": {"url": "http://prowlarr:9696", "api": "v1", "key": PROWLARR_API_KEY, "label": "Prowlarr"},
 }
 
@@ -2591,9 +2569,9 @@ def backup_restore_test():
 @app.get("/api/cleanuparr/instances")
 def cleanuparr_instances():
     """Which *arr apps Cleanuparr actually has a connected arr_instance for,
-    vs. just an arr_configs type placeholder - the exact gap that left
-    Lidarr and Whisparr completely uncovered by queue-cleaning/strikes
-    despite both apps being fully functional."""
+    vs. just an arr_configs type placeholder - the exact gap that historically
+    left Lidarr and Whisparr (both since removed) completely uncovered by
+    queue-cleaning/strikes despite both apps being fully functional at the time."""
     db_path = os.path.join(HOST_CONFIG_DIR, "cleanuparr", "cleanuparr.db")
     if not os.path.isfile(db_path):
         fail(f"{db_path} not present.")
@@ -2661,54 +2639,7 @@ def decypharr_health(instance: str):
         fail(f"{instance} unreachable: {e}")
 
 
-@app.post("/api/stash/scan")
-def stash_scan():
-    """Triggers a Stash library scan via its GraphQL API."""
-    try:
-        r = httpx.post(f"{STASH_URL}/graphql", json={"query": "mutation { metadataScan(input: {}) }"}, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        if data.get("errors"):
-            fail(f"Stash returned an error: {data['errors']}")
-        return ok(f"Scan job queued (id {data['data']['metadataScan']}).")
-    except httpx.RequestError as e:
-        fail(f"Could not reach Stash: {e}")
-
-
-@app.post("/api/stash/identify")
-def stash_identify():
-    """Triggers a full-library StashDB identify run (studio/performer/tag
-    creation enabled) - the same call that took this library from zero
-    metadata to 317 performers/225 studios/791 tags. Requires a StashDB
-    connection already configured in Stash's own Settings - this doesn't
-    create one (that needs the user's own StashDB account)."""
-    query = """
-    mutation {
-      metadataIdentify(input: {
-        sources: [{source: {stash_box_endpoint: "https://stashdb.org/graphql"}}]
-        options: {
-          fieldOptions: [
-            {field: "studio", strategy: MERGE, createMissing: true},
-            {field: "performers", strategy: MERGE, createMissing: true},
-            {field: "tags", strategy: MERGE, createMissing: true}
-          ]
-          setCoverImage: true
-        }
-      })
-    }
-    """
-    try:
-        r = httpx.post(f"{STASH_URL}/graphql", json={"query": query}, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        if data.get("errors"):
-            fail(f"Stash returned an error: {data['errors']}")
-        return ok(f"Identify job queued (id {data['data']['metadataIdentify']}) against all scenes.")
-    except httpx.RequestError as e:
-        fail(f"Could not reach Stash: {e}")
-
-
-ARR_LOG_CONTAINERS = {"radarr", "sonarr", "whisparr", "prowlarr"}
+ARR_LOG_CONTAINERS = {"radarr", "sonarr", "prowlarr"}
 
 
 @app.get("/api/arr/{app_name}/logs")
@@ -2741,22 +2672,6 @@ def version():
     total = len(containers)
     return ok(f"README declares {declared}. {running}/{total} containers currently running.",
               version=declared, running=running, total=total)
-
-
-@app.post("/api/neutarr/hunt/eros")
-def neutarr_hunt_eros():
-    """NeutArr (Huntarr-lineage) has no documented "run now" API endpoint
-    for an individual app's hunt cycle - the only reliable trigger is
-    restarting the container, which forces its scheduler to restart from
-    the beginning (including an immediate first pass) rather than waiting
-    out whatever's left of the current interval."""
-    try:
-        c = docker_client.containers.get("neutarr")
-        c.restart(timeout=30)
-        return ok("neutarr restarted - its scheduler will run an immediate hunt pass for every enabled app "
-                  "(eros/Whisparr included), not just eros specifically - NeutArr has no per-app trigger.")
-    except docker.errors.NotFound:
-        fail("Container 'neutarr' not found.")
 
 
 # ---------------------------------------------------------------------
@@ -2797,8 +2712,7 @@ def arr_recently_added(app_name: str, limit: int = 10):
     session by showing which shows were added seconds vs hours apart and
     still had null episode statistics (never even refreshed yet)."""
     if app_name not in ("radarr", "sonarr"):
-        fail("Only radarr and sonarr have an 'added' concept here - Whisparr and Prowlarr don't fit this shape.",
-             status_code=400)
+        fail("Only radarr and sonarr have an 'added' concept here.", status_code=400)
     cfg = ARR_APPS[app_name]
     path = "/api/v3/movie" if app_name == "radarr" else "/api/v3/series"
     try:
