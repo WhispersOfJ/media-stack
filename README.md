@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.12.1**
+Current version: **v10.12.2**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1569,9 +1569,20 @@ what is new.
   early-stop optimization helps, but this instance tracks close to 300,000 episode records
   and the endpoint has not been load-tested at that scale. It also has no frontend wiring in
   Control Panel (curl/API only). See [The *arr apps](#the-arr-apps).
-- **Cleanuparr has a stale Readarr reference** in its SQLite config
-  (`config/cleanuparr/cleanuparr.db`) from before the Bindery swap. Its API surface does not
-  expose this (`/api/instances` returns an HTML shell, not JSON); a manual follow-up.
+- ~~Cleanuparr has a stale Readarr reference~~ **Not stale - required.** Confirmed by reading
+  Cleanuparr 2.9.16's own source (`GenericHandler.ExecuteAsync`): every scheduled QueueCleaner/
+  MalwareBlocker run unconditionally does `arr_configs.FirstAsync(x => x.Type == T)` for **all
+  five** Servarr types (Sonarr, Radarr, Lidarr, Readarr, Whisparr), not `FirstOrDefaultAsync`.
+  Missing even one type's placeholder row throws `System.InvalidOperationException: Sequence
+  contains no elements` and kills the entire job - not per-app, the whole run. This was live and
+  broken for real: QueueCleaner (every 5 min) and MalwareBlocker (hourly) both crashed on every
+  single scheduled run from at least 2026-07-14 until fixed 2026-07-16, entirely silently (caught
+  processing "no adult content library" - see [History](#history) `[10.12.2]`). Lidarr and
+  Whisparr placeholder rows (`type` only, no connected instance - `ProcessArrConfigAsync` cleanly
+  skips a type with zero enabled instances) added to restore all five. **If Lidarr or Whisparr
+  are ever removed from `docker-compose.yml` again, do not delete their `arr_configs` row along
+  with the instance/API-key cleanup** - that row has to stay forever, or reference this section
+  before repeating the fix.
 - ~~Cleanuparr logs a recurring `Error creating download service for Decypharr`~~ Fixed in
   v10.9.2: a stale password in Cleanuparr's stored credential, not a protocol mismatch.
   Confirmed with `curl` against Decypharr's login endpoint (`401` with the stored password,
@@ -1913,3 +1924,27 @@ still showed Plex pinned to `1.43.2.10687-563d026ea`, a full version behind the
 `1.43.3.10828-00f62d37d` this stack has actually run since the v10.9.9 bump. Service count
 corrected 28 → 30 throughout (the tracked table had silently excluded Beszel's two containers
 since they were added).
+
+**v10.12.2**: Cleanuparr was fully configured, surfacing two real live bugs in the process.
+**QueueCleaner and MalwareBlocker had been crashing on every single scheduled run** (every 5
+min / hourly) since at least 2026-07-14, entirely silently - `System.InvalidOperationException:
+Sequence contains no elements`. Root-caused by reading Cleanuparr 2.9.16's own source:
+`GenericHandler.ExecuteAsync` requires an `arr_configs` row for all five Servarr types
+unconditionally (`FirstAsync`, not `FirstOrDefaultAsync`); this stack was missing `lidarr` and
+`whisparr` (the latter deleted during this same session's Whisparr removal, following what
+turned out to be a wrong assumption - see below). Fixed by inserting placeholder rows for both
+(type only, no connected instance needed). The pre-existing "stale Readarr reference" noted in
+Known Gaps was never stale - it's required scaffolding for this exact check, and deleting it
+during a future app removal would silently reintroduce this bug. Also found and fixed:
+Cleanuparr had zero filesystem access to the download paths (compose only mounted its own
+`/config`, missing the `/app/downloads`/`/app/downloads-ad` mounts every other file-touching
+companion app has) - not the actual crash's cause, but a real gap fixed alongside it. Blacklist
+Sync (pushes the blacklist into the download client's own preferences) was found permanently
+broken against Decypharr - 404 on `setPreferences` even with valid credentials, confirmed via
+direct API testing, not a credentials issue - and disabled for good; Content/Malware Blocker
+(applies the same blacklist directly to Sonarr/Radarr) already covers the useful half of that
+feature and stays on. A stall-rule and slow-rule (3-strike, 0-100% completion, both
+private/public) were added directly via SQL after confirming live that Cleanuparr's queue_cleaner
+config API silently no-ops writes to `stallRules`/`slowRules` (200 "success" response, zero
+effect on the DB or a subsequent GET) while the actual job code queries those tables directly,
+independent of that broken API - the DB writes take effect regardless of the API bug.

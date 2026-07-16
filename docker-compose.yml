@@ -1262,6 +1262,19 @@ services:
       start_period: 30s
     volumes:
       - ./config/cleanuparr:/config
+      # Was missing entirely - Cleanuparr's QueueCleaner/MalwareBlocker jobs need
+      # filesystem access to the actual downloaded files at the same
+      # /app/downloads/<category>/... path Decypharr's own qBittorrent-emulated
+      # API reports as each queue item's location, same reasoning as Unpackerr's
+      # identical mounts above. Confirmed live: without this, both jobs crashed
+      # with "System.InvalidOperationException: Sequence contains no elements"
+      # on every single scheduled run (every 5 min for QueueCleaner) since at
+      # least 2026-07-14 - a file-path lookup against a mount that didn't exist
+      # inside this container at all, not a credentials/auth problem despite
+      # initially looking like one (Decypharr's own qBittorrent API login and
+      # category listing both work fine with the stored admin credentials).
+      - ./config/decypharr/downloads:/app/downloads:rslave
+      - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
     # No prior observation - generous default ceiling, same reasoning as
     # every other companion app in this file.
     ports:
