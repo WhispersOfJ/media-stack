@@ -291,6 +291,25 @@ throughout its history section, and there's no substitute for it here.
 - **DMM's Dockerfile needs its specific `build`-stage target plus an openssl workaround to avoid
   a real crash-loop** — this isn't cosmetic pinning, changing the build stage or dropping the
   workaround has previously broken the container outright.
+- **Cleanuparr's `arr_configs` table needs a row for all five Servarr types (Sonarr, Radarr,
+  Lidarr, Readarr, Whisparr) permanently, even for apps this stack doesn't run.** Confirmed by
+  reading Cleanuparr 2.9.16's own source — `GenericHandler.ExecuteAsync` does
+  `arr_configs.FirstAsync(x => x.Type == T)` per type, not `FirstOrDefaultAsync`, on every single
+  QueueCleaner/MalwareBlocker run. One missing type crashes the whole job. **Never delete an
+  `arr_configs` row when removing an app from this stack** — only its `arr_instances` row and
+  API key. See README's Known Gaps (was: "stale Readarr reference") for the full incident.
+- **Cleanuparr's Blacklist Sync feature (pushes the community blacklist into the download
+  client's own excluded-filenames preference) cannot work against Decypharr and is disabled
+  permanently, not a temporary state.** Decypharr's qBittorrent-API emulation doesn't implement
+  `POST /api/v2/app/setPreferences` at all (confirmed live: 404 even with valid login/cookie,
+  while `GET .../preferences` and `/torrents/categories` both work fine — not a credentials
+  problem). Cleanuparr's separate Content Blocker / Malware Blocker feature (applies the same
+  blacklist directly to Sonarr/Radarr, no download-client involvement) is the one actually doing
+  useful work here and stays enabled.
+- **Cleanuparr had zero filesystem access to the actual download paths until this was caught
+  live** — its compose block only ever mounted `./config/cleanuparr:/config`, missing the
+  `/app/downloads` / `/app/downloads-ad` mounts every other file-touching companion app
+  (Unpackerr) already has. Fixed by mirroring Unpackerr's mount set.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
