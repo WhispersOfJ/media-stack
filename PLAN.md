@@ -7,6 +7,120 @@ solves the immediate "165 movies in the wrong library" problem cheaply. This pla
 different, bigger problem: **classifying anime correctly at request time**, with real
 per-genre quality profiles, instead of inferring it after the fact from Plex's tag.
 
+## Research findings (added after the initial draft — read before Phase 0)
+
+Three open questions from the first draft, now answered against TRaSH's actual published
+guides and this stack's own live config files rather than assumption.
+
+### 1. TRaSH's actual anime quality profiles — what they contain
+
+Confirmed against `trash-guides.info`'s dedicated anime pages for both apps
+([Sonarr](https://trash-guides.info/Sonarr/sonarr-setup-quality-profiles-anime/),
+[Radarr](https://trash-guides.info/Radarr/radarr-setup-quality-profiles-anime/)) — these are
+real, actively maintained guides, not a one-off community post.
+
+**Custom formats (same shape on both apps):**
+- **Anime BD Tiers 01–08** (1400→700 pts) and **Anime Web Tiers 01–06** (600→100 pts) — the
+  actual quality-tiering backbone, playing the same role this stack's "Unlimited" profile's
+  resolution scoring does today, just anime-release-naming-aware.
+- **Remux Tiers** (Sonarr: 01–02, Radarr: 01–03), 975→950 pts.
+- **Dual Audio, Uncensored, 10bit** — score 0 by default (informational/neutral), optionally
+  boosted to +10 (prefer within same tier), +101 (prefer a tier above), or up to +2000
+  (Radarr's guide: set as the profile's *minimum* CF score to hard-require Dual Audio).
+- **Anime Raws, Dubs Only** (Radarr also lists **Anime LQ Groups**) — −10,000 pts by default
+  (effectively excluded), invertible if raws/dub-only is actually preferred.
+- **v0–v4** release-versioning markers, −51 to +4 pts.
+- Radarr's guide additionally lists **VOSTFR** and **VRV** language/source markers not present
+  on the Sonarr side.
+- **Prerequisite**: Sonarr V4+ required for this setup. This stack's Sonarr is already on
+  **4.0.19.2979** — no upgrade needed if this plan moves forward.
+
+This is a real, meaningfully different rule set from this stack's current "Unlimited" profile
+(which intentionally carries zero anime-aware scoring) — confirms the quality-profile benefit
+claimed earlier in this document is real, not hypothetical.
+
+### 2. Does this require two instances, or can one Sonarr do it forever?
+
+**TRaSH's own guide explicitly endorses staying on one instance, for both apps** — this is the
+single most consequential finding from this research pass, and changes the plan's default
+recommendation (see below).
+
+Direct quote, present on **both** the Sonarr and Radarr anime guides: *"It's recommended to run
+two [Sonarr/Radarr] instances (one for Anime and one for regular [TV/movies])... However, if
+you prefer a single instance, you can create separate quality profiles and assign
+[series/movies] accordingly."*
+
+Read that carefully: TRaSH frames the dual-instance setup as a **preference for cleaner
+separation**, not a functional requirement. A single instance with a second, anime-specific
+quality profile (and, on the Sonarr side, `Series Type: Anime` per-series — a feature this
+stack's existing single Sonarr instance already uses today for its `/data/anime` root folder)
+is described as a fully supported alternative, not a degraded workaround.
+
+**Practical implication for this stack:** staying on one Sonarr permanently is a legitimate,
+TRaSH-sanctioned long-term architecture, not just "acceptable until you get around to
+migrating." If the only goal is the quality-profile benefit from finding #1 above, **the
+entire Phase 1–3/3a–3c/5–9 compose-and-wiring effort in this plan can be skipped Sonarr-side
+and replaced with**: add a second quality profile + matching Recyclarr block to the *existing*
+Sonarr instance, assign anime series to it (manually, or via the existing `Series Type: Anime`
+setting as a signal), done. Radarr has no per-item "type" flag to key a profile assignment off
+today, so its equivalent single-instance path is: assign the new "[Anime] Remux-1080p"-style
+profile manually per-movie at add time (via Seerr's profile selection, same mechanism as the
+existing multi-connection pattern) rather than automatically. Either way, **this removes
+essentially the entire integration surface in the "Full connection checklist" above** — no new
+Unpackerr entries, no new NzbDAV Repairs connections, no new Maintainerr connections, no new
+Decypharr categories, no new Prowlarr Applications, no new Cleanuparr instance rows, no new
+control-panel wiring — because there's no second container to wire in anywhere. The only real
+work left is the Recyclarr config + quality profile creation (Phase 4) and, optionally, Seerr
+profile-selection wiring (a lighter version of Phase 8).
+
+This doesn't make the dual-instance path wrong — the "What you get" section above (independent
+settings not fighting over one instance, matching the existing `decypharr`/`decypharr-alldebrid`
+precedent) is still real. But it reframes dual-instance as an *optional upgrade for cleaner
+separation*, not a prerequisite for getting TRaSH's anime custom formats working at all. Revisit
+Phase 0 decision #1 with this in mind — the honest default recommendation, given this finding,
+is **start single-instance** (cheap, TRaSH-endorsed, reversible) and only move to a second
+instance later if the single-profile setup genuinely proves limiting in practice.
+
+### 3. Guarantee against ever needing a third Decypharr instance
+
+Verified directly against this stack's own live config files (not just the general reasoning
+in Phase 0/3 below), to make this an actual guarantee rather than an inference:
+
+```
+config/decypharr/config.json:            debrids: [{"provider": "realdebrid", ...}]  (1 entry)
+                                          categories: ["sonarr", "lidarr", "radarr"]
+config/decypharr-alldebrid/config.json:  debrids: [{"provider": "alldebrid", ...}]   (1 entry)
+                                          categories: ["sonarr", "radarr"]
+```
+
+Structurally, `debrids` and `categories` are **separate, independent top-level arrays** in
+Decypharr's config schema — there is no per-category field anywhere that scopes a category to
+a specific debrid provider. Every category on an instance shares that instance's entire
+`debrids` list, unconditionally. This is confirmed by Decypharr's own upstream documentation
+(a single instance is explicitly designed to "handle multiple Arr applications simultaneously
+using category scoping to keep downloads organized," with provider selection entirely separate
+from category selection) and by direct inspection above, not assumed.
+
+**The guarantee holds as long as one condition is true: anime content never needs a *different*
+debrid provider* than its non-anime sibling app already uses.** Since Phase 0 decision #2
+already commits to `radarr-anime` sharing the existing RD-only `decypharr` instance (new
+category `radarr-anime`, same single `realdebrid` provider Radarr's existing `radarr` category
+already uses) and `sonarr-anime` sharing the AD-only `decypharr-alldebrid` instance (new
+category `sonarr-anime`, same `alldebrid` provider), that condition holds by construction — a
+third instance would only ever become necessary if someone later wanted anime specifically
+routed to a *different* debrid backend than its non-anime counterpart, which is not part of
+this plan's design and not a requirement anywhere in TRaSH's own anime guides either.
+
+**Side finding, worth a look outside this plan's scope**: `CLAUDE.md`'s architecture notes
+describe `decypharr` as serving "both Real-Debrid+AllDebrid" — the live config above shows it
+configured with only `realdebrid`, one provider. Whether this is stale documentation or a
+provider that was intentionally dropped from that instance at some point isn't something this
+research pass resolved; flagging it here since it's directly adjacent to the claim being
+verified, but it doesn't change the guarantee above either way (one provider or two, the
+category-sharing mechanism is identical).
+
+---
+
 ## Why this is a separate, bigger thing than the sweep script
 
 Radarr and TMDB have no "Anime" genre at all — verified live during the sweep-script work:
@@ -110,28 +224,78 @@ the callout at the start of Phase 3a).
 These aren't technical prerequisites, they're judgment calls that change the shape of
 everything after them. Answer these first:
 
-1. **Scope: Radarr only, Sonarr only, or both?** Sonarr already has a second root folder
-   (`./media/anime-shows`) and `Series Type: Anime` per-series — it's most of the way to "anime
-   gets different handling" already, just not a separate instance. Radarr has *nothing*
-   anime-specific today. If you want to derisk this, **do Sonarr second** (it has less distance
-   to travel and an existing partial precedent to validate against), start with Radarr where
-   the before/after is a clean, easy-to-verify state change.
-2. **Debrid gateway sharing.** Does `radarr-anime` share the existing `decypharr` instance (new
-   category, e.g. `radarr-anime`) or get a third Decypharr instance entirely? Recommendation:
-   **share** — the reason `decypharr-alldebrid` exists as a *second* instance is Decypharr's
-   lack of per-provider (RD vs AD) scoping within one instance, which has nothing to do with
-   anime vs non-anime. A third instance would be solving a problem that doesn't exist here.
-3. **TRaSH anime profile choice.** Which of TRaSH Guides' anime-specific quality profiles /
-   custom-format sets to actually adopt. This needs real research against TRaSH's current
-   anime guide (not assumed from this plan) before Recyclarr wiring — treat this as its own
-   ~30–45 minute research task inside Phase 4, not a copy-paste.
+1. **Scope: stay single-instance, or go dual?** Updated by research finding #2 above — TRaSH's
+   own anime guides explicitly endorse a single instance with a second quality profile as a
+   supported alternative, not a degraded workaround. **Revised default recommendation: start
+   single-instance for both apps.** This gets the entire quality-profile benefit (finding #1)
+   for roughly a quarter of the cost — no new containers, no new Full-connection-checklist
+   wiring — and Sonarr's existing `/data/anime` root folder + `Series Type: Anime` setting
+   already puts it most of the way there. Only fall through to Phases 1–3/3a–3c/5–9 (the full
+   dual-instance build) if single-instance genuinely proves limiting later — e.g. profile
+   settings that need to differ in ways two profiles on one instance can't express, or a real
+   operational need for Radarr/Sonarr-level isolation (separate restart/upgrade cadence,
+   separate resource limits) rather than just profile-level separation. If dual-instance is
+   still the choice, doing Radarr first still derisks it (Sonarr already has a partial
+   precedent to validate against; Radarr's before/after is a cleaner state change to verify).
+2. **Debrid gateway sharing (dual-instance path only — moot if staying single-instance).**
+   Does `radarr-anime` share the existing `decypharr` instance (new category, e.g.
+   `radarr-anime`) or get a third Decypharr instance entirely? **Now a guarantee, not just a
+   recommendation** — see research finding #3 above, confirmed directly against both live
+   `config/decypharr*/config.json` files: `debrids` and `categories` are independent arrays,
+   every category shares the instance's whole `debrids` list, and nothing about anime content
+   needs a different provider than its non-anime sibling already uses. Share; a third instance
+   would solve a problem that doesn't exist here.
+3. **TRaSH anime profile choice — resolved, see research finding #1 above.** Both apps' full
+   custom-format lists and default scores are now documented there directly from TRaSH's
+   current published guides, Sonarr V4+ prerequisite confirmed already met
+   (this stack: 4.0.19.2979). Phase 4 no longer needs its own research pass — go straight to
+   import/scoring decisions.
 4. **Backlog migration: do it, or don't?** See the dedicated section near the end. Recommend
-   deferring this decision until the going-forward setup is live and validated with a real new
-   request — don't commit to a migration approach before you've seen the new instances work.
+   deferring this decision until whichever path (single- or dual-instance) is live and
+   validated with a real new request — don't commit to a migration approach before you've seen
+   the new setup work.
 
 ---
 
-## Phase 1 — Compose: two new services
+## Alternate lightweight path — single-instance (now the recommended default)
+
+If Phase 0 decision #1 comes out single-instance, **Phases 1–3, 3a–3c, and 5–9 below don't
+apply at all** — there's no second container, so nothing to mount, wire into Prowlarr/NeutArr/
+Cleanuparr/Unpackerr/NzbDAV/Maintainerr/control-panel, and no root-folder collision risk to
+manage. The whole build collapses to:
+
+1. **Sonarr**: create a new quality profile (e.g. `[Anime] Remux-1080p`, per TRaSH's naming)
+   in the *existing* Sonarr instance. Import the custom formats listed in research finding #1
+   via Recyclarr (new profile block in the *existing* `config/recyclarr/recyclarr.yml`
+   `sonarr:` section, not a new instance block). Assign it to anime series going forward via
+   the existing `Series Type: Anime` setting as the signal for which profile a series should
+   use (this is a manual per-series choice in Sonarr's UI either way — TRaSH's guide doesn't
+   describe automatic profile assignment by series type).
+2. **Radarr**: same shape — new quality profile in the existing instance, new Recyclarr
+   `radarr:` profile block. Since Radarr has no per-item "type" flag to key off, profile
+   assignment happens at request time (Seerr's existing per-request profile selector, if
+   requesting through Seerr) or manually per-movie in Radarr's UI otherwise.
+3. **Root folders**: Sonarr already has `/data/anime`. Radarr already has `/data/anime-movies`
+   (added for `scripts/sort-anime-movies.py`, this session) — reusable as-is, no change needed.
+4. **Optional**: point Seerr's existing anime-labeled connection (if one exists per the
+   `request-manager-integrator` skill's own example usage) at the new profile instead of/in
+   addition to a different root folder, so anime requests get both correct routing and correct
+   scoring in one step.
+5. **Test**: one real anime movie and one real anime show request, confirm the new profile
+   actually applied and scored the way TRaSH's guide describes, same verification spirit as
+   Phase 11 below, just against one instance instead of two.
+
+Estimated cost for this path: **~1.5–2.5 hours** (mostly Recyclarr custom-format import and
+profile tuning, no compose/container work at all) — versus ~5.5–7 hours for the full
+dual-instance build. This is the reason Phase 0 decision #1 above now defaults to
+single-instance: same TRaSH-endorsed quality-profile benefit, roughly a quarter of the cost,
+fully reversible (a later move to dual-instance doesn't have to unwind anything this path did —
+the quality profiles and custom formats carry over conceptually to a second instance if that
+ever becomes the better call).
+
+---
+
+## Phase 1 — Compose: two new services (dual-instance path only)
 
 Add `radarr-anime` and `sonarr-anime` service blocks to `docker-compose.yml`, modeled directly
 on the existing `radarr`/`sonarr` blocks (same `<<: *common` anchor, same healthcheck shape).
@@ -207,7 +371,7 @@ recreate — no need for `--force-recreate` the first time).
 
 ---
 
-## Phase 2 — First-boot configuration (per new instance)
+## Phase 2 — First-boot configuration (per new instance) (dual-instance path only)
 
 Both apps come up with a fresh, unconfigured SQLite DB and a randomly-generated API key in
 their own `config/<app>-anime/config.xml`. For each:
@@ -229,7 +393,7 @@ their own `config/<app>-anime/config.xml`. For each:
 
 ---
 
-## Phase 3 — Decypharr wiring
+## Phase 3 — Decypharr wiring (dual-instance path only)
 
 Per Phase 0 decision #2 (share, don't triple the Decypharr instance count):
 
@@ -262,7 +426,7 @@ over the same files.
 
 ---
 
-## Phase 3a — Unpackerr (missing from the first draft of this plan)
+## Phase 3a — Unpackerr (dual-instance path only; missing from the first draft of this plan)
 
 Unpackerr handles RAR extraction for Radarr/Sonarr's downloads and is wired directly via
 environment variables in its compose block (`docker-compose.yml`, `unpackerr:` service) —
@@ -291,7 +455,7 @@ it is for a volume/bind-mount change).
 
 ---
 
-## Phase 3b — NzbDAV's Repairs tab (missing from the first draft of this plan)
+## Phase 3b — NzbDAV's Repairs tab (dual-instance path only; missing from the first draft of this plan)
 
 NzbDAV's Repairs feature (`docker-compose.yml`'s own comment on the `nzbdav:` service, lines
 ~528–541) needs read-only mounts of the *arr apps' root folders to correlate on-disk
@@ -325,7 +489,7 @@ path itself changes.)
 
 ---
 
-## Phase 3c — Maintainerr (missing from the first draft of this plan)
+## Phase 3c — Maintainerr (dual-instance path only; missing from the first draft of this plan)
 
 Maintainerr (Plex-lifecycle cleanup — watched/stale-content removal rules) has its own server
 connections to Plex, Radarr, Sonarr, *and* Seerr, all configured post-boot through its own
@@ -343,7 +507,7 @@ since Maintainerr simply never looks at instances it was never told about.
 
 ---
 
-## Phase 4 — Recyclarr (TRaSH anime profiles)
+## Phase 4 — Recyclarr (TRaSH anime profiles) (dual-instance path; single-instance path covered above)
 
 This is the phase that actually delivers the "independent quality profiles" benefit — don't
 skip it or this plan reduces to "two empty apps with the same profile as before," which
@@ -369,7 +533,7 @@ provides none of the stated advantage over the sweep-script approach.
 
 ---
 
-## Phase 5 — Prowlarr
+## Phase 5 — Prowlarr (dual-instance path only)
 
 Prowlarr syncs indexer lists to Radarr/Sonarr via its own "Applications" feature — confirmed
 live this stack currently has exactly two Application entries (Radarr, Sonarr). Add two more,
@@ -380,7 +544,7 @@ specifically for this class of change.
 
 ---
 
-## Phase 6 — NeutArr
+## Phase 6 — NeutArr (dual-instance path only)
 
 Checked live: NeutArr's config is **one JSON file per Servarr type**
 (`config/neutarr/radarr.json`, `sonarr.json`, etc.), but each file's `instances` field is
@@ -392,7 +556,7 @@ multi-instance additions within a type NeutArr already knows about.
 
 ---
 
-## Phase 7 — Cleanuparr
+## Phase 7 — Cleanuparr (dual-instance path only)
 
 Per this repo's own documented gotcha: Cleanuparr's `arr_configs` table is keyed by **Servarr
 type** (Radarr/Sonarr/Lidarr/Readarr/Whisparr), not by instance, and already has the one row
@@ -404,7 +568,7 @@ important enough to re-verify, not just trust this document.
 
 ---
 
-## Phase 8 — Seerr
+## Phase 8 — Seerr (dual-instance path; single-instance path has a lighter version above)
 
 Use `.claude/skills/request-manager-integrator/` exactly as documented:
 
@@ -421,7 +585,7 @@ that would need separate research to confirm — do not assume it exists based o
 
 ---
 
-## Phase 9 — control-panel
+## Phase 9 — control-panel (dual-instance path only)
 
 Same shape of edit as today's Whisparr/Stash removal, in reverse, for two new apps:
 
@@ -437,7 +601,7 @@ Same shape of edit as today's Whisparr/Stash removal, in reverse, for two new ap
 
 ---
 
-## Phase 10 — Backup coverage
+## Phase 10 — Backup coverage (dual-instance path only)
 
 Explicitly check (don't assume) whether `scripts/arr-app-backup.py` and `backup-config.sh` pick
 up new instances automatically or need explicit additions — this repo's own history notes that
@@ -447,7 +611,7 @@ class of thing this warning is about.
 
 ---
 
-## Phase 11 — End-to-end test
+## Phase 11 — End-to-end test (dual-instance path; single-instance path has its own lighter test above)
 
 Before calling this done: submit one real anime movie and one real anime show request through
 Seerr, explicitly picking the new connections, and confirm the whole chain — Seerr → correct
