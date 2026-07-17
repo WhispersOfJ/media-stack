@@ -64,32 +64,41 @@ independent of GitHub's own profile page (a resume link, a personal domain). Don
 speculatively - it's the most effort for a payoff that only matters in a specific
 context (actively job-hunting or promoting the project) that may not apply.
 
-## Finding: Stackalicious and StackScripts are behind media-stack's latest work
+## Finding: Stackalicious and StackScripts were behind media-stack's latest work
 
 While updating README/CHANGELOG across all three repos (2026-07-17, alongside the v10.15.0
 poster-sync work), checked whether that work had actually been synced downstream per each
-repo's own `AGENTS.md`. It hadn't - flagging here rather than writing changelog entries that
-would falsely claim parity:
+repo's own `AGENTS.md`. It hadn't - flagged here originally rather than writing changelog
+entries that would have falsely claimed parity. **Update, same day: the control-panel/UI half
+was then actually synced to Stackalicious**, on direct request. What made it tractable:
+`control-panel/app.py`, `static/app.js`, `static/index.html`, and `static/style.css` were all
+confirmed byte-identical to media-stack's pre-`27d875e` versions before touching anything, so
+the real upstream commit diff applied cleanly with `git apply` instead of needing a manual
+merge; `static/commands.json` and `static/fx.js` were net-new files, copied directly after
+confirming neither contained media-stack's real LAN IP/host username. Verified after the fact:
+`python3 -m py_compile` + `ruff check` on the patched `app.py`, `docker compose config` (core
++ `--profile extras`) against a copy of `.env.example`, and a manual audit of every path
+`commands.json` references against Stackalicious's actual FastAPI routes. Landed as
+Stackalicious's own `[10.14.0]` CHANGELOG entry.
 
-- **`Stackalicious/control-panel/app.py`** is 260 lines behind `media-stack`'s (3150 vs 3410);
-  **`static/app.js`** is 529 lines behind (820 vs 1349); **`static/commands.json`** (1314 lines,
-  the command-registry/atmosphere-theme feature) doesn't exist there at all. This is the poster
-  sync feature, the `/api/container/{name}/logs/stream` SSE endpoint, and the UI/a11y pass from
-  media-stack's `27d875e`, none of it pulled over yet.
-- **`scripts/sort-anime-movies.py`, `scripts/scrape_letterboxd.py`, and the newly-added
-  `scripts/audit-tmdb-links.py`** don't exist in `Stackalicious/scripts/` yet either.
-- **`StackScripts`** inherits the same gap one level further removed (it syncs from
-  Stackalicious, not media-stack directly, per its own `AGENTS.md`) - already carrying a known,
-  self-documented lag from before this session too (its `CHANGELOG.md` v2.7.0 entry says outright
-  that the Lidarr/Bindery/Readarr reinstatement "hasn't been synced to this repo yet").
+**`StackScripts` was deliberately left alone in that same pass.** It inherits the same gap one
+level further removed (syncs from Stackalicious, not media-stack directly, per its own
+`AGENTS.md`), but checking showed its copies of `app.js`/`style.css`/`index.html` are *not*
+byte-identical to any clean pre-sync baseline - it's carrying its own older, independent drift
+(different branding text, and leftover host-CPU/mem/disk stat tiles from the Glances era that
+were removed elsewhere), so the same clean-patch trick doesn't apply there. Would need an actual
+manual reconciliation, not a copy - left as a follow-up rather than rushed.
 
-This is a real, pre-existing pattern in this project, not a new problem - both repos already
-track their own lag honestly (Stackalicious's `TODO.md`, StackScripts' own changelog caveats)
-rather than pretending to be current. Didn't attempt the actual port in this pass: it's a
-few-thousand-line, sanitization-sensitive change (control-panel especially) that deserves its
-own dedicated session rather than being rushed inside a docs-update pass. Fixed the one
-self-contained inaccuracy found along the way (StackScripts' README still said "70 commands"
-after the Whisparr/Stash removal dropped it to 67 - its own changelog entry already said as
-much). Worth noting: a hub repo (above) or even just a simple version-comparison note in each
-repo's own docs would make this kind of drift visible without needing an incidental audit like
-this one to surface it.
+Also still outstanding: **`scripts/sort-anime-movies.py`, `scripts/scrape_letterboxd.py`, and
+the newly-added `scripts/audit-tmdb-links.py`** don't exist in `Stackalicious/scripts/` yet -
+this part of the original finding wasn't in scope of the "poster-sync and UI" sync request and
+is still tracked in `Stackalicious/TODO.md`.
+
+This whole thing is a real, pre-existing pattern in this project, not a new problem - both
+downstream repos already track their own lag honestly (Stackalicious's `TODO.md`, StackScripts'
+own changelog caveats) rather than pretending to be current. Fixed one self-contained
+inaccuracy found along the way (StackScripts' README still said "70 commands" after the
+Whisparr/Stash removal dropped it to 67 - its own changelog entry already said as much). Worth
+noting: a hub repo (above) or even just a simple version-comparison note in each repo's own
+docs would make this kind of drift visible without needing an incidental audit like this one to
+surface it.
