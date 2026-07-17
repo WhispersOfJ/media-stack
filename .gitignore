@@ -11,6 +11,9 @@ config/
 usenet/
 media/
 
+# arr-config-sync output (Radarr/Sonarr JSON snapshots) - regenerated, not source
+backups/
+
 # Misc
 *.log
 .DS_Store
