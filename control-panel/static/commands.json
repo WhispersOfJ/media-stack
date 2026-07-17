@@ -1,0 +1,1314 @@
+[
+  {
+    "Name": "stack-arr",
+    "Description": "Trigger an *arr app maintenance action",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/{2}",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "rss-sync/search-missing/unstick",
+        "Choices": [
+          "rss-sync",
+          "search-missing",
+          "unstick"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-arr-backlog",
+    "Description": "Show an arr app's internal command queue backlog (searches, RSS sync, bulk moves, etc)",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/command-backlog",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-arr-import",
+    "Description": "Import a file listed by stack-arr-import-candidates",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/manual-import",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "index",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "manual-import-by-index",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-arr-import-all",
+    "Description": "Import every stuck queue file for an *arr app in one go",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/manual-import-all",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-arr-import-candidates",
+    "Description": "List files ready to manually import in an *arr app",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/manual-import",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-arr-logs",
+    "Description": "Tail an *arr app's container log directly",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/logs",
+    "Query": [
+      {
+        "Key": "lines",
+        "ArgName": "lines",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "radarr/sonarr/prowlarr",
+        "Choices": [
+          "radarr",
+          "sonarr",
+          "prowlarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "lines",
+        "Choices": null,
+        "Optional": true,
+        "Default": "100",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-arr-missing-aired",
+    "Description": "List monitored items missing a file that have already aired/released",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/missing-aired",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-arr-queue-errors",
+    "Description": "Show only errored/warning queue items across all arr apps",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/queue-errors",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-backlog-status",
+    "Description": "Show every app's wanted/missing backlog with a throughput-projected ETA",
+    "Method": "GET",
+    "PathTemplate": "/api/backlog-status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-backup-restore-test",
+    "Description": "Restore one file from the latest local snapshot to confirm restores actually work",
+    "Method": "POST",
+    "PathTemplate": "/api/backup-restore-test",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-backup-status",
+    "Description": "Show full restic snapshot history for both backup repos",
+    "Method": "GET",
+    "PathTemplate": "/api/backup-status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-backup-verify",
+    "Description": "Check both local and off-site restic repos have a recent snapshot",
+    "Method": "GET",
+    "PathTemplate": "/api/backup-verify",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-cleanuparr-instances",
+    "Description": "Which *arr apps Cleanuparr has an actual connected instance for",
+    "Method": "GET",
+    "PathTemplate": "/api/cleanuparr/instances",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-cleanuparr-strikes",
+    "Description": "Show recent Cleanuparr strikes",
+    "Method": "GET",
+    "PathTemplate": "/api/cleanuparr/strikes",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "15",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-command-queue-summary",
+    "Description": "Show command queue backlog across all arr apps at once",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/command-queue-summary",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-container",
+    "Description": "Restart/stop/start a single stack container",
+    "Method": "POST",
+    "PathTemplate": "/api/container/{2}/{1}",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "restart/stop/start",
+        "Choices": [
+          "restart",
+          "stop",
+          "start"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "container-name",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{2}"
+  },
+  {
+    "Name": "stack-content-audit",
+    "Description": "Find /mnt/zurg content untracked by the matching *arr app",
+    "Method": "GET",
+    "PathTemplate": "/api/content-audit/{1}",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "movies/shows",
+        "Choices": [
+          "movies",
+          "shows"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-cutoff-unmet",
+    "Description": "List items below quality cutoff in Radarr/Sonarr",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/cutoff-unmet",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "20",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-decypharr-health",
+    "Description": "Directly check a Decypharr instance's own health",
+    "Method": "GET",
+    "PathTemplate": "/api/decypharr/health/{1}",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "decypharr/decypharr-alldebrid",
+        "Choices": [
+          "decypharr",
+          "decypharr-alldebrid"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-decypharr-torrents",
+    "Description": "List active items in a Decypharr instance queue",
+    "Method": "GET",
+    "PathTemplate": "/api/decypharr/{1}/torrents",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "decypharr/decypharr-alldebrid",
+        "Choices": [
+          "decypharr",
+          "decypharr-alldebrid"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-disk-usage",
+    "Description": "Per-app config/ directory size, largest first",
+    "Method": "GET",
+    "PathTemplate": "/api/disk-usage",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-dmm-status",
+    "Description": "Check DMM MySQL database status and row counts",
+    "Method": "GET",
+    "PathTemplate": "/api/dmm/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-grab",
+    "Description": "Add a hash to Decypharr for download (pair with stack-zilean-search)",
+    "Method": "POST",
+    "PathTemplate": "/api/decypharr/grab",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "info-hash",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "title",
+        "Choices": null,
+        "Optional": true,
+        "Default": "",
+        "Rest": true
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "hash",
+        "ArgName": "info-hash",
+        "Array": false
+      },
+      {
+        "Key": "title",
+        "ArgName": "title",
+        "Array": false
+      }
+    ],
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-image-check",
+    "Description": "Check digest/exact-version-pinned images for a newer registry digest",
+    "Method": "GET",
+    "PathTemplate": "/api/image-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-import-lists",
+    "Description": "List configured import lists for Radarr/Sonarr",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/import-lists",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-kometa-run",
+    "Description": "Run Kometa now, optionally scoped to specific Plex libraries",
+    "Method": "POST",
+    "PathTemplate": "/api/kometa/run",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "library",
+        "Choices": null,
+        "Optional": true,
+        "Default": "",
+        "Rest": true
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "libraries",
+        "ArgName": "library",
+        "Array": true
+      }
+    ],
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-letterboxd-radarr",
+    "Description": "Add a Letterboxd film to Radarr by URL",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/add-from-letterboxd",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "letterboxd-film-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-letterboxd-radarr-collection",
+    "Description": "Add every film in a Letterboxd collection to Radarr",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "letterboxd-collection-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-letterboxd-radarr-filmography",
+    "Description": "Add every film in a Letterboxd person's filmography to Radarr",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "role",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "slug",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-letterboxd-radarr-list",
+    "Description": "Add every film in a Letterboxd list to Radarr",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "letterboxd-list-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-letterboxd-radarr-popular",
+    "Description": "Add Letterboxd's popular films to Radarr",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-letterboxd-radarr-watched",
+    "Description": "Add every film a Letterboxd user has watched to Radarr",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "letterboxd-user-films-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-letterboxd-radarr-watchlist",
+    "Description": "Add every film in a Letterboxd watchlist to Radarr",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "letterboxd-watchlist-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-log-levels",
+    "Description": "Check (or reset) every Servarr app's log level",
+    "Method": "GET",
+    "PathTemplate": "/api/log-levels",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "reset",
+        "Choices": null,
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "log-levels-reset",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-maintainerr-rules",
+    "Description": "List configured Maintainerr rules and their state",
+    "Method": "GET",
+    "PathTemplate": "/api/maintainerr/rules",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-mdblist-import",
+    "Description": "Import an MDBList list into Radarr and Sonarr",
+    "Method": "POST",
+    "PathTemplate": "/api/mdblist/import-list",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "mdblist-list-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-mount-health",
+    "Description": "Check every known FUSE mountpoint resolves cleanly",
+    "Method": "GET",
+    "PathTemplate": "/api/mount-health",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-neutarr-status",
+    "Description": "Per-app enabled/disabled state from NeutArr's own config",
+    "Method": "GET",
+    "PathTemplate": "/api/neutarr/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-notify-test",
+    "Description": "Send a test notification to the stack Discord webhook",
+    "Method": "POST",
+    "PathTemplate": "/api/notify/test",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-nzbdav-history",
+    "Description": "Show NzbDAV's recent download history (completed/failed)",
+    "Method": "GET",
+    "PathTemplate": "/api/nzbdav/history",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "20",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-nzbdav-queue",
+    "Description": "Show NzbDAV's current Usenet download queue",
+    "Method": "GET",
+    "PathTemplate": "/api/nzbdav/queue",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-nzbdav-stats",
+    "Description": "Show aggregate NzbDAV queue/history stats",
+    "Method": "GET",
+    "PathTemplate": "/api/nzbdav/stats",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-oom-check",
+    "Description": "List containers Docker has recorded an OOM-kill for",
+    "Method": "GET",
+    "PathTemplate": "/api/oom-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-perms-check",
+    "Description": "Find config files unreadable by group/other (won't be backed up)",
+    "Method": "GET",
+    "PathTemplate": "/api/perms-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-plex",
+    "Description": "Trigger a Plex maintenance action",
+    "Method": "POST",
+    "PathTemplate": "/api/plex/{1}",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "scan/empty-trash/optimize-db/clean-bundles",
+        "Choices": [
+          "scan",
+          "empty-trash",
+          "optimize-db",
+          "clean-bundles"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-plex-duplicates",
+    "Description": "Flag Plex movies carrying redundant duplicate files",
+    "Method": "GET",
+    "PathTemplate": "/api/plex/duplicates",
+    "Query": [
+      {
+        "Key": "min_gb",
+        "ArgName": "min_gb",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "min_gb",
+        "Choices": null,
+        "Optional": true,
+        "Default": "5.0",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-plex-empty-trash",
+    "Description": "Empty trash on one Plex library, or all of them",
+    "Method": "POST",
+    "PathTemplate": "/api/plex/empty-trash",
+    "Query": [
+      {
+        "Key": "library",
+        "ArgName": "library",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "library name",
+        "Choices": null,
+        "Optional": true,
+        "Default": "",
+        "Rest": true
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-plex-libraries",
+    "Description": "List Plex library names (for stack-kometa-run)",
+    "Method": "GET",
+    "PathTemplate": "/api/plex/libraries",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-plex-recently-added",
+    "Description": "Show recently added items visible in Plex",
+    "Method": "GET",
+    "PathTemplate": "/api/plex/recently-added",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "15",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-plex-sessions",
+    "Description": "Show active Plex streaming sessions",
+    "Method": "GET",
+    "PathTemplate": "/api/plex/sessions",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-plex-updates",
+    "Description": "Check for a Plex update (check only, does not apply it)",
+    "Method": "GET",
+    "PathTemplate": "/api/plex/updates",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-prowlarr-indexers",
+    "Description": "List Prowlarr indexers with enabled state and priority",
+    "Method": "GET",
+    "PathTemplate": "/api/prowlarr/indexers",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-queue-status",
+    "Description": "Show every app's download queue with a live-measured speed and ETA",
+    "Method": "GET",
+    "PathTemplate": "/api/queue-status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-rating-imdb",
+    "Description": "Look up a title's IMDb rating",
+    "Method": "GET",
+    "PathTemplate": "/api/ratings/imdb?imdb_id={1}",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "imdb-id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-rating-mdblist",
+    "Description": "Look up a title's MDBList score",
+    "Method": "GET",
+    "PathTemplate": "/api/ratings/mdblist?imdb_id={1}",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "imdb-id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-recently-added",
+    "Description": "List recently added items in Radarr/Sonarr with file status",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/recently-added",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "10",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-recyclarr-status",
+    "Description": "Show Recyclarr recent log output (last sync result)",
+    "Method": "GET",
+    "PathTemplate": "/api/recyclarr/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-resource-check",
+    "Description": "List containers missing mem_limit/cpus",
+    "Method": "GET",
+    "PathTemplate": "/api/resource-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-restart-all",
+    "Description": "Restart the whole stack (confirms first)",
+    "Method": "POST",
+    "PathTemplate": "/api/stack/restart-all",
+    "Query": null,
+    "Args": null,
+    "Confirm": true,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-seerr-requests",
+    "Description": "List Seerr media requests by status",
+    "Method": "GET",
+    "PathTemplate": "/api/seerr/requests",
+    "Query": [
+      {
+        "Key": "status",
+        "ArgName": "pending/approved/available/all",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "pending/approved/available/all",
+        "Choices": [
+          "pending",
+          "approved",
+          "available",
+          "all"
+        ],
+        "Optional": true,
+        "Default": "pending",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-status",
+    "Description": "Show live state/health of every media-stack container",
+    "Method": "GET",
+    "PathTemplate": "/api/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-history",
+    "Description": "Show recent Plex watch history from Tautulli",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/history",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "10",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-top",
+    "Description": "Show top containers by CPU or memory usage",
+    "Method": "GET",
+    "PathTemplate": "/api/top",
+    "Query": [
+      {
+        "Key": "by",
+        "ArgName": "cpu/mem",
+        "Literal": ""
+      },
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "cpu/mem",
+        "Choices": [
+          "cpu",
+          "mem"
+        ],
+        "Optional": true,
+        "Default": "cpu",
+        "Rest": false
+      },
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "10",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-version",
+    "Description": "README's declared version + live container count",
+    "Method": "GET",
+    "PathTemplate": "/api/version",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-zilean-search",
+    "Description": "Search Zilean cached-hash index directly",
+    "Method": "POST",
+    "PathTemplate": "/api/zilean/search",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "query",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": true
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "query",
+        "ArgName": "query",
+        "Array": false
+      }
+    ],
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-zurg-classify",
+    "Description": "Test a filename against Zurg's current content-routing config",
+    "Method": "GET",
+    "PathTemplate": "/api/zurg/classify",
+    "Query": [
+      {
+        "Key": "filename",
+        "ArgName": "filename",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "filename",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": true
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  }
+]
