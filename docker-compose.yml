@@ -494,6 +494,15 @@ services:
     environment:
       TZ: ${TZ}
       CRON_SCHEDULE: "0 6 * * *"  # once daily, 6am
+      # Missing since Recyclarr was first added - recyclarr.yml's !env_var
+      # RADARR_API_KEY/SONARR_API_KEY directives had nothing to resolve
+      # against inside this container. Confirmed live via its own logs:
+      # every single scheduled run since at least 2026-07-14 failed at the
+      # config-parse stage ("undefined environment variable
+      # SONARR_API_KEY"), meaning custom-format/profile sync has never
+      # actually run - not a regression, broken since day one.
+      RADARR_API_KEY: ${RADARR_API_KEY}
+      SONARR_API_KEY: ${SONARR_API_KEY}
     volumes:
       - ./config/recyclarr:/config
     # No prior limit at all - found live via a resource audit. A scheduled
