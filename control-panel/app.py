@@ -537,7 +537,13 @@ def kometa_run(payload: KometaRunRequest = KometaRunRequest()):
     cmd = ["python3", "/kometa.py", "--run"]
     scope = "every library"
     if payload.libraries:
-        cmd += ["--run-libraries", ",".join(payload.libraries)]
+        # Kometa's own --run-libraries takes a pipe-separated list, not comma
+        # (confirmed live: a comma-joined multi-library value fails the whole
+        # run with "Config Error: No libraries were found in config" - a
+        # single-library run never hit this since there's no delimiter to
+        # get wrong). Was silently broken for any multi-library scoped run
+        # since this endpoint was written.
+        cmd += ["--run-libraries", "|".join(payload.libraries)]
         scope = ", ".join(payload.libraries)
     try:
         # detach=True: fire the run and return immediately rather than

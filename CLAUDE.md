@@ -218,11 +218,23 @@ throughout its history section, and there's no substitute for it here.
 - **Zurg's content-routing (`config/zurg/config.yml`, gitignored) checks groups in `group_order`
   sequence, first match wins — a misrouted-content report can be either a missing keyword *or* a
   wrong `group_order`, and they look identical from the user's side.** `shows` uses a generic
-  `has_episodes: true` heuristic; content numbered like a series (e.g. `Family.Swap.10.2023`)
-  can get claimed by `shows` before a more specific group like `adult` ever runs, if `adult`'s
-  `group_order` is higher (checked later). No keyword-list fix can catch that case — the group
-  never receives the file to test against its regex at all. Check `group_order` first, not just
-  the keyword list, when a report doesn't match any obvious missing-keyword pattern.
+  `has_episodes: true` heuristic that can claim content numbered like a series (e.g.
+  `Family.Swap.10.2023`) before a more specific group ever runs, if that group's `group_order`
+  is higher (checked later). No keyword-list fix can catch that case — the group never receives
+  the file to test against its regex at all. Check `group_order` first, not just the keyword
+  list, when a report doesn't match any obvious missing-keyword pattern.
+- **A Zurg group whose *app* is gone doesn't stop misrouting content — it just starts
+  misrouting into a path nothing serves anymore, silently.** Confirmed live 2026-07-17: the
+  `music`, `books`, and `adult` groups all outlived Lidarr/Bindery/Whisparr's removal and kept
+  running, and two of them (`music`'s bare `FLAC` keyword, `adult`'s bare `Wicked`/`XXX`
+  keywords) were false-positive-matching real movies the whole time — 43 movies sitting in
+  `/mnt/zurg/music`, 4 in `/mnt/zurg/adult`, most fortunately already duplicated safely in
+  Radarr via Decypharr's separate mount, but not all. All three groups removed outright (see
+  README's [Zurg's content-routing groups](README.md#zurgs-content-routing-groups) section for
+  the full incident and recovery). **When an app that owned a Zurg group is removed, removing
+  the group itself has to be part of that removal checklist** — it was not, for any of the
+  three, and nothing else in this stack would have caught it (no library, no queue, no alert
+  reads `/mnt/zurg/<dead-group>`).
 - **A service can be fully connected at the `docker-compose.yml` level and still not actually be
   wired into the *app* it's talking to.** Cleanuparr and NeutArr both auto-discover which
   `*arr` apps exist, but each still needs its own internal instance registration (Cleanuparr's

@@ -18,6 +18,15 @@ list carries the same id as `tmdbId`. That's the only join key used here -
 titles are not compared, since re-matched/aliased titles (see today's Zurg
 audit) can differ between the two systems for the exact same film.
 
+Library sections are looked up by title, not a hardcoded numeric key.
+Confirmed live 2026-07-17 that this actually matters: this script's own
+`MOVIES_SECTION_ID`/anime-target constants were hardcoded to "14"/"13" and
+happened to still be correct, but README's own service table (a separate,
+manually-copied snapshot) had drifted to entirely different key numbers
+(4/1/3/8/10/11) from some earlier library rebuild - proof section keys
+aren't stable across this stack's own lifetime, just something that
+happened not to have bitten this particular script yet.
+
 Run by systemd/stack-sort-anime-movies.{service,timer} (hourly). Safe to
 run repeatedly - a movie already on the anime root folder is simply not
 returned by the Plex genre query's rootFolderPath filter below, so re-runs
@@ -34,7 +43,8 @@ from pathlib import Path
 
 STACK_DIR = Path(__file__).resolve().parent.parent
 
-MOVIES_SECTION_ID = "14"
+MOVIES_LIBRARY_TITLE = "Movies"
+ANIME_LIBRARY_TITLE = "Anime Movies"
 ANIME_ROOT_FOLDER = "/data/anime-movies"
 
 
@@ -75,7 +85,17 @@ def radarr_request(method, path, body=None):
         return json.loads(raw) if raw else None
 
 
-def anime_tagged_movies():
+def plex_section_key(title):
+    """None if no library with this exact title (case-insensitive) exists
+    on this install."""
+    data = plex_get("/library/sections")
+    for d in data.get("MediaContainer", {}).get("Directory", []):
+        if d.get("title", "").lower() == title.lower():
+            return d["key"]
+    return None
+
+
+def anime_tagged_movies(movies_section_key):
     """Every Movies-section item currently carrying Plex's "Anime" genre,
     as (title, tmdb_id) pairs. Items without a tmdb:// guid (unmatched, or
     matched against a non-TMDB source) are skipped and reported separately
@@ -84,7 +104,7 @@ def anime_tagged_movies():
     # otherwise omits the Guid array entirely (only the single-item
     # /library/metadata/{key} endpoint includes it by default), which would
     # otherwise make every item look "unmatched" below.
-    data = plex_get(f"/library/sections/{MOVIES_SECTION_ID}/all?genre=Anime&includeGuids=1")
+    data = plex_get(f"/library/sections/{movies_section_key}/all?genre=Anime&includeGuids=1")
     items = data.get("MediaContainer", {}).get("Metadata", [])
     matched, unmatched = [], []
     for item in items:
@@ -116,7 +136,17 @@ def main():
         return 1
 
     try:
-        plex_matched, plex_unmatched = anime_tagged_movies()
+        movies_key = plex_section_key(MOVIES_LIBRARY_TITLE)
+    except (urllib.error.URLError, urllib.error.HTTPError) as e:
+        print(f"Plex library lookup failed: {e}", file=sys.stderr)
+        return 1
+    if movies_key is None:
+        print(f"No Plex library titled '{MOVIES_LIBRARY_TITLE}' found.", file=sys.stderr)
+        return 1
+    anime_key = plex_section_key(ANIME_LIBRARY_TITLE)
+
+    try:
+        plex_matched, plex_unmatched = anime_tagged_movies(movies_key)
     except (urllib.error.URLError, urllib.error.HTTPError) as e:
         print(f"Plex genre query failed: {e}", file=sys.stderr)
         return 1
@@ -167,7 +197,7 @@ def main():
 
     print(f"Move request submitted for {len(to_move)} movie(s) - Radarr will relocate files in the background.")
 
-    for section_id in (MOVIES_SECTION_ID, "13"):
+    for section_id in filter(None, (movies_key, anime_key)):
         try:
             plex_get(f"/library/sections/{section_id}/refresh")
         except (urllib.error.URLError, urllib.error.HTTPError) as e:
