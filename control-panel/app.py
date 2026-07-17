@@ -29,7 +29,7 @@ import psycopg2
 import pymysql
 import yaml
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -2097,6 +2097,24 @@ def container_start(name: str):
     except Exception as e:
         fail(f"Start failed: {e}")
     return ok(f"{container_label(name)} started.")
+
+
+@app.get("/api/container/{name}/logs/stream")
+def container_logs_stream(name: str, tail: int = 100):
+    """Live-follows a container's own docker logs as Server-Sent Events -
+    the streaming counterpart to /api/arr/{app}/logs' one-shot tail, used
+    for live feedback while a mutating action (restart, search, etc)
+    against that same container is in flight. Works for any container in
+    this compose project, not just the arr apps the older route covers."""
+    c = find_project_container(name, reject_self=False)
+
+    def generate():
+        for line in c.logs(stream=True, follow=True, tail=tail):
+            text = line.decode(errors="replace").rstrip("\n")
+            for part in text.splitlines() or [""]:
+                yield f"data: {part}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------
