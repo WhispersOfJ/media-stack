@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.14.0**
+Current version: **v10.14.1**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -49,8 +49,10 @@ Point this at a Real-Debrid and/or AllDebrid account and it wires together: an i
 (Prowlarr + Zilean's DMM cache-hash index), a request front-end (Seerr), two `*arr` apps
 (Radarr, Sonarr; Lidarr was removed in v10.9.9 and Whisparr in v10.12.0, see
 [History](#history)), a debrid gateway that symlinks already-cached content instead of
-downloading it (Decypharr + Zurg), a Usenet fallback that streams rather than downloads
-(NzbDAV), a containerized Plex, a self-hosted DebridMediaManager, and automation/monitoring
+downloading it (Decypharr + Zurg), and Usenet, which streams rather than downloads (NzbDAV) -
+**Usenet is now the preferred protocol on both `*arr` apps as of v10.14.1** (a deliberate
+reversal of this stack's original debrid-first design, see [History](#history)), a
+containerized Plex, a self-hosted DebridMediaManager, and automation/monitoring
 extras (Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli, Maintainerr). Ebooks
 briefly had a dedicated app (Bindery) plus a reader (Calibre-Web); both were retired in v10.9.8
 with no replacement (see
@@ -1967,7 +1969,7 @@ integrations a first pass missed (Unpackerr, NzbDAV's Repairs tab, Maintainerr) 
 root-folder collision risk if that plan's backlog migration ever reuses Sonarr's existing anime
 path.
 
-**v10.14.0** (current): `PLAN.md` research resolved two of its three open questions in TRaSH
+**v10.14.0**: `PLAN.md` research resolved two of its three open questions in TRaSH
 Guides' favor of *not* building the dedicated-instance version at all: TRaSH's own anime guides
 for both apps explicitly endorse a single instance with a second quality profile as supported,
 not a workaround, and the "third Decypharr instance" question turned out to be a non-issue by
@@ -1991,3 +1993,16 @@ does *not* get TRaSH's anime-specific sizes, only its custom-format scores and q
 groupings, to avoid silently overwriting the general sizes every existing non-anime title still
 depends on. Documented as an accepted, load-bearing limitation in both `CLAUDE.md` and
 `recyclarr.yml` directly, not left implicit.
+
+**v10.14.1** (current): Usenet made the preferred protocol on both Radarr and Sonarr, on user
+request - **a deliberate reversal of this stack's original debrid-first design** (debrid
+mounts serve already-cached content instantly with no real download; Usenet always downloads/
+streams real data, the tradeoff being knowingly accepted here). Checked every lever both apps
+expose for protocol preference rather than assuming one setting covers it: Delay Profile
+`preferredProtocol` was already `"usenet"` on both apps with zero delay either way, and indexer
+priority already favored the two Usenet indexers (DrunkenSlug, NZBgeek at priority 1-2) well
+ahead of every torrent indexer (all at 25) - neither needed a change. The one setting that
+was backwards: download-client priority had Decypharr (torrent/debrid) at priority 1 and
+`nzbdav` (Usenet) at priority 2 on both apps, opposite of the new preference - swapped via API
+on both. All three settings live in each app's own gitignored config, not tracked files - this
+entry is the only record of what changed.

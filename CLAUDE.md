@@ -16,8 +16,15 @@ A Docker Compose media-acquisition-and-serving stack (30 services, one `docker-c
 indexes content via Prowlarr + Zilean, requests via Seerr, organizes via two `*arr`-family apps
 (Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
 Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
-currently in the stack), fetches via a debrid-first pipeline (Zurg + Decypharr against
-Real-Debrid/AllDebrid) with a Usenet fallback (NzbDAV), and serves via a containerized Plex. There
+currently in the stack), fetches via debrid (Zurg + Decypharr against Real-Debrid/AllDebrid) and
+Usenet (NzbDAV) - **Usenet is the preferred protocol as of a deliberate v10.14.1 policy change,
+reversing the stack's original debrid-first design** (see the `*arr` apps' Delay Profile
+`preferredProtocol` and download-client priority, both set live via API, not tracked config -
+NzbDAV is now priority 1 on both Radarr and Sonarr, Decypharr priority 2). The original
+debrid-first rationale (cached debrid links serve instantly with no real download, Usenet
+always downloads/streams real data) still holds as a tradeoff being knowingly accepted, not
+forgotten - re-flip download-client priority back if that efficiency matters more than Usenet
+preference in a future session - and serves via a containerized Plex. There
 is no adult content library in this stack anymore: Plex's own Adult library was removed in
 v10.9.9 (confirmed live via `/library/sections`), and Whisparr (which managed the underlying
 files/root folder) plus Stash (which cataloged it) were both removed in v10.12.0, along with the
@@ -66,9 +73,10 @@ real-time daemon despite running as one; both apps also carry a second, Recyclar
 "[Anime] Remux-1080p" profile as of the single-instance anime-routing work, see the landmine
 below on why it deliberately doesn't get its own quality-definition sizes).
 
-**Usenet fallback** — `nzbdav` (core, port 3001→3000, WebDAV-streamed Usenet, SABnzbd-API
-compatible, priority-2 download client behind Decypharr) · `nzbdav-rclone` (see FUSE mount
-owners above — same container, listed once).
+**Usenet** — `nzbdav` (core, port 3001→3000, WebDAV-streamed Usenet, SABnzbd-API compatible,
+**priority-1 download client on both Radarr and Sonarr as of v10.14.1** — was priority-2
+behind Decypharr until that deliberate policy reversal, see the top-of-file description) ·
+`nzbdav-rclone` (see FUSE mount owners above — same container, listed once).
 
 **Requests** — `seerr` (core, port 5055, Radarr/Sonarr only — no adult-content or music/ebook
 data model, moot now that those app families are gone anyway).
