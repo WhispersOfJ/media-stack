@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.12.2**
+Current version: **v10.14.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1869,7 +1869,7 @@ post-rebuild: control-panel starts healthy, DMM's MySQL connection (`caching_sha
 the actual consumer of this dependency) still authenticates, and the Letterboxd-to-Radarr
 endpoints still work end to end.
 
-**v10.11.0** (current): Ratings lookups (`stack-rating-imdb`, `stack-rating-mdblist`) and
+**v10.11.0**: Ratings lookups (`stack-rating-imdb`, `stack-rating-mdblist`) and
 MDBList list import (`stack-mdblist-import`) added — three new Control Panel endpoints
 (`/api/ratings/imdb`, `/api/ratings/mdblist`, `/api/mdblist/import-list`) plus a new Sonarr
 add-series path alongside the existing Radarr one. Both OMDb and MDBList API keys are read
@@ -1948,3 +1948,46 @@ private/public) were added directly via SQL after confirming live that Cleanupar
 config API silently no-ops writes to `stallRules`/`slowRules` (200 "success" response, zero
 effect on the DB or a subsequent GET) while the actual job code queries those tables directly,
 independent of that broken API - the DB writes take effect regardless of the API bug.
+
+**v10.13.0**: A live audit found 165 movies in the Movies library tagged "Anime" by Plex's own
+agent - Radarr/TMDB has no such genre at all (confirmed on Akira: just Animation/Science
+Fiction/Action), so this can only be detected after the fact, not filtered at import. Fixed
+with a new hourly sweep (`scripts/sort-anime-movies.py` + `systemd/stack-sort-anime-movies.
+{service,timer}`): queries Plex for Anime-tagged movies, matches each back to its Radarr entry
+by `tmdb://` guid, and relocates it via Radarr's own `PUT /movie/editor` (`moveFiles: true`) to
+a new second root folder, `/data/anime-movies` (Radarr had zero anime-movie root folder before
+this - Sonarr's equivalent `/data/anime` split already existed). Cleared the full backlog the
+same day; idempotent on rerun. Separately, `control-panel/static/app.js` still listed Whisparr
+and Stash in `ARR_APPS`/`QUICK_LINKS` despite both being fully removed in v10.12.0 - dead tiles
+pointing at containers that no longer exist; the Python side (`ARR_APPS`, `CONTAINER_LABELS`)
+had already been cleaned up correctly, only the frontend had drifted. `PLAN.md` added alongside
+this work, laying out the larger, deferred alternative (dedicated Anime Radarr/Sonarr instances)
+- cross-checked every app wired to the main Radarr/Sonarr before writing it, catching three
+integrations a first pass missed (Unpackerr, NzbDAV's Repairs tab, Maintainerr) plus a
+root-folder collision risk if that plan's backlog migration ever reuses Sonarr's existing anime
+path.
+
+**v10.14.0** (current): `PLAN.md` research resolved two of its three open questions in TRaSH
+Guides' favor of *not* building the dedicated-instance version at all: TRaSH's own anime guides
+for both apps explicitly endorse a single instance with a second quality profile as supported,
+not a workaround, and the "third Decypharr instance" question turned out to be a non-issue by
+construction (verified directly against `config/decypharr*/config.json` - `debrids` and
+`categories` are independent arrays, nothing scopes a provider to one category). Implemented
+that lightweight path: both apps now carry a Recyclarr-managed "[Anime] Remux-1080p" profile
+(id 7 on both), synced entirely by `quality_profiles.trash_id` rather than hand-copied scores -
+TRaSH's guide supplies the qualities tree, custom-format associations, and scores directly.
+Two real, previously-undiscovered bugs surfaced and fixed along the way, unrelated to the anime
+work itself but blocking it: **Recyclarr's sync had been completely broken since the day it was
+added** - its compose service block never passed `RADARR_API_KEY`/`SONARR_API_KEY` into the
+container despite `recyclarr.yml`'s `!env_var` directives requiring them, so every scheduled
+run failed at the config-parse stage, confirmed via logs going back to at least 2026-07-14; and
+both apps' sole quality profile had drifted to being named "Any" while `recyclarr.yml` (and
+this repo's own `CLAUDE.md`) still assumed "Unlimited," so even after the env-var fix, Recyclarr
+couldn't find anywhere to score custom formats into until the live profile was renamed back via
+API. A third, more structural finding shaped the implementation itself: Radarr/Sonarr's quality
+*definitions* (file-size ranges per resolution) are confirmed instance-wide via
+`GET /api/v3/qualitydefinition`, not scoped per profile - so the new anime profile deliberately
+does *not* get TRaSH's anime-specific sizes, only its custom-format scores and quality-tier
+groupings, to avoid silently overwriting the general sizes every existing non-anime title still
+depends on. Documented as an accepted, load-bearing limitation in both `CLAUDE.md` and
+`recyclarr.yml` directly, not left implicit.
