@@ -1,11 +1,24 @@
 # Dedicated Anime Radarr + Sonarr Instance — Implementation Plan
 
-Status: **not started**. This is a planning document only — nothing in this file has been
-applied to the stack. It was written alongside the much smaller `scripts/sort-anime-movies.py`
-sweep (already implemented, running hourly via `systemd/stack-sort-anime-movies.timer`), which
-solves the immediate "165 movies in the wrong library" problem cheaply. This plan solves a
-different, bigger problem: **classifying anime correctly at request time**, with real
-per-genre quality profiles, instead of inferring it after the fact from Plex's tag.
+Status: **the "Alternate lightweight path" (single-instance) is implemented and verified live —
+the dual-instance path below it is still just a plan, not started.** Both Radarr and Sonarr now
+carry a Recyclarr-managed "[Anime] Remux-1080p" profile (id 7 on both), synced via
+`quality_profiles.trash_id` in `config/recyclarr/recyclarr.yml` (gitignored - see that file
+directly for the live config, this document for the reasoning). Confirmed via direct API
+inspection: correct custom-format scores (Anime BD/Web Tiers, Remux Tiers, Dual Audio,
+Uncensored, 10bit, Raws, Dubs Only, v0-v4 all present and matching TRaSH's published defaults)
+and correct quality-tier allow/deny groupings on both apps. See "Alternate lightweight path"
+below for what was actually done and one real constraint discovered during implementation that
+the original draft didn't anticipate (quality *definitions* being instance-wide, not
+per-profile) — full detail in this repo's own `CLAUDE.md` landmines section and in
+`config/recyclarr/recyclarr.yml`'s comments directly.
+
+It was written alongside the much smaller `scripts/sort-anime-movies.py` sweep (already
+implemented, running hourly via `systemd/stack-sort-anime-movies.timer`), which solved the
+immediate "165 movies in the wrong library" problem cheaply. This document as a whole was
+scoped around a different, bigger problem: **classifying anime correctly at request time**,
+with real per-genre quality profiles, instead of inferring it after the fact from Plex's tag -
+the lightweight path above achieves that goal without the dual-instance build below it.
 
 ## Research findings (added after the initial draft — read before Phase 0)
 
@@ -257,41 +270,70 @@ everything after them. Answer these first:
 
 ---
 
-## Alternate lightweight path — single-instance (now the recommended default)
+## Alternate lightweight path — single-instance (implemented, verified live)
 
-If Phase 0 decision #1 comes out single-instance, **Phases 1–3, 3a–3c, and 5–9 below don't
-apply at all** — there's no second container, so nothing to mount, wire into Prowlarr/NeutArr/
-Cleanuparr/Unpackerr/NzbDAV/Maintainerr/control-panel, and no root-folder collision risk to
-manage. The whole build collapses to:
+Phase 0 decision #1 came out single-instance, and this path is now **done**, not just planned.
+As anticipated, **Phases 1–3, 3a–3c, and 5–9 below did not apply at all** — no second
+container, nothing to mount, nothing to wire into Prowlarr/NeutArr/Cleanuparr/Unpackerr/
+NzbDAV/Maintainerr/control-panel, no root-folder collision risk. What actually happened,
+against what was originally planned:
 
-1. **Sonarr**: create a new quality profile (e.g. `[Anime] Remux-1080p`, per TRaSH's naming)
-   in the *existing* Sonarr instance. Import the custom formats listed in research finding #1
-   via Recyclarr (new profile block in the *existing* `config/recyclarr/recyclarr.yml`
-   `sonarr:` section, not a new instance block). Assign it to anime series going forward via
-   the existing `Series Type: Anime` setting as the signal for which profile a series should
-   use (this is a manual per-series choice in Sonarr's UI either way — TRaSH's guide doesn't
-   describe automatic profile assignment by series type).
-2. **Radarr**: same shape — new quality profile in the existing instance, new Recyclarr
-   `radarr:` profile block. Since Radarr has no per-item "type" flag to key off, profile
-   assignment happens at request time (Seerr's existing per-request profile selector, if
-   requesting through Seerr) or manually per-movie in Radarr's UI otherwise.
-3. **Root folders**: Sonarr already has `/data/anime`. Radarr already has `/data/anime-movies`
-   (added for `scripts/sort-anime-movies.py`, this session) — reusable as-is, no change needed.
-4. **Optional**: point Seerr's existing anime-labeled connection (if one exists per the
-   `request-manager-integrator` skill's own example usage) at the new profile instead of/in
-   addition to a different root folder, so anime requests get both correct routing and correct
-   scoring in one step.
-5. **Test**: one real anime movie and one real anime show request, confirm the new profile
-   actually applied and scored the way TRaSH's guide describes, same verification spirit as
-   Phase 11 below, just against one instance instead of two.
+1. **Sonarr**: a new quality profile, `[Anime] Remux-1080p` (landed as id 7, alongside
+   "Unlimited" at id 1), added to the *existing* instance via a new `quality_profiles:` block
+   in `config/recyclarr/recyclarr.yml`'s existing `sonarr:` section. **Simpler than planned**:
+   rather than hand-listing custom-format trash_ids and scores, Recyclarr's
+   `quality_profiles: [{trash_id: ...}]` form pulls the entire profile - qualities tree,
+   custom-format associations, and TRaSH-recommended scores - directly from TRaSH's guide by
+   ID. Verified via direct API call against the live profile: all expected custom formats
+   present with the exact published default scores (Anime BD Tiers 1400→700, Web Tiers
+   600→100, Raws/Dubs Only -10000, v0 -51, Dual Audio/Uncensored/10bit at 0), and the correct
+   quality-tier allow/deny groupings (2160p+/Raw-HD/576p disallowed, SDTV through
+   Bluray-1080p allowed, cutoff at "Bluray 1080p"). Assignment to anime series is still a
+   manual per-series choice in Sonarr's UI, as anticipated - TRaSH's guide doesn't describe
+   automatic profile assignment by series type.
+2. **Radarr**: identical shape, same verification, `[Anime] Remux-1080p` also landed at id 7.
+   Profile assignment happens manually per-movie or via Seerr's request-time profile selector,
+   as anticipated.
+3. **Root folders**: unchanged from the plan - Sonarr's existing `/data/anime`, Radarr's
+   `/data/anime-movies` (added earlier this session for `scripts/sort-anime-movies.py`), both
+   reused as-is.
+4. **Not done this pass**: Seerr profile-selection wiring (item 4 in the original plan) -
+   deferred, not blocking; the profile exists and works standalone regardless of whether Seerr
+   points at it yet.
+5. **Verification performed**: direct API inspection of both apps' new profile (formatItems,
+   scores, quality-tier items) rather than a live end-to-end Seerr request - a real anime
+   request through Seerr is still worth doing before calling this fully proven in production
+   use, but the profile itself is confirmed correctly configured.
 
-Estimated cost for this path: **~1.5–2.5 hours** (mostly Recyclarr custom-format import and
-profile tuning, no compose/container work at all) — versus ~5.5–7 hours for the full
-dual-instance build. This is the reason Phase 0 decision #1 above now defaults to
-single-instance: same TRaSH-endorsed quality-profile benefit, roughly a quarter of the cost,
-fully reversible (a later move to dual-instance doesn't have to unwind anything this path did —
-the quality profiles and custom formats carry over conceptually to a second instance if that
-ever becomes the better call).
+**One real constraint surfaced during implementation that the original draft didn't
+anticipate**: Radarr/Sonarr's quality *definitions* (min/max file size per resolution tier) are
+confirmed instance-wide via `GET /api/v3/qualitydefinition` - one flat list per app, not scoped
+per profile. TRaSH's anime guide pairs its custom-format profile with anime-specific quality
+*definition* sizes too (`type: anime` in `recyclarr.yml` terms) - applying that here would have
+silently overwritten the existing `type: series`/`type: movie` sizes every non-anime
+series/movie on these same instances still depends on. **Deliberately not applied** - the new
+anime profile gets correct custom-format scoring and quality-tier groupings, but anime content
+is still filtered against general-TV/movie file-size expectations, not anime-tuned ones. This
+is the one respect in which the lightweight path doesn't fully match what a genuinely separate
+instance (dual-instance path below) would provide - documented as a load-bearing, accepted
+tradeoff in `CLAUDE.md`'s landmines section and in `recyclarr.yml`'s own comments directly, not
+left implicit.
+
+**Two unrelated, pre-existing bugs were found and fixed to even get this far** (full detail in
+README's `v10.14.0` History entry and `CLAUDE.md`'s historical-incidents section): Recyclarr's
+entire sync had been silently broken since the day it was added (`RADARR_API_KEY`/
+`SONARR_API_KEY` never reached its container), and both apps' sole quality profile had drifted
+to being named "Any" while `recyclarr.yml` assumed "Unlimited" - Recyclarr couldn't score
+anything into either profile until both were fixed. Neither is specific to anime; both would
+have blocked *any* future Recyclarr config change, not just this one.
+
+Actual cost: in the same ballpark as the ~1.5–2.5 hour estimate for the anime-profile work
+itself, plus meaningful extra time on the two unrelated bugs above before the anime work could
+even be tested. Confirms the original reasoning for defaulting to this path over dual-instance:
+same TRaSH-endorsed quality-profile benefit, a fraction of the dual-instance cost, and fully
+reversible - a later move to dual-instance doesn't have to unwind anything here, since these
+custom formats and profile definitions carry over conceptually to a second instance if that
+ever becomes the better call.
 
 ---
 

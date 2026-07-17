@@ -58,11 +58,13 @@ sync by hand with Zurg's own anime routing groups, no shared config) · `nzbdav-
 (core, mounts NzbDAV's own WebDAV filesystem at `/mnt/nzbdav`, `depends_on:
 condition: service_healthy` on `nzbdav` itself, not just compose start-order).
 
-**`*arr` apps** — `radarr` (core, port 7878, movies, `/data/movies`) · `sonarr` (core, port
-8989, TV, `/data/shows` + `/data/anime`, the *only* app wired to `decypharr-alldebrid`) ·
-`recyclarr` (extras, no port, daily-cron TRaSH Guides custom-format sync for both, scoped to
-avoid competing with the manual "Unlimited" quality profile — not a real-time daemon despite
-running as one).
+**`*arr` apps** — `radarr` (core, port 7878, movies, `/data/movies` + `/data/anime-movies`) ·
+`sonarr` (core, port 8989, TV, `/data/shows` + `/data/anime`, the *only* app wired to
+`decypharr-alldebrid`) · `recyclarr` (extras, no port, daily-cron TRaSH Guides custom-format
+sync for both, scoped to avoid competing with the manual "Unlimited" quality profile — not a
+real-time daemon despite running as one; both apps also carry a second, Recyclarr-managed
+"[Anime] Remux-1080p" profile as of the single-instance anime-routing work, see the landmine
+below on why it deliberately doesn't get its own quality-definition sizes).
 
 **Usenet fallback** — `nzbdav` (core, port 3001→3000, WebDAV-streamed Usenet, SABnzbd-API
 compatible, priority-2 download client behind Decypharr) · `nzbdav-rclone` (see FUSE mount
@@ -270,6 +272,19 @@ throughout its history section, and there's no substitute for it here.
 
 ## Known current landmines (not historical — still true as of last audit)
 
+- **Radarr's and Sonarr's "Quality Definitions" (min/max file size per resolution tier) are one
+  flat, instance-wide list each — confirmed live via `GET /api/v3/qualitydefinition` — not
+  scoped per quality profile.** Both apps now carry a second profile, "[Anime] Remux-1080p"
+  (single-instance anime routing, see `PLAN.md`), alongside the original "Unlimited" - the two
+  profiles intentionally share the *same* size definitions (`type: series`/`type: movie` in
+  `recyclarr.yml`, not TRaSH's `type: anime` sizes) because applying anime-tuned sizes would
+  silently overwrite the general sizes every existing non-anime series/movie still depends on.
+  This is a real, accepted tradeoff of staying single-instance, not an oversight: anime content
+  gets correct custom-format scoring/tiering but is still filtered against general-TV/movie file
+  size expectations. Do not "fix" this by adding a `quality_definition: type: anime` block to
+  either app's Recyclarr config without first moving to a genuinely separate Radarr/Sonarr
+  instance for anime (`PLAN.md`'s dual-instance path) - on a shared instance it will overwrite,
+  not add to, the existing sizes.
 - **NeutArr gets OOM-killed roughly every 30 minutes inside its 512MB `mem_limit`.** Invisible
   from any dashboard because `restart: unless-stopped` just quietly restarts it — `docker stats`
   or `docker inspect` (OOMKilled flag / restart count) is the only way to see this is happening;
@@ -337,6 +352,18 @@ throughout its history section, and there's no substitute for it here.
   has never been tested against this library's real scale (~300k episode records).** Don't assume
   it's a validated, ready-to-use path without treating that first real invocation as a genuine
   test, not a known-safe operation.
+- **Recyclarr's custom-format/quality-profile sync was completely broken since the day it was
+  added, not a regression** — its compose service block never passed `RADARR_API_KEY`/
+  `SONARR_API_KEY` into the container despite `config/recyclarr/recyclarr.yml`'s `!env_var`
+  directives requiring them; every scheduled run failed at the config-parse stage with an
+  undefined-variable error, confirmed live via its own logs going back to at least 2026-07-14.
+  Separately, both apps' sole quality profile had drifted to being named "Any" at some point
+  while `recyclarr.yml` (and this file, until fixed alongside it) still assumed "Unlimited" -
+  Recyclarr was silently unable to find a profile to score into even after the env-var fix,
+  until the live profile was renamed back via API. Fixed together; if a similar "sync completes
+  with a Config Diagnostics warning" symptom ever recurs, check both layers (env vars actually
+  reaching the container, and the profile name Recyclarr expects actually existing) rather than
+  assuming just one explains it.
 
 ## Control-panel gotchas beyond restart ordering and CSRF
 
