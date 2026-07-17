@@ -420,6 +420,10 @@ services:
       # rclone FUSE mount and does not support having files written into it
       # (confirmed: symlink/hardlink/copy all fail there with I/O errors).
       - ./media/movies:/data/movies
+      # Second root folder for scripts/sort-anime-movies.py's Plex-genre-based
+      # sweep - Radarr had zero anime-movie root folder at all before this,
+      # unlike Sonarr's existing /data/shows + /data/anime split.
+      - ./media/anime-movies:/data/anime-movies
     ports:
       - "7878:7878"
     # No prior limit at all - found live via a resource audit. Sized above

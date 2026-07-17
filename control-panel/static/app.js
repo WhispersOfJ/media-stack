@@ -60,7 +60,6 @@ const PRIMARY_ACTIONS = [
 const ARR_APPS = [
   { id: "radarr", label: "Radarr", port: 7878, queue: true },
   { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
-  { id: "whisparr", label: "Whisparr", port: 6969, queue: true },
 ];
 
 /* Every service's own web UI - replaces Heimdall/Homepage as the link
@@ -76,8 +75,6 @@ const QUICK_LINKS = [
   { id: "zurg", label: "Zurg", port: 9999 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "whisparr", label: "Whisparr", port: 6969 },
-  { id: "stash", label: "Stash", port: 9998 },
   { id: "nzbdav", label: "NzbDAV", port: 3001 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "byparr", label: "Byparr", port: 8191 },
