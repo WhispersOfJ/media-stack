@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.14.1**
+Current version: **v10.15.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -1054,6 +1054,10 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/plex/scan` \| `/empty-trash` \| `/optimize-db` \| `/clean-bundles` | POST | Plex maintenance actions |
 | `/api/plex/libraries` | GET | Library names/keys, read live from Plex |
 | `/api/plex/updates` | GET | Running Plex version + any newer release on its channel (check only) |
+| `/api/posters/libraries` | GET | Movie/show libraries only, for the poster sync picker (see below) |
+| `/api/posters/sync` | POST | `{"library": "...", "dry_run": bool}` → starts a poster sync, one job at a time |
+| `/api/posters/sync/stream` | GET | SSE progress feed for the running (or just-finished) poster sync |
+| `/api/container/{name}/logs/stream` | GET | SSE live-follow of a container's own `docker logs`, any container in the project |
 | `/api/nzbdav/queue` \| `/history` | GET | NzbDAV's current queue / recent history |
 | `/api/zilean/search` | POST | `{"query": "..."}` → title/year/resolution/quality/size/hash results |
 | `/api/decypharr/grab` | POST | `{"hash": "...", "title": "..."}` → adds a magnet to Decypharr under a `manual` category |
@@ -1097,6 +1101,22 @@ Two implementation notes:
   `stream=False`), and the endpoint called it sequentially across every container. Fixed
   with a `concurrent.futures.ThreadPoolExecutor` (`max_workers` capped at 16); latency
   dropped to ~6s, bound by the slowest single container.
+
+### Poster sync: TMDb posters over Plex's own
+
+Replaces a movie/show's Plex poster with TMDb's top-voted one, matched via the item's own
+`tmdb://` Guid (falling back to TMDb's `/find` endpoint against a `tvdb://`/`imdb://` Guid for
+items still on an older agent match). ThePosterDB was considered and ruled out - its
+[Terms of Service](https://theposterdb.com/terms) explicitly forbid automated scraping and it
+has no public API, so there is no ToS-compliant way to pull from it programmatically. TMDb is
+a real, documented, keyed API (`TMDB_KEY`, the same key Kometa already uses).
+
+One job at a time, in-memory only (`POSTER_SYNC_STATE`, no persistence across a panel
+restart); a second sync request while one is running gets a 409. Progress streams to
+`/api/posters/sync/stream` over SSE, the same single-shared-queue tradeoff as the container
+log stream below - fine for a one-operator LAN dashboard, not for multiple simultaneous
+viewers expecting independent progress. A `dry_run` flag reports what would change without
+uploading anything.
 
 ### Grab: a real, non-undoable action
 
@@ -1994,7 +2014,7 @@ groupings, to avoid silently overwriting the general sizes every existing non-an
 depends on. Documented as an accepted, load-bearing limitation in both `CLAUDE.md` and
 `recyclarr.yml` directly, not left implicit.
 
-**v10.14.1** (current): Usenet made the preferred protocol on both Radarr and Sonarr, on user
+**v10.14.1**: Usenet made the preferred protocol on both Radarr and Sonarr, on user
 request - **a deliberate reversal of this stack's original debrid-first design** (debrid
 mounts serve already-cached content instantly with no real download; Usenet always downloads/
 streams real data, the tradeoff being knowingly accepted here). Checked every lever both apps
@@ -2006,3 +2026,41 @@ was backwards: download-client priority had Decypharr (torrent/debrid) at priori
 `nzbdav` (Usenet) at priority 2 on both apps, opposite of the new preference - swapped via API
 on both. All three settings live in each app's own gitignored config, not tracked files - this
 entry is the only record of what changed.
+
+**v10.15.0** (current): Poster sync added - replaces a movie/show's Plex poster with TMDb's
+top-voted one, matched via the item's `tmdb://` Guid (falling back to TMDb's `/find` endpoint
+for older-agent matches still on `tvdb://`/`imdb://`). ThePosterDB was evaluated and rejected:
+its Terms of Service ban automated scraping and it has no public API. One job at a time,
+progress over SSE (`/api/posters/sync/stream`); see [Poster sync](#poster-sync-tmdb-posters-over-plexs-own).
+Alongside it: a control-panel UI pass (root font-size bumped 25%, a real focus-ring regression
+fixed - `input:focus`/`select:focus` was setting `outline:none` *after* the `:focus-visible`
+rule, silently killing keyboard focus visibility on every text/search/number input - aria-labels
+added to icon-only buttons, and the armed-pulse destructive-action animation added to the
+`prefers-reduced-motion` override, which had been looping unchecked) and a new SSE endpoint,
+`/api/container/{name}/logs/stream`, for live-following any container's logs during a mutating
+action.
+
+Separately, a new standalone tool, `scripts/audit-tmdb-links.py`, audits a Plex movie library
+for items with no TMDb link at all (checked via the same Guid logic as poster sync, plus the
+legacy `com.plexapp.agents.themoviedb` guid), searches TMDb by title/year, and scores
+candidates by title similarity + year delta into `matched`/`fixable`/`unmatched`/`search_error`
+buckets - read-only, CSV + console report, never writes to Plex itself. First real run against
+this library (3,923 movies) found 18 with no TMDb link; applying those 18 surfaced a genuinely
+useful technique for obscure titles Plex's own `tv.plex.agents.movie` (Discover) agent doesn't
+index at all (confirmed live: a direct `matches()` call against the Discover agent for several
+1970s-80s exploitation titles returned no relevant candidates in the top 8 results) - calling
+`Video.matches(agent="themoviedb", title=..., year=...)` instead invokes the legacy
+`com.plexapp.agents.themoviedb` agent, which searches TMDb's own database directly and found
+exact hits (verified by requiring the returned `SearchResult.guid` contain the same TMDb id
+already found) for 17 of the 18; Plex then transparently upgraded most of those onto the
+modern `plex://movie/...` object with a full `imdb`/`tmdb`/`tvdb` Guid set once one existed,
+falling back to the raw legacy-agent guid only where no Discover equivalent exists. The 18th
+("Redux", no year set in Plex) had no verifiable candidate via this method and was left
+unmatched for manual review rather than force-applied. 14 of the 17 apply calls returned a
+transient `500` from Plex - misleading in 10 of those cases, since the guid change had already
+committed server-side before the 500 (the error came from something downstream, most likely
+Plex's own post-match metadata/image fetch); the remaining 4 had genuinely not applied and
+succeeded cleanly on a retry with more spacing between calls. Traced to load from a Kometa run
+that happened to be active at the same time, not a problem with the match logic itself -
+every apply is now verified by re-reading the item's guid afterward rather than trusting the
+HTTP response code.
