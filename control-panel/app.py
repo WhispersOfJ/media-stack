@@ -13,6 +13,7 @@ LAN-only, matches every other service in this stack (see README.md's
 """
 import concurrent.futures
 import os
+import queue
 import re
 import socket
 import sqlite3
@@ -48,6 +49,8 @@ HOST_IP = os.environ.get("HOST_IP")
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 TAUTULLI_URL = "http://tautulli:8181"
 SEERR_URL = "http://seerr:5055"
+TMDB_KEY = os.environ.get("TMDB_KEY")
+TMDB_URL = "https://api.themoviedb.org/3"
 MAINTAINERR_URL = "http://maintainerr:6246"
 DMM_MYSQL_ROOT_PASSWORD = os.environ.get("DMM_MYSQL_ROOT_PASSWORD")
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
@@ -269,6 +272,11 @@ class ZileanSearchRequest(BaseModel):
 class GrabRequest(BaseModel):
     hash: str
     title: str | None = None
+
+
+class PosterSyncRequest(BaseModel):
+    library: str
+    dry_run: bool = False
 
 
 class LetterboxdAddRequest(BaseModel):
@@ -649,6 +657,226 @@ def plex_updates():
         # own.
         pass
     return {"running_version": running_version, "update_available": bool(available), "releases": available}
+
+
+# ---------------------------------------------------------------------
+# Poster sync - replaces a movie/show's Plex poster with the top-voted
+# TMDb poster, matched via the tmdb:// (or tvdb:///imdb:// as fallback)
+# Guid Plex's new agent already carries per item. TMDb only, not
+# ThePosterDB - TPDb's own Terms of Service (https://theposterdb.com/terms)
+# explicitly forbids automated scraping and it has no public API, so there
+# is no ToS-compliant way to pull posters from it programmatically. TMDb
+# is a real, documented, keyed API (the same TMDB_KEY Kometa already uses).
+#
+# One job at a time, in-memory only (no persistence across a panel
+# restart) - progress streams over SSE to whichever browser tab has the
+# stream open, same technique as /api/container/{name}/logs/stream.
+# ---------------------------------------------------------------------
+POSTER_SYNC_LOCK = threading.Lock()
+POSTER_SYNC_STATE = {"running": False, "queue": None}
+
+
+def tmdb_get(path: str, **params) -> dict:
+    if not TMDB_KEY:
+        fail("TMDb isn't configured (TMDB_KEY not set)", status_code=503)
+    r = httpx.get(f"{TMDB_URL}{path}", params={"api_key": TMDB_KEY, **params}, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def tmdb_id_for_item(meta: dict, media_type: str) -> int | None:
+    """media_type is Plex's own section type ("movie"/"show") for the item
+    this Guid list came from. Prefers a direct tmdb:// Guid (present on
+    both movies and shows under Plex's new agent, confirmed live against
+    this library) and only falls back to TMDb's /find endpoint (external
+    ID lookup, not scraping) for items still on an older match."""
+    guids = {}
+    for g in meta.get("Guid", []):
+        gid = g.get("id", "")
+        if "://" in gid:
+            source, value = gid.split("://", 1)
+            guids[source] = value
+
+    if "tmdb" in guids:
+        try:
+            return int(guids["tmdb"])
+        except ValueError:
+            pass
+
+    kind = "movie" if media_type == "movie" else "tv"
+    if "tvdb" in guids and media_type == "show":
+        try:
+            found = tmdb_get(f"/find/{guids['tvdb']}", external_source="tvdb_id")
+            results = found.get("tv_results") or []
+            if results:
+                return results[0]["id"]
+        except httpx.HTTPError:
+            pass
+    if "imdb" in guids:
+        try:
+            found = tmdb_get(f"/find/{guids['imdb']}", external_source="imdb_id")
+            results = found.get(f"{kind}_results") or []
+            if results:
+                return results[0]["id"]
+        except httpx.HTTPError:
+            pass
+    return None
+
+
+def tmdb_best_poster_url(tmdb_id: int, media_type: str) -> str | None:
+    kind = "movie" if media_type == "movie" else "tv"
+    try:
+        data = tmdb_get(f"/{kind}/{tmdb_id}/images", include_image_language="en,null")
+    except httpx.HTTPError:
+        return None
+    posters = data.get("posters") or []
+    if not posters:
+        return None
+    best = max(posters, key=lambda p: (p.get("vote_average") or 0, p.get("vote_count") or 0))
+    return f"https://image.tmdb.org/t/p/original{best['file_path']}"
+
+
+def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        q.put(f"ERROR Could not read Plex libraries: {e}")
+        return
+    section = next((s for s in sections if s["title"].lower() == library_title.lower()), None)
+    if not section or section.get("type") not in ("movie", "show"):
+        q.put(f"ERROR No movie/show library found matching '{library_title}'.")
+        return
+    media_type = section["type"]
+
+    try:
+        r = httpx.get(
+            f"{PLEX_URL}/library/sections/{section['key']}/all?X-Plex-Container-Size=100000",
+            headers=plex_headers(), timeout=60,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        q.put(f"ERROR Could not list '{library_title}': {e}")
+        return
+
+    items = r.json()["MediaContainer"].get("Metadata", [])
+    total = len(items)
+    q.put(f"INFO Scanning {total} items in '{library_title}' ({media_type}){' - dry run' if dry_run else ''}…")
+
+    updated = skipped = failed = 0
+    for i, item in enumerate(items, 1):
+        rating_key = item["ratingKey"]
+        title = item.get("title", "Unknown")
+        year = item.get("year", "")
+        label = f"{title} ({year})" if year else title
+
+        # The section listing's Metadata entries don't carry Guid - only
+        # the single-item metadata endpoint does (confirmed live).
+        try:
+            meta_r = httpx.get(f"{PLEX_URL}/library/metadata/{rating_key}", headers=plex_headers(), timeout=15)
+            meta_r.raise_for_status()
+            meta = meta_r.json()["MediaContainer"]["Metadata"][0]
+        except httpx.HTTPError as e:
+            q.put(f"FAIL [{i}/{total}] {label}: could not read metadata ({e})")
+            failed += 1
+            continue
+
+        tmdb_id = tmdb_id_for_item(meta, media_type)
+        if tmdb_id is None:
+            q.put(f"SKIP [{i}/{total}] {label}: no TMDb match")
+            skipped += 1
+            continue
+
+        poster_url = tmdb_best_poster_url(tmdb_id, media_type)
+        if not poster_url:
+            q.put(f"SKIP [{i}/{total}] {label}: TMDb has no poster for it")
+            skipped += 1
+            continue
+
+        if dry_run:
+            q.put(f"OK [{i}/{total}] {label}: would set poster ({poster_url})")
+            updated += 1
+            continue
+
+        try:
+            up_r = httpx.post(
+                f"{PLEX_URL}/library/metadata/{rating_key}/posters",
+                params={"url": poster_url}, headers=plex_headers(), timeout=30,
+            )
+            up_r.raise_for_status()
+        except httpx.HTTPError as e:
+            q.put(f"FAIL [{i}/{total}] {label}: poster upload failed ({e})")
+            failed += 1
+            continue
+
+        q.put(f"OK [{i}/{total}] {label}: poster updated")
+        updated += 1
+        # TMDb's rate limit is roughly 40 req/10s; this loop already makes
+        # 2-3 calls per item (metadata, images, sometimes /find), so a
+        # small pause keeps it well clear of that without slowing a
+        # several-thousand-item library down to a crawl.
+        time.sleep(0.25)
+
+    q.put(f"DONE {updated} updated, {skipped} skipped, {failed} failed out of {total}.")
+
+
+@app.get("/api/posters/libraries")
+def posters_libraries():
+    """Movie/show libraries only - same live-from-Plex source as
+    /api/plex/libraries, filtered to the section types this sync actually
+    knows how to handle."""
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        fail(f"Could not read Plex libraries: {e}")
+    return [{"key": s["key"], "title": s["title"], "type": s["type"]} for s in sections if s.get("type") in ("movie", "show")]
+
+
+@app.post("/api/posters/sync")
+def posters_sync(payload: PosterSyncRequest):
+    if not TMDB_KEY:
+        fail("TMDb isn't configured (TMDB_KEY not set in .env).", status_code=503)
+    plex_headers()  # raises 503 if Plex isn't configured
+
+    with POSTER_SYNC_LOCK:
+        if POSTER_SYNC_STATE["running"]:
+            fail("A poster sync is already running - wait for it to finish.", status_code=409)
+        q = queue.Queue()
+        POSTER_SYNC_STATE["running"] = True
+        POSTER_SYNC_STATE["queue"] = q
+
+    def worker():
+        try:
+            run_poster_sync(payload.library, payload.dry_run, q)
+        finally:
+            with POSTER_SYNC_LOCK:
+                POSTER_SYNC_STATE["running"] = False
+
+    threading.Thread(target=worker, daemon=True).start()
+    return ok(f"Poster sync started for '{payload.library}'{' (dry run)' if payload.dry_run else ''}.")
+
+
+@app.get("/api/posters/sync/stream")
+def posters_sync_stream():
+    """SSE progress feed for the currently running (or just-finished)
+    poster sync. A single shared queue - if more than one tab has this
+    open at once they split the lines between them rather than each
+    seeing everything, same tradeoff as this panel's other single-job
+    background actions. Fine for a one-operator LAN dashboard."""
+    q = POSTER_SYNC_STATE["queue"]
+    if q is None:
+        fail("No poster sync has been started yet.", status_code=404)
+
+    def generate():
+        while True:
+            try:
+                line = q.get(timeout=1)
+            except queue.Empty:
+                if not POSTER_SYNC_STATE["running"]:
+                    break
+                continue
+            yield f"data: {line}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------

@@ -884,6 +884,9 @@ services:
       # auth, just closing the cross-origin-POST hole given this panel's
       # docker.sock access.
       HOST_IP: ${HOST_IP}
+      # Poster sync only (/api/posters/sync) - same key Kometa already uses
+      # for its own TMDb metadata, no new secret.
+      TMDB_KEY: ${TMDB_KEY}
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # actually execs into containers (Kometa's on-demand run) and issues

@@ -1,4 +1,8 @@
-/* Control Panel front end — no build step, no dependencies. */
+/* Control Panel front end — no build step, no dependencies.
+   One page, one origin: the dashboard widgets below and the Operator
+   Console (search-any-of-66-commands runner, folded in from the former
+   standalone stack-web project) share this same file, the same log
+   panel, and the same telemetry rail. */
 
 const ICONS = {
   bolt: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
@@ -6,7 +10,6 @@ const ICONS = {
   trash: '<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>',
   database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0018 0V5"/><path d="M3 12a9 3 0 0018 0"/>',
   broom: '<path d="M9.59 4.59A2 2 0 1111 8H2"/><path d="M12.59 11.59A2 2 0 1114 15H2"/><path d="M17.73 7.73A2.5 2.5 0 1119.5 12H2"/>',
-  restart: '<path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.13-3.36L23 10"/><path d="M1 14l5.36 4.36A9 9 0 0020.49 15"/>',
 };
 
 function svg(name) {
@@ -109,7 +112,7 @@ function logLine(kind, text) {
 
 function escapeHtml(s) {
   const div = document.createElement("div");
-  div.textContent = s;
+  div.textContent = s ?? "";
   return div.innerHTML;
 }
 
@@ -384,9 +387,6 @@ function containerCardHtml(c, hits) {
   const healthLabel = c.state !== "running" ? c.state : c.health ? c.health : "running";
   const cpuPct = c.cpu_percent === null || c.cpu_percent === undefined ? null : Math.min(c.cpu_percent, 100);
   const memPct = c.mem_percent === null || c.mem_percent === undefined ? null : Math.min(c.mem_percent, 100);
-  // hits is undefined for containers Control Panel never makes an outbound
-  // API call to (e.g. rclone mounts, Watchtower) - no row for those, rather
-  // than a permanent "0" that never means anything.
   const hit = hits && hits.counts[c.label];
   const hitRow = hit === undefined ? "" : `
         <div class="metric api-hits-metric${hits.justTicked.has(c.label) ? " api-hits-tick" : ""}" title="API calls made to ${escapeHtml(c.label)} since this panel started">
@@ -415,9 +415,9 @@ function containerCardHtml(c, hits) {
         </div>${hitRow}
       </div>
       <div class="container-actions">
-        <button class="btn-icon" type="button" data-act="start" title="Start" ${c.state === "running" ? "disabled" : ""}>${svg("start")}</button>
-        <button class="btn-icon" type="button" data-act="stop" title="Stop" ${c.is_self || c.state !== "running" ? "disabled" : ""}>${svg("stop")}</button>
-        <button class="btn-icon" type="button" data-act="restart" title="Restart" ${c.is_self ? "disabled" : ""}>${svg("restart")}</button>
+        <button class="btn-icon" type="button" data-act="start" title="Start" aria-label="Start ${escapeHtml(c.label)}" ${c.state === "running" ? "disabled" : ""}>${svg("start")}</button>
+        <button class="btn-icon" type="button" data-act="stop" title="Stop" aria-label="Stop ${escapeHtml(c.label)}" ${c.is_self || c.state !== "running" ? "disabled" : ""}>${svg("stop")}</button>
+        <button class="btn-icon" type="button" data-act="restart" title="Restart" aria-label="Restart ${escapeHtml(c.label)}" ${c.is_self ? "disabled" : ""}>${svg("restart")}</button>
       </div>
     </div>`;
 }
@@ -444,21 +444,12 @@ function wireContainerCard(card, c) {
 
   if (!startBtn.disabled) startBtn.addEventListener("click", () => fire(startBtn, "start", "start"));
   if (!restartBtn.disabled) restartBtn.addEventListener("click", () => fire(restartBtn, "restart", "restart"));
-  // Stop is armed/confirmed - unlike restart (self-healing) or start
-  // (harmless), stopping something leaves it down until someone notices
-  // and starts it back up, so it gets the same one-extra-click guard as
-  // the whole-stack restart and Zilean grab. Uses armIconButton (not
-  // armButton) so the SVG icon survives the armed/idle swap instead of
-  // being replaced by armButton's plain-text label.
   if (!stopBtn.disabled) armIconButton(stopBtn, "stop", () => fire(stopBtn, "stop", "stop"));
 }
 
 let containerGridBuilt = false;
 let previousHitCounts = {};
 
-// Best-effort, separate from the containers fetch above: if this fails,
-// every card just renders with no API-hits row rather than losing the
-// whole grid over a cosmetic extra.
 async function fetchHitCounts() {
   try {
     const res = await fetch("/api/api-hit-counts");
@@ -498,6 +489,23 @@ async function refreshContainerGrid() {
     wireContainerCard(card, c);
   });
   containerGridBuilt = true;
+
+  renderTelemetryRail(data);
+}
+
+/* ---------- Telemetry rail: every container, always visible on the
+   left — folded in from the former stack-web console's own rail, now
+   fed off the same /api/containers poll the grid already does. ---------- */
+function renderTelemetryRail(data) {
+  const list = document.getElementById("telemetry-list");
+  if (!list) return;
+  const sorted = [...data].sort((a, b) => a.label.localeCompare(b.label));
+  list.innerHTML = sorted
+    .map((c) => {
+      const cls = c.state !== "running" ? "down" : c.health === "unhealthy" ? "down" : c.health === "starting" ? "unknown" : "up";
+      return `<li><span class="lamp ${cls}"></span><span class="name" title="${escapeHtml(c.label)}">${escapeHtml(c.label)}</span></li>`;
+    })
+    .join("");
 }
 
 /* ---------- Zilean direct search ---------- */
@@ -638,13 +646,7 @@ function renderZileanResults(container, items) {
   });
 }
 
-/* ---------- Arm/confirm guard for real, one-shot side effects ----------
-   Shared by the whole-stack restart and Zilean grab buttons: first click
-   arms (label swaps, 5s window), only a second click within that window
-   actually fires onConfirm. Avoids a native confirm() dialog while still
-   requiring deliberate intent for actions with a real, non-undoable side
-   effect (restarting 22 containers, adding a magnet to a live debrid
-   account). */
+/* ---------- Arm/confirm guard for real, one-shot side effects ---------- */
 function armButton(btn, idleLabel, armedLabel, onConfirm) {
   let armed = false;
   let disarmTimer = null;
@@ -670,9 +672,6 @@ function armButton(btn, idleLabel, armedLabel, onConfirm) {
   });
 }
 
-/* ---------- Icon-button variant of armButton() - keeps the SVG icon
-   intact through the armed/idle swap instead of replacing it with a text
-   label, via a CSS class + title change only. ---------- */
 function armIconButton(btn, iconName, onConfirm) {
   let armed = false;
   let disarmTimer = null;
@@ -681,13 +680,16 @@ function armIconButton(btn, iconName, onConfirm) {
     armed = false;
     btn.classList.remove("armed");
     btn.title = btn.dataset.idleTitle || btn.title;
+    btn.setAttribute("aria-label", btn.dataset.idleLabel || btn.getAttribute("aria-label"));
   };
   btn.dataset.idleTitle = btn.title;
+  btn.dataset.idleLabel = btn.getAttribute("aria-label") || btn.title;
   btn.addEventListener("click", async () => {
     if (!armed) {
       armed = true;
       btn.classList.add("armed");
       btn.title = "Click again to confirm";
+      btn.setAttribute("aria-label", "Click again to confirm");
       disarmTimer = setTimeout(disarm, 5000);
       return;
     }
@@ -764,13 +766,24 @@ function buildDangerZone() {
   });
 }
 
-/* ---------- Status lamps ---------- */
+/* ---------- Status lamps + top HUD connection state ---------- */
+function setHudConn(up) {
+  const dot = document.getElementById("hud-conn-dot");
+  const label = document.getElementById("hud-conn-label");
+  if (!dot || !label) return;
+  dot.classList.remove("up", "down");
+  dot.classList.add(up ? "up" : "down");
+  label.textContent = up ? "LINK OK" : "LINK DOWN";
+}
+
 async function refreshStatus() {
   let data;
   try {
     const res = await fetch("/api/status");
     data = await res.json();
+    setHudConn(true);
   } catch (_) {
+    setHudConn(false);
     return;
   }
   for (const [name, info] of Object.entries(data)) {
@@ -791,7 +804,9 @@ async function refreshStatus() {
   }
 }
 
-/* ---------- Clock ---------- */
+/* ---------- Clock + session uptime ---------- */
+const sessionStart = Date.now();
+
 function tickClock() {
   const el = document.getElementById("clock");
   el.textContent = new Date().toLocaleString([], {
@@ -801,14 +816,528 @@ function tickClock() {
     second: "2-digit",
     hour12: false,
   });
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+  const h = String(Math.floor(elapsed / 3600)).padStart(2, "0");
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
+  const s = String(elapsed % 60).padStart(2, "0");
+  const up = document.getElementById("uptime");
+  if (up) up.textContent = `UP ${h}:${m}:${s}`;
 }
 
+/* =====================================================================
+   Operator console — folded in from the former standalone stack-web
+   project. Same list -> args -> confirm -> run screen flow, same
+   command manifest (static/commands.json, a straight copy of
+   stack-web's registry.json), but every request now goes same-origin
+   straight to this app's own API instead of through a separate Rust
+   proxy on a second port — the CSRF/Origin check in app.py's
+   verify_same_origin middleware is satisfied for free because of that.
+   ===================================================================== */
+
+const consoleScreens = {
+  list: document.getElementById("screen-list"),
+  args: document.getElementById("screen-args"),
+  confirm: document.getElementById("screen-confirm"),
+  run: document.getElementById("screen-run"),
+};
+
+let commandRegistry = [];
+let activeLogSource = null;
+
+function showConsoleScreen(name) {
+  for (const [key, el] of Object.entries(consoleScreens)) {
+    if (el) el.hidden = key !== name;
+  }
+  if (name !== "run") closeLogStream();
+}
+
+function closeLogStream() {
+  if (activeLogSource) {
+    activeLogSource.close();
+    activeLogSource = null;
+  }
+}
+
+document.querySelectorAll("[data-back]").forEach((btn) => {
+  btn.addEventListener("click", () => showConsoleScreen(btn.dataset.back));
+});
+
+async function loadCommandRegistry() {
+  const statusLine = document.getElementById("console-status");
+  try {
+    const res = await fetch("/commands.json");
+    commandRegistry = await res.json();
+    statusLine.textContent = `${commandRegistry.length} operations loaded`;
+    renderCommandList("");
+  } catch (e) {
+    statusLine.textContent = "Command manifest failed to load.";
+  }
+}
+
+function fuzzyMatch(query, target) {
+  if (!query) return true;
+  let qi = 0;
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
+}
+
+function matchRank(query, cmd) {
+  const q = query.toLowerCase();
+  const name = cmd.Name.toLowerCase();
+  if (name === q) return 0;
+  if (name.startsWith(q)) return 1;
+  if (name.includes(q)) return 2;
+  if (fuzzyMatch(query, cmd.Name)) return 3;
+  if (fuzzyMatch(query, cmd.Description)) return 4;
+  return -1;
+}
+
+function renderCommandList(filterValue) {
+  const list = document.getElementById("command-list");
+  list.innerHTML = "";
+  const matches = commandRegistry
+    .map((c) => ({ c, rank: filterValue ? matchRank(filterValue, c) : 0 }))
+    .filter((m) => m.rank !== -1)
+    .sort((a, b) => a.rank - b.rank || a.c.Name.localeCompare(b.c.Name))
+    .map((m) => m.c);
+  for (const cmd of matches) {
+    const li = document.createElement("li");
+    const tag = cmd.Confirm ? '<span class="ctag">destructive</span>' : "";
+    li.innerHTML = `<span class="cname">${escapeHtml(cmd.Name)}</span>${tag}<span class="cdesc">${escapeHtml(cmd.Description)}</span>`;
+    li.addEventListener("click", () => openCommand(cmd));
+    list.appendChild(li);
+  }
+}
+
+const consoleFilterInput = document.getElementById("console-filter");
+if (consoleFilterInput) {
+  consoleFilterInput.addEventListener("input", (e) => renderCommandList(e.target.value));
+}
+
+function openCommand(cmd) {
+  document.getElementById("args-title").textContent = cmd.Name;
+  document.getElementById("args-desc").textContent = cmd.Description;
+
+  const form = document.getElementById("args-form");
+  form.innerHTML = "";
+
+  for (const arg of cmd.Args || []) {
+    const label = document.createElement("label");
+    const optionalTag = arg.Optional ? " (optional)" : "";
+    label.innerHTML = `<span class="label-text">${escapeHtml(arg.Name)}${optionalTag}</span>`;
+
+    let input;
+    if (arg.Choices && arg.Choices.length > 0) {
+      input = document.createElement("select");
+      if (arg.Optional) {
+        const blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = arg.Default ? `(default: ${arg.Default})` : "(none)";
+        input.appendChild(blank);
+      }
+      for (const choice of arg.Choices) {
+        const opt = document.createElement("option");
+        opt.value = choice;
+        opt.textContent = choice;
+        input.appendChild(opt);
+      }
+    } else {
+      input = document.createElement("input");
+      input.type = "text";
+      if (arg.Default) input.value = arg.Default;
+      if (arg.Rest) input.placeholder = "space or comma separated";
+    }
+    input.dataset.argName = arg.Name;
+    label.appendChild(input);
+    form.appendChild(label);
+  }
+
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.className = "btn-primary";
+  submit.textContent = cmd.Confirm ? "Continue" : "Run";
+  form.appendChild(submit);
+
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const values = Array.from(form.querySelectorAll("[data-arg-name]")).map((el) => el.value);
+    if (cmd.Confirm) {
+      showConsoleConfirm(cmd, values);
+    } else {
+      runRegistryCommand(cmd, values);
+    }
+  };
+
+  showConsoleScreen("args");
+}
+
+function showConsoleConfirm(cmd, values) {
+  document.getElementById("confirm-text").textContent = `${cmd.Name} ${values.filter(Boolean).join(" ")}`.trim();
+  const input = document.getElementById("confirm-input");
+  const yes = document.getElementById("confirm-yes");
+  input.value = "";
+  input.placeholder = cmd.Name;
+  yes.disabled = true;
+  input.oninput = () => {
+    yes.disabled = input.value.trim() !== cmd.Name;
+  };
+  yes.onclick = () => runRegistryCommand(cmd, values);
+  document.getElementById("confirm-no").onclick = () => showConsoleScreen("args");
+  showConsoleScreen("confirm");
+  setTimeout(() => input.focus(), 50);
+}
+
+function resolveLogContainer(cmd, values) {
+  if (!cmd.LogContainer) return null;
+  const m = /^\{(\d+)\}$/.exec(cmd.LogContainer);
+  if (!m) return null;
+  const idx = parseInt(m[1], 10) - 1;
+  const v = values[idx];
+  return v ? v : null;
+}
+
+/* ---- request builder: a JS port of stack-web's commands.rs Prepare() +
+   exec.rs, now targeting this app's own same-origin API directly ---- */
+function pathEscape(s) {
+  let out = "";
+  for (const ch of unescape(encodeURIComponent(s))) {
+    const code = ch.charCodeAt(0);
+    if (/[A-Za-z0-9\-_.~]/.test(ch)) out += ch;
+    else out += "%" + code.toString(16).toUpperCase().padStart(2, "0");
+  }
+  return out;
+}
+
+function queryEscape(s) {
+  if (s === " ") return "+";
+  let out = "";
+  for (const ch of unescape(encodeURIComponent(s))) {
+    if (ch === " ") out += "+";
+    else if (/[A-Za-z0-9\-_.~]/.test(ch)) out += ch;
+    else out += "%" + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0");
+  }
+  return out;
+}
+
+function argValue(cmd, values, name) {
+  const i = (cmd.Args || []).findIndex((a) => a.Name === name);
+  return i === -1 ? "" : values[i];
+}
+
+function splitList(v) {
+  const sep = v.includes(",") ? "," : " ";
+  return v.split(sep).map((s) => s.trim()).filter(Boolean);
+}
+
+function prepareCommand(cmd, values) {
+  let path = cmd.PathTemplate;
+  values.forEach((value, i) => {
+    const placeholder = `{${i + 1}}`;
+    if (path.includes(placeholder)) path = path.split(placeholder).join(pathEscape(value));
+  });
+
+  if (cmd.Query && cmd.Query.length) {
+    const pairs = [];
+    for (const qp of cmd.Query) {
+      const v = qp.ArgName ? argValue(cmd, values, qp.ArgName) : qp.Literal || "";
+      if (!v) continue;
+      pairs.push(`${queryEscape(qp.Key)}=${queryEscape(v)}`);
+    }
+    if (pairs.length) path += "?" + pairs.join("&");
+  }
+
+  let body = null;
+  if (cmd.BodyMode === "json") {
+    const obj = {};
+    for (const bf of cmd.BodyFields || []) {
+      const v = argValue(cmd, values, bf.ArgName);
+      if (bf.Array) {
+        if (!v) continue;
+        obj[bf.Key] = splitList(v);
+      } else {
+        obj[bf.Key] = v;
+      }
+    }
+    body = JSON.stringify(obj);
+  }
+
+  return { method: cmd.Method, path, body };
+}
+
+async function callApi(method, path, body) {
+  const opts = { method };
+  if (body !== null && body !== undefined) {
+    opts.headers = { "Content-Type": "application/json" };
+    opts.body = body;
+  }
+  const res = await fetch(path, opts);
+  const status = res.status;
+  const raw = await res.text();
+  return parseApiResult(raw, status);
+}
+
+function parseApiResult(raw, status) {
+  if (!raw) return { ok: status === 200, message: `(empty response, HTTP ${status})`, data: null, rawList: null };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_) {
+    return { ok: false, message: raw, data: null, rawList: null };
+  }
+
+  if (Array.isArray(parsed)) return { ok: status === 200, message: "", data: null, rawList: parsed };
+
+  let data = parsed;
+  if (data && typeof data.detail === "object" && data.detail !== null) data = data.detail;
+
+  if (data && typeof data.message === "string") {
+    const ok = typeof data.ok === "boolean" ? data.ok : status === 200;
+    return { ok, message: data.message, data, rawList: null };
+  }
+
+  return { ok: status === 200, message: "", data, rawList: null };
+}
+
+/* manual-import-by-index mirrors stack-arr-import.fish: re-fetch the
+   candidate list fresh, then POST the file object at the chosen index. */
+async function runManualImportByIndex(cmd, values) {
+  const app = values[0] || "";
+  const idx = parseInt((values[1] || "").trim(), 10);
+  if (Number.isNaN(idx)) throw new Error(`index must be a number, got ${JSON.stringify(values[1])}`);
+
+  const listPath = cmd.PathTemplate.replace("{1}", pathEscape(app));
+  const listRes = await callApi("GET", listPath, null);
+  if (!listRes.rawList) throw new Error("expected a JSON array response");
+  const item = listRes.rawList[idx];
+  if (!item) throw new Error(`no candidate at index ${idx} (${listRes.rawList.length} available) — run stack-arr-import-candidates ${app} again`);
+  if (!item.file) throw new Error(`candidate at index ${idx} has no 'file' field`);
+  return callApi("POST", listPath, JSON.stringify(item.file));
+}
+
+async function runLogLevelsReset(values) {
+  if ((values[0] || "").trim() === "reset") return callApi("POST", "/api/log-levels/reset", null);
+  return callApi("GET", "/api/log-levels", null);
+}
+
+async function execCommand(cmd, values) {
+  if (cmd.BodyMode === "manual-import-by-index") return runManualImportByIndex(cmd, values);
+  if (cmd.BodyMode === "log-levels-reset") return runLogLevelsReset(values);
+  const prepared = prepareCommand(cmd, values);
+  return callApi(prepared.method, prepared.path, prepared.body);
+}
+
+async function runRegistryCommand(cmd, values) {
+  showConsoleScreen("run");
+  document.getElementById("run-title").textContent = cmd.Name;
+  const statusEl = document.getElementById("run-status");
+  statusEl.textContent = "EXECUTING";
+  statusEl.className = "pending";
+  document.getElementById("result-pane").textContent = "";
+  logLine("pending", `${cmd.Name} — requested`);
+
+  const logPane = document.getElementById("log-pane");
+  const logLines = document.getElementById("log-lines");
+  logLines.textContent = "";
+  const container = resolveLogContainer(cmd, values);
+
+  closeLogStream();
+  if (container) {
+    logPane.hidden = false;
+    document.getElementById("log-container-name").textContent = `(${container})`;
+    activeLogSource = new EventSource(`/api/container/${encodeURIComponent(container)}/logs/stream`);
+    activeLogSource.onmessage = (ev) => {
+      logLines.textContent += ev.data + "\n";
+      logLines.scrollTop = logLines.scrollHeight;
+    };
+  } else {
+    logPane.hidden = true;
+  }
+
+  try {
+    const result = await execCommand(cmd, values);
+    statusEl.textContent = result.ok ? "COMPLETE" : "FAILED";
+    statusEl.className = result.ok ? "ok" : "err";
+    document.getElementById("result-pane").textContent = renderConsoleResult(result);
+    logLine(result.ok ? "ok" : "err", `${cmd.Name} — ${result.message || (result.ok ? "done" : "failed")}`);
+  } catch (e) {
+    statusEl.textContent = "REQUEST FAILED";
+    statusEl.className = "err";
+    document.getElementById("result-pane").textContent = String(e.message || e);
+    logLine("err", `${cmd.Name} — ${e.message || e}`);
+  }
+
+  if (activeLogSource) setTimeout(closeLogStream, 2000);
+}
+
+function renderConsoleResult(result) {
+  const lines = [];
+  if (result.message) lines.push(result.message);
+
+  if (result.rawList) {
+    if (!result.message && result.rawList.length === 0) return "(empty list)";
+    for (const item of result.rawList) lines.push("  " + summarizeConsoleItem(item));
+    return lines.join("\n");
+  }
+
+  const data = result.data || {};
+  for (const key of Object.keys(data).sort()) {
+    if (key === "message" || key === "ok") continue;
+    const v = data[key];
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      lines.push("", key + ":");
+      for (const item of v) lines.push("  " + summarizeConsoleItem(item));
+    } else if (v && typeof v === "object") {
+      if (Object.keys(v).length === 0) continue;
+      lines.push("", key + ":");
+      lines.push(indentDict(v, "  "));
+    } else {
+      lines.push(`${key}: ${v}`);
+    }
+  }
+  const out = lines.join("\n").trim();
+  return out || "(no output)";
+}
+
+function indentDict(d, indent) {
+  const lines = [];
+  for (const key of Object.keys(d).sort()) {
+    const v = d[key];
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      lines.push(indent + key + ":");
+      lines.push(indentDict(v, indent + "  "));
+    } else {
+      lines.push(`${indent}${key}: ${JSON.stringify(v)}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function summarizeConsoleItem(item) {
+  if (item && typeof item === "object" && !Array.isArray(item)) {
+    const priority = ["title", "name", "label", "message"];
+    const parts = [];
+    const used = new Set();
+    for (const key of priority) {
+      if (key in item) {
+        parts.push(String(item[key]));
+        used.add(key);
+      }
+    }
+    for (const key of Object.keys(item).sort()) {
+      if (used.has(key)) continue;
+      const v = item[key];
+      parts.push(typeof v === "object" ? `${key}=${JSON.stringify(v)}` : `${key}=${v}`);
+    }
+    return parts.join("  ");
+  }
+  return String(item);
+}
+
+/* ---------- Poster sync ---------- */
+let activePosterSource = null;
+
+async function loadPosterLibraries() {
+  const select = document.getElementById("poster-sync-library");
+  if (!select) return;
+  try {
+    const res = await fetch("/api/posters/libraries");
+    const libs = await res.json();
+    if (!Array.isArray(libs) || libs.length === 0) {
+      select.innerHTML = '<option value="">No movie/show libraries found</option>';
+      return;
+    }
+    select.innerHTML = libs.map((lib) => `<option value="${escapeHtml(lib.title)}">${escapeHtml(lib.title)} (${lib.type})</option>`).join("");
+  } catch (e) {
+    select.innerHTML = '<option value="">Couldn\'t load libraries</option>';
+  }
+}
+
+function posterLogLine(text) {
+  const pane = document.getElementById("poster-log");
+  const cls = text.startsWith("OK ") ? "poster-line-ok"
+    : text.startsWith("FAIL ") || text.startsWith("ERROR ") ? "poster-line-fail"
+    : text.startsWith("SKIP ") ? "poster-line-skip"
+    : "poster-line-info";
+  const line = document.createElement("div");
+  line.className = cls;
+  line.textContent = text;
+  pane.appendChild(line);
+  pane.scrollTop = pane.scrollHeight;
+}
+
+function closePosterStream() {
+  if (activePosterSource) {
+    activePosterSource.close();
+    activePosterSource = null;
+  }
+}
+
+function buildPosterSync() {
+  const form = document.getElementById("poster-sync-form");
+  if (!form) return;
+  const summary = document.getElementById("poster-sync-summary");
+  const submitBtn = form.querySelector("button[type=submit]");
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const library = document.getElementById("poster-sync-library").value;
+    if (!library) return;
+    const dryRun = document.getElementById("poster-sync-dry-run").checked;
+
+    document.getElementById("poster-log").textContent = "";
+    summary.textContent = "";
+    submitBtn.disabled = true;
+    closePosterStream();
+
+    try {
+      const data = await postAction("/api/posters/sync", { library, dry_run: dryRun });
+      logLine("pending", data.message);
+      summary.textContent = "running…";
+
+      activePosterSource = new EventSource("/api/posters/sync/stream");
+      activePosterSource.onmessage = (evt) => {
+        posterLogLine(evt.data);
+        if (evt.data.startsWith("DONE ")) {
+          summary.textContent = evt.data.slice(5);
+          logLine("ok", `Poster sync — ${evt.data.slice(5)}`);
+          closePosterStream();
+          submitBtn.disabled = false;
+        } else if (evt.data.startsWith("ERROR ")) {
+          summary.textContent = evt.data.slice(6);
+          logLine("err", `Poster sync — ${evt.data.slice(6)}`);
+          closePosterStream();
+          submitBtn.disabled = false;
+        }
+      };
+      activePosterSource.onerror = () => {
+        closePosterStream();
+        submitBtn.disabled = false;
+      };
+    } catch (e) {
+      summary.textContent = e.message;
+      logLine("err", `Poster sync — ${e.message}`);
+      submitBtn.disabled = false;
+    }
+  });
+
+  loadPosterLibraries();
+}
+
+/* ---------- Boot ---------- */
 buildQuickLinks();
 buildPrimaryGrid();
 buildArrList();
 buildZileanSearch();
+buildPosterSync();
 buildDangerZone();
 buildPlexUpdateCheck();
+loadCommandRegistry();
 tickClock();
 setInterval(tickClock, 1000);
 refreshStatus();
@@ -817,4 +1346,4 @@ refreshContainerGrid();
 setInterval(refreshContainerGrid, 15000);
 refreshZileanStats();
 setInterval(refreshZileanStats, 60000);
-logLine("ok", "Control panel ready.");
+logLine("ok", "Control panel ready — operator console fused in, no second page needed.");

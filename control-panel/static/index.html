@@ -4,33 +4,51 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Control Panel — The Stack</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230a0605'/%3E%3Cpath d='M8 1l7 6h-7v7l-7-6h7z' fill='%23ff3b30'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+
+<canvas id="fx-canvas" aria-hidden="true"></canvas>
+<div id="fx-scanlines" aria-hidden="true"></div>
+<div id="fx-vignette" aria-hidden="true"></div>
+<div id="fx-flicker" aria-hidden="true"></div>
+
+<aside id="telemetry-rail">
+  <div class="rail-label">// containment status</div>
+  <ul id="telemetry-list"></ul>
+</aside>
 
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
       <div>
-        <h1>Control Panel</h1>
-        <p class="brand-sub">The Stack — operations</p>
+        <h1><span class="glitch" id="glitch-title" data-text="CONTROL PANEL">CONTROL PANEL</span></h1>
+        <p class="brand-sub">The Stack — unified operator console</p>
       </div>
     </div>
-    <div class="clock" id="clock" aria-live="off"></div>
+    <div class="hud-readouts">
+      <span class="hud-dot" id="hud-conn-dot" title="connection"></span>
+      <span id="hud-conn-label">LINK</span>
+      <span class="hud-sep">│</span>
+      <span id="clock" class="clock" aria-live="off"></span>
+      <span class="hud-sep">│</span>
+      <span id="uptime"></span>
+    </div>
   </div>
 </header>
 
 <main>
 
   <section class="group" aria-labelledby="h-quicklinks">
-    <h2 id="h-quicklinks">Quick links</h2>
-    <p class="group-note">Every service's own web UI, one click away - this replaced Heimdall and Homepage as the stack's link launcher, so both were removed.</p>
+    <h2 id="h-quicklinks">Access terminals</h2>
+    <p class="group-note">Every service's own web UI, one click away — replaced Heimdall and Homepage as the stack's link launcher, so both were removed.</p>
     <div class="quicklinks" id="quicklinks"></div>
   </section>
 
   <section class="group" aria-labelledby="h-overview">
-    <h2 id="h-overview">Overview</h2>
+    <h2 id="h-overview">System vitals</h2>
     <div class="overview-grid" id="overview-grid">
       <div class="stat-tile" id="stat-zilean">
         <div class="stat-label">Zilean hashes indexed</div>
@@ -52,17 +70,62 @@
   </section>
 
   <section class="group" aria-labelledby="h-primary">
-    <h2 id="h-primary">Primary actions</h2>
+    <h2 id="h-primary">Rapid deploy</h2>
     <div class="grid primary-grid" id="primary-grid"></div>
   </section>
 
   <section class="group" aria-labelledby="h-arr">
-    <h2 id="h-arr">*arr apps</h2>
+    <h2 id="h-arr">Acquisition units</h2>
     <div class="arr-list" id="arr-list"></div>
   </section>
 
+  <section class="group" aria-labelledby="h-console">
+    <h2 id="h-console">Operator console</h2>
+    <p class="group-note">Every stack-* operation, in one place — searchable command manifest, parameter forms, armed confirmation on destructive ops, and a live log feed. This replaces the standalone console entirely; nothing here proxies out to a second page.</p>
+    <div class="console-shell">
+      <section id="screen-list" class="console-panel">
+        <div class="console-prompt">
+          <span class="caret">&gt;</span>
+          <input id="console-filter" type="text" placeholder="search operations..." aria-label="Search operations" autocomplete="off">
+        </div>
+        <p class="console-hint" id="console-status">loading manifest…</p>
+        <ul id="command-list"></ul>
+      </section>
+
+      <section id="screen-args" class="console-panel" hidden>
+        <button class="console-back" data-back="list">&larr; Abort</button>
+        <h3 class="console-title" id="args-title"></h3>
+        <p class="console-desc" id="args-desc"></p>
+        <form id="args-form"></form>
+      </section>
+
+      <section id="screen-confirm" class="console-panel console-alert" hidden>
+        <button class="console-back" data-back="args">&larr; Abort</button>
+        <p class="confirm-warning">⚠ destructive operation — cannot be undone from here</p>
+        <p class="confirm-text-line" id="confirm-text"></p>
+        <p class="confirm-hint" id="confirm-hint">type the command name below to authorize execution</p>
+        <input id="confirm-input" type="text" aria-label="Command name to confirm" aria-describedby="confirm-hint" autocomplete="off" spellcheck="false">
+        <div class="console-row">
+          <button id="confirm-yes" class="btn-danger" disabled type="button">Execute</button>
+          <button id="confirm-no" class="btn-ghost" type="button">Cancel</button>
+        </div>
+      </section>
+
+      <section id="screen-run" class="console-panel" hidden>
+        <button class="console-back" data-back="list">&larr; New operation</button>
+        <h3 class="console-title" id="run-title"></h3>
+        <div id="run-status"></div>
+        <div id="log-pane" hidden>
+          <h3>Live feed <span id="log-container-name" class="hud-sep"></span></h3>
+          <pre id="log-lines"></pre>
+        </div>
+        <pre id="result-pane"></pre>
+      </section>
+    </div>
+  </section>
+
   <section class="group" aria-labelledby="h-zilean">
-    <h2 id="h-zilean">Search Zilean directly</h2>
+    <h2 id="h-zilean">Deep index query</h2>
     <p class="group-note">Queries Zilean's own index straight up — bypasses Prowlarr and every *arr app. Good for checking whether something's actually cached before grabbing it.</p>
     <form class="zilean-search" id="zilean-search-form">
       <input type="search" id="zilean-search-input" placeholder="Search title…" aria-label="Search Zilean" required>
@@ -95,17 +158,34 @@
     <div class="zilean-results" id="zilean-results"></div>
   </section>
 
+  <section class="group" aria-labelledby="h-posters">
+    <h2 id="h-posters">Poster sync</h2>
+    <p class="group-note">Replaces each item's Plex poster with the top-voted TMDb poster for it — movies and TV shows, one library at a time. Items TMDb has no match or no poster for are skipped, not failed.</p>
+    <form class="poster-sync-form" id="poster-sync-form">
+      <label>Library
+        <select id="poster-sync-library"><option value="">Loading libraries…</option></select>
+      </label>
+      <label class="poster-sync-check">
+        <input type="checkbox" id="poster-sync-dry-run">
+        Dry run (report only, no changes)
+      </label>
+      <button class="btn-primary" type="submit">Sync posters</button>
+      <span class="zilean-filter-count" id="poster-sync-summary"></span>
+    </form>
+    <pre id="poster-log"></pre>
+  </section>
+
   <section class="group" aria-labelledby="h-containers">
-    <h2 id="h-containers">Containers</h2>
-    <p class="group-note">Every container in this compose project, discovered live from Docker - state, health, image, and live CPU/memory, with start/stop/restart per container. Refreshes automatically.</p>
+    <h2 id="h-containers">Containment grid</h2>
+    <p class="group-note">Every container in this compose project, discovered live from Docker — state, health, image, and live CPU/memory, with start/stop/restart per container. Refreshes automatically.</p>
     <div class="container-grid" id="container-grid"></div>
   </section>
 
   <section class="group" aria-labelledby="h-danger">
-    <h2 id="h-danger">Danger zone</h2>
+    <h2 id="h-danger">Failsafe</h2>
     <div class="card danger-card">
       <div class="card-title">Restart entire stack</div>
-      <div class="card-desc">Restarts every container in this compose project except this panel itself. Brief outage across the whole stack while everything comes back up - watch the lamps above.</div>
+      <div class="card-desc">Restarts every container in this compose project except this panel itself. Brief outage across the whole stack while everything comes back up — watch the rail on the left.</div>
       <button class="btn-danger" id="restart-all-btn" type="button">Restart everything</button>
       <div class="status-line" id="status-restart-all">—</div>
     </div>
@@ -115,12 +195,13 @@
 
 <footer class="log-panel">
   <div class="log-head">
-    <span class="log-title">Activity log</span>
+    <span class="log-title">Transmission log</span>
     <span class="log-hint">LAN-only · no auth, matching the rest of the stack</span>
   </div>
   <div class="log-body" id="log-body"></div>
 </footer>
 
+<script src="/fx.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
