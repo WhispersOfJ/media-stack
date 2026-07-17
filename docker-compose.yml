@@ -980,6 +980,50 @@ services:
     mem_reservation: 256m
     cpus: 4
 
+  # Pulls TMDb keywords onto Plex items as labels/genres (e.g. "revenge",
+  # "based on a manga") - complements Kometa (collections/overlays) rather
+  # than overlapping it; neither touches the other's output. Timer-only
+  # (default 1h, runs immediately on start too) - webhook mode needs Plex
+  # Pass and isn't configured here, so this doesn't get the instant-on-add
+  # behavior plex-webhook-listener.py has for its own separate purpose.
+  labelarr:
+    <<: *common
+    image: ghcr.io/nullable-eth/labelarr:v1.4.0
+    container_name: labelarr
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      <<: *common-env
+      PLEX_TOKEN: ${PLEX_TOKEN}
+      # Plex runs network_mode: host (see the plex service above) - every
+      # other container reaches it via HOST_IP:32400, never a stacknet
+      # hostname. Same pattern control-panel's PLEX_URL and Kometa's own
+      # config.yml plex_server_url already use.
+      PLEX_SERVER: ${HOST_IP}
+      PLEX_PORT: "32400"
+      PLEX_REQUIRES_HTTPS: "false"
+      TMDB_READ_ACCESS_TOKEN: ${TMDB_READ_ACCESS_TOKEN}
+      MOVIE_PROCESS_ALL: "true"
+      TV_PROCESS_ALL: "true"
+      USE_RADARR: "true"
+      RADARR_URL: http://radarr:7878
+      RADARR_API_KEY: ${RADARR_API_KEY}
+      USE_SONARR: "true"
+      SONARR_URL: http://sonarr:8989
+      SONARR_API_KEY: ${SONARR_API_KEY}
+      DATA_DIR: /data
+    volumes:
+      - ./config/labelarr:/data
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep labelarr || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    mem_limit: 256m
+    mem_reservation: 64m
+    cpus: 1
+
   unpackerr:
     restart: unless-stopped
     logging: *common-logging

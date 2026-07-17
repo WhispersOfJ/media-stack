@@ -1,10 +1,10 @@
 # The Stack
 
-Current version: **v10.17.0**
+Current version: **v10.18.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
-downloaded) on cache misses, and serves the result through a containerized Plex. 30 services,
+downloaded) on cache misses, and serves the result through a containerized Plex. 31 services,
 one compose file, every image pinned and healthchecked. Two operator surfaces: a custom
 dashboard (Control Panel) and a custom CLI (`stack-*` fish functions).
 
@@ -28,7 +28,7 @@ chronological [History](#history) section is at the end.
 - [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [DebridMediaManager (self-hosted)](#debridmediamanager-self-hosted)
-- [Automation extras: Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-cleanuparr-neutarr-unpackerr-watchtower)
+- [Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-labelarr-cleanuparr-neutarr-unpackerr-watchtower)
 - [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
 - [Maintainerr: Plex library lifecycle](#maintainerr-plex-library-lifecycle)
 - [Control Panel](#control-panel)
@@ -243,21 +243,22 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 16 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
 | 17 | `control-panel` | built from `./control-panel` | 8420 | extras |
 | 18 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
-| 19 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 20 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 21 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
-| 22 | `dmm-mysql` | `mysql:9.7` | none | extras |
-| 23 | `dmm-redis` | `redis:8-alpine` | none | extras |
-| 24 | `dmm-migrate` | built from DMM git context, `target: build` | none | extras (one-shot) |
-| 25 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 26 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 27 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 28 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
-| 29 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
-| 30 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
+| 19 | `labelarr` | `ghcr.io/nullable-eth/labelarr:v1.4.0` | none | extras |
+| 20 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 21 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 22 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
+| 23 | `dmm-mysql` | `mysql:9.7` | none | extras |
+| 24 | `dmm-redis` | `redis:8-alpine` | none | extras |
+| 25 | `dmm-migrate` | built from DMM git context, `target: build` | none | extras (one-shot) |
+| 26 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 27 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 28 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 29 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 30 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
+| 31 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
 
 `docker compose up -d` brings up the 14 core services; `docker compose --profile extras up
--d` adds the other 16. Both are safe to re-run; Compose only recreates what is out of sync
+-d` adds the other 17. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`.
 
 ## The *arr apps
@@ -931,7 +932,7 @@ Two upstream bugs are worked around without vendoring a modified Dockerfile:
    downloads a newer major version from the registry at runtime instead of the pinned one.
    The same `target: build` fix covers this.
 
-## Automation extras: Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower
+## Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower
 
 **Kometa** (`kometateam/kometa@sha256:98a0df...`; official image, not the LinuxServer fork,
 which resets `/config` ownership on every start) automates Plex collections, metadata, and
@@ -948,6 +949,18 @@ The container's entrypoint is overridden to `sleep infinity`: the image's defaul
 runs a complete Kometa pass immediately on every container start/restart, not just on a
 schedule. With the override, restarts idle; Control Panel's `/api/kometa/run` execs
 `python3 /kometa.py --run` on demand regardless of PID 1. Do not remove the override.
+
+**Labelarr** (`ghcr.io/nullable-eth/labelarr:v1.4.0`) pulls TMDb keywords onto Plex items as
+labels (e.g. "revenge", "based on a manga") so Plex's own filter/search UI gets more granular
+- complements Kometa rather than overlapping it; Kometa builds collections/overlays, this
+writes item-level labels, and neither reads or modifies the other's output. Runs its own
+1-hour timer (processes immediately on container start too), connected to Plex, TMDb (a
+separate v4 read-access token, `TMDB_READ_ACCESS_TOKEN` - not the v3 `TMDB_KEY` Kometa and DMM
+share), Radarr, and Sonarr (for TMDb-id lookups when a file path alone doesn't carry one). No
+web UI and no port published - its optional webhook-triggered mode needs Plex Pass and isn't
+configured here, so it's timer-only. `MOVIE_PROCESS_ALL`/`TV_PROCESS_ALL` cover every library
+of each type rather than naming specific ones, so it also runs against `Anime Movies`/
+`Anime Shows` alongside `Movies`/`TV Shows` with no extra config.
 
 **Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) and **NeutArr**
 (`iampuid0/neutarr:1.9.1`, port 9705) automate what Control Panel's "unstick" and
@@ -1494,8 +1507,8 @@ Every image is pinned, using whichever approach does not change what is running:
   Radarr, Sonarr, Tautulli). hotio's model is rolling channels identified by git-hash, not
   semver, so a channel tag is the closest available pin.
 - **Version tags** (`ipromknight/zilean:v3.5.0`, `cy01/blackhole:v2.3`,
-  `nickfedor/watchtower:1.19.0`) where the upstream tags real releases and the running image
-  matches.
+  `nickfedor/watchtower:1.19.0`, `ghcr.io/nullable-eth/labelarr:v1.4.0`) where the upstream
+  tags real releases and the running image matches.
 - **Digest pins** (`@sha256:...`) for Seerr, Kometa, Unpackerr, and Byparr. In each case the
   running `:latest` build is ahead of the newest tagged release, so any tag would be a
   downgrade. Byparr publishes no clean `vX.Y.Z` tags on GHCR at all (only `:latest`, `:main`,
@@ -2162,3 +2175,13 @@ found in config` (confirmed live testing the new libraries directly via `docker 
 partial failure. A single-library scoped run never hit this, since there's no delimiter to get
 wrong with only one name - this bug has been live since the endpoint was written and would only
 ever show up when scoping a run to more than one library at once.
+
+**v10.18.0** (current): Added Labelarr (`ghcr.io/nullable-eth/labelarr:v1.4.0`, extras profile)
+- pulls TMDb keywords onto Plex items as labels, complementing Kometa (collections/overlays)
+rather than overlapping it. Wired to Plex (via `HOST_IP:32400`, the same pattern every other
+container needs since Plex runs `network_mode: host`), TMDb (a new credential,
+`TMDB_READ_ACCESS_TOKEN` - TMDb's v4 read-access token, distinct from the v3 `TMDB_KEY` Kometa
+and DMM already share), and Radarr/Sonarr for TMDb-id lookups. Timer-only (1h default, runs on
+start too); its optional webhook mode needs Plex Pass and wasn't configured. Verified live on
+first run: connected to all four services cleanly and applied keyword labels to real library
+items with zero errors. 31 services total now.

@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (30 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (31 services, one `docker-compose.yml`):
 indexes content via Prowlarr + Zilean, requests via Seerr, organizes via two `*arr`-family apps
 (Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
 Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
@@ -106,7 +106,11 @@ below).
 
 **Metadata/overlays** — `kometa` (extras, no port, `entrypoint: sleep infinity` override is
 load-bearing — see landmines below; runs only via Control Panel's on-demand
-`/api/kometa/run` exec, never as PID 1).
+`/api/kometa/run` exec, never as PID 1) · `labelarr` (extras, no port mapped — its optional
+webhook listener needs Plex Pass and isn't configured here, so nothing publishes 9090; pulls
+TMDb keywords onto Plex items as labels via its own 1-hour timer instead, reads Radarr/Sonarr
+for TMDb-id lookups; complements Kometa, doesn't overlap it — Kometa builds collections/
+overlays, this writes item-level labels).
 
 **Post-processing** — `unpackerr` (extras, no port, RAR extraction for Radarr/Sonarr's
 downloads).
