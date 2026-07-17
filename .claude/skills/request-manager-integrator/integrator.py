@@ -97,24 +97,41 @@ def cmd_connect(app_name: str, root: str, profile_name: str, label: str | None, 
     if match and not force:
         raise RuntimeError(f"connection '{conn_name}' already exists in seerr — pass --force to overwrite")
 
-    # Derive hostname/port from the Arr app's configured base_url (docker-internal or host).
-    url_parts = arr.base_url.replace("http://", "").replace("https://", "").split(":")
-    hostname = url_parts[0]
-    port = int(url_parts[1]) if len(url_parts) > 1 else meta["port"]
+    # NOT derived from the Arr app's configured base_url - that's used for this script's own
+    # direct API calls (RADARR_URL/SONARR_URL, often "localhost" when run from the host itself,
+    # outside any container), but Seerr calls out to the Arr app from inside its own container
+    # on the compose network, where "localhost" resolves to Seerr itself, not Radarr/Sonarr.
+    # Confirmed live: reusing base_url's host here created a connection Seerr could never reach.
+    # This stack's container_name always matches the compose service key (radarr, sonarr), so
+    # the app name itself is the correct docker-internal hostname.
+    hostname = app_name
+    port = meta["port"]
 
     payload = {
         "name": conn_name,
         "hostname": hostname,
         "port": port,
         "apiKey": arr.api_key,
+        "useSsl": False,
+        "baseUrl": "",
         "activeDirectory": root,
         "activeProfileId": profile["id"],
+        "activeProfileName": profile["name"],
         "is4k": False,
         "isDefault": not existing,
+        "tags": [],
     }
+    # Seerr's schema diverges here: Radarr connections require
+    # minimumAvailability, Sonarr connections require enableSeasonFolders
+    # instead - confirmed live against each app's own existing connection.
+    if app_name == "radarr":
+        payload["minimumAvailability"] = "released"
+    elif app_name == "sonarr":
+        payload["enableSeasonFolders"] = True
 
     if match:
-        payload["id"] = match["id"]
+        # id is read-only on Seerr's PUT - confirmed live, a 400 if present in the body at all,
+        # even matching the same id the URL path already targets.
         seerr.request("PUT", f"{endpoint}/{match['id']}", payload)
         print(f"updated seerr connection: {conn_name}")
     else:
