@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v10.15.0**
+Current version: **v10.17.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
@@ -413,37 +413,21 @@ directories:
     group: media
     group_order: 8
     filters:
-      - regex: /(?i)\[(SubsPlease|Erai-raws|Judas|EMBER|HorribleSubs|Commie|ASW|GJM|Yameii|Tsundere-Raws|ReinForce|DKB|Anime Time|Golumpa|Beatrice-Raws|Kawaiika-Raws|Chihiro|Doki|UTW|Underwater|DameDesuYo|ToonsHub|NC-Raws|PAS)\].*(-\s?\d{2,3}(\D|$)|\bE\d{2,3}\b|S\d{1,2}E\d{1,3})/
+      - regex: /(?i)\[[^\]]+\].*(-\s?\d{2,3}(\D|$)|\bE\d{2,3}\b|S\d{1,2}E\d{1,3}|\[\d{2,3}\]|\b\d{1,3}\s+(FHD|HD|SD)\b)/
   shows:
     group: media
     group_order: 10
     filters:
       - has_episodes: true
-  music:
-    group: media
-    group_order: 12
-    filters:
-      - regex: /(?i)\b(FLAC|MP3|CDDA|Vinyl|Discography|320kbps|Lossless|WEB-DL.*MP3)\b/
-  # Nothing currently reads /mnt/zurg/books (see Bindery and Calibre-Web:
-  # retired); the group is left in place in case an ebook app returns.
-  books:
-    group: media
-    group_order: 14
-    filters:
-      - regex: /(?i)\b(EPUB|MOBI|AZW3?|EBOOK)\b/
-  adult:
-    group: media
-    group_order: 17
-    filters:
-      - regex: /(?i)\bXXX\b/
+      - regex: /(?i)\bTemporada\s*\d+\b.*\bCap\.?\s?\d{2,3}\b/
   # Same fansub-tag list as anime-shows without the episode-marker
   # requirement - episodic anime is already claimed by anime-shows
   # (lower group_order), so what matches here is movie-style anime.
   anime-movies:
     group: media
-    group_order: 19
+    group_order: 9
     filters:
-      - regex: /(?i)\[(SubsPlease|Erai-raws|Judas|EMBER|HorribleSubs|Commie|ASW|GJM|Yameii|Tsundere-Raws|ReinForce|DKB|Anime Time|Golumpa|Beatrice-Raws|Kawaiika-Raws|Chihiro|Doki|UTW|Underwater|DameDesuYo|ToonsHub|NC-Raws|PAS)\]/
+      - regex: /(?i)\[(SubsPlease|Erai-raws|Judas|EMBER|HorribleSubs|Commie|ASW|GJM|Yameii|Tsundere-Raws|ReinForce|DKB|Anime Time|Golumpa|Beatrice-Raws|Kawaiika-Raws|Chihiro|Doki|UTW|Underwater|DameDesuYo|ToonsHub|NC-Raws|PAS|Ginga-subs)\]/
   movies:
     filters:
       - regex: /.*/
@@ -451,14 +435,63 @@ directories:
     group_order: 20
 ```
 
-Ordering: `anime-shows` (8) < `shows` (10) < `music` (12) < `books` (14) < `adult` (17) <
-`anime-movies` (19) < `movies` (20). `music` and `books` are orphaned groups (Lidarr removed
-v10.9.9, Bindery retired v10.9.8), left in place in case those content types return.
+Ordering: `anime-movies` (9) < `anime-shows` (8, checked first despite the higher-looking
+number - re-read this as "8 sorts before 9") < `shows` (10) < `movies` (20).
 `anime-shows`/`anime-movies` feed a dedicated Plex Anime library; see [Plex](#plex).
 
 The fansub-tag list covers the release groups that have appeared in this account's cache, not
 every group that exists. New groups not in the list fall through to `shows`/`movies`; extend
 the regex's alternation list when that happens.
+
+**`music`, `books`, and `adult` groups removed entirely 2026-07-17** (previously group_order
+12/14/5) - all three had been silently misrouting real movies for a while, discovered during
+an unrelated docs-audit that stumbled onto `/mnt/zurg/music` and `/mnt/zurg/adult` still
+existing despite Lidarr, Bindery, and Whisparr all being gone:
+
+- **`music`** (`\b(FLAC|MP3|CDDA|Vinyl|Discography|320kbps|Lossless|WEB-DL.*MP3)\b`) matched
+  the word "FLAC" anywhere in a filename - which movie remuxes routinely carry to mean a
+  lossless **audio track**, not a music release. 43 real movies (Coffy, Godzilla Raids Again,
+  Bad Lieutenant, several Criterion/UHD remuxes, a handful of foreign-language classics) had
+  been silently misrouted into an orphaned path nothing served the whole time this group kept
+  running past Lidarr's final removal in v10.9.9 - the group was never taken back out when the
+  app it existed for left. Verified live against Radarr's own library that 37 of the 43 already
+  had a separately-imported duplicate (same file, reachable via Decypharr's own mount instead -
+  Zurg and Decypharr both expose the same underlying Real-Debrid cache, just through different
+  lenses, confirmed by matching byte-identical file sizes on both paths) - 6 were genuinely
+  missing from Radarr and got added + manually imported from Decypharr's mount: *From the East*
+  (D'Est, 1993), *The Shop on Main Street* (Obchod na korze, 1965), *Revolutionary Girl Utena:
+  The Movie* (1999), *Gintama: The Final Chapter - Be Forever Yorozuya* (2013), *Saint Seiya:
+  Legend of Sanctuary* (2014). The 6th, *Force of Evil* (1948), turned out to already be
+  covered - Radarr's existing entry for it carries TMDb's own (apparently mis-dated) 1950
+  release date, so it read as a different film on first pass; left as-is rather than added
+  again.
+- **`books`** (same dead-app reasoning, for Readarr/Bindery) had 0 files actually sitting in it
+  at removal time - not yet bitten in practice, but the same live exposure.
+- **`adult`** (studio/keyword list, matching content Whisparr/Stash used to manage) had two
+  bare, collision-prone keywords - plain `Wicked` (an adult-studio name that's also literally
+  in *Wicked City (1987)*, a real Madhouse anime film) and bare `XXX` (the MPAA-style rating
+  tag, which also opens the real *xXx (2002)* action movie's stylized title) - catching real
+  movies the same way `music`'s FLAC keyword did. Both recovered into Radarr the same way as
+  the `music` finds. The two genuinely adult files found in the same path (a Scooby-Doo parody
+  and a TeenPies scene) were confirmed still live on the Real-Debrid account and deleted via
+  its API directly (`DELETE /torrents/delete/{id}`) - Zurg's own dashboard only exposes
+  bulk "delete everything" actions, nothing per-item, so this needed going around it. Also
+  found and cleaned up in the same pass: *Wicked City* had been grabbed **four separate times**
+  in the preceding two days (same info-hash, four different Real-Debrid torrent IDs) - almost
+  certainly Radarr retrying a search because the file kept landing somewhere nothing imports
+  from; three of the four duplicates were deleted from the account, keeping the newest.
+
+If either content type (music/audiobooks/ebooks) or an adult-content app ever comes back to
+this stack, the removed groups' exact filters aren't preserved anywhere in git (`config/zurg/
+config.yml` is gitignored, and always has been) - this paragraph is the only surviving record.
+The `adult` group in particular had five documented incidents' worth of keyword tuning behind
+it before removal (`Family.Swap` needing to be checked *before* `shows` because `has_episodes:
+true` false-triggered on an episode-number-shaped title first; a `Yurievij` uploader tag that
+needed pulling outside the `\b(...)\b` group because three leaks were `_Yurievij_`-underscored
+and `\b` doesn't treat `_` as a boundary; `Anal` being substring-safe against `STUDIOCANAL`
+specifically because of where the word-boundary regex anchors; `Jerkoff` chosen over a bare
+`Tit` keyword to avoid colliding with real bird-species/informal-usage false positives) - worth
+rebuilding from scratch with the same care, not copying a guess, if this is ever revisited.
 
 ### Zurg's mount is a supervised rclone subprocess
 
@@ -698,15 +731,19 @@ plex:
 
   | Key | Title | Type | Agent | Locations |
   |---|---|---|---|---|
-  | 4 | Movies | movie | `tv.plex.agents.movie` | `/home/bear/Stack/media/movies`, `/mnt/zurg/movies` |
-  | 1 | TV Shows | show | `tv.plex.agents.series` | `/mnt/zurg/shows`, `/home/bear/Stack/media/shows`, `/mnt/all/magnets` |
-  | 3 | Music | artist | `tv.plex.agents.music` | `/mnt/zurg/music`, `/home/bear/Stack/media/music` |
-  | 8 | Audiobooks | artist | `tv.plex.agents.none` | `/home/bear/Stack/media/audiobooks` |
-  | 10 | Anime Movies | movie | `tv.plex.agents.movie` | `/mnt/zurg/anime-movies`, `/home/bear/Stack/media/anime-movies` |
-  | 11 | Anime Shows | show | `tv.plex.agents.series` | `/mnt/all-anime`, `/mnt/zurg/anime-shows`, `/home/bear/Stack/media/anime-shows` |
+  | 14 | Movies | movie | `tv.plex.agents.movie` | `/home/bear/Stack/media/movies` |
+  | 16 | TV Shows | show | `tv.plex.agents.series` | `/mnt/zurg/shows`, `/home/bear/Stack/media/shows` |
+  | 13 | Anime Movies | movie | `tv.plex.agents.movie` | `/mnt/zurg/anime-movies`, `/home/bear/Stack/media/anime-movies` |
+  | 15 | Anime Shows | show | `tv.plex.agents.series` | `/mnt/all-anime`, `/mnt/zurg/anime-shows`, `/home/bear/Stack/media/anime-shows` |
 
   `./media` is mounted at its identical host absolute path (`/home/bear/Stack/media`) so
-  every arr app's writable root folder can be added as a library location directly.
+  every arr app's writable root folder can be added as a library location directly. Section
+  keys shift when a library is deleted/recreated - **confirmed live 2026-07-17 that this table
+  had drifted** (previously documented as keys 4/1/3/8/10/11, live keys are 13/14/15/16, and
+  `Music`/`Audiobooks` no longer exist as Plex libraries at all - see
+  [History](#history)). Don't hardcode a section key anywhere without verifying it against
+  `GET /library/sections` first; `scripts/sort-anime-movies.py` learned this the hard way (see
+  History) and now looks sections up by title instead.
 
 ### Plex "Anime Movies" and "Anime Shows" libraries
 
@@ -762,19 +799,32 @@ curl -s -H "X-Plex-Token: $PLEX_TOKEN" http://192.168.4.105:32400/library/sectio
   grep -oP 'title="[^"]*"'
 ```
 
-### Plex "Audiobooks" library, and the retired "Adult" library
+### The retired "Music", "Audiobooks", and "Adult" libraries
 
-**Audiobooks** (key 8) is a Music-type library using the "Plex Personal Media" agent
-(`tv.plex.agents.none`), the standard workaround since Plex has no audiobook library type or
-agent. It points at `/home/bear/Stack/media/audiobooks`, which exists but is empty; nothing
-populates it automatically.
+**None of these three exist in Plex anymore.** Only four libraries are live today: Movies, TV
+Shows, Anime Movies, Anime Shows (see the table above).
 
 **Plex's "Adult" library was removed in v10.9.9** via the Plex API
-(`DELETE /library/sections/{key}`). It was a Movie-type library pointed at `/mnt/zurg/adult`
-and (after a fix in v10.5.0) `/home/bear/Stack/media/adult`. Stash covered this content type's
-cataloging (performers/studios/tags/StashDB identification) until it, along with Whisparr (the
-app that managed this library) and `./media/adult` itself, was removed entirely in v10.12.0.
-See [History](#history). There is no adult content library in this stack anymore.
+(`DELETE /library/sections/{key}`) - a documented, deliberate removal. It was a Movie-type
+library pointed at `/mnt/zurg/adult` and (after a fix in v10.5.0) `/home/bear/Stack/media/adult`.
+Stash covered this content type's cataloging (performers/studios/tags/StashDB identification)
+until it, along with Whisparr (the app that managed this library) and `./media/adult` itself,
+was removed entirely in v10.12.0. See [History](#history).
+
+**"Music" and "Audiobooks" are a different story: undocumented removals, root cause unknown.**
+This section used to describe both as live libraries (Music, a `tv.plex.agents.music`-agent
+library at `/mnt/zurg/music` + `./media/music`; Audiobooks, a Music-type library on the
+Plex Personal Media agent at `./media/audiobooks`, always empty by design - Plex has no
+audiobook library type). Confirmed live 2026-07-17 that **neither exists anymore** - only 4
+Plex sections total, not 6 - with no History entry ever recording either removal. Both
+`./media/music` and `./media/audiobooks` still exist on disk (empty) and neither is mounted
+into any container in `docker-compose.yml`. Most likely tied to Lidarr's final removal in
+v10.9.9 (Music was Lidarr's library), but that entry doesn't mention removing the Plex library
+itself, only the app - unconfirmed, not chased further. This is the same undocumented-removal
+pattern as the Zurg `music`/`books`/`adult` routing groups found the same day (see
+[Zurg's content-routing groups](#zurgs-content-routing-groups) and [History](#history)
+`[10.16.0]`) - an app's removal checklist has repeatedly missed cleaning up everything that
+depended on it, not just the app itself.
 
 ## Bindery and Calibre-Web: retired
 
@@ -1587,6 +1637,13 @@ what is new.
 
 ## Known gaps and limitations
 
+- **An entire Saint Seiya film collection was repeatedly re-grabbed the same day, unexplained.**
+  Found live 2026-07-17 while root-causing the Zurg routing-group incident (see
+  [History](#history) `[10.16.0]`): 5 Saint Seiya titles beyond the one actually needed each had
+  2-3 duplicate Real-Debrid torrents added within a single day, all normal (non-FLAC) filenames
+  - a different bug from the FLAC-misroute issue that prompted this whole audit, not yet
+  investigated. Whatever's driving the repeat grabs (a stuck Radarr search, a collection-import
+  feature, something else) is still active and still wasting real grabs each time it fires.
 - **Sonarr's `missing-aired` endpoint has an unresolved pagination performance risk.** The
   early-stop optimization helps, but this instance tracks close to 300,000 episode records
   and the endpoint has not been load-tested at that scale. It also has no frontend wiring in
@@ -2064,3 +2121,44 @@ succeeded cleanly on a retry with more spacing between calls. Traced to load fro
 that happened to be active at the same time, not a problem with the match logic itself -
 every apply is now verified by re-reading the item's guid afterward rather than trusting the
 HTTP response code.
+
+**v10.16.0** (current): Started as a docs-accuracy check on the previous entry's downstream
+sync and turned into a live-stack audit. Found this README's Plex library table (see
+[Architecture](#architecture)) had drifted badly - documented section keys 4/1/3/8/10/11,
+live keys are 13/14/15/16 - and that two of the six libraries it claimed existed, `Music` and
+`Audiobooks`, don't exist on the live Plex server at all anymore, with no History entry ever
+recording their removal. Chasing why led to Zurg's `music`/`books`/`adult` content-routing
+groups (see [Zurg's content-routing groups](#zurgs-content-routing-groups) for the full
+writeup) - all three had kept running long after the apps that needed them (Lidarr, Bindery,
+Whisparr) were gone, and `music`/`adult`'s keyword regexes were both silently misrouting real
+movies into paths nothing serves. Root-caused, fixed, and recovered: removed all three groups
+from `config/zurg/config.yml`; found 43 movies sitting in the orphaned `music` path (37 already
+duplicated safely in Radarr via Decypharr's separate mount, 5 genuinely missing and added +
+manually imported, 1 already covered under a differently-dated TMDb entry) and 4 in `adult`
+(2 real movies recovered the same way, 2 genuinely adult
+files confirmed still live on the Real-Debrid account and deleted via its API directly, since
+Zurg's own dashboard has no per-item delete); also found and cleaned up 4 duplicate grabs of
+*Wicked City* (2160p HDR) sitting under 4 separate Real-Debrid torrent IDs, almost certainly
+from Radarr retrying a search that kept succeeding but never importing. `scripts/
+sort-anime-movies.py` was updated to resolve its Plex library section by title instead of a
+hardcoded key, since this incident is direct proof those keys aren't stable across this stack's
+own history - it happened to still be right, this time.
+
+Separately found, not yet acted on: an active, ongoing retry loop grabbing an entire *Saint
+Seiya* film collection (5 titles beyond the one actually needed) 2-3 times each within a single
+day, all with normal (non-FLAC) filenames - a different bug from the one just fixed, still
+unexplained. Flagged for its own investigation; see [Known gaps](#known-gaps-and-limitations).
+
+**v10.17.0** (current): `config/kometa/config.yml` gained `Anime Movies` and `Anime Shows`
+library blocks (movie-type and show-type collection/overlay file sets respectively, mirroring
+`Movies`/`TV Shows`), replacing a stale comment that said Anime "doesn't exist as a Plex
+library here" - it has, since v10.4.0; the comment just never got updated once the anime
+libraries actually existed. Gitignored config, not tracked in git - this entry is the record.
+Found and fixed a real bug surfacing this: Control Panel's `/api/kometa/run` builds
+`--run-libraries` by joining the requested library names with a comma
+(`",".join(payload.libraries)`), but Kometa's own CLI takes a **pipe**-separated list - a
+comma-joined multi-library value fails the entire run with `Config Error: No libraries were
+found in config` (confirmed live testing the new libraries directly via `docker exec`), not a
+partial failure. A single-library scoped run never hit this, since there's no delimiter to get
+wrong with only one name - this bug has been live since the endpoint was written and would only
+ever show up when scoping a run to more than one library at once.
