@@ -1392,12 +1392,15 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest):
 
     tmdb_ids = []
     unmatched = []
-    for slug in slugs:
+    total_slugs = len(slugs)
+    for i, slug in enumerate(slugs, 1):
         match = LETTERBOXD_TMDB_RE.search(_letterboxd_page(f"https://letterboxd.com/film/{slug}/"))
         if match:
             tmdb_ids.append(int(match.group(1)))
+            print(f"letterboxd-list: [{i}/{total_slugs}] matched {slug} -> tmdb {match.group(1)}")
         else:
             unmatched.append(slug)
+            print(f"letterboxd-list: [{i}/{total_slugs}] no TMDb match for {slug}")
         time.sleep(0.2)
     tmdb_ids = list(dict.fromkeys(tmdb_ids))
 
@@ -1411,17 +1414,22 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest):
     root_folder_path, quality_profile_id = _radarr_root_folder_and_profile(cfg, payload.root_folder, payload.quality_profile)
 
     added, already, failed = [], [], []
-    for tmdb_id in tmdb_ids:
+    total_movies = len(tmdb_ids)
+    for i, tmdb_id in enumerate(tmdb_ids, 1):
         result = _radarr_add_movie(
             cfg, tmdb_id, payload.monitored, payload.search, root_folder_path, quality_profile_id,
             existing_tmdb_ids, dry_run=payload.dry_run,
         )
         if result["status"] == "already":
             already.append(tmdb_id)
+            print(f"letterboxd-list: [{i}/{total_movies}] tmdb {tmdb_id} already in Radarr")
         elif result["status"] == "added":
             added.append(result["title"])
+            verb = "would add" if payload.dry_run else "added"
+            print(f'letterboxd-list: [{i}/{total_movies}] {verb} "{result["title"]}"')
         else:
             failed.append(result["reason"])
+            print(f"letterboxd-list: [{i}/{total_movies}] failed - {result['reason']}")
 
     verb = "would be added" if payload.dry_run else "added"
     summary = f"{len(added)} {verb}, {len(already)} already in Radarr, {len(failed)} failed"
