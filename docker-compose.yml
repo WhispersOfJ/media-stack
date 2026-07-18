@@ -982,16 +982,27 @@ services:
 
   # Pulls TMDb keywords onto Plex items as labels/genres (e.g. "revenge",
   # "based on a manga") - complements Kometa (collections/overlays) rather
-  # than overlapping it; neither touches the other's output. Timer-only
-  # (default 1h, runs immediately on start too) - webhook mode needs Plex
-  # Pass and isn't configured here, so this doesn't get the instant-on-add
-  # behavior plex-webhook-listener.py has for its own separate purpose.
+  # than overlapping it; neither touches the other's output. Webhook-enabled
+  # as of the 2026-07-18 optimization pass (Plex Pass confirmed already in
+  # use - see plex-webhook-listener.py) - PROCESS_TIMER stretched to 24h as
+  # a fallback sweep since library.new events now trigger processing within
+  # WEBHOOK_DEBOUNCE instead of waiting up to an hour. Registering
+  # http://<HOST_IP>:9090/webhook in Plex's own Settings -> Webhooks is a
+  # manual, account-level step (same pattern as plex-webhook-listener.py's
+  # own webhook, not tracked by this repo) - it is NOT done by this compose
+  # change alone.
   labelarr:
     <<: *common
     image: ghcr.io/nullable-eth/labelarr:v1.4.0
     container_name: labelarr
     profiles: [extras]
     networks: [stacknet]
+    ports:
+      # 127.0.0.1-bound, same exposure pattern as plex-webhook-listener.py's
+      # PLEX_WEBHOOK_PORT - Plex sends from the host itself (network_mode:
+      # host), and the README's own network-exposure note warns /scan and
+      # /webhook carry no auth, so this must never be a bare 9090:9090.
+      - "127.0.0.1:9090:9090"
     environment:
       <<: *common-env
       PLEX_TOKEN: ${PLEX_TOKEN}
@@ -1012,6 +1023,10 @@ services:
       SONARR_URL: http://sonarr:8989
       SONARR_API_KEY: ${SONARR_API_KEY}
       DATA_DIR: /data
+      WEBHOOK_ENABLED: "true"
+      WEBHOOK_PORT: "9090"
+      WEBHOOK_DEBOUNCE: 30s
+      PROCESS_TIMER: 24h
     volumes:
       - ./config/labelarr:/data
     healthcheck:
