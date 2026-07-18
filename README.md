@@ -569,8 +569,11 @@ actually lives. NzbDAV itself never reads `.env`.
 completed downloads as importable files (the STRM alternative is Emby/Jellyfin-only).
 
 NzbDAV is priority-2 in every `*arr` app, behind Decypharr's priority-1: debrid is tried
-first, NzbDAV fires on cache misses. API examples via Control Panel's proxy (NzbDAV has a
-SABnzbd-style query API, not a dedicated REST API):
+first, NzbDAV fires on cache misses. API examples via Control Panel's proxy - queue/history
+go through NzbDAV's SABnzbd-style query API (keyed by `NZBDAV_API_KEY`); its settings
+(Usenet provider config) go through a separate backend with no static key, only a session
+cookie from its own `POST /login` - Control Panel logs in with `NZBDAV_ADMIN_USER`/
+`NZBDAV_ADMIN_PASSWORD` on every call:
 
 ```bash
 # Current Usenet download queue
@@ -578,6 +581,10 @@ curl -s http://192.168.4.105:8420/api/nzbdav/queue | jq .
 
 # Recent history (completed/failed), last 20 by default
 curl -s http://192.168.4.105:8420/api/nzbdav/history | jq .
+
+# Set every configured Usenet provider's max connections
+curl -s -X POST http://192.168.4.105:8420/api/nzbdav/set-connections \
+  -H 'Content-Type: application/json' -d '{"max_connections": 50}' | jq .
 ```
 
 **UI quirk**: NzbDAV's "Add Provider"/"Test Connection" form only submits once every field
@@ -1007,6 +1014,7 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/posters/sync/stream` | GET | SSE progress feed for the running (or just-finished) poster sync |
 | `/api/container/{name}/logs/stream` | GET | SSE live-follow of a container's own `docker logs`, any container in the project |
 | `/api/nzbdav/queue` \| `/history` | GET | NzbDAV's current queue / recent history |
+| `/api/nzbdav/set-connections` | POST | `{"max_connections": N}` → sets every configured Usenet provider's max connections |
 | `/api/zilean/search` | POST | `{"query": "..."}` → title/year/resolution/quality/size/hash results |
 | `/api/decypharr/grab` | POST | `{"hash": "...", "title": "..."}` → adds a magnet to Decypharr under a `manual` category |
 | `/api/arr/{app}/rss-sync` \| `/search-missing` | POST | Per-app RSS sync / missing-search |

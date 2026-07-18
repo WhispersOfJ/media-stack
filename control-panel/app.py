@@ -12,6 +12,7 @@ LAN-only, matches every other service in this stack (see README.md's
 "Security" section).
 """
 import concurrent.futures
+import json
 import os
 import queue
 import re
@@ -43,6 +44,8 @@ DECYPHARR_ADMIN_USERNAME = os.environ.get("DECYPHARR_ADMIN_USERNAME")
 DECYPHARR_ADMIN_PASSWORD = os.environ.get("DECYPHARR_ADMIN_PASSWORD")
 NZBDAV_URL = "http://nzbdav:3000"
 NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
+NZBDAV_ADMIN_USER = os.environ.get("NZBDAV_ADMIN_USER")
+NZBDAV_ADMIN_PASSWORD = os.environ.get("NZBDAV_ADMIN_PASSWORD")
 ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
 HOST_IP = os.environ.get("HOST_IP")
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
@@ -266,6 +269,10 @@ class ZileanSearchRequest(BaseModel):
 class GrabRequest(BaseModel):
     hash: str
     title: str | None = None
+
+
+class NzbdavConnectionsRequest(BaseModel):
+    max_connections: int
 
 
 class PosterSyncRequest(BaseModel):
@@ -881,9 +888,11 @@ def posters_sync_stream():
 
 # ---------------------------------------------------------------------
 # NzbDAV - Usenet streaming layer (WebDAV + rclone, no local disk - see
-# README.md's Usenet Pipeline section). Talks to its own SABnzbd-compatible query API
-# (mode=queue/mode=history) rather than a dedicated REST API - it doesn't
-# have one beyond that.
+# README.md's Usenet Pipeline section). Queue/history below go through its
+# SABnzbd-compatible query API (mode=queue/mode=history, keyed by
+# NZBDAV_API_KEY). Settings (nzbdav_set_connections() further down) go
+# through its separate ASP.NET backend instead - that one has no static key
+# at all, only a session cookie from POST /login.
 # ---------------------------------------------------------------------
 def nzbdav_api(mode: str, **params) -> dict:
     if not NZBDAV_API_KEY:
@@ -924,6 +933,51 @@ def nzbdav_history(limit: int = 20):
         "fail_message": s.get("fail_message") or None,
         "path": s.get("storage"),
     } for s in slots]
+
+
+@app.post("/api/nzbdav/set-connections")
+def nzbdav_set_connections(payload: NzbdavConnectionsRequest):
+    # NzbDAV's settings API (/api/get-config, /api/update-config) is a
+    # separate backend from its SABnzbd-compatible queue/history API above -
+    # it has no static key at all, only a session cookie from POST /login
+    # (same reasoning as decypharr_grab()'s own login step below). Verified
+    # live 2026-07-18: this is the same request NzbDAV's own Settings > Usenet
+    # page makes when you edit a provider and click Save.
+    if not NZBDAV_ADMIN_USER or not NZBDAV_ADMIN_PASSWORD:
+        fail("NzbDAV isn't configured (NZBDAV_ADMIN_USER/NZBDAV_ADMIN_PASSWORD not set)", status_code=503)
+    if payload.max_connections < 1:
+        fail("max_connections must be at least 1", status_code=400)
+    try:
+        with httpx.Client(timeout=15) as client:
+            client.post(
+                f"{NZBDAV_URL}/login",
+                data={"username": NZBDAV_ADMIN_USER, "password": NZBDAV_ADMIN_PASSWORD},
+            )
+            r = client.post(
+                f"{NZBDAV_URL}/api/get-config",
+                data={"config-keys": "usenet.providers"},
+            )
+            r.raise_for_status()
+            items = r.json().get("configItems", [])
+            if not items:
+                fail("NzbDAV has no Usenet provider configured yet (Settings > Usenet is empty).", status_code=404)
+            config = json.loads(items[0]["configValue"])
+            providers = config.get("Providers", [])
+            if not providers:
+                fail("NzbDAV has no Usenet provider configured yet (Settings > Usenet is empty).", status_code=404)
+            for p in providers:
+                p["MaxConnections"] = payload.max_connections
+            r = client.post(
+                f"{NZBDAV_URL}/api/update-config",
+                data={"usenet.providers": json.dumps(config)},
+            )
+            r.raise_for_status()
+            if not r.json().get("status"):
+                fail(f"NzbDAV rejected the update: {r.json().get('error')}")
+    except httpx.HTTPError as e:
+        fail(f"NzbDAV connection update failed: {e}")
+    names = ", ".join(p["Host"] for p in providers)
+    return ok(f"Set max connections to {payload.max_connections} for {names}.")
 
 
 # ---------------------------------------------------------------------
