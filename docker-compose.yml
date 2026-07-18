@@ -777,6 +777,14 @@ services:
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
       NZBDAV_API_KEY: ${NZBDAV_API_KEY}
+      # NzbDAV's SABnzbd-compatible api.key (above) is only accepted by its
+      # Sab*Controller endpoints (queue/history). Its own settings API
+      # (/api/get-config, /api/update-config) is a separate ASP.NET backend
+      # that only accepts requests carrying a valid __session cookie from
+      # POST /login - there's no static API key for it, so a login step
+      # (same pattern as Decypharr below) is required before every call.
+      NZBDAV_ADMIN_USER: ${NZBDAV_ADMIN_USER}
+      NZBDAV_ADMIN_PASSWORD: ${NZBDAV_ADMIN_PASSWORD}
       # Decypharr's own qBittorrent-compatible API requires its own
       # username/password login (POST /api/v2/auth/login for a session
       # cookie) separate from the web UI's cookie session - needed by
