@@ -44,7 +44,7 @@ python3 sync.py diff radarr ./backups/radarr-2026-01-01T00:00:00.json
 
 # Replicate a root folder across every configured *arr app
 python3 sync.py add-root-folder --path /media/movies --apps radarr
-python3 sync.py add-root-folder --path /media/anime --apps radarr sonarr
+python3 sync.py add-root-folder --path /media/shows --apps sonarr
 
 # List what apps are reachable/configured right now
 python3 sync.py list-apps

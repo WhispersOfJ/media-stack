@@ -168,7 +168,6 @@ CONTAINER_LABELS = {
     "plex": ("Plex", None),
     "zurg": ("Zurg", "Real-Debrid mount"),
     "rclone-alldebrid": ("rclone", "AllDebrid mount"),
-    "rclone-alldebrid-anime": ("rclone", "AllDebrid mount, anime-filtered subset"),
     "decypharr": ("Decypharr", "Real-Debrid + AllDebrid"),
     "decypharr-alldebrid": ("Decypharr", "AllDebrid only, Sonarr-exclusive"),
     "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),
@@ -2545,7 +2544,7 @@ def container_logs_stream(name: str, tail: int = 100):
 # README's mount-cascade note). MOUNT_PREREQS restarts first and is waited
 # on before MOUNT_PROVIDERS, so nzbdav-rclone always finds nzbdav ready.
 MOUNT_PREREQS = {"nzbdav"}
-MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "rclone-alldebrid-anime", "nzbdav-rclone"}
+MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "nzbdav-rclone"}
 MOUNT_DEPENDENTS = {"radarr"}
 
 
@@ -2834,7 +2833,7 @@ def zurg_classify(filename: str):
     return ok(f"'{filename}' matches no group with a regex/heuristic filter - would fall through to the catch-all.")
 
 
-KNOWN_MOUNTS = ["zurg", "decypharr", "decypharr-alldebrid", "nzbdav", "all", "all-anime"]
+KNOWN_MOUNTS = ["zurg", "decypharr", "decypharr-alldebrid", "nzbdav", "all"]
 
 
 @app.get("/api/mount-health")

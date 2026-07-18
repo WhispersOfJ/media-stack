@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (31 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (30 services, one `docker-compose.yml`):
 indexes content via Prowlarr + Zilean, requests via Seerr, organizes via two `*arr`-family apps
 (Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
 Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
@@ -28,7 +28,9 @@ preference in a future session - and serves via a containerized Plex. There
 is no adult content library in this stack anymore: Plex's own Adult library was removed in
 v10.9.9 (confirmed live via `/library/sections`), and Whisparr (which managed the underlying
 files/root folder) plus Stash (which cataloged it) were both removed in v10.12.0, along with the
-files themselves. `control-panel/` is the one custom-built component (a FastAPI dashboard);
+files themselves. There is no anime library in this stack either as of v10.19.0 (also removed
+by explicit request, not a dead-app cleanup this time — see the landmines section below for the
+full removal). `control-panel/` is the one custom-built component (a FastAPI dashboard);
 everything else is off-the-shelf images wired together in `docker-compose.yml`.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
@@ -59,19 +61,17 @@ second instance, AllDebrid-only, Sonarr's exclusive download client — exists s
 Decypharr has no per-provider category scoping within one instance).
 
 **FUSE mount owners** — `zurg` (core, Real-Debrid mount at `/mnt/zurg`) · `rclone-alldebrid`
-(core, AllDebrid mount at `/mnt/all`) · `rclone-alldebrid-anime` (core, second AllDebrid
-mount at `/mnt/all-anime`, `--include`-filtered to a hardcoded fansub-group list — kept in
-sync by hand with Zurg's own anime routing groups, no shared config) · `nzbdav-rclone`
+(core, AllDebrid mount at `/mnt/all`) · `nzbdav-rclone`
 (core, mounts NzbDAV's own WebDAV filesystem at `/mnt/nzbdav`, `depends_on:
 condition: service_healthy` on `nzbdav` itself, not just compose start-order).
 
-**`*arr` apps** — `radarr` (core, port 7878, movies, `/data/movies` + `/data/anime-movies`) ·
-`sonarr` (core, port 8989, TV, `/data/shows` + `/data/anime`, the *only* app wired to
+**`*arr` apps** — `radarr` (core, port 7878, movies, `/data/movies`) ·
+`sonarr` (core, port 8989, TV, `/data/shows`, the *only* app wired to
 `decypharr-alldebrid`) · `recyclarr` (extras, no port, daily-cron TRaSH Guides custom-format
 sync for both, scoped to avoid competing with the manual "Unlimited" quality profile — not a
-real-time daemon despite running as one; both apps also carry a second, Recyclarr-managed
-"[Anime] Remux-1080p" profile as of the single-instance anime-routing work, see the landmine
-below on why it deliberately doesn't get its own quality-definition sizes).
+real-time daemon despite running as one; both apps also carry a third, user-defined "Low
+Quality" profile (720p ceiling, WEB/HDTV only) as of v10.19.0, see the landmine below on why
+it deliberately doesn't get its own quality-definition sizes).
 
 **Usenet** — `nzbdav` (core, port 3001→3000, WebDAV-streamed Usenet, SABnzbd-API compatible,
 **priority-1 download client on both Radarr and Sonarr as of v10.14.1** — was priority-2
@@ -182,7 +182,7 @@ throughout its history section, and there's no substitute for it here.
   clearly having content.
 - **FUSE-mount-owning containers and their dependents restart independently, and that's a real
   failure class, not a hypothetical.** `zurg`, `decypharr`, `decypharr-alldebrid`,
-  `rclone-alldebrid`, `rclone-alldebrid-anime`, and `nzbdav-rclone` each own a mount under `/mnt`;
+  `rclone-alldebrid`, and `nzbdav-rclone` each own a mount under `/mnt`;
   every other container that bind-mounts that path keeps a stale reference after the owner
   restarts and needs its own restart to recover — this does not self-heal. `control-panel/app.py`'s
   `/api/stack/restart-all` encodes the known ordering (`MOUNT_PREREQS` → `MOUNT_PROVIDERS` →
@@ -272,6 +272,24 @@ throughout its history section, and there's no substitute for it here.
   triggering Whisparr's hunt cycle) removed outright, not just left orphaned; Decypharr's
   `categories` list in `config/decypharr/config.json` (gitignored, live config) had `"whisparr"`
   dropped. The `*arr` app family in this stack is now Radarr/Sonarr only.
+- **Anime support was removed entirely in v10.19.0, by explicit request** — unlike Lidarr/
+  Whisparr this wasn't a dead-app cleanup, it was a live, populated content category (122
+  Radarr movies, 159 Sonarr series) removed on purpose. Touched: both library entries
+  (`deleteFiles=true`, including 15.7GB of real, non-debrid-backed local files under
+  `anime-movies` — this stack's "root folders are 100% symlinks" assumption above does not hold
+  universally, that was the exception), both Plex libraries, both root folders, the
+  `[Anime] Remux-1080p` quality profile and its 33 dedicated custom formats on both apps,
+  Zurg's `anime-shows`/`anime-movies` content-routing groups, the `rclone-alldebrid-anime`
+  service and `/mnt/all-anime` mount, Kometa's `Anime Movies`/`Anime Shows` library blocks and
+  MyAnimeList credentials, `scripts/sort-anime-movies.py` and its systemd units,
+  `control-panel/app.py`'s anime references, `PLAN.md` (a never-implemented dual-instance
+  proposal), and 8 live Prowlarr indexers that are anime-dedicated by content even though their
+  names don't say so (`Nyaa.si`, `SubsPlease`, `Mikan`, `dmhy`, etc. — disabled, not deleted).
+  A live Sonarr Trakt import list literally named "Anime" (`enableAutomaticAdd: true`, 12h
+  refresh) was found only by checking `/api/v3/importlist` directly — it doesn't live in any
+  tracked file, and left in place would have silently re-added anime series on its next
+  refresh. See README's History `[10.19.0]` for the full incident, including two more
+  supply-chain-style gaps a naive file/config grep wouldn't have caught.
 - **Adminer removed in v10.9.9, no replacement (for now).** Briefly swapped for CloudBeaver
   (`dbeaver/cloudbeaver:24.3.0`) same version, but that was reverted immediately at the user's
   request — not a fan of the tool, no substitute picked yet. There is currently no web DB GUI
@@ -298,17 +316,16 @@ throughout its history section, and there's no substitute for it here.
 
 - **Radarr's and Sonarr's "Quality Definitions" (min/max file size per resolution tier) are one
   flat, instance-wide list each — confirmed live via `GET /api/v3/qualitydefinition` — not
-  scoped per quality profile.** Both apps now carry a second profile, "[Anime] Remux-1080p"
-  (single-instance anime routing, see `PLAN.md`), alongside the original "Unlimited" - the two
-  profiles intentionally share the *same* size definitions (`type: series`/`type: movie` in
-  `recyclarr.yml`, not TRaSH's `type: anime` sizes) because applying anime-tuned sizes would
-  silently overwrite the general sizes every existing non-anime series/movie still depends on.
-  This is a real, accepted tradeoff of staying single-instance, not an oversight: anime content
-  gets correct custom-format scoring/tiering but is still filtered against general-TV/movie file
-  size expectations. Do not "fix" this by adding a `quality_definition: type: anime` block to
-  either app's Recyclarr config without first moving to a genuinely separate Radarr/Sonarr
-  instance for anime (`PLAN.md`'s dual-instance path) - on a shared instance it will overwrite,
-  not add to, the existing sizes.
+  scoped per quality profile.** Both apps carry three Recyclarr-managed profiles as of v10.19.0
+  (two TRaSH stock tiers, e.g. Radarr's "HD Bluray + WEB"/"Remux + WEB 2160p", plus a
+  user-defined "Low Quality" tier added that version for small-file-size requests), and all
+  three share the *same* instance-wide size definitions (`type: series`/`type: movie` in
+  `recyclarr.yml`) - "Low Quality" controls resolution/source tier only (720p ceiling,
+  WEB/HDTV, everything above disabled), not an independent file-size ceiling, since a second
+  `quality_definition` block would silently overwrite the sizes every other profile on the
+  instance still depends on. Same constraint that made the former "[Anime] Remux-1080p" profile
+  (removed v10.19.0) never get its own `type: anime` sizes either - still real, just with a
+  different profile hitting it now.
 - **NeutArr gets OOM-killed roughly every 30 minutes inside its 512MB `mem_limit`.** Invisible
   from any dashboard because `restart: unless-stopped` just quietly restarts it — `docker stats`
   or `docker inspect` (OOMKilled flag / restart count) is the only way to see this is happening;

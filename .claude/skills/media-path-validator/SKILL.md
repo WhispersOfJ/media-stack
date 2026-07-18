@@ -27,7 +27,7 @@ which works but is slow and doubles disk I/O during import).
 python3 validator.py check /downloads/complete /media/movies      # pairwise hardlink check
 python3 validator.py check-all --config paths.json                # check every pair from a config file
 python3 validator.py writable /media/tv
-python3 validator.py exists /downloads/complete /media/movies /media/anime
+python3 validator.py exists /downloads/complete /media/movies /media/shows
 ```
 
 `paths.json` format:

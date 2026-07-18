@@ -89,10 +89,11 @@ byte-identical to any clean pre-sync baseline - it's carrying its own older, ind
 were removed elsewhere), so the same clean-patch trick doesn't apply there. Would need an actual
 manual reconciliation, not a copy - left as a follow-up rather than rushed.
 
-Also still outstanding: **`scripts/sort-anime-movies.py`, `scripts/scrape_letterboxd.py`, and
-the newly-added `scripts/audit-tmdb-links.py`** don't exist in `Stackalicious/scripts/` yet -
-this part of the original finding wasn't in scope of the "poster-sync and UI" sync request and
-is still tracked in `Stackalicious/TODO.md`.
+Also still outstanding: **`scripts/scrape_letterboxd.py` and the newly-added
+`scripts/audit-tmdb-links.py`** don't exist in `Stackalicious/scripts/` yet - this part of the
+original finding wasn't in scope of the "poster-sync and UI" sync request and is still tracked
+in `Stackalicious/TODO.md`. (`scripts/sort-anime-movies.py` no longer applies - removed
+entirely in v10.19.0 along with the rest of this stack's anime support.)
 
 This whole thing is a real, pre-existing pattern in this project, not a new problem - both
 downstream repos already track their own lag honestly (Stackalicious's `TODO.md`, StackScripts'

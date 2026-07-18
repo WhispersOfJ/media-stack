@@ -1,6 +1,6 @@
 ---
 name: request-manager-integrator
-description: Configure and verify the request manager (Jellyseerr/Overseerr-family "seerr" service) integration with Radarr and Sonarr — connect it to the right instance, root folder, and quality profile, and confirm the connection is actually live. Use when the user asks to hook up seerr to radarr/sonarr, add a second quality-profile-specific connection (e.g. anime routing), or troubleshoot "requests aren't showing up in radarr/sonarr". Trigger phrases: "connect seerr to radarr", "set up request manager", "requests aren't being sent to sonarr", "add an anime radarr connection to seerr".
+description: Configure and verify the request manager (Jellyseerr/Overseerr-family "seerr" service) integration with Radarr and Sonarr — connect it to the right instance, root folder, and quality profile, and confirm the connection is actually live. Use when the user asks to hook up seerr to radarr/sonarr, add a second quality-profile-specific connection, or troubleshoot "requests aren't showing up in radarr/sonarr". Trigger phrases: "connect seerr to radarr", "set up request manager", "requests aren't being sent to sonarr", "add a second radarr connection to seerr".
 ---
 
 # Request Manager Integrator
@@ -27,7 +27,6 @@ Never hardcode a LAN IP; always resolve via env var or docker service name.
 python3 integrator.py list-connections                       # what's currently configured in seerr
 python3 integrator.py connect radarr --root /media/movies --profile "HD Bluray + WEB"
 python3 integrator.py connect sonarr --root /media/tv --profile "WEB-1080p"
-python3 integrator.py connect radarr --root /media/anime --profile "Remux + WEB 2160p" --name "Radarr (Anime)"
 python3 integrator.py verify                                   # test every configured connection actually reaches its Arr app
 ```
 
@@ -49,5 +48,5 @@ doesn't exist yet, rather than writing a broken connection.
 ## Safety rules
 
 - `connect` never deletes or replaces an existing connection with the same name unless
-  `--force` is passed — multiple connections per app (e.g. movies vs. anime routing) are
-  a normal, intentional pattern in this stack, not something to silently collapse.
+  `--force` is passed — multiple connections per app (e.g. different quality-profile routing)
+  are a normal, intentional pattern in this stack, not something to silently collapse.

@@ -22,7 +22,6 @@ from pathlib import Path
 CASCADE_MAP = {
     "zurg": ["decypharr", "decypharr-alldebrid"],
     "rclone-alldebrid": ["decypharr", "decypharr-alldebrid", "radarr", "sonarr"],
-    "rclone-alldebrid-anime": ["radarr", "sonarr"],
     "nzbdav-rclone": ["nzbdav", "radarr", "sonarr"],
 }
 

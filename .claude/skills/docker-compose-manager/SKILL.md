@@ -7,7 +7,7 @@ description: Manage the media-stack docker compose services safely — start, st
 
 Wraps `docker compose` for this stack with one critical safety behavior baked in:
 **mount-owning containers cascade.** If you restart a container that owns a FUSE mount
-(`zurg`, `rclone-alldebrid`, `rclone-alldebrid-anime`, `nzbdav-rclone`) without also
+(`zurg`, `rclone-alldebrid`, `nzbdav-rclone`) without also
 restarting every container that bind-mounts its output, the dependents keep serving a
 stale/broken mount handle until *they* are restarted too — a recurring failure class in
 this stack (confirmed across multiple incidents, including a gap in `nzbdav-rclone` fixed
