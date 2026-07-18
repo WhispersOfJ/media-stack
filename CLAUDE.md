@@ -137,8 +137,9 @@ docker compose --profile extras config --quiet
 ruff check control-panel/app.py scripts/*.py
 shellcheck scripts/*.sh  # CI excludes config/, media/, usenet/
 
-# Rebuild and pick up control-panel code changes (it's `build:`, not a pre-built image —
-# a plain `restart` reuses the old image)
+# Rebuild and pick up control-panel changes — app.py AND static/ (CSS/JS/HTML) are both
+# baked into the image at build time via the Dockerfile's COPY, not bind-mounted, so a plain
+# `restart` serves the old files untouched even after editing them on disk.
 docker compose build control-panel
 docker compose up -d control-panel
 
@@ -146,7 +147,7 @@ docker compose up -d control-panel
 # pick up a .env change here, it needs force-recreate
 docker compose up -d --force-recreate control-panel
 
-# Bring up the stack: 14 core services, or everything (+16 more behind the `extras` profile)
+# Bring up the stack: 13 core services, or everything (+14 more behind the `extras` profile)
 docker compose up -d
 docker compose --profile extras up -d
 ```

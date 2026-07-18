@@ -2126,3 +2126,38 @@ matched `zurg`'s row too, because its sponsor image path
 a pure naming collision, same class of false positive as the anime purge's "URANiME" release
 group. Caught by a row-count sanity check against the diff, not assumed clean; zurg's row was
 restored before committing. Service table: 31 → 27 rows (13 core / 14 extras).
+
+**v10.21.0** (current): Control Panel's front end got a full aesthetic redesign, by explicit
+request - functionally identical (every `id`/class `app.js` depends on was audited and kept
+exactly, confirmed via a grep of every `getElementById`/`classList` call before touching
+anything), only `static/{style.css,fx.js,index.html}` changed. Replaced the previous "LAST
+LIGHT" theme (deep red/ash-black bunker palette, chromatic-aberration glitch title, animated
+canvas embers, CRT scanlines, periodic klaxon flicker) with a master-control-room/broadcast-
+rack identity: cool graphite-steel background, amber/green/red indicator-lamp palette (the
+literal VU-meter/patch-bay LED colors, not a generic dark-mode default), Barlow Semi
+Condensed for chrome/labels paired with IBM Plex Mono for data/log readouts, segmented LED
+bargraphs in place of smooth progress bars, corner-rivet detailing on the Rapid Deploy cards
+specifically (not applied everywhere, to avoid overdoing the motif). Atmosphere simplified to
+a single static grain texture painted once (no per-frame canvas loop, unlike the old embers)
+plus a one-time power-on flicker on the title at load, replacing the old infinite-loop
+glitch/scanline/flicker layers - quieter and cheaper to render.
+
+Two real things surfaced during verification, not assumed clean:
+
+`control-panel`'s static assets are baked into the image at build time (`COPY` in its
+Dockerfile), not bind-mounted - a plain `docker compose restart` served the old CSS/JS
+untouched even after the files changed on disk; needed `docker compose build control-panel &&
+docker compose up -d --force-recreate control-panel` to actually pick up the new files, the
+same rebuild step this file's own Commands section already documents for `app.py` changes,
+just not obviously extended to `static/` before this.
+
+A `mix-blend-mode: overlay` on the fixed, full-viewport noise canvas was suspected of causing
+a real compositor bug (screenshots came back solid black at some scroll depths) and was
+provisionally blamed - but isolating each fixed-position atmosphere layer independently
+(hiding the canvas alone, then the vignette alone, then both) showed the blank capture still
+reproduced with both hidden entirely, purely as a function of scroll depth. Live DOM/computed-
+style inspection at those same scroll positions confirmed real, correctly-styled, visible
+content (opacity 1, correct colors, non-zero dimensions) was actually there - a screenshot-
+tool capture limitation on a tall page, not a rendering bug in the page itself. `mix-blend-
+mode: overlay` was kept rather than removed, since isolating it disproved it as the cause;
+noted here so a future session doesn't re-diagnose the same red herring.
