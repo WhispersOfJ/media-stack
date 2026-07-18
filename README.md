@@ -1126,6 +1126,8 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/plex/scan` \| `/empty-trash` \| `/optimize-db` \| `/clean-bundles` | POST | Plex maintenance actions |
 | `/api/plex/libraries` | GET | Library names/keys, read live from Plex |
 | `/api/plex/updates` | GET | Running Plex version + any newer release on its channel (check only) |
+| `/api/plex/duplicates` | GET | Movie libraries only; flags items whose combined file size looks like redundant duplicate releases |
+| `/api/plex/tmdb-missing` | GET | Every movie/show across every library with no TMDb link (see `scripts/audit-tmdb-links.py`) |
 | `/api/posters/libraries` | GET | Movie/show libraries only, for the poster sync picker (see below) |
 | `/api/posters/sync` | POST | `{"library": "...", "dry_run": bool}` → starts a poster sync, one job at a time |
 | `/api/posters/sync/stream` | GET | SSE progress feed for the running (or just-finished) poster sync |
