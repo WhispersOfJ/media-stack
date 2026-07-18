@@ -5,8 +5,8 @@
 # backup of ./config specifically; this is a cruder whole-directory tar,
 # overwritten in place each run (not dated copies) so Dropbox usage doesn't
 # grow unbounded. Needs sudo (passwordless, already configured on this host)
-# since the tree includes container-owned files (dmm-mysql/zilean-postgres
-# data dirs) a normal user can't read.
+# since the tree includes container-owned files (zilean-postgres
+# data dir) a normal user can't read.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit

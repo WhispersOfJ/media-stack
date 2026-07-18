@@ -462,9 +462,11 @@ services:
       # API (delete+research), not by touching the symlinks directly.
       - ./media/movies:/data/movies:ro
       - ./media/shows:/data/shows:ro
-    # Host port 3001, not 3000 - DebridMediaManager already owns 3000 on
-    # this host. Internally still :3000 (Radarr/Sonarr/rclone all reach it
-    # as http://nzbdav:3000 over stacknet, unaffected by the host mapping).
+    # Host port 3001, not 3000 - DebridMediaManager used to own 3000 on this
+    # host (removed v10.20.0); left at 3001 rather than reclaiming 3000, to
+    # avoid moving a stable port out from under anything bookmarked to it.
+    # Internally still :3000 (Radarr/Sonarr/rclone all reach it as
+    # http://nzbdav:3000 over stacknet, unaffected by the host mapping).
     ports:
       - "3001:3000"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -788,9 +790,6 @@ services:
       # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
       # the same credential Zilean itself already has, no new secret.
       ZILEAN_POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
-      # Read-only row-count check only (dmm_status()) - reuses the same
-      # credential dmm-mysql itself already has, no new secret.
-      DMM_MYSQL_ROOT_PASSWORD: ${DMM_MYSQL_ROOT_PASSWORD}
       # notify_test() only - reuses the same webhook every backup/health
       # alert script already posts to, no new secret.
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
@@ -1056,203 +1055,6 @@ services:
     mem_limit: 256m
     mem_reservation: 32m
     cpus: 1
-
-  # ---------------------------------------------------------------------
-  # DebridMediaManager (self-hosted) - the app behind debridmediamanager.com,
-  # for personal library browsing/organizing/casting plus its own on-demand
-  # per-title scraper (search/scrape triggers when a title is viewed in the
-  # UI via api/search/title.ts -> api/scrapers/imdb.ts, not a standing
-  # crawler - confirmed by reading the actual route source, not assumed).
-  # Real-Debrid/AllDebrid/TorBox credentials are entered by the user
-  # in-browser (localStorage), never a server-side secret - nothing to
-  # configure here for personal library access itself.
-  # ---------------------------------------------------------------------
-  dmm-mysql:
-    restart: unless-stopped
-    logging: *common-logging
-    # MySQL is hard-required by DMM's own Prisma schema (hardcoded
-    # provider = "mysql", plus MySQL-specific column types and @@fulltext
-    # indexes) - not swappable for Postgres/MariaDB without real risk.
-    image: mysql:9.7
-    container_name: dmm-mysql
-    profiles: [extras]
-    networks: [stacknet]
-    environment:
-      TZ: ${TZ}
-      MYSQL_ROOT_PASSWORD: ${DMM_MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: dmm
-      MYSQL_USER: dmm
-      MYSQL_PASSWORD: ${DMM_MYSQL_PASSWORD}
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/dmm-mysql:/var/lib/mysql
-      # Not :ro - caught live: MySQL's own entrypoint chowns this directory
-      # to the mysql user on every startup and crash-loops if it can't.
-      # LOAD DATA INFILE itself only reads from here regardless. Matches
-      # MySQL 8.4's secure default (secure_file_priv=/var/lib/mysql-files/,
-      # confirmed live) rather than loosening local_infile globally.
-      # scripts/import-imdb-data.py writes filtered TSVs here from the host.
-      - ./config/dmm-mysql-import:/var/lib/mysql-files/import
-    # Bumped from the original personal-scale sizing - stack-imdb-sync.timer
-    # now LOAD DATA INFILEs low millions of rows into this instance daily
-    # (imdb_title_basics/akas/ratings, filtered to movie/tvSeries/
-    # tvMiniSeries - see CHANGELOG), with @@fulltext indexes to maintain on
-    # top of that. Still far short of zilean-postgres's own IMDB-scale
-    # tuning, but no longer "personal-scale app state only" either.
-    mem_limit: 2g
-    mem_reservation: 256m
-    cpus: 2
-
-  dmm-redis:
-    restart: unless-stopped
-    logging: *common-logging
-    image: redis:8-alpine
-    container_name: dmm-redis
-    profiles: [extras]
-    networks: [stacknet]
-    environment:
-      TZ: ${TZ}
-    # Matches upstream's own reference docker-compose.yml exactly (rate
-    # limiting - DMM falls back to in-memory without it, but this is tiny).
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    volumes:
-      - ./config/dmm-redis:/data
-    mem_limit: 192m
-    mem_reservation: 32m
-    cpus: 1
-
-  # One-shot schema setup - no migration runner in DMM's own package.json,
-  # so first-run schema creation needs `prisma db push` run once against a
-  # fresh database (no prisma/migrations history to run `migrate deploy`
-  # against). Exits after running; not restart-looped.
-  dmm-migrate:
-    restart: "no"
-    logging: *common-logging
-    build:
-      context: https://github.com/debridmediamanager/debrid-media-manager.git#c2ceef94477e49ddd5c55606bf57959ffdf29b9e
-      # The final (deploy) stage strips devDependencies, including the
-      # prisma CLI itself - `npx prisma` there silently downloads a random
-      # newer major version off the registry at runtime instead of using
-      # the pinned one (caught live: it grabbed prisma@7.8.0 unprompted).
-      # The `build` stage still has the full node_modules matching what
-      # this exact commit was actually built/tested against.
-      target: build
-    container_name: dmm-migrate
-    profiles: [extras]
-    networks: [stacknet]
-    command: ["npx", "prisma", "db", "push", "--accept-data-loss"]
-    environment:
-      TZ: ${TZ}
-      DATABASE_URL: mysql://dmm:${DMM_MYSQL_PASSWORD}@dmm-mysql:3306/dmm
-    depends_on:
-      dmm-mysql:
-        condition: service_healthy
-    # No prior limit at all - found live via a resource audit. One-shot and
-    # transient (restart: "no"), but npx/prisma tooling can be memory-hungry
-    # briefly during the actual push - no reservation needed for a job that
-    # doesn't run continuously.
-    mem_limit: 1g
-    cpus: 2
-
-  # Built from source - no pre-built image published anywhere (checked GHCR
-  # and Docker Hub, neither has one). Pinned to a specific commit rather
-  # than always building `main`, consistent with this stack's pin-everything
-  # policy (see README's Image pinning policy) - building an unpinned git
-  # ref would be the self-built equivalent of `:latest`. Bump this SHA
-  # deliberately when ready to take a newer build.
-  debridmediamanager:
-    restart: unless-stopped
-    logging: *common-logging
-    build:
-      context: https://github.com/debridmediamanager/debrid-media-manager.git#c2ceef94477e49ddd5c55606bf57959ffdf29b9e
-      # target: build, not the default (deploy) stage - caught live: the
-      # deploy stage's Prisma Client is generated in the *build* stage
-      # without `openssl` installed there, so Prisma can't detect the real
-      # OpenSSL version and silently generates the wrong query engine
-      # binary (debian-openssl-1.1.x instead of the actual debian-openssl-
-      # 3.0.x runtime) - the app then crash-loops on startup unable to find
-      # a matching engine. Not fixable via docker-compose alone without
-      # either vendoring a modified Dockerfile (loses the clean pin-by-
-      # commit setup) or this: run from the `build` stage instead, which
-      # has the full toolchain to fix openssl detection and regenerate the
-      # client correctly before starting, same reasoning as dmm-migrate.
-      target: build
-    container_name: debridmediamanager
-    profiles: [extras]
-    networks: [stacknet]
-    # Overrides the deploy stage's `node server.js` (not present here - the
-    # build stage never produces .next/standalone) with a fix-then-start:
-    # install openssl so Prisma can detect it correctly (plus curl, for the
-    # healthcheck below - caught live: without it the app was actually up
-    # and serving the whole time, but the healthcheck itself failed with
-    # "curl: executable file not found"), regenerate the Prisma client
-    # against the actual runtime, then start via the ordinary `next start`
-    # (not the standalone server) since this stage has the regular,
-    # non-pruned `.next` build output from its own build step.
-    # tzdata added alongside openssl/curl - TZ alone doesn't correctly
-    # resolve DST/offset without the zoneinfo database present, needed so
-    # the "Added" column in DMM's UI shows local time instead of UTC.
-    command: >
-      sh -c "apt-get update && apt-get install -y -q openssl curl tzdata &&
-      rm -rf /var/lib/apt/lists/* && npx prisma generate &&
-      npx next start -H 0.0.0.0 -p 3000"
-    healthcheck:
-      # curl, not wget - confirmed installed via the apt-get above (also
-      # matches what upstream's own deploy-stage HEALTHCHECK uses).
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/healthz | grep -qm1 ok || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 45s
-    environment:
-      TZ: ${TZ}
-      DATABASE_URL: mysql://dmm:${DMM_MYSQL_PASSWORD}@dmm-mysql:3306/dmm
-      REDIS_URL: redis://dmm-redis:6379
-      DMM_ORIGIN: ${DMM_ORIGIN}
-      DMMCAST_SALT: ${DMMCAST_SALT}
-      # Required in practice (not just "optional" like upstream's own
-      # .env.example implies) - the scraper can't identify a title without
-      # these, so search/scrape won't work until real keys replace the
-      # changeme defaults.
-      TMDB_KEY: ${TMDB_KEY}
-      MDBLIST_KEY: ${MDBLIST_KEY}
-      OMDB_KEY: ${OMDB_KEY}
-      TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID}
-      TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET}
-      # Reused from Kometa's existing github.token (config/kometa/config.yml) rather than a
-      # new PAT - genuinely optional (GitHub API rate-limit relief only), not part of the
-      # OAuth-login/sponsor-tier decision made in 6.2.0.
-      GH_PAT: ${GH_PAT}
-      REAL_DEBRID_OBSERVABILITY_SQLITE_PATH: .data/real-debrid-observability.sqlite
-      DMM_MAX_UNCACHED_LINKS: "50"
-      REQUEST_TIMEOUT: "5000"
-      NEXT_PUBLIC_ANALYTICS_ENABLED: "false"
-    depends_on:
-      dmm-migrate:
-        condition: service_completed_successfully
-      dmm-redis:
-        condition: service_healthy
-    # Higher than a typical "no prior observation" default ceiling since
-    # this runs from the `build` stage (full devDependencies present, plain
-    # `next start` rather than the leaner standalone server) - the openssl
-    # workaround above trades some extra RAM for a correctly-generated
-    # Prisma client without vendoring a modified Dockerfile.
-    ports:
-      - "3000:3000"
-    mem_limit: 1.5g
-    mem_reservation: 256m
-    cpus: 2
 
   # ---------------------------------------------------------------------
   # Queue cleanup/missing-content automation. Automates what Control

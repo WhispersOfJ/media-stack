@@ -57,7 +57,7 @@ This looks like a fresh install. Next steps:
                                      # opens a setup wizard at http://localhost:8090
                                      # to fill in .env (or: cp .env.example .env && \$EDITOR .env)
   docker compose up -d              # core services
-  docker compose --profile extras up -d   # + Bazarr/Byparr/Tautulli/Kometa/DebridMediaManager/etc.
+  docker compose --profile extras up -d   # + Bazarr/Byparr/Tautulli/Kometa/etc.
 EOF
 else
   cat <<EOF

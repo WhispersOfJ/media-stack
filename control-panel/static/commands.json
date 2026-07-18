@@ -451,18 +451,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-dmm-status",
-    "Description": "Check DMM MySQL database status and row counts",
-    "Method": "GET",
-    "PathTemplate": "/api/dmm/status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-grab",
     "Description": "Add a hash to Decypharr for download (pair with stack-zilean-search)",
     "Method": "POST",
