@@ -980,6 +980,32 @@ services:
     mem_reservation: 256m
     cpus: 4
 
+  # Web UI (port 7171) for building config/kometa/config.yml interactively -
+  # the official Kometa-Team Quickstart wizard, not an alternative Kometa
+  # runtime. Its own /config volume is deliberately NOT config/kometa - per
+  # Quickstart's own README, that path holds its SQLite db, generated-YAML
+  # history, and run logs, and is explicitly documented as not being the
+  # Kometa config directory. A config built here has to be copied by hand
+  # into config/kometa/config.yml; the kometa service above still owns
+  # actually running against that file (Control Panel's on-demand
+  # /api/kometa/run exec is unchanged by adding this).
+  quickstart:
+    restart: unless-stopped
+    logging: *common-logging
+    image: kometateam/quickstart:latest
+    container_name: kometa-quickstart
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/quickstart:/config
+    ports:
+      - "7171:7171"
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
+
   # Pulls TMDb keywords onto Plex items as labels/genres (e.g. "revenge",
   # "based on a manga") - complements Kometa (collections/overlays) rather
   # than overlapping it; neither touches the other's output. Webhook-enabled

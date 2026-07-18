@@ -243,22 +243,23 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 16 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
 | 17 | `control-panel` | built from `./control-panel` | 8420 | extras |
 | 18 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
-| 19 | `labelarr` | `ghcr.io/nullable-eth/labelarr:v1.4.0` | none | extras |
-| 20 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 21 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 22 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
-| 23 | `dmm-mysql` | `mysql:9.7` | none | extras |
-| 24 | `dmm-redis` | `redis:8-alpine` | none | extras |
-| 25 | `dmm-migrate` | built from DMM git context, `target: build` | none | extras (one-shot) |
-| 26 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 27 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 28 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 29 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
-| 30 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
-| 31 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
+| 19 | `quickstart` | `kometateam/quickstart:latest` | 7171 | extras |
+| 20 | `labelarr` | `ghcr.io/nullable-eth/labelarr:v1.4.0` | none | extras |
+| 21 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 22 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 23 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
+| 24 | `dmm-mysql` | `mysql:9.7` | none | extras |
+| 25 | `dmm-redis` | `redis:8-alpine` | none | extras |
+| 26 | `dmm-migrate` | built from DMM git context, `target: build` | none | extras (one-shot) |
+| 27 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 28 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 29 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 30 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 31 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
+| 32 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
 
 `docker compose up -d` brings up the 14 core services; `docker compose --profile extras up
--d` adds the other 17. Both are safe to re-run; Compose only recreates what is out of sync
+-d` adds the other 18. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`.
 
 ## The *arr apps
@@ -949,6 +950,14 @@ The container's entrypoint is overridden to `sleep infinity`: the image's defaul
 runs a complete Kometa pass immediately on every container start/restart, not just on a
 schedule. With the override, restarts idle; Control Panel's `/api/kometa/run` execs
 `python3 /kometa.py --run` on demand regardless of PID 1. Do not remove the override.
+
+**Quickstart** (`kometateam/quickstart:latest`, port 7171) is the official Kometa-Team wizard
+for building `config/kometa/config.yml` interactively - a config-editing tool, not an
+alternative way to run Kometa. Its own volume (`./config/quickstart:/config`) is deliberately
+separate from `config/kometa` - per Quickstart's own docs, that path holds its SQLite
+database, generated-YAML history, and run logs, not the Kometa config itself. A config built
+there has to be copied by hand into `config/kometa/config.yml`; the `kometa` service above is
+still what actually runs against that file, unchanged by adding this.
 
 **Labelarr** (`ghcr.io/nullable-eth/labelarr:v1.4.0`) pulls TMDb keywords onto Plex items as
 labels (e.g. "revenge", "based on a manga") so Plex's own filter/search UI gets more granular

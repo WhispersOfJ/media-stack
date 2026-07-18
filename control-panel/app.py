@@ -177,6 +177,7 @@ CONTAINER_LABELS = {
     "tautulli": ("Tautulli", None),
     "byparr": ("Byparr", None),
     "kometa": ("Kometa", None),
+    "kometa-quickstart": ("Kometa Quickstart", "config.yml wizard, port 7171 - not an alternate Kometa runtime"),
     "zilean": ("Zilean", None),
     "zilean-postgres": ("Zilean Postgres", None),
     "unpackerr": ("Unpackerr", None),
