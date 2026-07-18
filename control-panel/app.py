@@ -3213,6 +3213,51 @@ def plex_duplicates(min_gb: float = 5.0):
     return ok(f"{len(flagged)} movie(s) look like they're carrying redundant duplicate files.", items=flagged)
 
 
+TMDB_LEGACY_GUID_RE = re.compile(r"com\.plexapp\.agents\.themoviedb://")
+
+
+@app.get("/api/plex/tmdb-missing")
+def plex_tmdb_missing():
+    """Every movie/show (top-level, not episodes) across every library with
+    no TMDb link - neither the new agent's tmdb:// Guid nor the legacy
+    com.plexapp.agents.themoviedb:// agent id. Read-only, matches the
+    checks in scripts/audit-tmdb-links.py but against all movie/show
+    libraries at once instead of one named library.
+
+    Uses includeGuids=1 on the section listing itself (confirmed live to
+    carry the full Guid array) rather than a per-item metadata call -
+    the poster-sync code above needs a per-item fetch because it wants
+    write-time-fresh data, this only needs the Guid list, so one request
+    per library covers a few thousand items instead of one request each."""
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        fail(f"Could not read Plex libraries: {e}")
+    targets = [s for s in sections if s.get("type") in ("movie", "show")]
+
+    missing = []
+    for s in targets:
+        try:
+            r = httpx.get(
+                f"{PLEX_URL}/library/sections/{s['key']}/all?includeGuids=1&X-Plex-Container-Size=200000",
+                headers=plex_headers(), timeout=60,
+            )
+            r.raise_for_status()
+        except httpx.HTTPError:
+            continue
+        for item in r.json()["MediaContainer"].get("Metadata", []):
+            has_tmdb = any(g.get("id", "").startswith("tmdb://") for g in item.get("Guid", []))
+            if not has_tmdb and TMDB_LEGACY_GUID_RE.search(item.get("guid") or ""):
+                has_tmdb = True
+            if has_tmdb:
+                continue
+            missing.append({
+                "library": s["title"], "title": item.get("title"), "year": item.get("year"),
+                "ratingKey": item.get("ratingKey"),
+            })
+    return ok(f"{len(missing)} item(s) missing a TMDb link.", items=missing)
+
+
 @app.get("/api/prowlarr/indexers")
 def prowlarr_indexers():
     """Every configured indexer's enabled/priority state in one place -
