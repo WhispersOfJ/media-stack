@@ -338,10 +338,6 @@ throughout its history section, and there's no substitute for it here.
   instance still depends on. Same constraint that made the former "[Anime] Remux-1080p" profile
   (removed v10.19.0) never get its own `type: anime` sizes either - still real, just with a
   different profile hitting it now.
-- **NeutArr gets OOM-killed roughly every 30 minutes inside its 512MB `mem_limit`.** Invisible
-  from any dashboard because `restart: unless-stopped` just quietly restarts it — `docker stats`
-  or `docker inspect` (OOMKilled flag / restart count) is the only way to see this is happening;
-  container "looks up" the whole time.
 - **`rclone-alldebrid` does not survive a plain `docker compose restart` cleanly.** It needs a
   manual privileged lazy-unmount recovery step, and this is *not* covered by
   `restart-all`'s mount-ordering logic — treat it as a separate, manual recovery path, not
@@ -393,6 +389,17 @@ throughout its history section, and there's no substitute for it here.
 
 ## Historical incidents worth knowing before touching related code
 
+- **NeutArr was getting OOM-killed roughly every 30 minutes inside its 512MB `mem_limit`, fixed
+  2026-07-18 by raising it to 1g.** Invisible from any dashboard because `restart: unless-stopped`
+  just quietly restarted it — `docker stats`/`docker inspect` (OOMKilled flag / restart count) was
+  the only way it was ever caught, container "looked up" the whole time. Found during a
+  stack-wide `mem_limit` audit prompted by the anime/DMM/adult-content removals — every other
+  service's limit turned out to already be deliberately tuned with documented rationale in its
+  own compose comment (Zilean's 4g tied to `DOTNET_GCHeapHardLimit`, Decypharr's 1.5g to an
+  observed 540-580MB steady state, Byparr's 2g to concurrent Camoufox headroom, Kometa's 2g to a
+  642MB observed real-run footprint); NeutArr's 512m was the one outlier with no such comment.
+  If a service ever looks "up" on every dashboard but behaves erratically, check `OOMKilled`
+  before assuming an app-level bug.
 - **An unexplained mass Radarr/Sonarr library deletion happened once, with zero trail in either
   app's API or logs** — root cause was never found. The Recycle Bin setting was turned on
   afterward purely as forward-looking mitigation, not because the mechanism was identified. If a
