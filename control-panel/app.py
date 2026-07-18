@@ -27,7 +27,6 @@ from urllib.parse import quote, urlparse
 import docker
 import httpx
 import psycopg2
-import pymysql
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -52,7 +51,6 @@ SEERR_URL = "http://seerr:5055"
 TMDB_KEY = os.environ.get("TMDB_KEY")
 TMDB_URL = "https://api.themoviedb.org/3"
 MAINTAINERR_URL = "http://maintainerr:6246"
-DMM_MYSQL_ROOT_PASSWORD = os.environ.get("DMM_MYSQL_ROOT_PASSWORD")
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
 
@@ -181,10 +179,6 @@ CONTAINER_LABELS = {
     "zilean-postgres": ("Zilean Postgres", None),
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
-    "debridmediamanager": ("DebridMediaManager", None),
-    "dmm-mysql": ("DMM MySQL", "app database"),
-    "dmm-redis": ("DMM Redis", "rate limiting"),
-    "dmm-migrate": ("DMM Migrate", "one-shot Prisma migration - exits after running, not a bug if shown stopped"),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
     "maintainerr": ("Maintainerr", "Plex library lifecycle - rule-based cleanup, wired but rules start disabled"),
@@ -3357,31 +3351,6 @@ def cleanuparr_strikes(limit: int = 15):
     total = cur.fetchone()[0]
     con.close()
     return ok(f"{total} strike(s) total, showing {len(rows)} most recent.", items=rows, total=total)
-
-
-@app.get("/api/dmm/status")
-def dmm_status():
-    """Row counts for DMM's three largest IMDB tables plus a live
-    connection check - the same query run by hand to verify no data loss
-    after this session's mysql 8.4->9.7 major-version upgrade, now a
-    standing command instead of a one-off."""
-    if not DMM_MYSQL_ROOT_PASSWORD:
-        fail("DMM_MYSQL_ROOT_PASSWORD not set.", status_code=503)
-    try:
-        conn = pymysql.connect(host="dmm-mysql", port=3306, user="root",
-                                password=DMM_MYSQL_ROOT_PASSWORD, database="dmm", connect_timeout=5)
-        try:
-            with conn.cursor() as cur:
-                counts = {}
-                for table in ("imdb_title_akas", "imdb_title_basics", "imdb_title_ratings"):
-                    cur.execute(f"SELECT COUNT(*) FROM {table}")
-                    counts[table] = cur.fetchone()[0]
-        finally:
-            conn.close()
-    except Exception as e:
-        fail(f"DMM MySQL connection failed: {e}")
-    return ok(f"DMM database reachable - {counts['imdb_title_akas']:,} akas, "
-              f"{counts['imdb_title_basics']:,} titles, {counts['imdb_title_ratings']:,} ratings.", **counts)
 
 
 @app.get("/api/decypharr/{instance}/torrents")

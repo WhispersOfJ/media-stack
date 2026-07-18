@@ -82,7 +82,6 @@ const QUICK_LINKS = [
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "byparr", label: "Byparr", port: 8191 },
   { id: "tautulli", label: "Tautulli", port: 8182 },
-  { id: "debridmediamanager", label: "DebridMediaManager", port: 3000 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
   { id: "neutarr", label: "NeutArr", port: 9705 },
   { id: "maintainerr", label: "Maintainerr", port: 6246 },

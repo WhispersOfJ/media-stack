@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (30 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (27 services, one `docker-compose.yml`):
 indexes content via Prowlarr + Zilean, requests via Seerr, organizes via two `*arr`-family apps
 (Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
 Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
@@ -30,7 +30,8 @@ v10.9.9 (confirmed live via `/library/sections`), and Whisparr (which managed th
 files/root folder) plus Stash (which cataloged it) were both removed in v10.12.0, along with the
 files themselves. There is no anime library in this stack either as of v10.19.0 (also removed
 by explicit request, not a dead-app cleanup this time — see the landmines section below for the
-full removal). `control-panel/` is the one custom-built component (a FastAPI dashboard);
+full removal), and no self-hosted DebridMediaManager as of v10.20.0 (same reasoning, same
+section). `control-panel/` is the one custom-built component (a FastAPI dashboard);
 everything else is off-the-shelf images wired together in `docker-compose.yml`.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
@@ -117,13 +118,6 @@ downloads).
 
 **Auto-updates** — `watchtower` (extras, no port, digest/channel-tag images only — Plex and
 Byparr are deliberately excluded from its train, see Image pinning policy).
-
-**DebridMediaManager (self-hosted)** — `dmm-mysql` (extras, hard-required by DMM's Prisma
-schema, cannot be consolidated onto `zilean-postgres`) · `dmm-redis` (extras, rate limiting)
-· `dmm-migrate` (extras, one-shot Prisma schema push, `restart: "no"`, exits after running —
-`docker ps` showing it stopped is correct, not a failure) · `debridmediamanager` (extras,
-port 3000, built from the `build` Dockerfile stage specifically, not `deploy` — see the DMM
-Dockerfile landmine below).
 
 **Queue cleanup / missing-content hunting** — `cleanuparr` (extras, port 11011, strikes +
 malware-block + stalled-download cleanup; its own built-in proactive search should stay
@@ -290,11 +284,28 @@ throughout its history section, and there's no substitute for it here.
   tracked file, and left in place would have silently re-added anime series on its next
   refresh. See README's History `[10.19.0]` for the full incident, including two more
   supply-chain-style gaps a naive file/config grep wouldn't have caught.
+- **DebridMediaManager (self-hosted) was removed entirely in v10.20.0, by explicit request.**
+  Four services (`dmm-mysql` - 4GB real MySQL data, permanently deleted with no dump kept;
+  `dmm-redis`; `dmm-migrate`; `debridmediamanager`), `scripts/import-imdb-data.py` and its
+  daily systemd timer (existed solely to feed `dmm-mysql`'s search index), Control Panel's
+  `/api/dmm/status` route plus `pymysql`/`cryptography` from `requirements.txt`, and five
+  env vars (`MDBLIST_KEY`/`OMDB_KEY`/`TRAKT_CLIENT_ID`/`TRAKT_CLIENT_SECRET`/`GH_PAT`) that
+  turned out to be DMM-exclusive despite this file's own prior wording implying they were
+  shared with Kometa — Kometa's `config.yml` carries independent hardcoded copies, not env-var
+  substitution, so those five had zero other consumers once DMM's compose block was gone.
+  **Deliberately kept, not an oversight**: Zilean's own `Zilean__Dmm__EnableScraping` (scrapes
+  DMM's public hashlist website, unrelated to the self-hosted app) and Control Panel's
+  `/api/zilean/search` (calls Zilean's own `/dmm/search` endpoint) — same name, different
+  feature, confirmed by reading source before touching either. A removal-script bug was caught
+  mid-execution: the first attempt at renumbering README's service table matched `zurg`'s row
+  too, because its sponsor image (`ghcr.io/debridmediamanager/zurg@...`) contains the literal
+  substring "debridmediamanager" — same false-positive class as the anime purge's "URANiME"
+  release group, caught by a row-count sanity check, not assumed clean.
 - **Adminer removed in v10.9.9, no replacement (for now).** Briefly swapped for CloudBeaver
   (`dbeaver/cloudbeaver:24.3.0`) same version, but that was reverted immediately at the user's
   request — not a fan of the tool, no substitute picked yet. There is currently no web DB GUI
-  in this stack; inspecting `zilean-postgres`/`dmm-mysql` means `docker exec -it <db> psql/mysql
-  ...` again, same as before Adminer existed.
+  in this stack; inspecting `zilean-postgres` means `docker exec -it zilean-postgres psql ...`
+  again, same as before Adminer existed.
 - **Glances and Dozzle removed entirely in v10.9.9, no data preserved.** Neither had a config
   volume, so there was nothing on disk to clean up. Glances powered Control Panel's Overview
   "Host CPU/memory/disk/uptime" tiles via `/api/system/stats` — that endpoint and those tiles
@@ -344,9 +355,6 @@ throughout its history section, and there's no substitute for it here.
   instance — it has no path to `decypharr-alldebrid`.** A grab intended for Sonarr's dedicated
   AllDebrid instance needs a different route/manual approach; don't assume this endpoint is
   instance-agnostic.
-- **DMM's Dockerfile needs its specific `build`-stage target plus an openssl workaround to avoid
-  a real crash-loop** — this isn't cosmetic pinning, changing the build stage or dropping the
-  workaround has previously broken the container outright.
 - **Cleanuparr's `arr_configs` table needs a row for all five Servarr types (Sonarr, Radarr,
   Lidarr, Readarr, Whisparr) permanently, even for apps this stack doesn't run.** Confirmed by
   reading Cleanuparr 2.9.16's own source — `GenericHandler.ExecuteAsync` does
@@ -369,9 +377,9 @@ throughout its history section, and there's no substitute for it here.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
-- **`scripts/backup-config.sh` does a logical `pg_dump`/`mysqldump` of `zilean-postgres` and
-  `dmm-mysql` before the restic run runs**, because the restic exclude list skips raw Postgres/
-  MySQL datadirs (file-level backup of a live datadir is unsafe). **Any new DB-backed service
+- **`scripts/backup-config.sh` does a logical `pg_dump` of `zilean-postgres`
+  before the restic run runs**, because the restic exclude list skips raw Postgres
+  datadirs (file-level backup of a live datadir is unsafe). **Any new DB-backed service
   added later gets zero backup coverage by default** unless it's added to this logical-dump step
   explicitly — following only the "exclude the raw datadir" pattern silently drops it.
 - **restic exit code 3 (some files unreadable/locked) is treated as a soft warning that still
@@ -422,9 +430,6 @@ throughout its history section, and there's no substitute for it here.
   and verified working, then deliberately reverted** in favor of the current LAN-only,
   CSRF/Origin-validated model — the full recipe is preserved in README's History section if this
   is ever revisited, so don't rebuild it from scratch without checking there first.
-- **DMM hard-requires MySQL because of its Prisma schema** — it cannot be consolidated onto the
-  stack's existing Postgres instance (`zilean-postgres`) no matter how appealing running one less
-  database engine sounds.
 - **Sonarr's Remote Path Mapping for the AllDebrid `decypharr-alldebrid` instance is the one
   deliberate exception to this stack's normal "no Remote Path Mappings" convention** — don't
   "clean it up" by removing it; it's reconciling two Decypharr instances that legitimately report

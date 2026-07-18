@@ -1,10 +1,10 @@
 # The Stack
 
-Current version: **v10.19.0**
+Current version: **v10.20.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
-downloaded) on cache misses, and serves the result through a containerized Plex. 30 services,
+downloaded) on cache misses, and serves the result through a containerized Plex. 27 services,
 one compose file, every image pinned and healthchecked. Two operator surfaces: a custom
 dashboard (Control Panel) and a custom CLI (`stack-*` fish functions).
 
@@ -27,7 +27,6 @@ chronological [History](#history) section is at the end.
 - [Plex](#plex)
 - [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
-- [DebridMediaManager (self-hosted)](#debridmediamanager-self-hosted)
 - [Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-labelarr-cleanuparr-neutarr-unpackerr-watchtower)
 - [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
 - [Maintainerr: Plex library lifecycle](#maintainerr-plex-library-lifecycle)
@@ -52,7 +51,7 @@ Point this at a Real-Debrid and/or AllDebrid account and it wires together: an i
 downloading it (Decypharr + Zurg), and Usenet, which streams rather than downloads (NzbDAV) -
 **Usenet is now the preferred protocol on both `*arr` apps as of v10.14.1** (a deliberate
 reversal of this stack's original debrid-first design, see [History](#history)), a
-containerized Plex, a self-hosted DebridMediaManager, and automation/monitoring
+containerized Plex, and automation/monitoring
 extras (Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower, Tautulli, Maintainerr). Ebooks
 briefly had a dedicated app (Bindery) plus a reader (Calibre-Web); both were retired in v10.9.8
 with no replacement (see
@@ -86,7 +85,7 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 docker compose up -d
 
 # 4. Everything else (Byparr, Tautulli, Kometa, Unpackerr, Watchtower,
-#    Cleanuparr, NeutArr, Control Panel, DMM, ...)
+#    Cleanuparr, NeutArr, Control Panel, ...)
 docker compose --profile extras up -d
 ```
 
@@ -247,18 +246,14 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 20 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
 | 21 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
 | 22 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
-| 23 | `dmm-mysql` | `mysql:9.7` | none | extras |
-| 24 | `dmm-redis` | `redis:8-alpine` | none | extras |
-| 25 | `dmm-migrate` | built from DMM git context, `target: build` | none | extras (one-shot) |
-| 26 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 27 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 28 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 29 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
-| 30 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
-| 31 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
+| 23 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 24 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 25 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 26 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
+| 27 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
 
 `docker compose up -d` brings up the 13 core services; `docker compose --profile extras up
--d` adds the other 18. Both are safe to re-run; Compose only recreates what is out of sync
+-d` adds the other 14. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`.
 
 ## The *arr apps
@@ -537,7 +532,8 @@ demand.
 # docker-compose.yml
 nzbdav:
   image: nzbdav/nzbdav:latest
-  # Host port 3001 - DebridMediaManager owns 3000 on this host. Internally
+  # Host port 3001 - DebridMediaManager used to own 3000 on this host
+  # (removed v10.20.0), left at 3001 rather than reclaiming 3000. Internally
   # still :3000 (other containers reach it as http://nzbdav:3000 over
   # stacknet, unaffected by the host mapping).
   ports: ["3001:3000"]
@@ -811,57 +807,6 @@ resolution-agnostic hygiene custom formats (Scene, Obfuscated, Retags, No-RlsGro
 Groups). `reset_unmatched_scores` is off so the manual blocklist format stays untouched by
 syncs. See [History](#history).
 
-## DebridMediaManager (self-hosted)
-
-Self-hosted instance of
-[DebridMediaManager](https://github.com/debridmediamanager/debrid-media-manager) (the app
-behind debridmediamanager.com): library browsing/organizing/casting plus an on-demand
-per-title scraper. Four services, all `profiles: [extras]`:
-
-```yaml
-# docker-compose.yml (abridged)
-dmm-mysql:            # required by DMM's Prisma schema, not swappable for Postgres
-dmm-redis:            # rate limiting
-dmm-migrate:           # one-shot `npx prisma db push --accept-data-loss`, exits after running
-debridmediamanager:    # the web app, port 3000
-  build:
-    context: https://github.com/debridmediamanager/debrid-media-manager.git#c2ceef94477e49ddd5c55606bf57959ffdf29b9e
-    target: build      # NOT the default deploy stage - see below
-```
-
-No pre-built image exists for this project (checked GHCR and Docker Hub), so it builds from a
-git context pinned to a specific commit.
-
-Real-Debrid/AllDebrid/TorBox credentials are entered in the browser (`localStorage`), never a
-server-side secret. `TMDB_KEY`/`MDBLIST_KEY`/`OMDB_KEY`/`TRAKT_CLIENT_ID`/
-`TRAKT_CLIENT_SECRET`/`GH_PAT` are reused from Kometa's configured keys.
-
-Search requires a local IMDB title index, not a live API: `api/search/title.ts` queries
-`imdb_title_basics`/`imdb_title_akas`/`imdb_title_ratings` directly.
-`scripts/import-imdb-data.py` streams IMDB's public dataset dumps from
-`datasets.imdbws.com`, filters to what the search query touches (`movie`/`tvSeries`/
-`tvMiniSeries`, non-adult), and loads them via `LOAD DATA INFILE`.
-`systemd/stack-imdb-sync.timer` runs it daily at 04:15, matching IMDB's publish cadence.
-
-```bash
-curl -s "http://192.168.4.105:3000/api/search/title?keyword=Yellowstone%202018" | jq .
-```
-
-Two upstream bugs are worked around without vendoring a modified Dockerfile:
-
-1. The default `deploy` stage generates the Prisma Client without `openssl` installed, so
-   Prisma generates the wrong query engine binary and the app crash-loops. Running from the
-   `build` stage (full toolchain) with a fix-then-start command avoids it:
-   ```yaml
-   command: >
-     sh -c "apt-get update && apt-get install -y -q openssl curl tzdata &&
-     rm -rf /var/lib/apt/lists/* && npx prisma generate &&
-     npx next start -H 0.0.0.0 -p 3000"
-   ```
-2. `npx prisma` in the deploy stage (which strips devDependencies including the Prisma CLI)
-   downloads a newer major version from the registry at runtime instead of the pinned one.
-   The same `target: build` fix covers this.
-
 ## Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower
 
 **Kometa** (`kometateam/kometa@sha256:98a0df...`; official image, not the LinuxServer fork,
@@ -893,8 +838,8 @@ labels (e.g. "revenge", "based on a manga") so Plex's own filter/search UI gets 
 - complements Kometa rather than overlapping it; Kometa builds collections/overlays, this
 writes item-level labels, and neither reads or modifies the other's output. Runs its own
 1-hour timer (processes immediately on container start too), connected to Plex, TMDb (a
-separate v4 read-access token, `TMDB_READ_ACCESS_TOKEN` - not the v3 `TMDB_KEY` Kometa and DMM
-share), Radarr, and Sonarr (for TMDb-id lookups when a file path alone doesn't carry one). No
+separate v4 read-access token, `TMDB_READ_ACCESS_TOKEN` - not the v3 `TMDB_KEY` Control Panel
+uses), Radarr, and Sonarr (for TMDb-id lookups when a file path alone doesn't carry one). No
 web UI and no port published - its optional webhook-triggered mode needs Plex Pass and isn't
 configured here, so it's timer-only. `MOVIE_PROCESS_ALL`/`TV_PROCESS_ALL` cover every library
 of each type rather than naming specific ones, so it needs no reconfiguration as libraries
@@ -974,8 +919,8 @@ per-app log tailing (`/api/arr/{app}/logs`) never depended on Dozzle. A Promethe
 stack was researched the same version and cancelled before anything was built.
 
 Adminer was removed in v10.9.9 with no replacement (a same-day CloudBeaver swap was
-reverted). There is no web DB GUI; inspect `zilean-postgres`/`dmm-mysql` with
-`docker exec -it <db> psql/mysql ...`.
+reverted). There is no web DB GUI; inspect `zilean-postgres` with
+`docker exec -it zilean-postgres psql ...`.
 
 ## Maintainerr: Plex library lifecycle
 
@@ -1358,8 +1303,8 @@ command added here must be mirrored to both siblings in the same pass.
 `./config` holds every app's settings, database, and plaintext API keys. None of it is in
 git, and it is not reproducible by re-running `docker compose up` or re-pulling images.
 
-- **`scripts/backup-config.sh`**: dumps `zilean-postgres` (`pg_dump`) and `dmm-mysql`
-  (`mysqldump`) first, then `restic backup ./config`, then `restic forget --prune`
+- **`scripts/backup-config.sh`**: dumps `zilean-postgres` (`pg_dump`) first, then
+  `restic backup ./config`, then `restic forget --prune`
   (`--keep-daily 7 --keep-weekly 4 --keep-monthly 6`). Repo at `~/backups/stack-restic-repo`,
   restic-encrypted. Run daily at 03:30 by `systemd/stack-backup.timer`, before Watchtower's
   4am updates. An off-site leg mirrors the same backup to any restic-supported remote
@@ -1367,8 +1312,8 @@ git, and it is not reproducible by re-running `docker compose up` or re-pulling 
   monthly `restic check --read-data-subset=10%` integrity check on the 1st, same as the local
   repo.
 - **Excluded from restic**: `decypharr/cache` and `decypharr-alldebrid/cache` (regenerable
-  FUSE caches), every app's `logs`/`log` directory, `zilean-postgres`'s and `dmm-mysql`'s raw
-  datadirs (the logical dumps cover those; file-level copying a running database's datadir
+  FUSE caches), every app's `logs`/`log` directory, `zilean-postgres`'s raw
+  datadir (the logical dump covers it; file-level copying a running database's datadir
   can produce an inconsistent restore), and several regenerable Plex subdirectories (`Metadata` - 28GB of re-fetchable posters/art,
   `Cache`, `Codecs`, `Logs`, `Crash Reports`, plus `plex-transcode`). Any new DB-backed
   service needs its own logical-dump step added to `backup-config.sh`; excluding the raw
@@ -1457,9 +1402,6 @@ Every image is pinned, using whichever approach does not change what is running:
 - **Version tag, manually bumped, off Watchtower's train** for Plex
   (`plexinc/pms-docker:1.43.2.10687-563d026ea`); PMS version changes on a live library are
   applied manually.
-- **Pinned to a specific git commit** for the two DebridMediaManager services built from
-  source (no pre-built image exists upstream).
-
 Watchtower auto-updates only the channel-tag-pinned images (posting to Discord first).
 Digest-pinned and exact-version-tag-pinned images stay frozen until someone re-checks
 upstream and bumps the pin in `docker-compose.yml`. Check which category an image is in
@@ -1480,8 +1422,6 @@ otherwise:
 | `zilean-postgres` | 2GB | 4 | Tuned for NVMe and this host's hardware |
 | `byparr` | 2GB | 4 | Each Cloudflare solve spins up a Camoufox browser instance |
 | `kometa` | 2GB | 4 | 642MB observed resident while idle |
-| `dmm-mysql` | 2GB | 2 | Millions-of-rows IMDB index with fulltext indexes |
-| `debridmediamanager` | 1.5GB | 2 | Runs from the `build` stage (full devDependencies) |
 
 Everything else carries a smaller defensive ceiling; see `docker-compose.yml` for current
 values, which change more often than this document.
@@ -2157,3 +2097,32 @@ discovery pass's `qualityProfileId==7` OR-clause was too loose and would have wr
 had their DB records deleted cleanly by `deleteFiles=true` but left symlink-only folders behind
 on disk (a stale-mount edge case, not a real data-loss risk since Sonarr no longer referenced
 them) - removed by hand after confirming zero real files.
+
+**v10.20.0** (current): DebridMediaManager (self-hosted) removed entirely, by explicit
+request. Four services gone (`dmm-mysql` - 4GB real MySQL data, not debrid-backed, permanently
+deleted with no dump kept per explicit instruction; `dmm-redis`; `dmm-migrate`;
+`debridmediamanager` itself), plus `scripts/import-imdb-data.py` and its daily
+`stack-imdb-sync` systemd timer (existed solely to feed `dmm-mysql`'s search index - no other
+consumer). Control Panel lost its `/api/dmm/status` route, `pymysql`/`cryptography` from
+`requirements.txt` (no longer used by anything), its `CONTAINER_LABELS` entries, and the
+`debridmediamanager` dashboard tile + `stack-dmm-status` CLI command. `.env`/`.env.example`
+dropped `DMM_MYSQL_ROOT_PASSWORD`/`DMM_MYSQL_PASSWORD`/`DMMCAST_SALT`/`DMM_ORIGIN` outright,
+plus `MDBLIST_KEY`/`OMDB_KEY`/`TRAKT_CLIENT_ID`/`TRAKT_CLIENT_SECRET`/`GH_PAT` - initially
+assumed shared with Kometa per this file's own then-current wording ("Kometa and DMM already
+share"), but verified false: Kometa's `config.yml` carries its own independent hardcoded
+copies of those same key values, not `${VAR}` substitution, so these five were DMM-exclusive
+plumbing with zero remaining consumers anywhere in the repo once DMM's `docker-compose.yml`
+block was gone - a real correction made mid-execution, not assumed.
+
+**Explicitly kept, by design, not an oversight**: Zilean's own `Zilean__Dmm__EnableScraping`
+(scrapes DMM's public hashlist website as a second cache-hash source, unrelated to the
+self-hosted app) and Control Panel's `/api/zilean/search` (calls *Zilean's* `/dmm/search`
+endpoint, not the removed app) - same name, different feature, confirmed via source before
+touching anything.
+
+A removal-script bug caught mid-execution: the first attempt at renumbering the service table
+matched `zurg`'s row too, because its sponsor image path
+(`ghcr.io/debridmediamanager/zurg@...`) contains the literal substring "debridmediamanager" -
+a pure naming collision, same class of false positive as the anime purge's "URANiME" release
+group. Caught by a row-count sanity check against the diff, not assumed clean; zurg's row was
+restored before committing. Service table: 31 → 27 rows (13 core / 14 extras).
