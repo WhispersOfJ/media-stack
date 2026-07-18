@@ -1126,7 +1126,12 @@ services:
       - ./config/neutarr:/config
     ports:
       - "9705:9705"
-    mem_limit: 512m
+    # Was 512m - confirmed via docker stats/OOMKilled that NeutArr gets
+    # killed roughly every 30 minutes at that ceiling despite a modest
+    # ~145MB steady-state reading, invisible on any dashboard since
+    # restart: unless-stopped just quietly restarts it. Raised with real
+    # headroom rather than tightened.
+    mem_limit: 1g
     mem_reservation: 64m
     cpus: 2
 
