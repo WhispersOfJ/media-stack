@@ -1,10 +1,10 @@
 # The Stack
 
-Current version: **v10.18.0**
+Current version: **v10.19.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and symlinks
 already-cached content from Real-Debrid / AllDebrid, falls back to Usenet (streamed, not
-downloaded) on cache misses, and serves the result through a containerized Plex. 31 services,
+downloaded) on cache misses, and serves the result through a containerized Plex. 30 services,
 one compose file, every image pinned and healthchecked. Two operator surfaces: a custom
 dashboard (Control Panel) and a custom CLI (`stack-*` fish functions).
 
@@ -232,33 +232,32 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 5 | `decypharr-alldebrid` | `cy01/blackhole:v2.3` | 8283 | core |
 | 6 | `zurg` | `ghcr.io/debridmediamanager/zurg@sha256:924f17...` | 9999 | core |
 | 7 | `rclone-alldebrid` | `rclone/rclone:1.74.4` | none | core |
-| 8 | `rclone-alldebrid-anime` | `rclone/rclone:1.74.4` | none | core |
-| 9 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
-| 10 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
-| 11 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
-| 12 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | none | core |
-| 13 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
-| 14 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host net) | core |
-| 15 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
-| 16 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
-| 17 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 18 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
-| 19 | `quickstart` | `kometateam/quickstart:latest` | 7171 | extras |
-| 20 | `labelarr` | `ghcr.io/nullable-eth/labelarr:v1.4.0` | none | extras |
-| 21 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 22 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 23 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
-| 24 | `dmm-mysql` | `mysql:9.7` | none | extras |
-| 25 | `dmm-redis` | `redis:8-alpine` | none | extras |
-| 26 | `dmm-migrate` | built from DMM git context, `target: build` | none | extras (one-shot) |
-| 27 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
-| 28 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 29 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 30 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
-| 31 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
-| 32 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
+| 8 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
+| 9 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
+| 10 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
+| 11 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | none | core |
+| 12 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
+| 13 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host net) | core |
+| 14 | `byparr` | `ghcr.io/thephaseless/byparr@sha256:01a46a...` | 8191 | extras |
+| 15 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
+| 16 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 17 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
+| 18 | `quickstart` | `kometateam/quickstart:latest` | 7171 | extras |
+| 19 | `labelarr` | `ghcr.io/nullable-eth/labelarr:v1.4.0` | none | extras |
+| 20 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 21 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 22 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
+| 23 | `dmm-mysql` | `mysql:9.7` | none | extras |
+| 24 | `dmm-redis` | `redis:8-alpine` | none | extras |
+| 25 | `dmm-migrate` | built from DMM git context, `target: build` | none | extras (one-shot) |
+| 26 | `debridmediamanager` | built from DMM git context, `target: build` | 3000 | extras |
+| 27 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 28 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 29 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 30 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
+| 31 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
 
-`docker compose up -d` brings up the 14 core services; `docker compose --profile extras up
+`docker compose up -d` brings up the 13 core services; `docker compose --profile extras up
 -d` adds the other 18. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`.
 
@@ -407,29 +406,12 @@ needs a lower `group_order` or its content falls into `movies`:
 ```yaml
 # config/zurg/config.yml (token/plex_token redacted)
 directories:
-  # Checked before the generic "shows" group (has_episodes: true would
-  # otherwise claim these first). Matches known fansub/release-group tags
-  # plus an episode-number marker, so it only catches episodic anime;
-  # anime movies fall through to anime-movies below.
-  anime-shows:
-    group: media
-    group_order: 8
-    filters:
-      - regex: /(?i)\[[^\]]+\].*(-\s?\d{2,3}(\D|$)|\bE\d{2,3}\b|S\d{1,2}E\d{1,3}|\[\d{2,3}\]|\b\d{1,3}\s+(FHD|HD|SD)\b)/
   shows:
     group: media
     group_order: 10
     filters:
       - has_episodes: true
       - regex: /(?i)\bTemporada\s*\d+\b.*\bCap\.?\s?\d{2,3}\b/
-  # Same fansub-tag list as anime-shows without the episode-marker
-  # requirement - episodic anime is already claimed by anime-shows
-  # (lower group_order), so what matches here is movie-style anime.
-  anime-movies:
-    group: media
-    group_order: 9
-    filters:
-      - regex: /(?i)\[(SubsPlease|Erai-raws|Judas|EMBER|HorribleSubs|Commie|ASW|GJM|Yameii|Tsundere-Raws|ReinForce|DKB|Anime Time|Golumpa|Beatrice-Raws|Kawaiika-Raws|Chihiro|Doki|UTW|Underwater|DameDesuYo|ToonsHub|NC-Raws|PAS|Ginga-subs)\]/
   movies:
     filters:
       - regex: /.*/
@@ -437,13 +419,11 @@ directories:
     group_order: 20
 ```
 
-Ordering: `anime-movies` (9) < `anime-shows` (8, checked first despite the higher-looking
-number - re-read this as "8 sorts before 9") < `shows` (10) < `movies` (20).
-`anime-shows`/`anime-movies` feed a dedicated Plex Anime library; see [Plex](#plex).
+Ordering: `shows` (10) < `movies` (20).
 
-The fansub-tag list covers the release groups that have appeared in this account's cache, not
-every group that exists. New groups not in the list fall through to `shows`/`movies`; extend
-the regex's alternation list when that happens.
+**`anime-shows`/`anime-movies` groups (group_order 8/9) removed entirely 2026-07-18** along
+with the rest of this stack's anime support (Radarr/Sonarr library, the dedicated Plex Anime
+libraries, `rclone-alldebrid-anime`) - see History for the full removal.
 
 **`music`, `books`, and `adult` groups removed entirely 2026-07-17** (previously group_order
 12/14/5) - all three had been silently misrouting real movies for a while, discovered during
@@ -735,76 +715,25 @@ plex:
   |---|---|---|---|---|
   | 14 | Movies | movie | `tv.plex.agents.movie` | `/home/bear/Stack/media/movies` |
   | 16 | TV Shows | show | `tv.plex.agents.series` | `/mnt/zurg/shows`, `/home/bear/Stack/media/shows` |
-  | 13 | Anime Movies | movie | `tv.plex.agents.movie` | `/mnt/zurg/anime-movies`, `/home/bear/Stack/media/anime-movies` |
-  | 15 | Anime Shows | show | `tv.plex.agents.series` | `/mnt/all-anime`, `/mnt/zurg/anime-shows`, `/home/bear/Stack/media/anime-shows` |
 
   `./media` is mounted at its identical host absolute path (`/home/bear/Stack/media`) so
   every arr app's writable root folder can be added as a library location directly. Section
   keys shift when a library is deleted/recreated - **confirmed live 2026-07-17 that this table
-  had drifted** (previously documented as keys 4/1/3/8/10/11, live keys are 13/14/15/16, and
+  had drifted** (previously documented as keys 4/1/3/8/10/11, live keys are 14/16, and
   `Music`/`Audiobooks` no longer exist as Plex libraries at all - see
   [History](#history)). Don't hardcode a section key anywhere without verifying it against
-  `GET /library/sections` first; `scripts/sort-anime-movies.py` learned this the hard way (see
-  History) and now looks sections up by title instead.
+  `GET /library/sections` first.
 
-### Plex "Anime Movies" and "Anime Shows" libraries
+### Plex "Anime Movies" and "Anime Shows" libraries (removed)
 
-Two libraries backed by Zurg's `anime-movies`/`anime-shows` content-routing groups (see
-[The debrid pipeline](#the-debrid-pipeline-zurg--decypharr)), using stock Plex agents
-(`tv.plex.agents.movie`, `tv.plex.agents.series`). Plex ships no anime metadata agent;
-installing one (e.g. HAMA) has not been done here.
-
-Created via the Plex API:
-
-```bash
-curl -X POST "http://192.168.4.105:32400/library/sections?X-Plex-Token=$PLEX_TOKEN" \
-  --data-urlencode "name=Anime Shows" --data-urlencode "type=show" \
-  --data-urlencode "agent=tv.plex.agents.series" --data-urlencode "scanner=Plex TV Series" \
-  --data-urlencode "language=en-US" \
-  --data-urlencode "location=/mnt/zurg/anime-shows" \
-  --data-urlencode "location=/home/bear/Stack/media/anime-shows"
-```
-
-Multi-`location` gotcha: posting the params as a form body returns a bare `400 Bad Request`.
-Plex expects repeated `location=` params in the query string (`POST` with an empty body).
-Updating an existing section via `PUT /library/sections/{id}` has the same gotcha, and also
-400s unless `name`/`agent`/`scanner`/`language` are repeated in the same request; a partial
-payload is not treated as a partial update.
-
-`Anime Shows` also includes `/mnt/all-anime`, a second rclone mount
-(`rclone-alldebrid-anime`) exposing an `--include`-filtered view of the AllDebrid
-`all:magnets` remote using the same fansub-tag list as Zurg's two groups. AllDebrid has no
-content-routing feature, so a filtered anime-only view requires a second rclone process with
-glob `--include` patterns (brackets escaped). The tag list must be kept in sync by hand
-across the two filter syntaxes (Zurg regex vs. rclone glob).
-
-`Anime Movies` does not include `/mnt/all-anime`. The AllDebrid-side filter is a single flat
-mount with no episodic/movie split; rclone's glob syntax cannot express "has this tag AND
-lacks an episode-number pattern." Adding the mount to both libraries was tried and produced
-false positives: Plex's movie scanner matched raw episode files (`Honzuki No Gekokujou S4
-13`, `Lord of Mysteries 02v3`, etc.) as standalone films. It was removed from Anime Movies in
-the same session. Consequence: anime movies from AllDebrid currently have no path into this
-library; see [Known gaps and limitations](#known-gaps-and-limitations).
-
-First scan: 10 folders matched into `anime-shows` from Zurg's Real-Debrid cache, then 19 more
-from `/mnt/all-anime`, all correctly anime-tagged, zero false positives once `/mnt/all-anime`
-was scoped to Anime Shows only. 6 titles auto-resolved Plex metadata; the rest need a manual
-**Match** in Plex's UI, which is normal agent behavior for raw fansub-style folder names.
-`anime-movies` had zero matches on the first pass (nothing movie-style cached yet).
-
-The fansub-tag list only covers release groups seen so far; re-run this spot-check
-periodically against both sources:
-
-```bash
-ls /mnt/zurg/anime-shows/ /mnt/zurg/anime-movies/ /mnt/all-anime/
-curl -s -H "X-Plex-Token: $PLEX_TOKEN" http://192.168.4.105:32400/library/sections/11/all | \
-  grep -oP 'title="[^"]*"'
-```
+Added v10.4.0, removed entirely 2026-07-18 along with the rest of this stack's anime support
+(Radarr/Sonarr library, Zurg's `anime-shows`/`anime-movies` routing groups,
+`rclone-alldebrid-anime`) - see [History](#history) for the full removal and what it touched.
 
 ### The retired "Music", "Audiobooks", and "Adult" libraries
 
-**None of these three exist in Plex anymore.** Only four libraries are live today: Movies, TV
-Shows, Anime Movies, Anime Shows (see the table above).
+**None of these three exist in Plex anymore.** Only two libraries are live today: Movies, TV
+Shows (see the table above).
 
 **Plex's "Adult" library was removed in v10.9.9** via the Plex API
 (`DELETE /library/sections/{key}`) - a documented, deliberate removal. It was a Movie-type
@@ -938,7 +867,7 @@ Two upstream bugs are worked around without vendoring a modified Dockerfile:
 **Kometa** (`kometateam/kometa@sha256:98a0df...`; official image, not the LinuxServer fork,
 which resets `/config` ownership on every start) automates Plex collections, metadata, and
 overlay art. No web UI; it is a scheduled batch job (05:00 daily by default). Connected to
-Plex, TMDb, Radarr, Sonarr, Tautulli, Trakt, and MyAnimeList.
+Plex, TMDb, Radarr, Sonarr, Tautulli, and Trakt.
 
 ```bash
 # Run now instead of waiting for 05:00, optionally scoped to libraries
@@ -968,8 +897,8 @@ separate v4 read-access token, `TMDB_READ_ACCESS_TOKEN` - not the v3 `TMDB_KEY` 
 share), Radarr, and Sonarr (for TMDb-id lookups when a file path alone doesn't carry one). No
 web UI and no port published - its optional webhook-triggered mode needs Plex Pass and isn't
 configured here, so it's timer-only. `MOVIE_PROCESS_ALL`/`TV_PROCESS_ALL` cover every library
-of each type rather than naming specific ones, so it also runs against `Anime Movies`/
-`Anime Shows` alongside `Movies`/`TV Shows` with no extra config.
+of each type rather than naming specific ones, so it needs no reconfiguration as libraries
+come and go.
 
 **Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) and **NeutArr**
 (`iampuid0/neutarr:1.9.1`, port 9705) automate what Control Panel's "unstick" and
@@ -1227,7 +1156,7 @@ This endpoint only targets the primary Real-Debrid `decypharr` instance; it has 
 ```python
 # control-panel/app.py
 MOUNT_PREREQS = {"nzbdav"}
-MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "rclone-alldebrid-anime", "nzbdav-rclone"}
+MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "nzbdav-rclone"}
 MOUNT_DEPENDENTS = {"radarr"}
 
 def worker():
@@ -1711,9 +1640,6 @@ what is new.
   briefly added then removed with no deletion log line). Root cause was never identified.
   Both apps' native Recycle Bin is now enabled as a blast-radius mitigation, not a fix
   (`/data/movies/.recyclebin`, `/data/shows/.recyclebin`, 7-day cleanup).
-- **Anime movies from AllDebrid have no path into the Anime Movies library** (see
-  [Plex](#plex)): the AllDebrid filter mount is flat and cannot split episodic vs. movie
-  content.
 - **No AllDebrid equivalent of Zilean's Zurg ingestion**: `rclone-alldebrid` has no
   torrent-listing endpoint to scrape.
 
@@ -2197,3 +2123,37 @@ and DMM already share), and Radarr/Sonarr for TMDb-id lookups. Timer-only (1h de
 start too); its optional webhook mode needs Plex Pass and wasn't configured. Verified live on
 first run: connected to all four services cleanly and applied keyword labels to real library
 items with zero errors. 31 services total now.
+
+**v10.19.0** (current): Anime support removed entirely, by explicit request - Radarr/Sonarr
+library (122 movies, 159 series, `deleteFiles=true`, including 15.7GB of real - not
+debrid-symlinked - local files under `anime-movies`), both Plex libraries (`Anime Movies` key
+13, `Anime Shows` key 15), both root folders, the `[Anime] Remux-1080p` quality profile and its
+33 dedicated custom formats on both apps, Zurg's `anime-shows`/`anime-movies` content-routing
+groups, the `rclone-alldebrid-anime` service and `/mnt/all-anime` mount, `config/kometa/
+config.yml`'s `Anime Movies`/`Anime Shows` library blocks and MyAnimeList credentials,
+`scripts/sort-anime-movies.py` and its systemd timer/service, `control-panel/app.py`'s three
+anime references, and `PLAN.md` (the never-implemented dedicated-instance proposal). 8 live
+Prowlarr indexers whose names don't say "anime" but are anime-dedicated trackers (`Nyaa.si`,
+`sukebei.nyaa.si`, `SubsPlease`, `Mikan`, `dmhy`, `Bangumi Moe`, `Shana Project`, `Tokyo
+Toshokan`) were disabled too, after a scope check turned up that the 5 indexer *definition*
+files under `config/prowlarr/Definitions/` matching "anime" by name were never actually added
+as live indexers - the real anime-capable indexer surface used different names entirely.
+
+A live Sonarr Trakt import list literally named "Anime" (`enableAutomaticAdd: true`,
+`monitorNewItems: all`, 12h refresh, root folder `/data/anime`, quality profile 7) was found
+and deleted mid-removal - undiscovered by the original file/config grep sweep since import
+lists live only in the app's own API, not in any tracked file. Left in place, it would have
+silently re-added anime series on its next refresh and undone the whole removal.
+
+Quality profile deletion surfaced a second gap: 15 ordinary movies (*The Untouchables*,
+*Highlander*, *Midnight Run*, etc.) and 17 of their TMDb collections were parked on quality
+profile id 7 for reasons unrelated to anime (likely an old profile-id reuse), which blocked
+`DELETE /api/v3/qualityprofile/7` with "QualityProfile in use" until all 32 were reassigned to
+the general-library default (profile 9, `Remux + WEB 2160p`) - confirming the original
+discovery pass's `qualityProfileId==7` OR-clause was too loose and would have wrongly deleted
+15 real, unrelated movies if used as the deletion filter instead of root-folder path.
+
+3 Sonarr series (`JUJUTSU KAISEN`, `Frieren - Beyond Journey's End`, `Hunter x Hunter 2011`)
+had their DB records deleted cleanly by `deleteFiles=true` but left symlink-only folders behind
+on disk (a stale-mount edge case, not a real data-loss risk since Sonarr no longer referenced
+them) - removed by hand after confirming zero real files.

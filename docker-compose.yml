@@ -314,83 +314,6 @@ services:
     mem_reservation: 64m
     cpus: 4
 
-  # Same "all:" AllDebrid remote as rclone-alldebrid above, mounted a second
-  # time at a different path with an --include filter so the Anime
-  # libraries can see AllDebrid-cached anime too, not just Real-Debrid via
-  # Zurg. AllDebrid itself has no content-routing-groups feature like
-  # Zurg's directories/filters, so unlike Zurg this needed a second whole
-  # rclone process rather than one more config entry - same fansub-tag list
-  # as Zurg's anime-shows/anime-movies groups (see README's "Zurg's
-  # content-routing groups"), kept in sync by hand since rclone's filter
-  # syntax (glob, brackets escaped) isn't the same as Zurg's regex.
-  rclone-alldebrid-anime:
-    restart: unless-stopped
-    logging: *common-logging
-    image: rclone/rclone:1.74.4
-    container_name: rclone-alldebrid-anime
-    networks: [stacknet]
-    environment:
-      <<: *common-env
-      XDG_CONFIG_HOME: /config
-    entrypoint: ["rclone"]
-    command:
-      - "mount"
-      - "all:magnets"
-      - "/mnt/all-anime"
-      - "--config=/config/rclone/rclone.conf"
-      - "--dir-cache-time=10s"
-      - "--multi-thread-streams=0"
-      - "--cutoff-mode=cautious"
-      - "--vfs-cache-mode=minimal"
-      - "--network-mode"
-      - "--buffer-size=0"
-      - "--read-only"
-      - "--allow-other"
-      - "--allow-non-empty"
-      - "--include=*\\[SubsPlease\\]*/**"
-      - "--include=*\\[Erai-raws\\]*/**"
-      - "--include=*\\[Judas\\]*/**"
-      - "--include=*\\[EMBER\\]*/**"
-      - "--include=*\\[HorribleSubs\\]*/**"
-      - "--include=*\\[Commie\\]*/**"
-      - "--include=*\\[ASW\\]*/**"
-      - "--include=*\\[GJM\\]*/**"
-      - "--include=*\\[Yameii\\]*/**"
-      - "--include=*\\[Tsundere-Raws\\]*/**"
-      - "--include=*\\[ReinForce\\]*/**"
-      - "--include=*\\[DKB\\]*/**"
-      - "--include=*\\[Anime Time\\]*/**"
-      - "--include=*\\[Golumpa\\]*/**"
-      - "--include=*\\[Beatrice-Raws\\]*/**"
-      - "--include=*\\[Kawaiika-Raws\\]*/**"
-      - "--include=*\\[Chihiro\\]*/**"
-      - "--include=*\\[Doki\\]*/**"
-      - "--include=*\\[UTW\\]*/**"
-      - "--include=*\\[Underwater\\]*/**"
-      - "--include=*\\[DameDesuYo\\]*/**"
-      - "--include=*\\[ToonsHub\\]*/**"
-      - "--include=*\\[NC-Raws\\]*/**"
-      - "--include=*\\[PAS\\]*/**"
-    healthcheck:
-      test: ["CMD-SHELL", "mountpoint -q /mnt/all-anime || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/rclone/rclone.conf:/config/rclone/rclone.conf:ro
-      - /mnt:/mnt:rshared
-    devices:
-      - /dev/fuse:/dev/fuse:rwm
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    # Same reasoning as rclone-alldebrid above.
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 4
-
   # ---------------------------------------------------------------------
   # *arr apps
   # ---------------------------------------------------------------------
@@ -420,10 +343,6 @@ services:
       # rclone FUSE mount and does not support having files written into it
       # (confirmed: symlink/hardlink/copy all fail there with I/O errors).
       - ./media/movies:/data/movies
-      # Second root folder for scripts/sort-anime-movies.py's Plex-genre-based
-      # sweep - Radarr had zero anime-movie root folder at all before this,
-      # unlike Sonarr's existing /data/shows + /data/anime split.
-      - ./media/anime-movies:/data/anime-movies
     ports:
       - "7878:7878"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -459,10 +378,6 @@ services:
       # Sonarr grab was stuck "No files found are eligible for import" with this mount missing.
       - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
       - ./media/shows:/data/shows
-      # Anime-specific root folder (Series Type: Anime) - same host directory
-      # already backing Plex's Anime Shows library location, so no Plex
-      # wiring was needed beyond adding this root folder in Sonarr itself.
-      - ./media/anime-shows:/data/anime
     ports:
       - "8989:8989"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -539,15 +454,14 @@ services:
       - /mnt:/mnt
       # Repairs feature needs to see the *arr apps' own root folders to scan
       # for symlinks/*.strm and correlate them back to Radarr/Sonarr entries -
-      # same /data/movies, /data/shows, /data/anime paths those apps report as
-      # their own root folders (see radarr/sonarr services above), so nzbdav's
-      # repair engine's path lookups line up with no remapping needed. Only
+      # same /data/movies, /data/shows paths those apps report as their own
+      # root folders (see radarr/sonarr services above), so nzbdav's repair
+      # engine's path lookups line up with no remapping needed. Only
       # Radarr+Sonarr are wired into the Repairs tab today, so only their root
       # folders are mounted. Read-only - nzbdav repairs via the Radarr/Sonarr
       # API (delete+research), not by touching the symlinks directly.
       - ./media/movies:/data/movies:ro
       - ./media/shows:/data/shows:ro
-      - ./media/anime-shows:/data/anime:ro
     # Host port 3001, not 3000 - DebridMediaManager already owns 3000 on
     # this host. Internally still :3000 (Radarr/Sonarr/rclone all reach it
     # as http://nzbdav:3000 over stacknet, unaffected by the host mapping).
