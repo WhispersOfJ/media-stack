@@ -18,15 +18,21 @@ Whenever a new `stack-*` command is added here (a fish function in
 `~/.dotfiles/.config/fish/functions/` plus its backing endpoint in `control-panel/app.py`),
 mirror it in both siblings:
 
-1. `../Stackalicious/scripts/stack-cli/bash/`: bash port, matching the existing convention
-   there.
-2. `../StackScripts/bin/bash/`: the same command, generalized (no hardcoded IP/host paths;
-   see `StackScripts/AGENTS.md`'s "Portability rules"), plus the matching endpoint ported
-   into `StackScripts/control-panel/app.py`.
+1. `../Stackalicious/scripts/stack-cli/bash/` **and** `../Stackalicious/scripts/stack-cli/zsh/`:
+   bash and zsh ports, matching the existing convention there.
+2. `../StackScripts/bin/bash/` **and** `../StackScripts/bin/zsh/`: the same command, generalized
+   (no hardcoded IP/host paths; see `StackScripts/AGENTS.md`'s "Portability rules"), plus the
+   matching endpoint ported into `StackScripts/control-panel/app.py`.
 
-Both siblings' CLIs are bash-only. The parallel zsh ports (79 files across both repos) were
-deleted after confirming full command parity between the two shells. Do not reintroduce a zsh
-branch for a new command unless zsh returns as a supported shell.
+**Correction (2026-07-18): zsh is back.** Both siblings' CLIs were bash-only from the point the
+parallel zsh ports (79 files across both repos) were deleted after confirming command parity,
+until a user need for zsh came back and both repos re-added `.../zsh/` in full. A new
+`stack-*` command needs both a bash and a zsh port in each sibling - shellcheck covers the bash
+side; the zsh side gets its own `zsh -n` syntax-check pass in each repo's CI (see either
+sibling's own workflow file) since shellcheck doesn't understand zsh syntax. See each sibling's
+own `AGENTS.md` "Lessons-learned footnote" for zsh-specific gotchas (a bash-to-zsh port is not
+purely mechanical - e.g. never name a local variable `path` in zsh, and `read -p` means
+something different there than in bash).
 
 The rule runs in both directions: a bug found in one repo's bash version should be checked
 for in every other repo's bash version. Historical examples from when the zsh ports existed:

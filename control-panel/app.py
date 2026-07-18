@@ -1794,6 +1794,178 @@ def arr_unstick(app_name: str):
     return ok(message, removed=removed, errors=errors)
 
 
+# ---------------------------------------------------------------------
+# Unstick (importing) - a distinct failure mode from the warning/error one
+# above. A download wedged in trackedDownloadState "importing" keeps
+# trackedDownloadStatus "ok" the whole time, so it never lights up the
+# arr app's own warning icon and Unstick above never touches it - but
+# since disk-access commands run through a single execution slot, one
+# wedged import silently blocks every other item queued behind it.
+# Confirmed live across four separate incidents in one afternoon
+# (2026-07-18): three were nzbdav-rclone symlinks pointing at
+# permanently-missing Usenet articles; one was a queue record whose
+# outputPath had simply vanished from disk entirely (no symlink there at
+# all, not just an unreadable one). A plain queue-status check can't tell
+# any of these from a merely-wedged slot - all just show "importing" - so
+# this checks whether outputPath exists at all, and if so reads the first
+# few MB of a file under it straight through the arr app's own container
+# mount. A dead article fails, sometimes only after ~30s (rclone/nzbdav
+# retries before giving up); a wedged-but-fine file reads instantly; a
+# missing path fails the existence check immediately. Broken releases get
+# blocklisted so they aren't regrabbed; merely-wedged or missing-path ones
+# are removed without blocklisting, since neither is evidence the release
+# itself is bad. Either way the
+# affected series/movie gets a fresh search queued afterward.
+# ---------------------------------------------------------------------
+IMPORTING_TEST_TIMEOUT_S = 40
+IMPORTING_TEST_MB = 5
+
+
+def _dd_test_file(container, file_path: str) -> tuple[bool, str]:
+    try:
+        result = container.exec_run(
+            cmd=[
+                "timeout", str(IMPORTING_TEST_TIMEOUT_S),
+                "dd", f"if={file_path}", "of=/dev/null", "bs=1M", f"count={IMPORTING_TEST_MB}",
+            ],
+            demux=True,
+        )
+    except Exception as e:
+        return False, f"exec failed: {e}"
+    if result.exit_code == 0:
+        return True, "readable"
+    stderr = b""
+    if result.output and result.output[1]:
+        stderr = result.output[1]
+    return False, stderr.decode(errors="replace").strip() or f"dd exited {result.exit_code}"
+
+
+def _find_candidate_files(container, output_path: str) -> tuple[str, list[str]]:
+    """Locates a file under output_path to dd-test. Returns (status, files):
+    'missing' if output_path doesn't exist on disk at all (a distinct wedge
+    from a dead article - confirmed live 2026-07-18, a queue record can sit
+    in "importing" pointing at a symlink that's simply gone, e.g. cleaned up
+    or evicted before the import ran), 'empty' if the path exists but has no
+    file under it worth testing, or 'ok' with the files found."""
+    exists = container.exec_run(cmd=["test", "-e", output_path])
+    if exists.exit_code != 0:
+        return "missing", []
+    # Symlinks first - every mount this stack imports through (Zurg,
+    # rclone-alldebrid, nzbdav-rclone) routes root folders through symlinks.
+    find_result = container.exec_run(cmd=["find", output_path, "-maxdepth", "2", "-type", "l"])
+    files = [f for f in find_result.output.decode(errors="replace").splitlines() if f.strip()]
+    if not files:
+        find_result = container.exec_run(cmd=["find", output_path, "-maxdepth", "2", "-type", "f"])
+        files = [f for f in find_result.output.decode(errors="replace").splitlines() if f.strip()]
+    return ("ok", files) if files else ("empty", [])
+
+
+def _importing_queue_targets(app_name: str) -> list[dict]:
+    # Multiple queue records can share one underlying download (a season
+    # pack fans out to one record per episode, all with the same
+    # downloadId) - dedupe before testing, or a single dead article gets
+    # diagnosed once but the caller would otherwise loop over it N times.
+    items = [q for q in arr_queue(app_name) if q.get("trackedDownloadState") == "importing"]
+    by_download: dict[str, dict] = {}
+    for q in items:
+        key = q.get("downloadId") or str(q["id"])
+        target = by_download.setdefault(key, {
+            "queueIds": [],
+            "title": q.get("title"),
+            "outputPath": q.get("outputPath"),
+            "seriesId": q.get("seriesId"),
+            "movieId": q.get("movieId"),
+        })
+        target["queueIds"].append(q["id"])
+    return list(by_download.values())
+
+
+@app.post("/api/arr/{app_name}/unstick-importing")
+def arr_unstick_importing(app_name: str):
+    cfg = require_queue_app(app_name)
+    targets = _importing_queue_targets(app_name)
+    if not targets:
+        return ok(f"No downloads currently importing in {cfg['label']}.")
+    try:
+        container = docker_client.containers.get(app_name)
+    except docker.errors.NotFound:
+        fail(f"Container '{app_name}' not found.")
+
+    results = []
+    to_research: set[tuple[str, int]] = set()
+    for t in targets:
+        output_path = t.get("outputPath")
+        title = t.get("title") or "(untitled)"
+        if not output_path:
+            results.append({"title": title, "verdict": "skipped", "detail": "no outputPath on queue item"})
+            continue
+        status, files = _find_candidate_files(container, output_path)
+        if status == "empty":
+            results.append({"title": title, "verdict": "skipped", "detail": "outputPath exists but has no candidate file"})
+            continue
+        if status == "missing":
+            # The path is simply gone, not evidence the release itself is
+            # dead (could be a symlink cleaned up/evicted before the import
+            # ran) - clear without blocklisting so it can regrab/rediscover
+            # rather than banning a release that might be perfectly fine.
+            blocklist = False
+            detail = "outputPath does not exist on disk"
+        else:
+            # One representative file per download, same as the manual
+            # technique this mirrors - testing every file in a season pack
+            # would multiply the up-to-40s-per-file cost for no real gain,
+            # since a single grab's files share the same source post/health.
+            readable, detail = _dd_test_file(container, files[0])
+            blocklist = not readable
+        delete_failed = False
+        for qid in t["queueIds"]:
+            try:
+                r = httpx.delete(
+                    f"{cfg['url']}/api/{cfg['api']}/queue/{qid}",
+                    params={"removeFromClient": "true", "blocklist": str(blocklist).lower(), "skipRedownload": "false"},
+                    headers={"X-Api-Key": cfg["key"]},
+                    timeout=20,
+                )
+                # A shared downloadId means later ids 404 once the first
+                # delete clears the whole download from the client - not an
+                # error, same pattern as /unstick above.
+                if r.status_code not in (200, 404):
+                    r.raise_for_status()
+            except httpx.HTTPError as e:
+                results.append({"title": title, "verdict": "error", "detail": f"delete failed: {e}"})
+                delete_failed = True
+                break
+        if delete_failed:
+            continue
+        if status == "missing":
+            verdict = "path-missing-cleared"
+        elif blocklist:
+            verdict = "broken-blocklisted"
+        else:
+            verdict = "wedged-cleared"
+        results.append({"title": title, "verdict": verdict, "detail": detail})
+        if t.get("seriesId"):
+            to_research.add(("series", t["seriesId"]))
+        if t.get("movieId"):
+            to_research.add(("movie", t["movieId"]))
+
+    for kind, rid in to_research:
+        body = {"name": "SeriesSearch", "seriesId": rid} if kind == "series" else {"name": "MoviesSearch", "movieIds": [rid]}
+        try:
+            httpx.post(f"{cfg['url']}/api/{cfg['api']}/command", json=body, headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        except httpx.HTTPError:
+            pass
+
+    broken_n = sum(1 for r in results if r["verdict"] == "broken-blocklisted")
+    wedged_n = sum(1 for r in results if r["verdict"] == "wedged-cleared")
+    missing_n = sum(1 for r in results if r["verdict"] == "path-missing-cleared")
+    message = (
+        f"{cfg['label']}: checked {len(targets)} importing item(s) - "
+        f"{broken_n} broken/blocklisted, {wedged_n} wedged/cleared, {missing_n} missing-path/cleared."
+    )
+    return ok(message, results=results)
+
+
 @app.get("/api/arr/{app_name}/manual-import")
 def arr_manual_import_candidates(app_name: str):
     """Every importable file the arr app can see across all currently

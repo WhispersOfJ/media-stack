@@ -267,7 +267,7 @@ Both follow the same wiring: Prowlarr pushes indexers down via `fullSync`, Decyp
 `decypharr-alldebrid` for Sonarr) is the priority-1 download client, NzbDAV is priority-2
 fallback, Unpackerr extracts RAR'd releases, the root folder is `./media/<type>` mounted at
 `/data/<type>`, and Control Panel provides RSS sync / search-missing / unstick /
-manual-import for each.
+unstick-importing / manual-import for each.
 
 | App | Port | Root folder | Content type |
 |---|---|---|---|
@@ -1126,6 +1126,7 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/decypharr/grab` | POST | `{"hash": "...", "title": "..."}` → adds a magnet to Decypharr under a `manual` category |
 | `/api/arr/{app}/rss-sync` \| `/search-missing` | POST | Per-app RSS sync / missing-search |
 | `/api/arr/{app}/unstick` | POST | Removes + blocklists + re-searches every `warning`/`error` queue item |
+| `/api/arr/{app}/unstick-importing` | POST | Diagnoses a download wedged in `importing` state (dead-article/missing-path check via `docker exec`), clears or blocklists, re-searches |
 | `/api/arr/{app}/manual-import` | GET/POST | Lists importable files across stuck queue items; POST executes one |
 | `/api/arr/{app}/manual-import-all` | POST | Bulk-imports every candidate the GET lists |
 | `/api/arr/{app}/missing-aired` | GET | Monitored + no file + already-aired (see [The *arr apps](#the-arr-apps)) |
@@ -1278,7 +1279,7 @@ end
 
 ```fish
 stack-status                                    # live health of every container
-stack-arr radarr rss-sync                       # radarr/sonarr; or search-missing / unstick
+stack-arr radarr rss-sync                       # radarr/sonarr; or search-missing / unstick / unstick-importing
 stack-arr-import-candidates sonarr              # list files ready to manually import
 stack-arr-import sonarr 0                       # import candidate #0 from the list above
 stack-kometa-run Movies "TV Shows"              # scoped run; no args = every library
