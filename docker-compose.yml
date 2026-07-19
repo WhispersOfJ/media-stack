@@ -163,7 +163,7 @@ services:
     <<: *common
     # Pinned to the exact version currently running (verified same digest as
     # :latest at pin time) rather than :latest.
-    image: cy01/blackhole:v2.3
+    image: cy01/blackhole:v2.4
     container_name: decypharr
     networks: [stacknet]
     healthcheck:
@@ -202,7 +202,7 @@ services:
   # only as a download client.
   decypharr-alldebrid:
     <<: *common
-    image: cy01/blackhole:v2.3
+    image: cy01/blackhole:v2.4
     container_name: decypharr-alldebrid
     networks: [stacknet]
     healthcheck:
