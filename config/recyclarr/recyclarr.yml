@@ -1,0 +1,159 @@
+# v10.15.0 rewrite: the old single general-purpose "Unlimited" profile
+# (id 1 on both apps, hand-named/hand-configured, never a real TRaSH-Guides
+# profile) has been replaced with genuine TRaSH-Guides stock profiles,
+# synced entirely by quality_profiles.trash_id - nothing hand-copied,
+# everything pulled live from the guide on each sync. Two tiers per app,
+# matching TRaSH's own recommended split:
+#   Radarr: "HD Bluray + WEB" (1080p ceiling) + "Remux + WEB 2160p" (2160p
+#     remux ceiling, existing library's general movies point here - closest
+#     match to the old Unlimited's permissiveness)
+#   Sonarr: "WEB-1080p" + "WEB-2160p" (same tiering idea, existing library's
+#     general shows point at WEB-2160p)
+# As of Recyclarr v8 the official config-templates repo no longer supports
+# `include: - template: ...` shortcuts - trash_ids and quality_definition
+# settings are given directly.
+#
+# reset_unmatched_scores is intentionally left OFF everywhere in this file -
+# every quality profile here carries one manually-maintained hard block,
+# "Blocklist: Unwanted Groups/Sources, RU-CN Audio, Blu-ray" (score -10000),
+# that Recyclarr does not manage. Turning reset_unmatched_scores on would
+# zero that score out on every sync. Its score is set directly via the
+# Radarr/Sonarr API, not through this file - re-set it manually there if
+# it's ever missing after a profile gets recreated.
+#
+# Sonarr also carries a second manually-maintained hard block, "Season Pack
+# Blocked" (custom format id 84, score -10000, on WEB-1080p/WEB-2160p) -
+# built from Sonarr's native ReleaseTypeSpecification (value 3 = Season
+# Pack), not a TRaSH trash_id (no such CF exists in the guide, this is local
+# policy: never grab season packs, single-episode releases only). Same
+# pattern as the Blocklist CF above - created and scored directly via the
+# Sonarr API, not through this file, and survives syncs only because
+# reset_unmatched_scores stays off. Re-create the CF (POST
+# /api/v3/customformat, ReleaseTypeSpecification value=3) and re-set its
+# -10000 score on both remaining profiles if it's ever missing after a
+# profile gets recreated.
+#
+# "[Anime] Remux-1080p" (former id 7 on both apps) removed 2026-07-18 along
+# with the rest of this stack's anime support (library, Zurg routing,
+# rclone-alldebrid-anime mount, Plex libraries) - see README's History for
+# the full removal.
+
+sonarr:
+  series:
+    base_url: http://sonarr:8989
+    api_key: !env_var SONARR_API_KEY
+
+    quality_definition:
+      type: series
+
+    # Obfuscated deliberately excluded, unlike Recyclarr's own stock template:
+    # TRaSH Guides' own cf-description explicitly says "if you're using
+    # Usenet, DO NOT use this Custom Format" - obfuscated (randomly-named)
+    # NZBs are how legitimate Usenet indexers dodge DMCA takedowns on
+    # popular reposts, so rejecting them works against this stack's
+    # Usenet-only design rather than for it. Was scored -10000 here until
+    # this fix; if it's ever needed again, its trash_id is
+    # e1a997ddb54e3ecbfe06341ad323c458.
+    custom_formats:
+      - trash_ids:
+          - 32b367365729d530ca1c124a0b180c64 # Bad Dual Groups
+          - 82d40da2bc6923f41e14394075dd4b03 # No-RlsGroup
+          - 06d66ab109d4d2eddb2794d21526d140 # Retags
+          - 1b3994c551cbb92a2c781af061f4ab44 # Scene
+        assign_scores_to:
+          - name: WEB-1080p
+          - name: WEB-2160p
+
+    # General-purpose stock TRaSH profiles - replaced the old hand-named
+    # "Unlimited" profile (see top-of-file comment). Existing general-library
+    # shows get reassigned to WEB-2160p (highest ceiling, closest match to
+    # Unlimited's old permissiveness); WEB-1080p exists as the lower stock
+    # tier for anyone who wants to cap a show below 2160p later.
+    #
+    # "Low Quality" - user-defined (no trash_id, guide has no stock SD/720p
+    # profile), added 2026-07-18 as a third selectable tier for small file
+    # sizes: WEB/HDTV only, 720p ceiling, Bluray/Remux/1080p+/2160p omitted
+    # entirely so they come back disabled (confirmed via recyclarr's own
+    # QualityItemOrganizer - qualities left out of this list are explicitly
+    # set Allowed=false, not merely reordered). Same shared-instance
+    # quality_definition caveat as the profiles above applies here too -
+    # this profile controls resolution/source tier only, not an independent
+    # file-size ceiling.
+    quality_profiles:
+      - trash_id: 72dae194fc92bf828f32cde7744e51a1 # WEB-1080p
+      - trash_id: d1498e7d189fbe6c7110ceaabb7473e6 # WEB-2160p
+      - name: Low Quality
+        upgrade:
+          allowed: true
+          until_quality: WEB 720p
+        qualities:
+          - name: WEB 720p
+            qualities:
+              - WEBRip-720p
+              - WEBDL-720p
+          - name: HDTV-720p
+          - name: WEB 480p
+            qualities:
+              - WEBRip-480p
+              - WEBDL-480p
+          - name: SDTV
+
+radarr:
+  movies:
+    base_url: http://radarr:7878
+    api_key: !env_var RADARR_API_KEY
+
+    quality_definition:
+      type: movie
+
+    # Obfuscated deliberately excluded, unlike Recyclarr's own stock template:
+    # TRaSH Guides' own cf-description explicitly says "if you're using
+    # Usenet, DO NOT use this Custom Format" - obfuscated (randomly-named)
+    # NZBs are how legitimate Usenet indexers dodge DMCA takedowns on
+    # popular reposts, so rejecting them works against this stack's
+    # Usenet-only design rather than for it. Was scored -10000 here until
+    # this fix; if it's ever needed again, its trash_id is
+    # 7357cf5161efbf8c4d5d0c30b4815ee2.
+    custom_formats:
+      - trash_ids:
+          - b6832f586342ef70d9c128d40c07b872 # Bad Dual Groups
+          - ae9b7c9ebde1f3bd336a8cbd1ec4c5e5 # No-RlsGroup
+          - 5c44f52a8714fdd79bb4d98e2673be1f # Retags
+          - f537cf427b64c38c8e36298f657e4828 # Scene
+        assign_scores_to:
+          - name: HD Bluray + WEB
+          - name: Remux + WEB 2160p
+
+    # General-purpose stock TRaSH profiles - replaced the old hand-named
+    # "Unlimited" profile (see top-of-file comment). Existing general-library
+    # movies get reassigned to Remux + WEB 2160p (highest ceiling, closest
+    # match to Unlimited's old permissiveness); HD Bluray + WEB exists as the
+    # lower stock tier for anyone who wants to cap a movie below remux later.
+    #
+    # "Low Quality" - user-defined (no trash_id, guide has no stock SD/720p
+    # profile), added 2026-07-18 as a third selectable tier for small file
+    # sizes: WEB/HDTV only, 720p ceiling, Bluray/Remux/1080p+/2160p omitted
+    # entirely so they come back disabled (confirmed via recyclarr's own
+    # QualityItemOrganizer - qualities left out of this list are explicitly
+    # set Allowed=false, not merely reordered). Same shared-instance
+    # quality_definition caveat as the profiles above applies here too -
+    # this profile controls resolution/source tier only, not an independent
+    # file-size ceiling.
+    quality_profiles:
+      - trash_id: d1d67249d3890e49bc12e275d989a7e9 # HD Bluray + WEB
+      - trash_id: fd161a61e3ab826d3a22d53f935696dd # Remux + WEB 2160p
+      - name: Low Quality
+        upgrade:
+          allowed: true
+          until_quality: WEB 720p
+        qualities:
+          - name: WEB 720p
+            qualities:
+              - WEBRip-720p
+              - WEBDL-720p
+          - name: HDTV-720p
+          - name: WEB 480p
+            qualities:
+              - WEBRip-480p
+              - WEBDL-480p
+          - name: SDTV
