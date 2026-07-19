@@ -205,6 +205,29 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-arr-unstick-importing",
+    "Description": "Verify + clear queue items stuck mid-import (blocklists the ones that fail a read test)",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/unstick-importing",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": true,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
     "Name": "stack-backlog-status",
     "Description": "Show every app's wanted/missing backlog with a throughput-projected ETA",
     "Method": "GET",
@@ -334,29 +357,6 @@
     "LogContainer": "{2}"
   },
   {
-    "Name": "stack-content-audit",
-    "Description": "Find /mnt/zurg content untracked by the matching *arr app",
-    "Method": "GET",
-    "PathTemplate": "/api/content-audit/{1}",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "movies/shows",
-        "Choices": [
-          "movies",
-          "shows"
-        ],
-        "Optional": false,
-        "Default": "",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-cutoff-unmet",
     "Description": "List items below quality cutoff in Radarr/Sonarr",
     "Method": "GET",
@@ -393,52 +393,6 @@
     "LogContainer": "{1}"
   },
   {
-    "Name": "stack-decypharr-health",
-    "Description": "Directly check a Decypharr instance's own health",
-    "Method": "GET",
-    "PathTemplate": "/api/decypharr/health/{1}",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "decypharr/decypharr-alldebrid",
-        "Choices": [
-          "decypharr",
-          "decypharr-alldebrid"
-        ],
-        "Optional": false,
-        "Default": "",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "{1}"
-  },
-  {
-    "Name": "stack-decypharr-torrents",
-    "Description": "List active items in a Decypharr instance queue",
-    "Method": "GET",
-    "PathTemplate": "/api/decypharr/{1}/torrents",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "decypharr/decypharr-alldebrid",
-        "Choices": [
-          "decypharr",
-          "decypharr-alldebrid"
-        ],
-        "Optional": false,
-        "Default": "",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "{1}"
-  },
-  {
     "Name": "stack-disk-usage",
     "Description": "Per-app config/ directory size, largest first",
     "Method": "GET",
@@ -448,44 +402,6 @@
     "Confirm": false,
     "BodyMode": "",
     "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-grab",
-    "Description": "Add a hash to Decypharr for download (pair with stack-zilean-search)",
-    "Method": "POST",
-    "PathTemplate": "/api/decypharr/grab",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "info-hash",
-        "Choices": null,
-        "Optional": false,
-        "Default": "",
-        "Rest": false
-      },
-      {
-        "Name": "title",
-        "Choices": null,
-        "Optional": true,
-        "Default": "",
-        "Rest": true
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "json",
-    "BodyFields": [
-      {
-        "Key": "hash",
-        "ArgName": "info-hash",
-        "Array": false
-      },
-      {
-        "Key": "title",
-        "ArgName": "title",
-        "Array": false
-      }
-    ],
     "LogContainer": ""
   },
   {
@@ -565,8 +481,14 @@
       }
     ],
     "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "url",
+        "ArgName": "letterboxd-film-url",
+        "Array": false
+      }
+    ],
     "LogContainer": ""
   },
   {
@@ -585,8 +507,14 @@
       }
     ],
     "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "url",
+        "ArgName": "letterboxd-collection-url",
+        "Array": false
+      }
+    ],
     "LogContainer": ""
   },
   {
@@ -612,7 +540,7 @@
       }
     ],
     "Confirm": false,
-    "BodyMode": "",
+    "BodyMode": "letterboxd-filmography",
     "BodyFields": null,
     "LogContainer": ""
   },
@@ -632,8 +560,14 @@
       }
     ],
     "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "url",
+        "ArgName": "letterboxd-list-url",
+        "Array": false
+      }
+    ],
     "LogContainer": ""
   },
   {
@@ -644,7 +578,7 @@
     "Query": null,
     "Args": null,
     "Confirm": false,
-    "BodyMode": "",
+    "BodyMode": "letterboxd-popular",
     "BodyFields": null,
     "LogContainer": ""
   },
@@ -664,8 +598,14 @@
       }
     ],
     "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "url",
+        "ArgName": "letterboxd-user-films-url",
+        "Array": false
+      }
+    ],
     "LogContainer": ""
   },
   {
@@ -684,8 +624,14 @@
       }
     ],
     "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "url",
+        "ArgName": "letterboxd-watchlist-url",
+        "Array": false
+      }
+    ],
     "LogContainer": ""
   },
   {
@@ -736,8 +682,14 @@
       }
     ],
     "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "list_url",
+        "ArgName": "mdblist-list-url",
+        "Array": false
+      }
+    ],
     "LogContainer": ""
   },
   {
@@ -1248,52 +1200,12 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-zilean-search",
-    "Description": "Search Zilean cached-hash index directly",
-    "Method": "POST",
-    "PathTemplate": "/api/zilean/search",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "query",
-        "Choices": null,
-        "Optional": false,
-        "Default": "",
-        "Rest": true
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "json",
-    "BodyFields": [
-      {
-        "Key": "query",
-        "ArgName": "query",
-        "Array": false
-      }
-    ],
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-zurg-classify",
-    "Description": "Test a filename against Zurg's current content-routing config",
+    "Name": "stack-plex-tmdb-missing",
+    "Description": "Flag Plex items with no TMDb match, so Kometa can't apply metadata to them",
     "Method": "GET",
-    "PathTemplate": "/api/zurg/classify",
-    "Query": [
-      {
-        "Key": "filename",
-        "ArgName": "filename",
-        "Literal": ""
-      }
-    ],
-    "Args": [
-      {
-        "Name": "filename",
-        "Choices": null,
-        "Optional": false,
-        "Default": "",
-        "Rest": true
-      }
-    ],
+    "PathTemplate": "/api/plex/tmdb-missing",
+    "Query": null,
+    "Args": null,
     "Confirm": false,
     "BodyMode": "",
     "BodyFields": null,
