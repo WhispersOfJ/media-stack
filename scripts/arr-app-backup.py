@@ -28,10 +28,13 @@ DISCORD_RED = 0xED4245
 
 # Command polling: each app's own backup zip is small (a few MB at most,
 # see backup-config.sh's exclusions for why the raw config dir is so much
-# bigger), so this should complete in well under the timeout below in
-# normal operation.
+# bigger), so this normally completes in seconds - but a 60s timeout was
+# confirmed too tight live: Sonarr's own instance tracks ~300k episode
+# records, and both apps have been observed at 80-111% CPU around backup
+# time (03:40 daily), which pushes the native Backup command itself past
+# 60s. Raised with real headroom rather than tightened further.
 POLL_INTERVAL_SECONDS = 3
-POLL_TIMEOUT_SECONDS = 60
+POLL_TIMEOUT_SECONDS = 240
 
 
 def env_get(key):
