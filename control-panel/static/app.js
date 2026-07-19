@@ -1,8 +1,8 @@
 /* Control Panel front end — no build step, no dependencies.
-   One page, one origin: the dashboard widgets below and the Operator
-   Console (search-any-of-66-commands runner, folded in from the former
-   standalone stack-web project) share this same file, the same log
-   panel, and the same telemetry rail. */
+   One page, several sidebar-switched sections: Overview, Arr fleet,
+   Containers, Maintenance, Console (search-any-of-N-commands runner),
+   and Access (quicklinks). All share this one file, the same log panel,
+   and the same sidebar container-status list. */
 
 const ICONS = {
   bolt: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
@@ -10,10 +10,11 @@ const ICONS = {
   trash: '<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>',
   database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0018 0V5"/><path d="M3 12a9 3 0 0018 0"/>',
   broom: '<path d="M9.59 4.59A2 2 0 1111 8H2"/><path d="M12.59 11.59A2 2 0 1114 15H2"/><path d="M17.73 7.73A2.5 2.5 0 1119.5 12H2"/>',
+  restart: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>',
 };
 
 function svg(name) {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ""}</svg>`;
 }
 
 const PRIMARY_ACTIONS = [
@@ -65,33 +66,30 @@ const ARR_APPS = [
   { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
 ];
 
-/* Every service's own web UI - replaces Heimdall/Homepage as the link
-   launcher, so both were removed from docker-compose.yml. Port list
-   mirrors the "Bringing the stack up" table in README.md; `id` matches
-   the container name so status dots can reuse /api/status's data. */
+/* Every service's own web UI. Port list mirrors the "Bringing the stack
+   up" table in README.md; `id` matches the container name so status dots
+   can reuse /api/status's data. Torrent/debrid-era entries (Zilean,
+   Decypharr x2, Zurg, Byparr) were removed with those services in
+   v11.0.0 — nothing left in this stack still listens on those ports. */
 const QUICK_LINKS = [
   { id: "plex", label: "Plex", port: 32400, path: "/web" },
   { id: "prowlarr", label: "Prowlarr", port: 9696 },
-  { id: "zilean", label: "Zilean", port: 8181 },
-  { id: "decypharr", label: "Decypharr", port: 8282 },
-  { id: "decypharr-alldebrid", label: "Decypharr (AllDebrid)", port: 8283 },
-  { id: "zurg", label: "Zurg", port: 9999 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
   { id: "nzbdav", label: "NzbDAV", port: 3001 },
   { id: "seerr", label: "Seerr", port: 5055 },
-  { id: "byparr", label: "Byparr", port: 8191 },
   { id: "tautulli", label: "Tautulli", port: 8182 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
   { id: "neutarr", label: "NeutArr", port: 9705 },
   { id: "maintainerr", label: "Maintainerr", port: 6246 },
+  { id: "beszel", label: "Beszel", port: 8090 },
 ];
 
 function buildQuickLinks() {
   const container = document.getElementById("quicklinks");
   container.innerHTML = QUICK_LINKS.map((svc) => {
     const url = `${location.protocol}//${location.hostname}:${svc.port}${svc.path || ""}`;
-    return `<a class="quicklink" href="${url}" target="_blank" rel="noopener"><span class="quicklink-dot unknown" id="qdot-${svc.id}"></span>${escapeHtml(svc.label)}</a>`;
+    return `<a class="quicklink" href="${url}" target="_blank" rel="noopener"><span class="dot unknown" id="qdot-${svc.id}"></span>${escapeHtml(svc.label)}</a>`;
   }).join("");
 }
 
@@ -139,6 +137,37 @@ function setStatusLine(el, state, text) {
   el.textContent = text;
   el.className = el.className.replace(/state-\S+/g, "").trim();
   el.classList.add(`state-${state}`);
+}
+
+/* ---------- Sidebar navigation: swap page-sections, no routing lib ---------- */
+const PAGE_META = {
+  overview: { title: "Overview", sub: "System vitals and rapid actions" },
+  arr: { title: "Arr fleet", sub: "Radarr and Sonarr — every command, one click away" },
+  containers: { title: "Containers", sub: "Every container in this compose project, live from Docker" },
+  maintenance: { title: "Maintenance", sub: "Poster sync and whole-stack restart" },
+  console: { title: "Operator console", sub: "Search-any-command runner for the full stack-* manifest" },
+  access: { title: "Access", sub: "Every service's own web UI" },
+};
+
+function showPage(name) {
+  if (!PAGE_META[name]) name = "overview";
+  document.querySelectorAll(".page-section").forEach((el) => {
+    el.hidden = el.id !== `page-${name}`;
+  });
+  document.querySelectorAll(".sidebar-nav-item").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.page === name);
+  });
+  document.getElementById("page-title").textContent = PAGE_META[name].title;
+  document.getElementById("page-subtitle").textContent = PAGE_META[name].sub;
+  if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
+}
+
+function wireSidebarNav() {
+  document.querySelectorAll(".sidebar-nav-item[data-page]").forEach((btn) => {
+    btn.addEventListener("click", () => showPage(btn.dataset.page));
+  });
+  window.addEventListener("hashchange", () => showPage((location.hash || "").slice(1)));
+  showPage((location.hash || "").slice(1) || "overview");
 }
 
 /* ---------- Primary action cards ---------- */
@@ -207,32 +236,256 @@ async function loadKometaLibraries() {
   }
 }
 
-/* ---------- *arr rows ---------- */
-function buildArrList() {
-  const list = document.getElementById("arr-list");
+/* =====================================================================
+   Generic inline result rendering — used by every arr-card view button,
+   the fleet-wide toolbar, and (indirectly) the manual-import panel.
+   Turns whatever shape a stack-* GET returns (raw array, or the {ok,
+   message, ...extra} shape ok() wraps everything else in) into real
+   tables/definition-lists instead of a JSON dump, recursing one level
+   into nested dicts (e.g. queue-status's {queues: {radarr: {...}}}) so
+   the common two-deep API shapes in this file render as real tables
+   too, not one big stringified blob.
+   ===================================================================== */
+const TABLE_COLUMN_PRIORITY = ["title", "name", "series", "episode", "label", "status", "message"];
+
+function renderKv(el, obj) {
+  const dl = document.createElement("dl");
+  dl.className = "kv-grid";
+  for (const key of Object.keys(obj)) {
+    const v = obj[key];
+    const dt = document.createElement("dt");
+    dt.textContent = key;
+    const dd = document.createElement("dd");
+    dd.textContent = v && typeof v === "object" ? JSON.stringify(v) : String(v);
+    dl.appendChild(dt);
+    dl.appendChild(dd);
+  }
+  el.appendChild(dl);
+}
+
+function renderTable(el, rows) {
+  if (!rows.length) {
+    el.innerHTML += `<div class="hint">No results.</div>`;
+    return;
+  }
+  if (typeof rows[0] !== "object" || rows[0] === null) {
+    const ul = document.createElement("ul");
+    ul.className = "result-list";
+    for (const v of rows) {
+      const li = document.createElement("li");
+      li.textContent = String(v);
+      ul.appendChild(li);
+    }
+    el.appendChild(ul);
+    return;
+  }
+  const keySet = new Set();
+  for (const row of rows) for (const k of Object.keys(row || {})) keySet.add(k);
+  const keys = [
+    ...TABLE_COLUMN_PRIORITY.filter((k) => keySet.has(k)),
+    ...[...keySet].filter((k) => !TABLE_COLUMN_PRIORITY.includes(k)).sort(),
+  ];
+  const wrap = document.createElement("div");
+  wrap.className = "result-table-wrap";
+  const table = document.createElement("table");
+  table.className = "result-table";
+  const thead = document.createElement("thead");
+  thead.innerHTML = `<tr>${keys.map((k) => `<th>${escapeHtml(k)}</th>`).join("")}</tr>`;
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = keys
+      .map((k) => {
+        const v = (row || {})[k];
+        const text = v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+        return `<td class="${typeof v === "number" ? "num" : ""}">${escapeHtml(text)}</td>`;
+      })
+      .join("");
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  el.appendChild(wrap);
+}
+
+function resultSubhead(el, key) {
+  const h = document.createElement("div");
+  h.className = "result-subhead";
+  h.textContent = key;
+  el.appendChild(h);
+}
+
+function renderValue(el, key, value, depth) {
+  if (value === null || value === undefined || value === "") return false;
+  if (Array.isArray(value)) {
+    if (!value.length) return false;
+    resultSubhead(el, key);
+    renderTable(el, value);
+    return true;
+  }
+  if (typeof value === "object") {
+    if (!Object.keys(value).length) return false;
+    resultSubhead(el, key);
+    if (depth >= 2) {
+      renderKv(el, value);
+      return true;
+    }
+    let any = false;
+    for (const k of Object.keys(value).sort()) {
+      any = renderValue(el, k, value[k], depth + 1) || any;
+    }
+    if (!any) el.innerHTML += `<div class="hint">Empty.</div>`;
+    return true;
+  }
+  if (typeof value === "string" && value.includes("\n")) {
+    resultSubhead(el, key);
+    const pre = document.createElement("pre");
+    pre.className = "log-block";
+    pre.textContent = value;
+    el.appendChild(pre);
+    return true;
+  }
+  renderKv(el, { [key]: value });
+  return true;
+}
+
+function renderResultPanel(el, data) {
+  el.innerHTML = "";
+  if (Array.isArray(data)) {
+    renderTable(el, data);
+    return;
+  }
+  data = data || {};
+  let any = false;
+  if (data.message) {
+    const p = document.createElement("p");
+    p.className = "result-summary";
+    p.textContent = data.message;
+    el.appendChild(p);
+    any = true;
+  }
+  for (const key of Object.keys(data).sort()) {
+    if (key === "message" || key === "ok" || key === "time") continue;
+    any = renderValue(el, key, data[key], 0) || any;
+  }
+  if (!any) el.innerHTML = `<div class="hint">No data.</div>`;
+}
+
+async function fetchAndRender(el, method, url, body) {
+  el.hidden = false;
+  el.innerHTML = `<div class="hint">Loading…</div>`;
+  const opts = { method };
+  if (body !== undefined) {
+    opts.headers = { "Content-Type": "application/json" };
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, opts);
+  const raw = await res.text();
+  let parsed = null;
+  if (raw) {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (_) {
+      parsed = null;
+    }
+  }
+  if (!res.ok) {
+    const msg = (parsed && (parsed.detail?.message || parsed.message)) || raw || `Request failed (${res.status})`;
+    el.innerHTML = `<div class="hint error">${escapeHtml(msg)}</div>`;
+    throw new Error(msg);
+  }
+  const payload = parsed && parsed.detail && typeof parsed.detail === "object" ? parsed.detail : parsed;
+  renderResultPanel(el, payload);
+  return payload;
+}
+
+/* ---------- Arr fleet: fleet-wide toolbar ---------- */
+const ARR_FLEET_ACTIONS = [
+  { id: "queue-status", label: "Queue status", path: "/api/queue-status" },
+  { id: "queue-errors", label: "Queue errors", path: "/api/arr/queue-errors" },
+  { id: "command-queue-summary", label: "Command queue summary", path: "/api/arr/command-queue-summary" },
+  { id: "backlog-status", label: "Backlog ETA", path: "/api/backlog-status" },
+  { id: "prowlarr-indexers", label: "Prowlarr indexers", path: "/api/prowlarr/indexers" },
+];
+
+function buildArrFleetToolbar() {
+  const bar = document.getElementById("arr-fleet-toolbar");
+  const panel = document.getElementById("arr-fleet-panel");
+  if (!bar || !panel) return;
+  bar.innerHTML = ARR_FLEET_ACTIONS.map((a) => `<button class="btn-ghost" data-fleet="${a.id}" type="button">${a.label}</button>`).join("");
+  bar.querySelectorAll("[data-fleet]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const wasOpen = btn.classList.contains("active") && !panel.hidden;
+      bar.querySelectorAll("[data-fleet]").forEach((b) => b.classList.remove("active"));
+      if (wasOpen) {
+        panel.hidden = true;
+        return;
+      }
+      btn.classList.add("active");
+      const action = ARR_FLEET_ACTIONS.find((a) => a.id === btn.dataset.fleet);
+      logLine("pending", `${action.label} — requested`);
+      try {
+        await fetchAndRender(panel, "GET", action.path);
+        logLine("ok", `${action.label} — loaded`);
+      } catch (e) {
+        logLine("err", `${action.label} — ${e.message}`);
+      }
+    });
+  });
+}
+
+/* ---------- Arr fleet: per-app cards ---------- */
+const ARR_VIEWS = [
+  { id: "backlog", label: "Backlog", path: (id) => `/api/arr/${id}/command-backlog` },
+  { id: "missing-aired", label: "Missing aired", path: (id) => `/api/arr/${id}/missing-aired` },
+  { id: "cutoff-unmet", label: "Cutoff unmet", path: (id) => `/api/arr/${id}/cutoff-unmet?limit=25` },
+  { id: "recently-added", label: "Recently added", path: (id) => `/api/arr/${id}/recently-added?limit=15` },
+  { id: "import-lists", label: "Import lists", path: (id) => `/api/arr/${id}/import-lists` },
+  { id: "logs", label: "Logs", path: (id) => `/api/arr/${id}/logs?lines=150` },
+];
+
+function buildArrFleet() {
+  const wrap = document.getElementById("arr-fleet");
+  if (!wrap) return;
   for (const app of ARR_APPS) {
-    const row = document.createElement("div");
-    row.className = "arr-row";
-    row.innerHTML = `
-      <div class="arr-name"><span class="lamp unknown" id="lamp-${app.id}"></span>${app.label}</div>
-      <form class="arr-search" data-app="${app.id}">
+    const openUrl = `${location.protocol}//${location.hostname}:${app.port}`;
+    const card = document.createElement("div");
+    card.className = "arr-card";
+    card.innerHTML = `
+      <div class="arr-card-head">
+        <div class="arr-card-name"><span class="dot unknown" id="arr-dot-${app.id}"></span>${app.label}</div>
+        <a class="arr-card-link" href="${openUrl}" target="_blank" rel="noopener">open UI ↗</a>
+        <div class="arr-card-status" id="arr-status-${app.id}">—</div>
+      </div>
+      <form class="arr-card-search" data-app="${app.id}">
         <input type="search" placeholder="Search ${app.label}…" aria-label="Search ${app.label}" required>
         <button class="btn-ghost" type="submit">Search</button>
       </form>
-      <div class="arr-status" id="arr-status-${app.id}">—</div>
-      <div class="arr-actions">
-        <button class="btn-ghost" data-action="rss-sync" type="button">RSS sync</button>
-        <button class="btn-ghost" data-action="search-missing" type="button">Search missing</button>
+      <div class="arr-actions-row">
+        <span class="arr-actions-row-label">Run</span>
+        <button class="btn-primary" data-action="rss-sync" type="button">RSS sync</button>
+        <button class="btn-primary" data-action="search-missing" type="button">Search missing</button>
         ${app.queue ? `<button class="btn-ghost" data-unstick type="button">Unstick</button>` : ""}
-        ${app.queue ? `<button class="btn-ghost" data-import-toggle type="button">Manual import</button>` : ""}
+        ${app.queue ? `<button class="btn-ghost" data-unstick-importing type="button">Unstick importing</button>` : ""}
       </div>
+      <div class="arr-actions-row">
+        <span class="arr-actions-row-label">View</span>
+        ${ARR_VIEWS.map((v) => `<button class="btn-ghost" data-view="${v.id}" type="button">${v.label}</button>`).join("")}
+        ${app.queue ? `<button class="btn-ghost" data-view="manual-import" type="button">Manual import</button>` : ""}
+      </div>
+      <div class="arr-card-panel result-scroll" id="arr-panel-${app.id}" hidden></div>
     `;
-    const status = row.querySelector(".arr-status");
-    row.querySelectorAll(".arr-actions button[data-action]").forEach((btn) => {
+    wrap.appendChild(card);
+
+    const status = card.querySelector(".arr-card-status");
+    const panel = card.querySelector(`#arr-panel-${app.id}`);
+
+    card.querySelectorAll("[data-action]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const action = btn.dataset.action;
         const label = action === "rss-sync" ? "RSS sync" : "Search missing";
-        row.querySelectorAll(".arr-actions button[data-action]").forEach((b) => (b.disabled = true));
+        card.querySelectorAll("[data-action]").forEach((b) => (b.disabled = true));
         setStatusLine(status, "pending", `${label}…`);
         logLine("pending", `${app.label} ${label} — requested`);
         try {
@@ -243,37 +496,55 @@ function buildArrList() {
           setStatusLine(status, "error", e.message);
           logLine("err", `${app.label} ${label} — ${e.message}`);
         } finally {
-          row.querySelectorAll(".arr-actions button[data-action]").forEach((b) => (b.disabled = false));
+          card.querySelectorAll("[data-action]").forEach((b) => (b.disabled = false));
         }
       });
     });
-    const searchForm = row.querySelector(".arr-search");
+
+    setupUnstick(app, card, status);
+    if (app.queue) setupUnstickImporting(app, card, status);
+
+    const searchForm = card.querySelector(".arr-card-search");
     searchForm.addEventListener("submit", (e) => {
       e.preventDefault();
       const input = searchForm.querySelector("input");
       const term = input.value.trim();
       if (!term) return;
-      const url = `${location.protocol}//${location.hostname}:${app.port}/add/new?term=${encodeURIComponent(term)}`;
-      window.open(url, "_blank", "noopener");
+      window.open(`${openUrl}/add/new?term=${encodeURIComponent(term)}`, "_blank", "noopener");
       logLine("ok", `${app.label} search — opened "${term}" in a new tab`);
       input.value = "";
     });
-    list.appendChild(row);
 
-    if (app.queue) {
-      const panel = document.createElement("div");
-      panel.className = "import-panel";
-      panel.hidden = true;
-      list.appendChild(panel);
-      setupUnstick(app, row, status);
-      setupManualImportToggle(app, row, panel);
-    }
+    card.querySelectorAll("[data-view]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const wasOpen = btn.classList.contains("active") && !panel.hidden;
+        card.querySelectorAll("[data-view]").forEach((b) => b.classList.remove("active"));
+        if (wasOpen) {
+          panel.hidden = true;
+          return;
+        }
+        btn.classList.add("active");
+        if (btn.dataset.view === "manual-import") {
+          await loadManualImportCandidates(app, panel);
+          return;
+        }
+        const view = ARR_VIEWS.find((v) => v.id === btn.dataset.view);
+        logLine("pending", `${app.label} ${view.label} — requested`);
+        try {
+          await fetchAndRender(panel, "GET", view.path(app.id));
+          logLine("ok", `${app.label} ${view.label} — loaded`);
+        } catch (e) {
+          logLine("err", `${app.label} ${view.label} — ${e.message}`);
+        }
+      });
+    });
   }
 }
 
 /* ---------- Unstick: sweep every stuck (warning/error) queue item ---------- */
-function setupUnstick(app, row, status) {
-  const btn = row.querySelector("[data-unstick]");
+function setupUnstick(app, card, status) {
+  const btn = card.querySelector("[data-unstick]");
+  if (!btn) return;
   armButton(btn, "Unstick", "Confirm — removes + blocklists", async () => {
     btn.disabled = true;
     setStatusLine(status, "pending", "Unsticking…");
@@ -291,18 +562,31 @@ function setupUnstick(app, row, status) {
   });
 }
 
-/* ---------- Manual import panel ---------- */
-function setupManualImportToggle(app, row, panel) {
-  const toggleBtn = row.querySelector("[data-import-toggle]");
-  toggleBtn.addEventListener("click", async () => {
-    const opening = panel.hidden;
-    panel.hidden = !opening;
-    if (opening) await loadManualImportCandidates(app, panel);
+/* ---------- Unstick importing: force-verify + clear items stuck mid-import ---------- */
+function setupUnstickImporting(app, card, status) {
+  const btn = card.querySelector("[data-unstick-importing]");
+  if (!btn) return;
+  armButton(btn, "Unstick importing", "Confirm — verifies + clears", async () => {
+    btn.disabled = true;
+    setStatusLine(status, "pending", "Checking importing downloads…");
+    logLine("pending", `${app.label} unstick importing — requested`);
+    try {
+      const data = await postAction(`/api/arr/${app.id}/unstick-importing`);
+      setStatusLine(status, "success", data.message);
+      logLine("ok", `${app.label} unstick importing — ${data.message}`);
+    } catch (e) {
+      setStatusLine(status, "error", e.message);
+      logLine("err", `${app.label} unstick importing — ${e.message}`);
+    } finally {
+      btn.disabled = false;
+    }
   });
 }
 
+/* ---------- Manual import panel ---------- */
 async function loadManualImportCandidates(app, panel) {
-  panel.innerHTML = `<div class="zilean-hint">Scanning stuck downloads for importable files…</div>`;
+  panel.hidden = false;
+  panel.innerHTML = `<div class="hint">Scanning stuck downloads for importable files…</div>`;
   logLine("pending", `${app.label} manual import — scanning`);
   try {
     const res = await fetch(`/api/arr/${app.id}/manual-import`);
@@ -311,14 +595,14 @@ async function loadManualImportCandidates(app, panel) {
     renderManualImportCandidates(app, panel, items);
     logLine("ok", `${app.label} manual import — found ${items.length} importable file${items.length === 1 ? "" : "s"}`);
   } catch (e) {
-    panel.innerHTML = `<div class="zilean-hint error">${escapeHtml(e.message)}</div>`;
+    panel.innerHTML = `<div class="hint error">${escapeHtml(e.message)}</div>`;
     logLine("err", `${app.label} manual import — ${e.message}`);
   }
 }
 
 function renderManualImportCandidates(app, panel, items) {
   if (!items.length) {
-    panel.innerHTML = `<div class="zilean-hint">No importable files found among currently stuck downloads.</div>`;
+    panel.innerHTML = `<div class="hint">No importable files found among currently stuck downloads.</div>`;
     return;
   }
   panel.innerHTML = items
@@ -326,20 +610,20 @@ function renderManualImportCandidates(app, panel, items) {
       const meta = [item.quality, item.release_group, item.size].filter(Boolean).join(" · ");
       const match = [item.match_title, item.episode].filter(Boolean).join(" — ");
       const rejections = item.rejections.length
-        ? `<span class="import-rejections" title="${escapeHtml(item.rejections.join("; "))}">⚠ ${item.rejections.length} rejection${item.rejections.length === 1 ? "" : "s"}</span>`
+        ? `<span class="result-rejections" title="${escapeHtml(item.rejections.join("; "))}">⚠ ${item.rejections.length} rejection${item.rejections.length === 1 ? "" : "s"}</span>`
         : "";
       return `
-        <div class="zilean-row">
-          <div class="zilean-row-main">
-            <span class="zilean-title">${escapeHtml(match || item.name || "Unknown")}</span>
+        <div class="result-row">
+          <div class="result-row-main">
+            <span class="result-title">${escapeHtml(match || item.name || "Unknown")}</span>
             ${rejections}
-            <span class="zilean-meta">${escapeHtml(meta)}</span>
+            <span class="result-meta">${escapeHtml(meta)}</span>
           </div>
-          <div class="zilean-row-hash">
+          <div class="result-row-actions">
             <code title="${escapeHtml(item.relative_path || "")}">${escapeHtml(item.relative_path || "")}</code>
             <button class="btn-ghost import-run" type="button" data-idx="${i}">Import</button>
           </div>
-          <div class="status-line zilean-row-status" id="import-status-${app.id}-${i}">—</div>
+          <div class="status-line result-row-status" id="import-status-${app.id}-${i}">—</div>
         </div>`;
     })
     .join("");
@@ -367,11 +651,6 @@ function renderManualImportCandidates(app, panel, items) {
 /* ---------- Container grid: full state/health/image/CPU/mem + controls,
    discovered live from Docker via /api/containers rather than a fixed
    list, so a service added to compose shows up here with no code change. */
-const STOP_ICON = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
-const START_ICON = '<polygon points="6 3 20 12 6 21 6 3"/>';
-ICONS.stop = STOP_ICON;
-ICONS.start = START_ICON;
-
 function fmtPercent(v) {
   return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`;
 }
@@ -396,7 +675,7 @@ function containerCardHtml(c, hits) {
   return `
     <div class="container-card" data-name="${escapeHtml(c.name)}" data-state="${escapeHtml(c.state)}">
       <div class="container-card-head">
-        <span class="lamp ${stateClass}"></span>
+        <span class="dot ${stateClass}"></span>
         <span class="container-name">${escapeHtml(c.label)}${c.note ? `<span class="chip-sub">${escapeHtml(c.note)}</span>` : ""}</span>
         <span class="container-health">${escapeHtml(healthLabel)}</span>
       </div>
@@ -420,6 +699,11 @@ function containerCardHtml(c, hits) {
       </div>
     </div>`;
 }
+
+const STOP_ICON = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+const START_ICON = '<polygon points="6 3 20 12 6 21 6 3"/>';
+ICONS.stop = STOP_ICON;
+ICONS.start = START_ICON;
 
 function wireContainerCard(card, c) {
   const startBtn = card.querySelector('[data-act="start"]');
@@ -472,7 +756,7 @@ async function refreshContainerGrid() {
     data = await res.json();
     if (!res.ok) throw new Error("Could not load containers");
   } catch (e) {
-    if (!containerGridBuilt) grid.innerHTML = `<div class="zilean-hint error">Could not load containers.</div>`;
+    if (!containerGridBuilt) grid.innerHTML = `<div class="hint error">Could not load containers.</div>`;
     return;
   }
   const hits = await fetchHitCounts();
@@ -489,160 +773,21 @@ async function refreshContainerGrid() {
   });
   containerGridBuilt = true;
 
-  renderTelemetryRail(data);
+  renderSidebarStatus(data);
 }
 
-/* ---------- Telemetry rail: every container, always visible on the
-   left — folded in from the former stack-web console's own rail, now
+/* ---------- Sidebar status list: every container, always visible,
    fed off the same /api/containers poll the grid already does. ---------- */
-function renderTelemetryRail(data) {
-  const list = document.getElementById("telemetry-list");
+function renderSidebarStatus(data) {
+  const list = document.getElementById("sidebar-status-list");
   if (!list) return;
   const sorted = [...data].sort((a, b) => a.label.localeCompare(b.label));
   list.innerHTML = sorted
     .map((c) => {
       const cls = c.state !== "running" ? "down" : c.health === "unhealthy" ? "down" : c.health === "starting" ? "unknown" : "up";
-      return `<li><span class="lamp ${cls}"></span><span class="name" title="${escapeHtml(c.label)}">${escapeHtml(c.label)}</span></li>`;
+      return `<li><span class="dot ${cls}"></span><span class="name" title="${escapeHtml(c.label)}">${escapeHtml(c.label)}</span></li>`;
     })
     .join("");
-}
-
-/* ---------- Zilean direct search ---------- */
-function buildZileanSearch() {
-  const form = document.getElementById("zilean-search-form");
-  const input = document.getElementById("zilean-search-input");
-  const results = document.getElementById("zilean-results");
-  const btn = form.querySelector("button");
-  const filters = document.getElementById("zilean-filters");
-  const resolutionSelect = document.getElementById("zilean-filter-resolution");
-  const qualitySelect = document.getElementById("zilean-filter-quality");
-  const minSizeInput = document.getElementById("zilean-filter-min-size");
-  const maxSizeInput = document.getElementById("zilean-filter-max-size");
-  const sortSelect = document.getElementById("zilean-filter-sort");
-  const countEl = document.getElementById("zilean-filter-count");
-
-  let allResults = [];
-
-  function populateOptions(select, values) {
-    const current = select.value;
-    select.innerHTML = `<option value="">All</option>` + values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
-    if (values.includes(current)) select.value = current;
-  }
-
-  function applyFilters() {
-    const resolution = resolutionSelect.value;
-    const quality = qualitySelect.value;
-    const minGb = parseFloat(minSizeInput.value);
-    const maxGb = parseFloat(maxSizeInput.value);
-    const sort = sortSelect.value;
-
-    let filtered = allResults.filter((item) => {
-      if (resolution && item.resolution !== resolution) return false;
-      if (quality && item.quality !== quality) return false;
-      const gb = item.size_bytes ? item.size_bytes / 1024 ** 3 : null;
-      if (!Number.isNaN(minGb) && (gb === null || gb < minGb)) return false;
-      if (!Number.isNaN(maxGb) && (gb === null || gb > maxGb)) return false;
-      return true;
-    });
-
-    if (sort === "size-desc") filtered.sort((a, b) => (b.size_bytes || 0) - (a.size_bytes || 0));
-    else if (sort === "size-asc") filtered.sort((a, b) => (a.size_bytes || 0) - (b.size_bytes || 0));
-    else if (sort === "year-desc") filtered.sort((a, b) => (b.year || 0) - (a.year || 0));
-    else if (sort === "name-asc") filtered.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-
-    countEl.textContent = `${filtered.length} of ${allResults.length} shown`;
-    renderZileanResults(results, filtered);
-  }
-
-  [resolutionSelect, qualitySelect, sortSelect].forEach((el) => el.addEventListener("change", applyFilters));
-  [minSizeInput, maxSizeInput].forEach((el) => el.addEventListener("input", applyFilters));
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const query = input.value.trim();
-    if (!query) return;
-    btn.disabled = true;
-    filters.hidden = true;
-    results.innerHTML = `<div class="zilean-hint">Searching…</div>`;
-    logLine("pending", `Zilean search — "${query}"`);
-    try {
-      const data = await postAction("/api/zilean/search", { query });
-      allResults = data;
-      populateOptions(resolutionSelect, [...new Set(data.map((r) => r.resolution).filter(Boolean))].sort());
-      populateOptions(qualitySelect, [...new Set(data.map((r) => r.quality).filter(Boolean))].sort());
-      minSizeInput.value = "";
-      maxSizeInput.value = "";
-      sortSelect.value = "default";
-      filters.hidden = data.length === 0;
-      applyFilters();
-      logLine("ok", `Zilean search — "${query}" returned ${data.length} result${data.length === 1 ? "" : "s"}`);
-    } catch (e2) {
-      results.innerHTML = `<div class="zilean-hint error">${escapeHtml(e2.message)}</div>`;
-      logLine("err", `Zilean search — ${e2.message}`);
-    } finally {
-      btn.disabled = false;
-    }
-  });
-}
-
-function renderZileanResults(container, items) {
-  if (!items.length) {
-    container.innerHTML = `<div class="zilean-hint">No results.</div>`;
-    return;
-  }
-  container.innerHTML = items
-    .map((item, i) => {
-      const meta = [item.resolution, item.quality, item.size].filter(Boolean).join(" · ");
-      const season = item.seasons?.length ? `S${String(item.seasons[0]).padStart(2, "0")}` : "";
-      const episode = item.episodes?.length ? `E${String(item.episodes[0]).padStart(2, "0")}` : "";
-      const badge = [season, episode].filter(Boolean).join("");
-      return `
-        <div class="zilean-row">
-          <div class="zilean-row-main">
-            <span class="zilean-title">${escapeHtml(item.title || "Untitled")}${item.year ? ` (${item.year})` : ""}</span>
-            ${badge ? `<span class="zilean-badge">${badge}</span>` : ""}
-            <span class="zilean-meta">${escapeHtml(meta)}</span>
-          </div>
-          <div class="zilean-row-hash">
-            <code>${escapeHtml(item.hash || "")}</code>
-            <button class="btn-icon" type="button" data-copy="${escapeHtml(item.hash || "")}" title="Copy hash">Copy</button>
-            <button class="btn-ghost zilean-grab" type="button" data-idx="${i}" title="Add to Decypharr (manual category)">Grab</button>
-          </div>
-          <div class="status-line zilean-row-status" id="zilean-status-${i}">—</div>
-        </div>`;
-    })
-    .join("");
-  container.querySelectorAll("button[data-copy]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(btn.dataset.copy);
-        const original = btn.textContent;
-        btn.textContent = "Copied";
-        setTimeout(() => (btn.textContent = original), 1200);
-      } catch (_) {
-        logLine("err", "Clipboard access denied by the browser.");
-      }
-    });
-  });
-  container.querySelectorAll("button.zilean-grab").forEach((btn) => {
-    const item = items[Number(btn.dataset.idx)];
-    const status = document.getElementById(`zilean-status-${btn.dataset.idx}`);
-    armButton(btn, "Grab", "Confirm grab?", async () => {
-      btn.disabled = true;
-      setStatusLine(status, "pending", "Adding to Decypharr…");
-      logLine("pending", `Grab — "${item.title}" requested`);
-      try {
-        const data = await postAction("/api/decypharr/grab", { hash: item.hash, title: item.title });
-        setStatusLine(status, "success", data.message);
-        logLine("ok", `Grab — ${data.message}`);
-      } catch (e) {
-        setStatusLine(status, "error", e.message);
-        logLine("err", `Grab — ${e.message}`);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  });
 }
 
 /* ---------- Arm/confirm guard for real, one-shot side effects ---------- */
@@ -698,25 +843,6 @@ function armIconButton(btn, iconName, onConfirm) {
   });
 }
 
-/* ---------- Overview strip: Zilean hash count, Plex version ---------- */
-async function refreshZileanStats() {
-  const val = document.getElementById("stat-zilean-value");
-  const sub = document.getElementById("stat-zilean-sub");
-  try {
-    const res = await fetch("/api/zilean/stats");
-    const d = await res.json();
-    if (!d.available) {
-      val.textContent = "unavailable";
-      sub.textContent = "";
-      return;
-    }
-    val.textContent = d.total_hashes.toLocaleString();
-    sub.textContent = d.imdb_matched != null ? `${d.imdb_matched.toLocaleString()} IMDB-matched` : "";
-  } catch (_) {
-    /* leave last-known value */
-  }
-}
-
 function buildPlexUpdateCheck() {
   const btn = document.getElementById("plex-check-updates");
   const val = document.getElementById("stat-plex-value");
@@ -765,14 +891,14 @@ function buildDangerZone() {
   });
 }
 
-/* ---------- Status lamps + top HUD connection state ---------- */
+/* ---------- Status dots + sidebar connection state ---------- */
 function setHudConn(up) {
   const dot = document.getElementById("hud-conn-dot");
   const label = document.getElementById("hud-conn-label");
   if (!dot || !label) return;
   dot.classList.remove("up", "down");
   dot.classList.add(up ? "up" : "down");
-  label.textContent = up ? "LINK OK" : "LINK DOWN";
+  label.textContent = up ? "connected" : "disconnected";
 }
 
 async function refreshStatus() {
@@ -790,15 +916,15 @@ async function refreshStatus() {
     const isStarting = info.state === "running" && info.health === "starting";
     const stateClass = isUp ? "up" : isStarting ? "unknown" : "down";
 
-    const lamp = document.getElementById(`lamp-${name}`);
-    if (lamp) {
-      lamp.classList.remove("up", "down", "unknown");
-      lamp.classList.add(stateClass);
-    }
-    const dot = document.getElementById(`qdot-${name}`);
+    const dot = document.getElementById(`arr-dot-${name}`);
     if (dot) {
       dot.classList.remove("up", "down", "unknown");
       dot.classList.add(stateClass);
+    }
+    const qdot = document.getElementById(`qdot-${name}`);
+    if (qdot) {
+      qdot.classList.remove("up", "down", "unknown");
+      qdot.classList.add(stateClass);
     }
   }
 }
@@ -820,17 +946,16 @@ function tickClock() {
   const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
   const s = String(elapsed % 60).padStart(2, "0");
   const up = document.getElementById("uptime");
-  if (up) up.textContent = `UP ${h}:${m}:${s}`;
+  if (up) up.textContent = `up ${h}:${m}:${s}`;
 }
 
 /* =====================================================================
-   Operator console — folded in from the former standalone stack-web
-   project. Same list -> args -> confirm -> run screen flow, same
-   command manifest (static/commands.json, a straight copy of
-   stack-web's registry.json), but every request now goes same-origin
-   straight to this app's own API instead of through a separate Rust
-   proxy on a second port — the CSRF/Origin check in app.py's
-   verify_same_origin middleware is satisfied for free because of that.
+   Operator console — same list -> args -> confirm -> run screen flow,
+   same command manifest (static/commands.json), every request goes
+   same-origin straight to this app's own API. The Arr fleet page above
+   covers the day-to-day Radarr/Sonarr actions with one click each; this
+   is the full stack-* manifest for everything else (backups, disk
+   usage, image checks, and the long tail).
    ===================================================================== */
 
 const consoleScreens = {
@@ -999,8 +1124,8 @@ function resolveLogContainer(cmd, values) {
   return v ? v : null;
 }
 
-/* ---- request builder: a JS port of stack-web's commands.rs Prepare() +
-   exec.rs, now targeting this app's own same-origin API directly ---- */
+/* ---- request builder: JS port of stack-web's commands.rs Prepare() +
+   exec.rs, targeting this app's own same-origin API directly ---- */
 function pathEscape(s) {
   let out = "";
   for (const ch of unescape(encodeURIComponent(s))) {
@@ -1123,9 +1248,32 @@ async function runLogLevelsReset(values) {
   return callApi("GET", "/api/log-levels", null);
 }
 
+/* Letterboxd's grid-scrape endpoints all take one JSON field (`url`), but
+   two of the manifest entries collect it differently: filmography splits
+   it into role+slug that need joining into a URL, and popular takes no
+   arg at all (always the same base films page) - neither fits the
+   generic {ArgName -> BodyFields.Key} mapping every other command uses,
+   so (like manual-import-by-index and log-levels-reset above) these get
+   their own small BodyMode handler instead of stretching that mapping to
+   cover a shape it wasn't built for. */
+async function runLetterboxdFilmography(cmd, values) {
+  const role = (values[0] || "").trim();
+  const slug = (values[1] || "").trim();
+  if (!role || !slug) throw new Error("both role and slug are required");
+  const prepared = prepareCommand(cmd, []);
+  return callApi(cmd.Method, prepared.path, JSON.stringify({ url: `https://letterboxd.com/${role}/${slug}/` }));
+}
+
+async function runLetterboxdPopular(cmd) {
+  const prepared = prepareCommand(cmd, []);
+  return callApi(cmd.Method, prepared.path, JSON.stringify({ url: "https://letterboxd.com/films/" }));
+}
+
 async function execCommand(cmd, values) {
   if (cmd.BodyMode === "manual-import-by-index") return runManualImportByIndex(cmd, values);
   if (cmd.BodyMode === "log-levels-reset") return runLogLevelsReset(values);
+  if (cmd.BodyMode === "letterboxd-filmography") return runLetterboxdFilmography(cmd, values);
+  if (cmd.BodyMode === "letterboxd-popular") return runLetterboxdPopular(cmd);
   const prepared = prepareCommand(cmd, values);
   return callApi(prepared.method, prepared.path, prepared.body);
 }
@@ -1329,10 +1477,11 @@ function buildPosterSync() {
 }
 
 /* ---------- Boot ---------- */
+wireSidebarNav();
 buildQuickLinks();
 buildPrimaryGrid();
-buildArrList();
-buildZileanSearch();
+buildArrFleetToolbar();
+buildArrFleet();
 buildPosterSync();
 buildDangerZone();
 buildPlexUpdateCheck();
@@ -1343,6 +1492,4 @@ refreshStatus();
 setInterval(refreshStatus, 20000);
 refreshContainerGrid();
 setInterval(refreshContainerGrid, 15000);
-refreshZileanStats();
-setInterval(refreshZileanStats, 60000);
-logLine("ok", "Control panel ready — operator console fused in, no second page needed.");
+logLine("ok", "Control panel ready.");
