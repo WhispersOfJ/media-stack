@@ -1,0 +1,9 @@
+[Unit]
+Description=Prune Failed entries from nzbdav's history (unblocks retry of the same release)
+After=media-stack.service
+OnFailure=notify-failure@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Stack
+ExecStart=/usr/bin/python3 %h/Stack/scripts/nzbdav-prune-history.py
