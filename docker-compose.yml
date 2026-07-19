@@ -44,276 +44,6 @@ services:
     mem_reservation: 128m
     cpus: 2
 
-  zilean-postgres:
-    restart: unless-stopped
-    logging: *common-logging
-    image: postgres:18-alpine
-    container_name: zilean-postgres
-    networks: [stacknet]
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
-      POSTGRES_DB: zilean
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      # postgres 18+ changed the expected mount point up one level (was /var/lib/postgresql/data);
-      # PGDATA is now a version-specific subdir it manages itself (/var/lib/postgresql/18/docker).
-      - ./config/zilean-postgres:/var/lib/postgresql
-    # Postgres's own defaults are hardware-agnostic (128MB shared_buffers etc)
-    # regardless of host. Sized for this host's NVMe + shared-desktop memory
-    # budget, not maxed out since Plex/desktop apps also run here.
-    command:
-      - "postgres"
-      - "-c"
-      - "shared_buffers=512MB"
-      - "-c"
-      - "effective_cache_size=1536MB"
-      - "-c"
-      - "work_mem=32MB"
-      - "-c"
-      - "maintenance_work_mem=256MB"
-      - "-c"
-      - "max_worker_processes=4"
-      - "-c"
-      - "max_parallel_workers=4"
-      - "-c"
-      - "max_parallel_workers_per_gather=2"
-      - "-c"
-      - "wal_buffers=16MB"
-      - "-c"
-      - "random_page_cost=1.1"
-      - "-c"
-      - "effective_io_concurrency=200"
-    mem_limit: 2g
-    mem_reservation: 256m
-    cpus: 4
-
-  zilean:
-    restart: unless-stopped
-    logging: *common-logging
-    # Pinned to the exact version currently running (verified same digest as
-    # :latest at pin time) rather than :latest.
-    image: ipromknight/zilean:v3.5.0
-    container_name: zilean
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      - zilean-postgres
-      - zurg
-    environment:
-      TZ: ${TZ}
-      Zilean__ApiKey: ${ZILEAN_API_KEY}
-      Zilean__Database__ConnectionString: "Host=zilean-postgres;Database=zilean;Username=postgres;Password=${ZILEAN_POSTGRES_PASSWORD};Include Error Detail=true;Timeout=30;CommandTimeout=3600;"
-      Zilean__Dmm__EnableScraping: "true"
-      # Default is 200 - raised so Torznab searches (Prowlarr -> Radarr/
-      # Sonarr) surface more cached candidates per query instead of getting
-      # cut off, now that Zurg ingestion below adds a second hash source on
-      # top of DMM's public hashlist.
-      Zilean__Dmm__MaxFilteredResults: "500"
-      Zilean__Torrents__EnableEndpoint: "true"
-      Zilean__EnableDashboard: "true"
-      # Ingests this account's own already-cached Real-Debrid torrents
-      # directly from Zurg's /debug/torrents (5,644 entries at time of
-      # writing) into Zilean's index - a second hash source alongside DMM's
-      # public hashlist, scoped to hashes actually proven cached on this
-      # account. Verified live: schema match confirmed against Zilean's own
-      # StreamedEntry model (name/hash/size, case-insensitive), and a manual
-      # `zilean-scraper generic-sync` run actually ingested them. No
-      # equivalent exists for AllDebrid/rclone - Zurg is a purpose-built app
-      # with this debug endpoint, rclone's RC API has no matching schema.
-      Zilean__Ingestion__EnableScraping: "true"
-      Zilean__Ingestion__ZurgInstances__0__Url: "http://zurg:9999"
-      Zilean__Ingestion__ZurgInstances__0__EndpointType: "1"
-      # Hardware tuning: 16 threads available on this host. Reserve 4 for
-      # Plex/desktop/other containers rather than pinning all cores to IMDB
-      # title-matching (Zilean's one real CPU-parallel workload).
-      Zilean__Imdb__UseAllCores: "false"
-      Zilean__Imdb__NumberOfCores: "12"
-      # Lucene indexing is "massively faster" per Zilean's own docs, at the
-      # cost of ~3GB extra RAM during resyncs - covered by the mem_limit below.
-      Zilean__Imdb__UseLucene: "true"
-      # .NET Server GC: per-core heaps + parallel collection, the standard
-      # throughput-oriented choice for a multi-core backend service
-      # (default Workstation GC is tuned for low-latency desktop apps instead).
-      DOTNET_gcServer: "1"
-      # 3GB hard limit, leaving ~1GB of the 4GB container limit for non-GC
-      # (native/thread stack) memory headroom.
-      DOTNET_GCHeapHardLimit: "0xC0000000"
-    ports:
-      - "8181:8181"
-    mem_limit: 4g
-    mem_reservation: 512m
-    cpus: 12
-
-  # ---------------------------------------------------------------------
-  # Debrid gateway (Real-Debrid + AllDebrid -> qBittorrent-compatible API
-  # for the *arr apps, symlink-only, no real downloading)
-  # ---------------------------------------------------------------------
-  decypharr:
-    <<: *common
-    # Pinned to the exact version currently running (verified same digest as
-    # :latest at pin time) rather than :latest.
-    image: cy01/blackhole:v2.3
-    container_name: decypharr
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8282/ >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - /mnt:/mnt:rshared
-      - ./config/decypharr:/app
-      - ./config/decypharr/cache:/cache
-    devices:
-      - /dev/fuse:/dev/fuse:rwm
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    # Soft ceiling, not a tight fit - observed steady-state is ~540-580MB,
-    # the highest baseline of any container besides Zilean/zilean-postgres.
-    # No container besides those two had any limit at all before this: one
-    # runaway process could otherwise take whatever RAM/CPU it wanted from
-    # the same shared-desktop host Zilean's own tuning above already
-    # protects for Plex/desktop use.
-    ports:
-      - "8282:8282"
-    mem_limit: 1.5g
-    mem_reservation: 256m
-    cpus: 4
-
-  # Second, isolated Decypharr instance for AllDebrid only. Decypharr has no
-  # per-provider category scoping (a single instance's debrids[] are all
-  # available to every category), so the only way to keep AllDebrid
-  # exclusive to Sonarr rather than shared with Radarr is a
-  # fully separate instance - own port, own config/mount, wired into Sonarr
-  # only as a download client.
-  decypharr-alldebrid:
-    <<: *common
-    image: cy01/blackhole:v2.3
-    container_name: decypharr-alldebrid
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8282/ >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - /mnt:/mnt:rshared
-      - ./config/decypharr-alldebrid:/app
-      - ./config/decypharr-alldebrid/cache:/cache
-    devices:
-      - /dev/fuse:/dev/fuse:rwm
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    ports:
-      - "8283:8282"
-    mem_limit: 1.5g
-    mem_reservation: 256m
-    cpus: 4
-
-  # ---------------------------------------------------------------------
-  # Native-companion containerization (Phase 1 of 2 - see CHANGELOG for the
-  # full plan). Zurg mounts pre-existing Real-Debrid content directly at
-  # /mnt/zurg for Plex; rclone-alldebrid does the same for AllDebrid at
-  # /mnt/all. /mnt:rshared on both means the FUSE mount lands at the literal
-  # host path Plex's own library already expects - no path remapping needed.
-  # Sponsor image (ghcr.io/debridmediamanager/zurg), not the public
-  # zurg-testing image.
-  # ---------------------------------------------------------------------
-  zurg:
-    <<: *common
-    image: ghcr.io/debridmediamanager/zurg@sha256:924f1737814a72fddc87f90b2cb3056a0d25ecad4e8789d3d5294cf4e1aa0d07
-    container_name: zurg
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9999/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/zurg/config.yml:/app/config.yml
-      - ./config/zurg/data:/app/data
-      - ./config/zurg/logs:/app/logs
-      - /mnt:/mnt:rshared
-    devices:
-      - /dev/fuse:/dev/fuse:rwm
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    # Observed a sustained ~20-25% CPU baseline (not a spike) across two
-    # samples taken 5s apart - likely its own 10s Real-Debrid poll interval
-    # plus serving reads for Plex/the arr apps. Capped well above that
-    # baseline rather than tightened, purely so it can't compete unbounded
-    # with Plex/desktop use if that baseline ever grows.
-    ports:
-      - "9999:9999"
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 6
-
-  rclone-alldebrid:
-    restart: unless-stopped
-    logging: *common-logging
-    image: rclone/rclone:1.74.4
-    container_name: rclone-alldebrid
-    networks: [stacknet]
-    environment:
-      <<: *common-env
-      XDG_CONFIG_HOME: /config
-    entrypoint: ["rclone"]
-    command:
-      - "mount"
-      - "all:"
-      - "/mnt/all"
-      - "--config=/config/rclone/rclone.conf"
-      - "--dir-cache-time=10s"
-      - "--multi-thread-streams=0"
-      - "--cutoff-mode=cautious"
-      - "--vfs-cache-mode=minimal"
-      - "--network-mode"
-      - "--buffer-size=0"
-      - "--read-only"
-      - "--allow-other"
-      - "--allow-non-empty"
-    healthcheck:
-      test: ["CMD-SHELL", "mountpoint -q /mnt/all && [ -n \"$$(ls -A /mnt/all 2>/dev/null)\" ] || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/rclone/rclone.conf:/config/rclone/rclone.conf:ro
-      - /mnt:/mnt:rshared
-    devices:
-      - /dev/fuse:/dev/fuse:rwm
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    # Same reasoning as zurg above (own FUSE mount, no prior ceiling) but
-    # lighter - read-only mount, no Real-Debrid polling of its own.
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 4
-
   # ---------------------------------------------------------------------
   # *arr apps
   # ---------------------------------------------------------------------
@@ -330,18 +60,10 @@ services:
       start_period: 30s
     volumes:
       - ./config/radarr:/config
-      # Not the blanket /mnt:/mnt bind Sonarr uses - AllDebrid (/mnt/all) is
-      # TV-only, so Radarr only gets the two mounts it actually needs.
-      - /mnt/zurg:/mnt/zurg:rslave
-      - /mnt/decypharr:/mnt/decypharr:rslave
       - /mnt/nzbdav:/mnt/nzbdav:rslave
-      # Same path Decypharr uses internally for its qBittorrent-emulated category
-      # folders (/app/downloads/<category>) - identical path avoids needing Remote
-      # Path Mappings, per Decypharr's own documented best practice.
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      # Genuinely writable root folder on regular disk - /mnt/zurg is Zurg's own
-      # rclone FUSE mount and does not support having files written into it
-      # (confirmed: symlink/hardlink/copy all fail there with I/O errors).
+      # Genuinely writable root folder on regular disk - the old debrid FUSE
+      # mounts did not support having files written into them (confirmed:
+      # symlink/hardlink/copy all failed there with I/O errors).
       - ./media/movies:/data/movies
     ports:
       - "7878:7878"
@@ -365,18 +87,7 @@ services:
       start_period: 30s
     volumes:
       - ./config/sonarr:/config
-      - /mnt:/mnt:rslave
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      # Sonarr's exclusive AllDebrid path (see the decypharr-alldebrid service comment above) -
-      # that instance reports outputPath as /app/downloads/<category>/... to Sonarr's API,
-      # identical-looking to the primary decypharr's own path convention above, but it's
-      # actually a different host directory (config/decypharr-alldebrid/downloads). Can't bind
-      # both at the literal /app/downloads (one container path, one mount), so this one lands
-      # at a second path and gets a Remote Path Mapping in Sonarr's own settings instead - the
-      # Decypharr-AllDebrid download client's one exception to the "identical paths, no Remote
-      # Path Mappings" rule the rest of this stack follows. Found live: every AllDebrid-sourced
-      # Sonarr grab was stuck "No files found are eligible for import" with this mount missing.
-      - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
       - ./media/shows:/data/shows
     ports:
       - "8989:8989"
@@ -429,8 +140,9 @@ services:
 
   # ---------------------------------------------------------------------
   # Usenet - streaming, no local disk (NzbDAV: WebDAV filesystem + rclone
-  # mount, same "virtual filesystem" pattern as Zurg/rclone-alldebrid do
-  # for debrid). Replaces NZBGet (real local downloads) as of CHANGELOG
+  # mount, the same "virtual filesystem" pattern this stack's now-removed
+  # debrid layer - Zurg/rclone-alldebrid - used to use). Replaces NZBGet
+  # (real local downloads) as of CHANGELOG
   # [10.1.0] - that approach never actually streamed, it wrote real files
   # to disk, which wasn't the goal.
   # ---------------------------------------------------------------------
@@ -499,8 +211,7 @@ services:
     depends_on:
       nzbdav:
         condition: service_healthy
-    # Same flag rationale as rclone-alldebrid's own mount above, plus the
-    # setup guide's streaming-tuned cache flags (buffer-size=0 avoids
+    # Setup guide's streaming-tuned cache flags (buffer-size=0 avoids
     # double-caching since the OS/Plex already buffer reads; read-ahead
     # sized for smooth playback of high-bitrate remuxes).
     command:
@@ -611,12 +322,14 @@ services:
     volumes:
       - ./config/plex:/config
       - ./config/plex-transcode:/transcode
-      # Both existing library sections (Movies at /mnt/zurg/movies; TV
-      # Shows at /mnt/zurg/shows and /mnt/all/magnets - confirmed via the
-      # migrated library DB's own section_locations table) resolve under
-      # /mnt, so this one mount is exact path parity with what's already in
-      # the database - no relinking, no "fix missing files".
-      - /mnt:/mnt:rslave
+      # Debrid removal (see CHANGELOG) left the TV library with a second,
+      # now-dead Location entry at /mnt/zurg/shows (confirmed live via
+      # /library/sections - never cleaned up in Plex's own DB, since removing
+      # a library Location from Plex risks it offering to delete the
+      # underlying metadata/watch history, not something to do without
+      # explicit confirmation). This mount only needs to cover /mnt/nzbdav
+      # now - what every remaining symlink actually resolves through.
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
       # Not yet an actual library location in Plex today (verified against
       # the DB), but every arr app's writable root folder lives here and
       # the README has long recommended adding it - mounted now so it's
@@ -635,8 +348,7 @@ services:
     # 100% CPU with zero active playback sessions (confirmed via /activities
     # - "Scanning TV Shows", not a transcode). HW transcoding covers
     # play/decode, not scan/analysis/thumbnail passes, so this can spike on
-    # its own. 12 of 16 threads leaves the same 4-thread desktop headroom
-    # Zilean's own tuning above already reserves.
+    # its own. 12 of 16 threads leaves 4-thread desktop headroom on this host.
     mem_limit: 6g
     mem_reservation: 512m
     cpus: 12
@@ -645,49 +357,6 @@ services:
   # Optional / recommended extras - start with:
   #   docker compose --profile extras up -d
   # =======================================================================
-  # Replaced FlareSolverr in 3.4.0 - same role (Cloudflare challenge solver,
-  # registered as Prowlarr's Indexer Proxy), same port, same FlareSolverr-
-  # compatible /v1 API (Prowlarr's proxy type is still literally named
-  # "FlareSolverr" - only the host URL changed). Uses Camoufox (a
-  # Firefox-based anti-detect browser) instead of Selenium +
-  # undetected-chromedriver, with a faster patch cadence against Cloudflare's
-  # evolving detection signals. See CHANGELOG for the swap and live
-  # verification.
-  byparr:
-    restart: unless-stopped
-    logging: *common-logging
-    # Digest-pinned rather than a version tag - the project doesn't publish
-    # clean vX.Y.Z tags on its GHCR registry the way its GitHub releases
-    # suggest (only :latest, :main, and commit-sha/arch-specific tags were
-    # actually resolvable at pin time). Same "manually bumped, not on
-    # Watchtower's train" reasoning as Plex above either way: this is a
-    # security/anti-bot component other indexers depend on, an unattended
-    # breaking update is worth avoiding.
-    image: ghcr.io/thephaseless/byparr@sha256:01a46a2865d9a6db5eb8ead04ec0dd33b8fbe233e8565ae70b50d4cc0af4cfb0
-    container_name: byparr
-    profiles: [extras]
-    networks: [stacknet]
-    # Byparr's own docs: without this, some environments hit a
-    # multiprocessing.synchronize error on startup.
-    shm_size: 512m
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8191/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-    # Defensive, not observed - idle footprint is modest (~130MB) but each
-    # Cloudflare solve spins up a real Camoufox (Firefox-based) browser
-    # instance, and concurrent solves under real load haven't been tested
-    # yet.
-    ports:
-      - "8191:8191"
-    mem_limit: 2g
-    mem_reservation: 256m
-    cpus: 4
-
   tautulli:
     <<: *common
     image: ghcr.io/hotio/tautulli:release
@@ -714,9 +383,9 @@ services:
 
   # Plex library lifecycle management - auto-removes watched/stale content on
   # rules configured through its own UI (e.g. "delete movies X days after
-  # watched", "remove episodes X days after airing"), keeping the Zurg/
-  # Decypharr mount and local ./media footprint from growing unbounded
-  # without manual pruning. Complements Seerr (handles the request side);
+  # watched", "remove episodes X days after airing"), keeping the local
+  # ./media footprint from growing unbounded without manual pruning.
+  # Complements Seerr (handles the request side);
   # this handles the other end of the lifecycle. All server connections
   # (Plex, Radarr, Sonarr, Seerr) are configured post-boot via its own
   # Settings UI, not environment variables - see README.md's Maintainerr
@@ -782,22 +451,13 @@ services:
       # (/api/get-config, /api/update-config) is a separate ASP.NET backend
       # that only accepts requests carrying a valid __session cookie from
       # POST /login - there's no static API key for it, so a login step
-      # (same pattern as Decypharr below) is required before every call.
+      # is required before every call.
       NZBDAV_ADMIN_USER: ${NZBDAV_ADMIN_USER}
       NZBDAV_ADMIN_PASSWORD: ${NZBDAV_ADMIN_PASSWORD}
-      # Decypharr's own qBittorrent-compatible API requires its own
-      # username/password login (POST /api/v2/auth/login for a session
-      # cookie) separate from the web UI's cookie session - needed by
-      # decypharr_grab() below since use_auth was turned on.
-      DECYPHARR_ADMIN_USERNAME: ${DECYPHARR_ADMIN_USERNAME}
-      DECYPHARR_ADMIN_PASSWORD: ${DECYPHARR_ADMIN_PASSWORD}
       # Prowlarr has no other integration in this stack (CONTAINER_LABELS
       # dashboard entry only) - added specifically so /api/log-levels can
       # cover all five Servarr-shaped apps, not just the four QUEUE_ARR_APPS.
       PROWLARR_API_KEY: ${PROWLARR_API_KEY}
-      # Read-only stat tile only (SELECT COUNT(*) FROM "Torrents") - reuses
-      # the same credential Zilean itself already has, no new secret.
-      ZILEAN_POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
       # notify_test() only - reuses the same webhook every backup/health
       # alert script already posts to, no new secret.
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
@@ -820,9 +480,8 @@ services:
       # below, not by a login gate.
       - /var/run/docker.sock:/var/run/docker.sock
       # Read-only additions for the stack-* diagnostic endpoints
-      # (resource-check/content-audit/zurg-classify/mount-health/
-      # perms-check/backup-verify/etc.) - none of these need write access,
-      # only visibility into what's already there.
+      # (resource-check/mount-health/perms-check/backup-verify/etc.) - none
+      # of these need write access, only visibility into what's already there.
       - /mnt:/mnt:ro
       - ./config:/host-config:ro
       - /home/daddybear/backups:/host-backups:ro
@@ -1019,12 +678,7 @@ services:
       # Low-impact: ebook releases are rarely RAR'd the way video/audio
       # ones are.
     volumes:
-      - /mnt:/mnt:rslave
-      # Same mounts every arr app already has (see Sonarr/Radarr above) - /mnt alone doesn't
-      # cover it, since each app's queue reports outputPath as /app/downloads/<category>/...,
-      # not the /mnt/decypharr/... path the symlink actually resolves through.
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
       - ./usenet:/usenet:rslave
     # No prior ceiling - extraction (unzip/unrar) can spike CPU briefly on
     # large archives, cheap insurance same as the other companion apps above.
@@ -1087,19 +741,11 @@ services:
       start_period: 30s
     volumes:
       - ./config/cleanuparr:/config
-      # Was missing entirely - Cleanuparr's QueueCleaner/MalwareBlocker jobs need
-      # filesystem access to the actual downloaded files at the same
-      # /app/downloads/<category>/... path Decypharr's own qBittorrent-emulated
-      # API reports as each queue item's location, same reasoning as Unpackerr's
-      # identical mounts above. Confirmed live: without this, both jobs crashed
-      # with "System.InvalidOperationException: Sequence contains no elements"
-      # on every single scheduled run (every 5 min for QueueCleaner) since at
-      # least 2026-07-14 - a file-path lookup against a mount that didn't exist
-      # inside this container at all, not a credentials/auth problem despite
-      # initially looking like one (Decypharr's own qBittorrent API login and
-      # category listing both work fine with the stored admin credentials).
-      - ./config/decypharr/downloads:/app/downloads:rslave
-      - ./config/decypharr-alldebrid/downloads:/app/downloads-ad:rslave
+      # Cleanuparr's QueueCleaner/MalwareBlocker jobs need filesystem access
+      # to whatever path the download client's own API reports as each queue
+      # item's location - now just NzbDAV's, since Decypharr (and the mounts
+      # this needed for it) is gone.
+      - /mnt/nzbdav:/mnt/nzbdav:rslave
     # No prior observation - generous default ceiling, same reasoning as
     # every other companion app in this file.
     ports:

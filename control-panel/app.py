@@ -1,15 +1,13 @@
 """
 Control Panel - the single dashboard for The Stack: live container status
-and start/stop/restart control, Zilean's own indexed-hash count, one-click
-operational actions, and a direct Zilean search with grab-to-Decypharr.
+and start/stop/restart control plus one-click operational actions.
 Supersedes the old Homepage+Control Panel split - see README.md's Control
 Panel section.
 
-Talks to the Docker socket (start/stop/restart/exec/stats), each app's own
-HTTP API (Plex, Radarr, Sonarr, Zilean), and zilean-postgres
-directly (hash count - Zilean has no stats API of its own). No auth -
-LAN-only, matches every other service in this stack (see README.md's
-"Security" section).
+Talks to the Docker socket (start/stop/restart/exec/stats) and each app's
+own HTTP API (Plex, Radarr, Sonarr, NzbDAV, etc.). No auth - LAN-only,
+matches every other service in this stack (see README.md's "Security"
+section).
 """
 import concurrent.futures
 import json
@@ -23,11 +21,10 @@ import threading
 import time
 from collections import Counter
 from datetime import datetime, timezone
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import docker
 import httpx
-import psycopg2
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -36,17 +33,10 @@ from pydantic import BaseModel
 
 PLEX_URL = (os.environ.get("PLEX_URL") or "").rstrip("/")
 PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
-ZILEAN_URL = "http://zilean:8181"
-DECYPHARR_URL = "http://decypharr:8282"
-DECYPHARR_ALLDEBRID_URL = "http://decypharr-alldebrid:8282"
-DECYPHARR_MANUAL_CATEGORY = "manual"
-DECYPHARR_ADMIN_USERNAME = os.environ.get("DECYPHARR_ADMIN_USERNAME")
-DECYPHARR_ADMIN_PASSWORD = os.environ.get("DECYPHARR_ADMIN_PASSWORD")
 NZBDAV_URL = "http://nzbdav:3000"
 NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
 NZBDAV_ADMIN_USER = os.environ.get("NZBDAV_ADMIN_USER")
 NZBDAV_ADMIN_PASSWORD = os.environ.get("NZBDAV_ADMIN_PASSWORD")
-ZILEAN_POSTGRES_PASSWORD = os.environ.get("ZILEAN_POSTGRES_PASSWORD")
 HOST_IP = os.environ.get("HOST_IP")
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 TAUTULLI_URL = "http://tautulli:8181"
@@ -114,11 +104,6 @@ HOST_BACKUP_LOCAL = "/host-backups/stack-restic-repo"
 HOST_BACKUP_OFFSITE = "/host-backup-offsite"
 HOST_RESTIC_PASSWORD_FILE = "/host-backups/.restic-password"
 HOST_README = "/host-README.md"
-# Matches Decypharr's own hexRegex (pkg/internal/utils/magnet.go) - its
-# magnet parser (anacrolix/torrent's metainfo.ParseMagnetUri) 400s with no
-# application-level log line for anything that doesn't match this, so this
-# is checked up front for a clear error instead of a passthrough failure.
-INFO_HASH_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 # Internal stacknet hostnames - not HOST_IP, since this container reaches
 # every *arr app over the docker network directly (same pattern Kometa's
@@ -147,11 +132,12 @@ ARR_APPS = {
     # arr_queue/arr_command/history-rate-calc machinery applies to it.
 }
 
-# These four have a real download queue (Decypharr + NzbDAV wired to each
-# as of 10.2.0) - Unstick/manual-import work identically on all of them,
-# same reasoning 7.0.0 used when this was just Radarr/Sonarr. Bindery
-# (Readarr's v10.7.0 replacement) isn't listed - its API is a clean-room
-# design, not Servarr-shaped, so this generic queue machinery doesn't apply.
+# These four have a real download queue (NzbDAV wired to each as of the
+# debrid/torrent removal) - Unstick/manual-import work identically on all
+# of them, same reasoning 7.0.0 used when this was just Radarr/Sonarr.
+# Bindery (Readarr's v10.7.0 replacement) isn't listed - its API is a
+# clean-room design, not Servarr-shaped, so this generic queue machinery
+# doesn't apply.
 QUEUE_ARR_APPS = ("radarr", "sonarr")
 
 # Display-only labels/notes for the container grid - NOT an allow-list.
@@ -161,25 +147,18 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 # listed here) only means a slightly plainer name in the UI, never a broken
 # or missing control - the exact staleness failure mode the old hardcoded
 # RESTARTABLE_CONTAINERS allow-list had (it silently excluded any service
-# added to compose after it was written, e.g. decypharr-alldebrid).
+# added to compose after it was written).
 CONTAINER_LABELS = {
-    "radarr": ("Radarr", "also clears the stale Zurg mount issue (v4.0.1)"),
+    "radarr": ("Radarr", None),
     "sonarr": ("Sonarr", None),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
-    "zurg": ("Zurg", "Real-Debrid mount"),
-    "rclone-alldebrid": ("rclone", "AllDebrid mount"),
-    "decypharr": ("Decypharr", "Real-Debrid + AllDebrid"),
-    "decypharr-alldebrid": ("Decypharr", "AllDebrid only, Sonarr-exclusive"),
     "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),
     "nzbdav-rclone": ("rclone", "NzbDAV mount"),
     "seerr": ("Seerr", None),
     "tautulli": ("Tautulli", None),
-    "byparr": ("Byparr", None),
     "kometa": ("Kometa", None),
     "kometa-quickstart": ("Kometa Quickstart", "config.yml wizard, port 7171 - not an alternate Kometa runtime"),
-    "zilean": ("Zilean", None),
-    "zilean-postgres": ("Zilean Postgres", None),
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
@@ -205,8 +184,6 @@ CONTAINER_LABELS = {
 _API_HOST_LABELS = {urlparse(cfg["url"]).hostname: cfg["label"] for cfg in ARR_APPS.values()}
 _API_HOST_LABELS.update({
     urlparse(PLEX_URL).hostname: "Plex",
-    urlparse(ZILEAN_URL).hostname: "Zilean",
-    urlparse(DECYPHARR_URL).hostname: "Decypharr",
     urlparse(NZBDAV_URL).hostname: "NzbDAV",
 })
 # Seeded at 0 for every known app, not left empty until each app's first
@@ -260,15 +237,6 @@ async def verify_same_origin(request: Request, call_next):
 
 class KometaRunRequest(BaseModel):
     libraries: list[str] | None = None
-
-
-class ZileanSearchRequest(BaseModel):
-    query: str
-
-
-class GrabRequest(BaseModel):
-    hash: str
-    title: str | None = None
 
 
 class NzbdavConnectionsRequest(BaseModel):
@@ -479,49 +447,6 @@ def api_hit_counts():
     flourish for the dashboard, not a metrics system: in-memory only, resets
     on restart."""
     return {"counts": dict(API_HIT_COUNTS), "total": sum(API_HIT_COUNTS.values())}
-
-
-# ---------------------------------------------------------------------
-# Overview strip: Zilean's own indexed-hash count (queried straight from
-# zilean-postgres - Zilean has no stats API of its own; every endpoint
-# guessed at (/health, /api/stats, /dmm/status) 404s, see README.md
-# "Zilean hash sources"). Best-effort: an unreachable Postgres degrades
-# this one stat tile, not the whole page.
-# ---------------------------------------------------------------------
-@app.get("/api/zilean/stats")
-def zilean_stats():
-    if not ZILEAN_POSTGRES_PASSWORD:
-        return {"available": False}
-    try:
-        conn = psycopg2.connect(
-            host="zilean-postgres",
-            port=5432,
-            dbname="zilean",
-            user="postgres",
-            password=ZILEAN_POSTGRES_PASSWORD,
-            connect_timeout=5,
-        )
-        try:
-            with conn.cursor() as cur:
-                # The base count is the one thing this tile actually needs -
-                # do it first and on its own, so a wrong guess at the second
-                # query's column name (below) can't take out the whole tile.
-                cur.execute('SELECT COUNT(*) FROM "Torrents"')
-                total = cur.fetchone()[0]
-                matched = None
-                try:
-                    # Column name guessed from EF Core's PascalCase
-                    # convention (matches "Torrents" itself) - not verified
-                    # against the live schema, so this is best-effort only.
-                    cur.execute('SELECT COUNT(*) FROM "Torrents" WHERE "ImdbId" IS NOT NULL')
-                    matched = cur.fetchone()[0]
-                except Exception:
-                    conn.rollback()
-        finally:
-            conn.close()
-        return {"available": True, "total_hashes": total, "imdb_matched": matched}
-    except Exception:
-        return {"available": False}
 
 
 # ---------------------------------------------------------------------
@@ -939,10 +864,9 @@ def nzbdav_history(limit: int = 20):
 def nzbdav_set_connections(payload: NzbdavConnectionsRequest):
     # NzbDAV's settings API (/api/get-config, /api/update-config) is a
     # separate backend from its SABnzbd-compatible queue/history API above -
-    # it has no static key at all, only a session cookie from POST /login
-    # (same reasoning as decypharr_grab()'s own login step below). Verified
-    # live 2026-07-18: this is the same request NzbDAV's own Settings > Usenet
-    # page makes when you edit a provider and click Save.
+    # it has no static key at all, only a session cookie from POST /login.
+    # Verified live 2026-07-18: this is the same request NzbDAV's own
+    # Settings > Usenet page makes when you edit a provider and click Save.
     if not NZBDAV_ADMIN_USER or not NZBDAV_ADMIN_PASSWORD:
         fail("NzbDAV isn't configured (NZBDAV_ADMIN_USER/NZBDAV_ADMIN_PASSWORD not set)", status_code=503)
     if payload.max_connections < 1:
@@ -1188,11 +1112,6 @@ def mdblist_import_list(payload: MDBListImportRequest):
     return ok("; ".join(parts), radarr=result["radarr"], sonarr=result["sonarr"], dryRun=payload.dry_run)
 
 
-# ---------------------------------------------------------------------
-# Zilean - direct search against its own index, bypassing Prowlarr/*arr
-# entirely. Talks to Zilean's own /dmm/search endpoint (AllowAnonymous,
-# no API key needed - only /dmm/on-demand-scrape requires one).
-# ---------------------------------------------------------------------
 def human_size(n: int | None) -> str:
     if not n:
         return "?"
@@ -1202,89 +1121,6 @@ def human_size(n: int | None) -> str:
             return f"{size:.1f} {unit}"
         size /= 1024
     return f"{size:.1f} PB"
-
-
-@app.post("/api/zilean/search")
-def zilean_search(payload: ZileanSearchRequest):
-    query = payload.query.strip()
-    if not query:
-        fail("Search query is empty.", status_code=400)
-    try:
-        r = httpx.post(f"{ZILEAN_URL}/dmm/search", json={"queryText": query}, timeout=15)
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"Zilean search failed: {e}")
-    results = r.json()
-    return [
-        {
-            "title": item.get("parsed_title") or item.get("raw_title"),
-            "raw_title": item.get("raw_title"),
-            "year": item.get("year"),
-            "resolution": item.get("resolution"),
-            "quality": item.get("quality"),
-            "size": human_size(item.get("size")),
-            "size_bytes": item.get("size"),
-            "hash": item.get("info_hash"),
-            "imdb_id": item.get("imdb_id"),
-            "seasons": item.get("seasons") or [],
-            "episodes": item.get("episodes") or [],
-        }
-        for item in results
-    ]
-
-
-@app.post("/api/decypharr/grab")
-def decypharr_grab(payload: GrabRequest):
-    """Adds a magnet built from a chosen hash to Decypharr's own
-    qBittorrent-compatible API - the same path Radarr/Sonarr already use to
-    add everything else in this stack, under a dedicated 'manual' category
-    so ad-hoc grabs land somewhere predictable (config/decypharr/downloads/
-    manual) instead of mixed into an arr app's own category. This is a real
-    action against the user's debrid account - it should only ever run in
-    response to an explicit click on a specific result, never automatically."""
-    info_hash = payload.hash.strip().lower()
-    if not info_hash:
-        fail("No hash provided.", status_code=400)
-    if not INFO_HASH_RE.match(info_hash):
-        # Zilean's index is scraped from a public hashlist and isn't
-        # perfectly clean - an occasional entry has a malformed info_hash.
-        # Decypharr's magnet parser rejects these with a 400 and no
-        # application-level log line at all, which is indistinguishable
-        # from a real bug without this check - caught live via a real user
-        # click that produced exactly that opaque failure.
-        fail(f"'{info_hash}' isn't a valid 40-character info hash - this result can't be added.", status_code=400)
-    title = (payload.title or info_hash).strip()
-    magnet = f"magnet:?xt=urn:btih:{info_hash}&dn={quote(title)}"
-    try:
-        # Decypharr's v2 API needs its own qBittorrent-style session (a
-        # separate SID cookie from the web UI's own /login) - a bare POST
-        # with no prior login 401s once use_auth is on, confirmed live.
-        with httpx.Client(timeout=15) as client:
-            client.post(
-                f"{DECYPHARR_URL}/api/v2/auth/login",
-                data={"username": DECYPHARR_ADMIN_USERNAME, "password": DECYPHARR_ADMIN_PASSWORD},
-            )
-            # Idempotent - safe to call before every add rather than tracking
-            # whether it already exists.
-            client.post(
-                f"{DECYPHARR_URL}/api/v2/torrents/createCategory",
-                data={"category": DECYPHARR_MANUAL_CATEGORY, "savePath": f"/app/downloads/{DECYPHARR_MANUAL_CATEGORY}"},
-            )
-            r = client.post(
-                f"{DECYPHARR_URL}/api/v2/torrents/add",
-                data={"urls": magnet, "category": DECYPHARR_MANUAL_CATEGORY},
-                timeout=30,
-            )
-        r.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        # Surface Decypharr's own response body (its actual error message)
-        # instead of just httpx's generic "400 Bad Request" summary - the
-        # difference between a self-diagnosing error and a support request.
-        detail = e.response.text.strip() or str(e)
-        fail(f"Grab failed: {detail}")
-    except httpx.HTTPError as e:
-        fail(f"Grab failed: {e}")
-    return ok(f'Added "{title}" to Decypharr - will appear once Real-Debrid/AllDebrid finishes caching.')
 
 
 # ---------------------------------------------------------------------
@@ -1762,9 +1598,8 @@ def arr_command_backlog(app_name: str):
 # ---------------------------------------------------------------------
 # Unstick + manual import - for queue items the arr app flagged itself
 # (trackedDownloadStatus warning/error, the same icon its own UI shows),
-# usually caused by the Zurg/rclone debrid mount going stale mid-import
-# (see CONTAINER_LABELS' Radarr note) or a release that doesn't
-# actually match what was expected.
+# usually caused by the NzbDAV mount going stale mid-import or a release
+# that doesn't actually match what was expected.
 # ---------------------------------------------------------------------
 def require_queue_app(app_name: str) -> dict:
     if app_name not in QUEUE_ARR_APPS:
@@ -1898,8 +1733,7 @@ def _find_candidate_files(container, output_path: str) -> tuple[str, list[str]]:
     exists = container.exec_run(cmd=["test", "-e", output_path])
     if exists.exit_code != 0:
         return "missing", []
-    # Symlinks first - every mount this stack imports through (Zurg,
-    # rclone-alldebrid, nzbdav-rclone) routes root folders through symlinks.
+    # Symlinks first - nzbdav-rclone routes root folders through symlinks.
     find_result = container.exec_run(cmd=["find", output_path, "-maxdepth", "2", "-type", "l"])
     files = [f for f in find_result.output.decode(errors="replace").splitlines() if f.strip()]
     if not files:
@@ -2116,16 +1950,11 @@ def arr_manual_import_all(app_name: str):
 # Queue status + ETA - deliberately doesn't trust each app's own
 # timeleft/estimatedCompletionTime (Radarr/Sonarr/etc) or NzbDAV's own
 # timeleft: both are stale "00:00:00" placeholders for nearly everything
-# in this stack, confirmed live. Decypharr's debrid-cached/symlinked
-# downloads jump straight from full size to zero with no gradual
-# byte-by-byte transfer to time (there's no real download happening at
-# that layer to measure), and NzbDAV's SABnzbd-emulation layer doesn't
-# compute a speed field at all even though its mb/mbleft are real.
-# Usenet items pulled through NzbDAV are the one case with an actual
-# gradually-draining transfer. Rather than special-case that, this takes
-# two live size-remaining samples ~4s apart for everything and derives
-# real observed speed from the delta - honest about "no progress
-# observed" (still caching server-side, or genuinely stalled) instead of
+# in this stack, confirmed live. NzbDAV's SABnzbd-emulation layer doesn't
+# compute a speed field at all even though its mb/mbleft are real. This
+# takes two live size-remaining samples ~4s apart and derives real
+# observed speed from the delta - honest about "no progress observed"
+# (still caching server-side, or genuinely stalled) instead of
 # fabricating an ETA the data can't support.
 # ---------------------------------------------------------------------
 QUEUE_SAMPLE_SECONDS = 4
@@ -2574,26 +2403,27 @@ def container_logs_stream(name: str, tail: int = 100):
 # ---------------------------------------------------------------------
 # Whole-stack restart
 # ---------------------------------------------------------------------
-# Radarr bind-mounts /mnt/zurg and /mnt/decypharr directly (rslave), unlike
-# Sonarr's blanket /mnt bind - a direct subpath bind doesn't survive the FUSE
-# process underneath it being recreated, so restarting a provider after
-# Radarr in the same sweep reproduces the CHANGELOG v4.0.1 stale-mount bug
-# (see README's "Radarr-specific mount fragility" note). Restart providers
+# Every direct-subpath bind of /mnt/nzbdav (rslave) - Radarr, Sonarr, Plex,
+# Unpackerr, Cleanuparr - doesn't survive the FUSE process underneath it
+# being recreated; restarting nzbdav-rclone without restarting these after
+# reproduces the CHANGELOG v4.0.1 stale-mount bug (see README's mount
+# fragility note). Confirmed live 2026-07-18 during the debrid/torrent
+# removal: recreating nzbdav-rclone and its five dependents in the same
+# batch left every dependent unable to start at all ("transport endpoint is
+# not connected") until nzbdav-rclone was restarted alone first and the
+# stale host-level mount cleared with a lazy unmount. Restart providers
 # first, wait for them to report healthy, then restart the dependents last.
 #
-# nzbdav-rclone belongs in this set too - it owns the /mnt/nzbdav FUSE mount,
-# same as zurg/decypharr/rclone-alldebrid* own theirs - but it also has its
-# own upstream dependency: its rclone remote talks to nzbdav's own API
-# (docker-compose.yml's `depends_on: nzbdav: condition: service_healthy`),
-# which the plain compose graph enforces but this hand-rolled restart loop
-# doesn't. Restarting nzbdav-rclone before nzbdav is back up healthy fails
-# the mount the same way a stale host mount does (confirmed live: a full
-# stack outage where /mnt/nzbdav was left stale at the host level - see
-# README's mount-cascade note). MOUNT_PREREQS restarts first and is waited
-# on before MOUNT_PROVIDERS, so nzbdav-rclone always finds nzbdav ready.
+# nzbdav-rclone also has its own upstream dependency: its rclone remote
+# talks to nzbdav's own API (docker-compose.yml's `depends_on: nzbdav:
+# condition: service_healthy`), which the plain compose graph enforces but
+# this hand-rolled restart loop doesn't. Restarting nzbdav-rclone before
+# nzbdav is back up healthy fails the mount the same way a stale host mount
+# does. MOUNT_PREREQS restarts first and is waited on before
+# MOUNT_PROVIDERS, so nzbdav-rclone always finds nzbdav ready.
 MOUNT_PREREQS = {"nzbdav"}
-MOUNT_PROVIDERS = {"zurg", "decypharr", "decypharr-alldebrid", "rclone-alldebrid", "nzbdav-rclone"}
-MOUNT_DEPENDENTS = {"radarr"}
+MOUNT_PROVIDERS = {"nzbdav-rclone"}
+MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}
 
 
 def wait_for_healthy(container, timeout=60):
@@ -2781,20 +2611,21 @@ def disk_usage():
         if not os.path.isdir(path):
             continue
         total = 0
-        # Two real bugs found getting this right, live:
+        # Two real bugs found getting this right, live (both against the
+        # since-removed Decypharr's config dir, which held symlinks into a
+        # multi-TB debrid FUSE mount - the exact scenario that exposed
+        # them, kept here since the fix is still generically correct):
         # 1. followlinks=False keeps os.walk from descending into a
         #    symlinked subdirectory, but os.path.getsize() on a file
-        #    that's *itself* a symlink still follows it - config/decypharr/
-        #    downloads holds symlinks into /mnt/decypharr (the debrid FUSE
-        #    mount, real size in the TBs), which getsize() resolved and
-        #    summed, reporting a 349GB "config directory".
-        # 2. Switching to os.lstat().st_size fixed that, but decypharr's
-        #    own cache still reported 152GB against a real (`du`-confirmed)
-        #    11GB - st_size is a file's *logical* size, not actual disk
-        #    consumption; decypharr's FUSE cache uses sparse/preallocated
-        #    files, so st_size vastly overstates real usage. st_blocks
-        #    (512-byte units, matching `du`'s own accounting) is what
-        #    actually answers "how much disk does this use."
+        #    that's *itself* a symlink still follows it - resolving and
+        #    summing a debrid mount's real (TB-scale) size, reporting a
+        #    349GB "config directory".
+        # 2. Switching to os.lstat().st_size fixed that, but a FUSE cache
+        #    using sparse/preallocated files still reported 152GB against a
+        #    real (`du`-confirmed) 11GB - st_size is a file's *logical*
+        #    size, not actual disk consumption. st_blocks (512-byte units,
+        #    matching `du`'s own accounting) is what actually answers "how
+        #    much disk does this use."
         for dirpath, _, filenames in os.walk(path, followlinks=False):
             for f in filenames:
                 fp = os.path.join(dirpath, f)
@@ -2807,81 +2638,7 @@ def disk_usage():
     return ok(f"{len(sizes)} app config directories.", sizes=sizes)
 
 
-def _normalize_release_name(name: str) -> str:
-    name = re.sub(r"\(\d{4}\).*", "", name)
-    name = re.sub(r"[._-]", " ", name)
-    return re.sub(r"\s+", " ", name).strip().lower()
-
-
-CONTENT_AUDIT_APPS = {"movies": ("radarr", "title"), "shows": ("sonarr", "title")}
-
-
-@app.get("/api/content-audit/{library}")
-def content_audit(library: str):
-    """Cross-references Zurg's raw /mnt/zurg/<library> listing against the
-    matching *arr app's tracked titles - the exact manual workflow that
-    found "Drilling Mommy"/"Family Swap"/"Forbidden Scenes" leaking into
-    the wrong Plex library. Untracked ~= raw content Zurg classified
-    independently, not necessarily wrong, but worth a look."""
-    if library not in CONTENT_AUDIT_APPS:
-        fail(f"Unknown library '{library}' - use one of: {', '.join(CONTENT_AUDIT_APPS)}", status_code=400)
-    app_name, _ = CONTENT_AUDIT_APPS[library]
-    cfg = ARR_APPS[app_name]
-    mount_path = os.path.join(HOST_MNT_DIR, "zurg", library)
-    if not os.path.isdir(mount_path):
-        fail(f"{mount_path} not present - mount may be down.")
-    try:
-        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/movie" if app_name == "radarr" else f"{cfg['url']}/api/{cfg['api']}/series",
-                       headers={"X-Api-Key": cfg["key"]}, timeout=30)
-        r.raise_for_status()
-        tracked = {_normalize_release_name(item["title"]) for item in r.json()}
-    except Exception as e:
-        fail(f"Could not reach {cfg['label']}: {e}")
-    untracked = []
-    for entry in sorted(os.listdir(mount_path)):
-        norm = _normalize_release_name(entry)
-        if not any(norm.startswith(t[:20]) or t in norm for t in tracked if len(t) > 3):
-            untracked.append(entry)
-    if not untracked:
-        return ok(f"Every entry in /mnt/zurg/{library} matches a {cfg['label']}-tracked title.", untracked=[])
-    return ok(
-        f"{len(untracked)} entr(ies) in /mnt/zurg/{library} don't match any {cfg['label']}-tracked "
-        f"title - not necessarily wrong, but worth a look (fuzzy match, false positives possible).",
-        untracked=untracked,
-    )
-
-
-@app.get("/api/zurg/classify")
-def zurg_classify(filename: str):
-    """Tests a filename against Zurg's *current* config.yml, in group_order
-    sequence, without needing a real leak sitting on disk to test against -
-    would have made verifying today's adult-filter/group_order fix much
-    faster. Mirrors Zurg's own "first match wins" logic exactly."""
-    config_path = os.path.join(HOST_CONFIG_DIR, "zurg", "config.yml")
-    if not os.path.isfile(config_path):
-        fail(f"{config_path} not present.")
-    with open(config_path) as f:
-        cfg = yaml.safe_load(f)
-    directories = cfg.get("directories", {})
-    ordered = sorted(directories.items(), key=lambda kv: kv[1].get("group_order", 999))
-    for group_name, group_cfg in ordered:
-        for filt in group_cfg.get("filters", []):
-            if "regex" in filt:
-                pattern = filt["regex"].strip("/")
-                # Zurg's own (?i) inline flag works fine in Python's re too.
-                if re.search(pattern, filename):
-                    return ok(f"'{filename}' matches group '{group_name}' (group_order {group_cfg.get('group_order')}).",
-                               group=group_name, group_order=group_cfg.get("group_order"))
-            if filt.get("has_episodes"):
-                # Zurg's own heuristic isn't reimplementable exactly here -
-                # flag it as a possible match rather than silently skipping.
-                if re.search(r"\b[Ss]\d{1,2}[Ee]\d{1,3}\b|\b\d{1,3}x\d{1,3}\b", filename):
-                    return ok(f"'{filename}' likely matches group '{group_name}' via has_episodes heuristic "
-                              f"(approximated here, not Zurg's exact logic).", group=group_name, approximate=True)
-    return ok(f"'{filename}' matches no group with a regex/heuristic filter - would fall through to the catch-all.")
-
-
-KNOWN_MOUNTS = ["zurg", "decypharr", "decypharr-alldebrid", "nzbdav", "all"]
+KNOWN_MOUNTS = ["nzbdav"]
 
 
 @app.get("/api/mount-health")
@@ -2919,10 +2676,9 @@ def perms_check():
         fail(f"{HOST_CONFIG_DIR} not mounted.")
     unreadable = []
     # followlinks=False + lstat, same reasoning as disk_usage() above -
-    # config/decypharr/downloads holds symlinks into the multi-TB debrid
-    # mount; stat() would follow them (slow, and checking the wrong
-    # file's permissions entirely - what matters here is the symlink
-    # itself, not whatever it happens to point at).
+    # a symlink into a FUSE mount; stat() would follow it (slow, and
+    # checking the wrong file's permissions entirely - what matters here
+    # is the symlink itself, not whatever it happens to point at).
     for dirpath, _, filenames in os.walk(HOST_CONFIG_DIR, followlinks=False):
         for f in filenames:
             fp = os.path.join(dirpath, f)
@@ -3099,29 +2855,6 @@ def neutarr_status():
     return ok(f"{len(apps)} app config file(s) found in config/neutarr.", apps=apps)
 
 
-DECYPHARR_INSTANCES = {"decypharr": DECYPHARR_URL, "decypharr-alldebrid": DECYPHARR_ALLDEBRID_URL}
-
-
-@app.get("/api/decypharr/health/{instance}")
-def decypharr_health(instance: str):
-    """Directly checks a Decypharr instance's own health endpoint - bypasses
-    whatever's consuming it (Radarr/Sonarr/Cleanuparr/etc.), useful when one
-    of those reports a Decypharr failure and the question is "is it
-    actually Decypharr, or my client's own stored credentials." Root-caused
-    the Cleanuparr↔Decypharr 401 this session - the real problem was a
-    stale password in Cleanuparr's own config, not Decypharr itself."""
-    if instance not in DECYPHARR_INSTANCES:
-        fail(f"Unknown instance '{instance}' - use one of: {', '.join(DECYPHARR_INSTANCES)}", status_code=400)
-    url = DECYPHARR_INSTANCES[instance]
-    try:
-        r = httpx.get(f"{url}/api/v2/app/version", timeout=10)
-        if r.status_code == 200:
-            return ok(f"{instance} is reachable and responding normally.")
-        fail(f"{instance} responded with HTTP {r.status_code}.")
-    except httpx.RequestError as e:
-        fail(f"{instance} unreachable: {e}")
-
-
 ARR_LOG_CONTAINERS = {"radarr", "sonarr", "prowlarr"}
 
 
@@ -3239,10 +2972,9 @@ def plex_duplicates(min_gb: float = 5.0):
         except httpx.HTTPError:
             continue
         for v in r.json().get("MediaContainer", {}).get("Metadata", []):
-            # De-duped by exact byte size first - this library has two
-            # configured root paths (/mnt/zurg/movies and the Radarr-
-            # symlinked one), so a single real file routinely shows up as
-            # two "Media" entries with identical sizes. Real duplicates
+            # De-duped by exact byte size first - a library with more than
+            # one configured root path can have a single real file show up
+            # as two "Media" entries with identical sizes. Real duplicates
             # are near-impossible to collide on exact byte size by
             # accident; that's the whole signal this endpoint relies on.
             sizes = list({int(p.get("size") or 0) for m in v.get("Media", []) for p in m.get("Part", [])})
@@ -3405,27 +3137,6 @@ def cleanuparr_strikes(limit: int = 15):
     total = cur.fetchone()[0]
     con.close()
     return ok(f"{total} strike(s) total, showing {len(rows)} most recent.", items=rows, total=total)
-
-
-@app.get("/api/decypharr/{instance}/torrents")
-def decypharr_torrents(instance: str):
-    """Active items in a Decypharr instance's own qBittorrent-compatible
-    queue - the actual add-a-torrent auth flow decypharr_grab() already
-    uses, reused here read-only for torrents/info instead of torrents/add."""
-    if instance not in DECYPHARR_INSTANCES:
-        fail(f"Unknown instance '{instance}' - use one of: {', '.join(DECYPHARR_INSTANCES)}", status_code=400)
-    url = DECYPHARR_INSTANCES[instance]
-    try:
-        with httpx.Client(timeout=15) as client:
-            client.post(f"{url}/api/v2/auth/login",
-                        data={"username": DECYPHARR_ADMIN_USERNAME, "password": DECYPHARR_ADMIN_PASSWORD})
-            r = client.get(f"{url}/api/v2/torrents/info")
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"{instance} lookup failed: {e}")
-    items = [{"name": t.get("name"), "state": t.get("state"), "progress": t.get("progress"),
-              "size": human_size(t.get("size"))} for t in r.json()]
-    return ok(f"{len(items)} item(s) in {instance}'s queue.", items=items)
 
 
 @app.get("/api/tautulli/history")

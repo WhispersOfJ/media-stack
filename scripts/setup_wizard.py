@@ -35,11 +35,11 @@ POST_BOOT_KEYS = {
 }
 
 # Self-issued secrets with no external source - safe to generate for the
-# user instead of asking them to run a command themselves.
-AUTO_GENERATE_KEYS = {
-    "ZILEAN_POSTGRES_PASSWORD",
-    "ZILEAN_API_KEY",
-}
+# user instead of asking them to run a command themselves. Empty since the
+# torrent/debrid removal (was ZILEAN_POSTGRES_PASSWORD, ZILEAN_API_KEY) -
+# kept as a named set rather than deleted so a future self-issued secret has
+# an obvious place to go.
+AUTO_GENERATE_KEYS: set[str] = set()
 
 # Only these actually block `docker compose up` from working at all;
 # everything else can legitimately stay "changeme" for now (optional

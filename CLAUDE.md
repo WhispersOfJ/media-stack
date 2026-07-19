@@ -12,27 +12,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (27 services, one `docker-compose.yml`):
-indexes content via Prowlarr + Zilean, requests via Seerr, organizes via two `*arr`-family apps
+A Docker Compose media-acquisition-and-serving stack (20 services, one `docker-compose.yml`):
+indexes content via Prowlarr, requests via Seerr, organizes via two `*arr`-family apps
 (Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
 Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
-currently in the stack), fetches via debrid (Zurg + Decypharr against Real-Debrid/AllDebrid) and
-Usenet (NzbDAV) - **Usenet is the preferred protocol as of a deliberate v10.14.1 policy change,
-reversing the stack's original debrid-first design** (see the `*arr` apps' Delay Profile
-`preferredProtocol` and download-client priority, both set live via API, not tracked config -
-NzbDAV is now priority 1 on both Radarr and Sonarr, Decypharr priority 2). The original
-debrid-first rationale (cached debrid links serve instantly with no real download, Usenet
-always downloads/streams real data) still holds as a tradeoff being knowingly accepted, not
-forgotten - re-flip download-client priority back if that efficiency matters more than Usenet
-preference in a future session - and serves via a containerized Plex. There
-is no adult content library in this stack anymore: Plex's own Adult library was removed in
-v10.9.9 (confirmed live via `/library/sections`), and Whisparr (which managed the underlying
-files/root folder) plus Stash (which cataloged it) were both removed in v10.12.0, along with the
-files themselves. There is no anime library in this stack either as of v10.19.0 (also removed
-by explicit request, not a dead-app cleanup this time — see the landmines section below for the
-full removal), and no self-hosted DebridMediaManager as of v10.20.0 (same reasoning, same
-section). `control-panel/` is the one custom-built component (a FastAPI dashboard);
-everything else is off-the-shelf images wired together in `docker-compose.yml`.
+currently in the stack), fetches via Usenet (NzbDAV) exclusively, and serves via a containerized
+Plex. **Torrent and debrid support (Decypharr, Zurg, rclone-alldebrid, Zilean, zilean-postgres,
+Byparr) was removed entirely in v11.0.0, by explicit request** — every future acquisition goes
+through NzbDAV, no exceptions (see the landmines/History sections below for the full removal,
+including a real consequence found mid-execution: those apps never downloaded real bytes, only
+symlinked into a live FUSE mount streamed from the debrid provider, so removing them
+immediately broke playback for the ~3.65% of the library that was debrid-sourced, not just
+future acquisitions). Usenet had already been the preferred protocol since a v10.14.1 policy
+change (a deliberate reversal of the stack's original debrid-first design) before this final
+removal. There is no adult content library in this stack anymore: Plex's own Adult library was
+removed in v10.9.9 (confirmed live via `/library/sections`), and Whisparr (which managed the
+underlying files/root folder) plus Stash (which cataloged it) were both removed in v10.12.0,
+along with the files themselves. There is no anime library in this stack either as of v10.19.0
+(also removed by explicit request, not a dead-app cleanup — see the landmines section below),
+and no self-hosted DebridMediaManager as of v10.20.0 (same reasoning, same section).
+`control-panel/` is the one custom-built component (a FastAPI dashboard); everything else is
+off-the-shelf images wired together in `docker-compose.yml`.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
 to be README/TECHNICAL/CHANGELOG into one document, organized by subsystem, ~1,900 lines with a
@@ -44,7 +44,7 @@ isolation.
 sanitized public mirror; `../StackScripts`, a standalone redistribution of the `stack-*` CLI +
 Control Panel) — a new `stack-*` command added here isn't finished until it's mirrored to both.
 
-## Full service inventory (all 30, by subsystem)
+## Full service inventory (all 20, by subsystem)
 
 Not a duplicate of README's service table (image/port/profile) — this is the *relationship*
 map: what each service actually talks to, so a question about any one container can be
@@ -52,32 +52,25 @@ answered without re-reading `docker-compose.yml` end to end. `core` = no `profil
 comes up on a bare `docker compose up -d`; `extras` = needs `--profile extras`.
 
 **Indexing** — `prowlarr` (core, indexer manager, pushes indexers to Radarr/Sonarr via
-`fullSync`) · `zilean-postgres` (core, Postgres 18, backs `zilean` only) · `zilean` (core,
-DMM cache-hash index + Zurg-ingestion second hash source, `depends_on` both
-`zilean-postgres` and `zurg`).
+`fullSync`; Usenet indexers only as of v11.0.0 — every torrent indexer, plus the `Zilean`
+Torznab entry, was disabled then deleted, see the landmines/History sections).
 
-**Debrid gateway** — `decypharr` (core, port 8282, Radarr's qBittorrent-compatible download
-client, both Real-Debrid+AllDebrid) · `decypharr-alldebrid` (core, port 8283, isolated
-second instance, AllDebrid-only, Sonarr's exclusive download client — exists solely because
-Decypharr has no per-provider category scoping within one instance).
-
-**FUSE mount owners** — `zurg` (core, Real-Debrid mount at `/mnt/zurg`) · `rclone-alldebrid`
-(core, AllDebrid mount at `/mnt/all`) · `nzbdav-rclone`
-(core, mounts NzbDAV's own WebDAV filesystem at `/mnt/nzbdav`, `depends_on:
-condition: service_healthy` on `nzbdav` itself, not just compose start-order).
+**FUSE mount owners** — `nzbdav-rclone` (core, mounts NzbDAV's own WebDAV filesystem at
+`/mnt/nzbdav`, `depends_on: condition: service_healthy` on `nzbdav` itself, not just compose
+start-order — the only FUSE mount left in this stack as of v11.0.0).
 
 **`*arr` apps** — `radarr` (core, port 7878, movies, `/data/movies`) ·
-`sonarr` (core, port 8989, TV, `/data/shows`, the *only* app wired to
-`decypharr-alldebrid`) · `recyclarr` (extras, no port, daily-cron TRaSH Guides custom-format
-sync for both, scoped to avoid competing with the manual "Unlimited" quality profile — not a
-real-time daemon despite running as one; both apps also carry a third, user-defined "Low
-Quality" profile (720p ceiling, WEB/HDTV only) as of v10.19.0, see the landmine below on why
-it deliberately doesn't get its own quality-definition sizes).
+`sonarr` (core, port 8989, TV, `/data/shows`) · `recyclarr` (extras, no port, daily-cron
+TRaSH Guides custom-format sync for both, scoped to avoid competing with the manual
+"Unlimited" quality profile — not a real-time daemon despite running as one; both apps also
+carry a third, user-defined "Low Quality" profile (720p ceiling, WEB/HDTV only) as of
+v10.19.0, see the landmine below on why it deliberately doesn't get its own
+quality-definition sizes).
 
 **Usenet** — `nzbdav` (core, port 3001→3000, WebDAV-streamed Usenet, SABnzbd-API compatible,
-**priority-1 download client on both Radarr and Sonarr as of v10.14.1** — was priority-2
-behind Decypharr until that deliberate policy reversal, see the top-of-file description) ·
-`nzbdav-rclone` (see FUSE mount owners above — same container, listed once).
+**the only download client on both Radarr and Sonarr as of v11.0.0** — was priority-1 behind
+Decypharr's priority-2 fallback until debrid was removed entirely, see the top-of-file
+description) · `nzbdav-rclone` (see FUSE mount owners above — same container, listed once).
 
 **Requests** — `seerr` (core, port 5055, Radarr/Sonarr only — no adult-content or music/ebook
 data model, moot now that those app families are gone anyway).
@@ -85,10 +78,6 @@ data model, moot now that those app families are gone anyway).
 **Media server** — `plex` (core, `network_mode: host` — the one deliberate exception to this
 stack's publish-to-0.0.0.0 pattern, per Plex's own Docker guidance on GDM/DLNA/NAT-PMP under
 bridge networking).
-
-**Cloudflare/anti-bot** — `byparr` (extras, port 8191, Prowlarr's Indexer Proxy, Camoufox-based,
-replaced FlareSolverr in v3.4.0 — same `/v1` API shape, Prowlarr's proxy type is still
-literally named "FlareSolverr").
 
 **Monitoring** — `tautulli` (extras, port 8182, Plex stats/history) · `beszel` (extras, port
 8090, host/container resource-monitoring hub, replaced Glances in v10.9.9 — see the Glances
@@ -116,8 +105,8 @@ overlays, this writes item-level labels).
 **Post-processing** — `unpackerr` (extras, no port, RAR extraction for Radarr/Sonarr's
 downloads).
 
-**Auto-updates** — `watchtower` (extras, no port, digest/channel-tag images only — Plex and
-Byparr are deliberately excluded from its train, see Image pinning policy).
+**Auto-updates** — `watchtower` (extras, no port, digest/channel-tag images only — Plex is
+deliberately excluded from its train, see Image pinning policy).
 
 **Queue cleanup / missing-content hunting** — `cleanuparr` (extras, port 11011, strikes +
 malware-block + stalled-download cleanup; its own built-in proactive search should stay
@@ -147,7 +136,7 @@ docker compose up -d control-panel
 # pick up a .env change here, it needs force-recreate
 docker compose up -d --force-recreate control-panel
 
-# Bring up the stack: 13 core services, or everything (+14 more behind the `extras` profile)
+# Bring up the stack: 7 core services, or everything (+13 more behind the `extras` profile)
 docker compose up -d
 docker compose --profile extras up -d
 ```
@@ -161,36 +150,36 @@ throughout its history section, and there's no substitute for it here.
 ## Architecture facts that span multiple files
 
 - **Root folders for every `*arr` app live on regular disk (`./media/<type>` → `/data/<type>`),
-  never on Zurg's `/mnt/zurg` FUSE mount.** That mount is read-only in practice (symlink/hardlink/
-  copy all fail there with `EIO`). This has regressed silently before — a library rescan can reset
-  an item's root folder back to `/mnt/zurg/...` in an app's own database, which is invisible to
-  git since it's app state, not stack config. If an import mysteriously stalls, check the item's
-  resolved root folder before assuming a container/mount problem.
+  never on `nzbdav-rclone`'s `/mnt/nzbdav` FUSE mount.** That mount is read-only in practice
+  (symlink/hardlink/copy all fail there with `EIO`; used to be true of Zurg's `/mnt/zurg` mount
+  too, before torrent/debrid was removed entirely in v11.0.0 — see the landmine below). This
+  has regressed silently before — a library rescan can reset an item's root folder back to
+  `/mnt/<mount>/...` in an app's own database, which is invisible to git since it's app state,
+  not stack config. If an import mysteriously stalls, check the item's resolved root folder
+  before assuming a container/mount problem.
 - **A root folder is 100% symlinks, never real files — any new service that reads one needs the
-  same `/mnt/zurg`, `/mnt/decypharr`, `/mnt/nzbdav` mounts every existing consumer has, not just
-  the root folder itself.** Confirmed as a real bug, not a hypothetical: Stash's first deploy
-  mounted only `./media/adult:/data`, and every symlink under it was dangling from inside that
-  container's own mount namespace — a real library scan completed in seconds with no error and
-  found 0 scenes, because every `readlink` resolved to a path (`/mnt/nzbdav/.ids/...`) that
-  simply didn't exist in that container. Silent, not a crash — check this first if a new
-  container reading an existing root folder reports an empty/tiny library despite the source
-  clearly having content.
+  same `/mnt/nzbdav` mount every existing consumer has, not just the root folder itself.**
+  Confirmed as a real bug, not a hypothetical: Stash's first deploy (before it was removed
+  entirely) mounted only `./media/adult:/data`, and every symlink under it was dangling from
+  inside that container's own mount namespace — a real library scan completed in seconds with
+  no error and found 0 scenes, because every `readlink` resolved to a path
+  (`/mnt/nzbdav/.ids/...`) that simply didn't exist in that container. Silent, not a crash —
+  check this first if a new container reading an existing root folder reports an empty/tiny
+  library despite the source clearly having content.
 - **FUSE-mount-owning containers and their dependents restart independently, and that's a real
-  failure class, not a hypothetical.** `zurg`, `decypharr`, `decypharr-alldebrid`,
-  `rclone-alldebrid`, and `nzbdav-rclone` each own a mount under `/mnt`;
-  every other container that bind-mounts that path keeps a stale reference after the owner
-  restarts and needs its own restart to recover — this does not self-heal. `control-panel/app.py`'s
-  `/api/stack/restart-all` encodes the known ordering (`MOUNT_PREREQS` → `MOUNT_PROVIDERS` →
-  everything else → `MOUNT_DEPENDENTS` last), but it's a hand-maintained set, not derived from
-  `docker-compose.yml` — if you add a new service that owns or depends on a FUSE mount, that set
-  needs a manual update or the ordering silently stops covering it. See README's "Whole-stack
-  restart: mount-order aware" section.
-- **Two Decypharr instances exist because Decypharr has no per-provider category scoping** — a
-  single instance's whole `debrids[]` list is available to every category on it. `decypharr` (both
-  backends) serves Radarr; `decypharr-alldebrid` (AllDebrid only) is
-  Sonarr's exclusive download client, with its own second mount and a Remote Path Mapping in
-  Sonarr to reconcile the two instances reporting identical-looking `/app/downloads/...` paths
-  that are actually different host directories.
+  failure class, not a hypothetical.** `nzbdav-rclone` (the only FUSE-mount-owning container
+  left as of v11.0.0, since Zurg/Decypharr/rclone-alldebrid were removed entirely) owns
+  `/mnt/nzbdav`; every other container that bind-mounts that path (Radarr, Sonarr, Plex,
+  Unpackerr, Cleanuparr) keeps a stale reference after the owner restarts and needs its own
+  restart to recover — this does not self-heal. Confirmed live again 2026-07-18 during the
+  torrent/debrid removal itself: recreating `nzbdav-rclone` and all five dependents in the same
+  batch left every dependent unable to start at all (`transport endpoint is not connected`)
+  until `nzbdav-rclone` was restarted alone first and the stale host mount cleared with `sudo
+  umount -l /mnt/nzbdav`. `control-panel/app.py`'s `/api/stack/restart-all` encodes the known
+  ordering (`MOUNT_PREREQS` → `MOUNT_PROVIDERS` → everything else → `MOUNT_DEPENDENTS` last),
+  but it's a hand-maintained set, not derived from `docker-compose.yml` — if you add a new
+  service that owns or depends on a FUSE mount, that set needs a manual update or the ordering
+  silently stops covering it. See README's "Whole-stack restart: mount-order aware" section.
 - **Control Panel (`control-panel/app.py`) is the only in-repo application code.** FastAPI, talks
   to `docker.sock` (via `docker` SDK) plus every app's own HTTP API (via `httpx`), no database, no
   auth beyond CSRF/Origin-Host validation on mutating requests (this stack is LAN-only by design —
@@ -206,34 +195,27 @@ throughout its history section, and there's no substitute for it here.
   (kept off Watchtower's auto-update train). Watchtower only auto-updates the channel-tag-pinned
   subset — check which category an image falls into before assuming a version bump is either safe
   or something Watchtower will ever pick up on its own.
-- **`config/<app>/` holds real plaintext secrets** (`config/decypharr/config.json`,
-  `config/zurg/config.yml`), is gitignored, and is not reproducible by `docker compose up` or
+- **`config/<app>/` holds real plaintext secrets** wherever an app stores its own config (e.g.
+  `config/nzbdav/db.sqlite`'s `ConfigItems` table holds the Usenet provider's real
+  username/password), is gitignored, and is not reproducible by `docker compose up` or
   re-pulling images — it's the one thing the backup scripts under `scripts/`/`systemd/` actually
   exist to protect. It has a real off-site leg now too (`BACKUP_REMOTE_REPOSITORY` in `.env`, a
   second restic repo riding on this host's own Dropbox sync) — don't treat
   `scripts/backup-claude-dir.sh`'s Dropbox tar as the off-site protection if you're touching
   backup tooling; it's a cruder, unretained whole-`~/Claude`-tree snapshot that has failed
   silently before, not the real disaster-recovery mechanism.
-- **Zurg's content-routing (`config/zurg/config.yml`, gitignored) checks groups in `group_order`
-  sequence, first match wins — a misrouted-content report can be either a missing keyword *or* a
-  wrong `group_order`, and they look identical from the user's side.** `shows` uses a generic
-  `has_episodes: true` heuristic that can claim content numbered like a series (e.g.
-  `Family.Swap.10.2023`) before a more specific group ever runs, if that group's `group_order`
-  is higher (checked later). No keyword-list fix can catch that case — the group never receives
-  the file to test against its regex at all. Check `group_order` first, not just the keyword
-  list, when a report doesn't match any obvious missing-keyword pattern.
-- **A Zurg group whose *app* is gone doesn't stop misrouting content — it just starts
-  misrouting into a path nothing serves anymore, silently.** Confirmed live 2026-07-17: the
-  `music`, `books`, and `adult` groups all outlived Lidarr/Bindery/Whisparr's removal and kept
-  running, and two of them (`music`'s bare `FLAC` keyword, `adult`'s bare `Wicked`/`XXX`
-  keywords) were false-positive-matching real movies the whole time — 43 movies sitting in
-  `/mnt/zurg/music`, 4 in `/mnt/zurg/adult`, most fortunately already duplicated safely in
-  Radarr via Decypharr's separate mount, but not all. All three groups removed outright (see
-  README's [Zurg's content-routing groups](README.md#zurgs-content-routing-groups) section for
-  the full incident and recovery). **When an app that owned a Zurg group is removed, removing
-  the group itself has to be part of that removal checklist** — it was not, for any of the
-  three, and nothing else in this stack would have caught it (no library, no queue, no alert
-  reads `/mnt/zurg/<dead-group>`).
+- **Zurg's content-routing config (`config/zurg/config.yml`) had a real, repeated failure
+  mode, worth remembering even though Zurg itself is gone as of v11.0.0**: a group whose *app*
+  was removed didn't stop misrouting content, it just started misrouting into a path nothing
+  served anymore, silently — happened three separate times (the `music`/`adult` groups
+  outliving Lidarr/Whisparr's removal with bare keywords like `FLAC`/`Wicked`/`XXX`
+  false-positive-matching 43+ real movies; the anime groups outliving the anime library
+  removal by one release). **The generalizable lesson: when removing an app that owns a
+  content-routing group or filter of any kind, removing the group itself has to be part of
+  that same removal checklist** — nothing else in this stack ever caught it on its own (no
+  library, no queue, no alert reads a dead path). See README's
+  [The debrid pipeline: removed](README.md#the-debrid-pipeline-removed) section for the full
+  incident writeup.
 - **A service can be fully connected at the `docker-compose.yml` level and still not actually be
   wired into the *app* it's talking to.** Cleanuparr and NeutArr both auto-discover which
   `*arr` apps exist, but each still needs its own internal instance registration (Cleanuparr's
@@ -305,8 +287,9 @@ throughout its history section, and there's no substitute for it here.
 - **Adminer removed in v10.9.9, no replacement (for now).** Briefly swapped for CloudBeaver
   (`dbeaver/cloudbeaver:24.3.0`) same version, but that was reverted immediately at the user's
   request — not a fan of the tool, no substitute picked yet. There is currently no web DB GUI
-  in this stack; inspecting `zilean-postgres` means `docker exec -it zilean-postgres psql ...`
-  again, same as before Adminer existed.
+  in this stack; moot now anyway, since `zilean-postgres` (its one-time subject) was itself
+  removed along with the rest of the debrid layer in v11.0.0 — no Postgres instance runs in
+  this stack anymore.
 - **Glances and Dozzle removed entirely in v10.9.9, no data preserved.** Neither had a config
   volume, so there was nothing on disk to clean up. Glances powered Control Panel's Overview
   "Host CPU/memory/disk/uptime" tiles via `/api/system/stats` — that endpoint and those tiles
@@ -338,20 +321,18 @@ throughout its history section, and there's no substitute for it here.
   instance still depends on. Same constraint that made the former "[Anime] Remux-1080p" profile
   (removed v10.19.0) never get its own `type: anime` sizes either - still real, just with a
   different profile hitting it now.
-- **`rclone-alldebrid` does not survive a plain `docker compose restart` cleanly.** It needs a
-  manual privileged lazy-unmount recovery step, and this is *not* covered by
-  `restart-all`'s mount-ordering logic — treat it as a separate, manual recovery path, not
-  something the cascade-restart machinery already handles.
-- **Zurg's FUSE mount is a supervised rclone subprocess gated by two keys in
-  `config/zurg/config.yml`** that can silently flip the mount to in-memory-only if ever toggled
-  through Zurg's own live dashboard rather than the config file — a change made in the dashboard
-  won't show up in `git diff` and won't be obvious as the cause of a later mount problem.
 - **Kometa's `sleep infinity` entrypoint override is load-bearing, not a placeholder.** Removing
   it makes every container restart trigger a full unwanted Kometa run against the whole library.
-- **`/api/decypharr/grab` (control-panel) can only target the primary Real-Debrid `decypharr`
-  instance — it has no path to `decypharr-alldebrid`.** A grab intended for Sonarr's dedicated
-  AllDebrid instance needs a different route/manual approach; don't assume this endpoint is
-  instance-agnostic.
+- **A direct subpath bind of `/mnt/nzbdav` (`rslave`) does not reliably survive the FUSE
+  process underneath it being recreated** (an `nzbdav-rclone` image update, a resource-limit
+  change, a plain restart). Confirmed live 2026-07-18 during the torrent/debrid removal:
+  recreating `nzbdav-rclone` and its five dependents (Radarr, Sonarr, Plex, Unpackerr,
+  Cleanuparr) in the same batch left every dependent unable to start (`transport endpoint is
+  not connected`) until `nzbdav-rclone` was restarted alone first and the stale host mount was
+  cleared with `sudo umount -l /mnt/nzbdav`. Control Panel's `restart-all` already sequences
+  this correctly (`MOUNT_DEPENDENTS` now covers all five, grown from just `{"radarr"}`); the
+  failure mode above is only reachable by restarting/recreating containers outside that
+  endpoint.
 - **Cleanuparr's `arr_configs` table needs a row for all five Servarr types (Sonarr, Radarr,
   Lidarr, Readarr, Whisparr) permanently, even for apps this stack doesn't run.** Confirmed by
   reading Cleanuparr 2.9.16's own source — `GenericHandler.ExecuteAsync` does
@@ -359,26 +340,30 @@ throughout its history section, and there's no substitute for it here.
   QueueCleaner/MalwareBlocker run. One missing type crashes the whole job. **Never delete an
   `arr_configs` row when removing an app from this stack** — only its `arr_instances` row and
   API key. See README's Known Gaps (was: "stale Readarr reference") for the full incident.
-- **Cleanuparr's Blacklist Sync feature (pushes the community blacklist into the download
-  client's own excluded-filenames preference) cannot work against Decypharr and is disabled
-  permanently, not a temporary state.** Decypharr's qBittorrent-API emulation doesn't implement
-  `POST /api/v2/app/setPreferences` at all (confirmed live: 404 even with valid login/cookie,
-  while `GET .../preferences` and `/torrents/categories` both work fine — not a credentials
-  problem). Cleanuparr's separate Content Blocker / Malware Blocker feature (applies the same
-  blacklist directly to Sonarr/Radarr, no download-client involvement) is the one actually doing
-  useful work here and stays enabled.
-- **Cleanuparr had zero filesystem access to the actual download paths until this was caught
-  live** — its compose block only ever mounted `./config/cleanuparr:/config`, missing the
-  `/app/downloads` / `/app/downloads-ad` mounts every other file-touching companion app
-  (Unpackerr) already has. Fixed by mirroring Unpackerr's mount set.
+- **Cleanuparr's Blacklist Sync feature was permanently disabled against Decypharr** (its
+  qBittorrent-API emulation never implemented `POST /api/v2/app/setPreferences`, confirmed
+  live: 404 even with valid login/cookie). Moot now that Decypharr is removed entirely
+  (v11.0.0) — whether Blacklist Sync works against NzbDAV's SABnzbd-compatible API is
+  untested, not confirmed either way. Cleanuparr's separate Content Blocker / Malware Blocker
+  feature (applies the same blacklist directly to Sonarr/Radarr, no download-client
+  involvement) is unaffected either way and stays enabled.
+- **Cleanuparr's own filesystem mount tracks whatever path the download client's API reports
+  for each queue item** — originally added to fix QueueCleaner/MalwareBlocker crashing with
+  `System.InvalidOperationException: Sequence contains no elements` against Decypharr's
+  `/app/downloads`/`/app/downloads-ad` paths; updated to `/mnt/nzbdav` when Decypharr was
+  removed entirely (v11.0.0), matching the `storage` path NzbDAV's own history API reports
+  (`/mnt/nzbdav/completed-symlinks/<category>/...`). If a future download client changes its
+  reported path convention, this mount needs to move with it.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
-- **`scripts/backup-config.sh` does a logical `pg_dump` of `zilean-postgres`
-  before the restic run runs**, because the restic exclude list skips raw Postgres
-  datadirs (file-level backup of a live datadir is unsafe). **Any new DB-backed service
-  added later gets zero backup coverage by default** unless it's added to this logical-dump step
-  explicitly — following only the "exclude the raw datadir" pattern silently drops it.
+- **No Postgres-backed service runs in this stack anymore** (`zilean-postgres` was removed
+  with the rest of the debrid layer in v11.0.0, and `scripts/backup-config.sh`'s
+  logical-`pg_dump` step for it was removed with it). **Any new DB-backed service added later
+  gets zero backup coverage by default** unless it gets its own logical-dump step added back —
+  restic's raw-datadir exclusion alone silently drops it (file-level backup of a live datadir
+  is unsafe, which is why the exclusion exists, but that means nothing else covers the gap it
+  leaves).
 - **restic exit code 3 (some files unreadable/locked) is treated as a soft warning that still
   lets pruning proceed**, not a hard failure. Discord alerting keyed only on "error"-level restic
   output will miss a *recurring* partial-backup problem that never escalates past exit code 3.
@@ -421,6 +406,20 @@ throughout its history section, and there's no substitute for it here.
   with a Config Diagnostics warning" symptom ever recurs, check both layers (env vars actually
   reaching the container, and the profile name Recyclarr expects actually existing) rather than
   assuming just one explains it.
+- **Torrent and debrid support was removed entirely in v11.0.0, by explicit request** — six
+  services gone (`decypharr`, `decypharr-alldebrid`, `zurg`, `rclone-alldebrid`, `zilean`,
+  `zilean-postgres`), plus `byparr` once confirmed no remaining Usenet indexer referenced it.
+  All 49 enabled torrent indexers plus the `Zilean` Torznab entry disabled then deleted from
+  Prowlarr, in that order. **A real, live consequence found mid-execution, not anticipated in
+  planning**: Zurg and Decypharr never downloaded real bytes, they symlinked into a FUSE mount
+  streaming directly from Real-Debrid/AllDebrid, so stopping those containers immediately
+  broke playback for the 616 files (3.65% of the library) sourced through them — surfaced and
+  confirmed with the user mid-removal rather than assumed safe, then accepted as a known
+  consequence. Recreating `nzbdav-rclone` and its now-five mount-dependent containers in the
+  same batch reproduced the FUSE stale-mount bug this file already documents for a single
+  dependent — confirmed live, not just theorized; `MOUNT_DEPENDENTS` grew from `{"radarr"}` to
+  all five to match. See README's History `[11.0.0]` for the full removal, including every
+  file/endpoint/CLI-command touched.
 
 ## Control-panel gotchas beyond restart ordering and CSRF
 
@@ -438,7 +437,7 @@ throughout its history section, and there's no substitute for it here.
   and verified working, then deliberately reverted** in favor of the current LAN-only,
   CSRF/Origin-validated model — the full recipe is preserved in README's History section if this
   is ever revisited, so don't rebuild it from scratch without checking there first.
-- **Sonarr's Remote Path Mapping for the AllDebrid `decypharr-alldebrid` instance is the one
-  deliberate exception to this stack's normal "no Remote Path Mappings" convention** — don't
-  "clean it up" by removing it; it's reconciling two Decypharr instances that legitimately report
-  identical-looking paths pointing at different host directories.
+- **Sonarr's Remote Path Mapping for the AllDebrid `decypharr-alldebrid` instance (the one
+  deliberate exception to this stack's normal "no Remote Path Mappings" convention) was
+  removed along with Decypharr itself in v11.0.0** — this stack has no Remote Path Mappings
+  at all now, no exceptions.
