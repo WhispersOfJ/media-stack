@@ -17,11 +17,12 @@
         "Rest": false
       },
       {
-        "Name": "rss-sync/search-missing/unstick",
+        "Name": "rss-sync/search-missing/unstick/unstick-importing",
         "Choices": [
           "rss-sync",
           "search-missing",
-          "unstick"
+          "unstick",
+          "unstick-importing"
         ],
         "Optional": false,
         "Default": "",
@@ -203,29 +204,6 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": ""
-  },
-  {
-    "Name": "stack-arr-unstick-importing",
-    "Description": "Verify + clear queue items stuck mid-import (blocklists the ones that fail a read test)",
-    "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/unstick-importing",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "radarr/sonarr",
-        "Choices": [
-          "radarr",
-          "sonarr"
-        ],
-        "Optional": false,
-        "Default": "",
-        "Rest": false
-      }
-    ],
-    "Confirm": true,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "{1}"
   },
   {
     "Name": "stack-backlog-status",
@@ -767,6 +745,32 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-nzbdav-set-connections",
+    "Description": "Set NzbDAV's Usenet provider max connections",
+    "Method": "POST",
+    "PathTemplate": "/api/nzbdav/set-connections",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "max-connections",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "max_connections",
+        "ArgName": "max-connections",
+        "Array": false
+      }
+    ],
+    "LogContainer": ""
+  },
+  {
     "Name": "stack-nzbdav-stats",
     "Description": "Show aggregate NzbDAV queue/history stats",
     "Method": "GET",
@@ -1147,6 +1151,18 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-tmdb-missing",
+    "Description": "Flag Plex items with no TMDb match, so Kometa can't apply metadata to them",
+    "Method": "GET",
+    "PathTemplate": "/api/plex/tmdb-missing",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
     "Name": "stack-top",
     "Description": "Show top containers by CPU or memory usage",
     "Method": "GET",
@@ -1192,18 +1208,6 @@
     "Description": "README's declared version + live container count",
     "Method": "GET",
     "PathTemplate": "/api/version",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-plex-tmdb-missing",
-    "Description": "Flag Plex items with no TMDb match, so Kometa can't apply metadata to them",
-    "Method": "GET",
-    "PathTemplate": "/api/plex/tmdb-missing",
     "Query": null,
     "Args": null,
     "Confirm": false,
