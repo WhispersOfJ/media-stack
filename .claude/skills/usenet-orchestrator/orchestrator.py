@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Inspect and manage download-client queues (nzbdav, decypharr) for the media-stack.
+"""Inspect and manage download-client queues (nzbdav, or any other
+SABnzbd/qBittorrent-API-compatible client added to CLIENTS below) for the
+media-stack.
 
 Usage:
     orchestrator.py queue <client>
@@ -21,9 +23,13 @@ import sys
 import urllib.error
 import urllib.request
 
+# nzbdav is the only download client this stack runs as of v11.0.0 (torrent/
+# debrid removal took decypharr with it) - other SABnzbd/qBittorrent-API
+# clients can still be added here if a future stack change brings one back.
+# Port is the container-internal one (3000, mapped to host 3001) - override
+# via NZBDAV_URL for anything reached differently.
 CLIENTS = {
-    "nzbdav": {"port": 8080, "kind": "sabnzbd"},
-    "decypharr": {"port": 8282, "kind": "generic"},
+    "nzbdav": {"port": 3000, "kind": "sabnzbd"},
 }
 
 # nzbdav-rclone's FUSE mount surfaces a permanently unrecoverable Usenet
