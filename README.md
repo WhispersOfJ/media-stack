@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v11.0.0**
+Current version: **v11.1.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet - streamed, not downloaded - and serves the result through a containerized Plex.
@@ -1244,16 +1244,18 @@ what is new.
   invisible on any dashboard because `restart: unless-stopped` brought it back each time.
   Found during a stack-wide `mem_limit` audit earlier the same day, unrelated to and before
   the torrent/debrid removal below.
-- **616 files (3.65% of the library) went offline in the torrent/debrid removal** (see
-  [History](#history)) - Zurg/Decypharr never downloaded real bytes, only symlinked into a
-  live FUSE mount streamed from Real-Debrid/AllDebrid, so removing those containers broke
-  playback for everything sourced through them immediately, not just future acquisitions.
-  Skewed toward premium 2160p Remux titles. A live sample search suggested solid Usenet
-  availability even at that quality tier (308 usenet results for one such title with only 2
-  indexers enabled), but that was one sample, not a full audit - no systematic re-acquisition
-  pass has been run yet. The TV library also still carries a dead `/mnt/zurg/shows` Location
-  in Plex's own DB (see [Plex](#plex)), deliberately not cleaned up via the API since doing so
-  risks Plex offering to delete the underlying metadata/watch history.
+- ~~616 files (3.65% of the library) went offline in the torrent/debrid removal~~ **Re-acquired
+  2026-07-20**: 611 files found still pointing at the dead `/mnt/decypharr-alldebrid`/
+  `/mnt/zurg`/`/mnt/rclone-alldebrid` mounts (548 movies, 63 TV episodes across 8 series) during
+  the same-day full disaster-recovery restore (see [History](#history)). Every one mapped
+  cleanly to its Radarr/Sonarr `movieFile`/`episodeFile` record, bulk-deleted via each app's API
+  (`DELETE .../moviefile/bulk`, `.../episodefile/bulk`), then the now-orphaned symlinks removed
+  from disk by hand since the bulk endpoints don't touch the filesystem themselves. Both apps'
+  existing missing-content search picked the resulting gaps up automatically with no manual
+  search trigger needed. The TV library still carries a dead `/mnt/zurg/shows` Location in
+  Plex's own DB (see [Plex](#plex)), deliberately not cleaned up via the API since doing so
+  risks Plex offering to delete the underlying metadata/watch history - that part is unaffected
+  by this fix and still an open item.
 - **`media/youtube` is an inert leftover** from a removed Pinchflat integration; nothing
   reads or writes it.
 - **A still-unexplained mass Radarr/Sonarr library-loss event** occurred once early on (1,605
@@ -1841,7 +1843,7 @@ tool capture limitation on a tall page, not a rendering bug in the page itself. 
 mode: overlay` was kept rather than removed, since isolating it disproved it as the cause;
 noted here so a future session doesn't re-diagnose the same red herring.
 
-**v11.0.0** (current): Torrent and debrid support removed entirely, by explicit request -
+**v11.0.0**: Torrent and debrid support removed entirely, by explicit request -
 every future acquisition goes through NzbDAV/Usenet, no exceptions. Six services gone
 (`decypharr`, `decypharr-alldebrid`, `zurg`, `rclone-alldebrid`, `zilean`, `zilean-postgres`),
 plus `byparr` once confirmed no remaining Usenet indexer referenced it via tags/`indexerProxy`
@@ -1885,3 +1887,23 @@ database it backed up no longer exists); `scripts/setup_wizard.py`'s `AUTO_GENER
 now empty (was `ZILEAN_POSTGRES_PASSWORD`/`ZILEAN_API_KEY`). `config/decypharr/`,
 `config/decypharr-alldebrid/`, `config/zurg/`, and `config/zilean-postgres/` deleted after
 backing up their real API keys/tokens outside the repo.
+
+**v11.1.0** (current): Full disaster-recovery restore executed 2026-07-20 onto a fresh CachyOS
+install (the deliberate destructive ext4 reinstall this stack's own disaster-recovery runbook
+had been prepared for), plus the same-day cleanup it enabled. `Claude-FULL-backup-20260720.tar.zst`
+(~108GB, the uncut `~/Claude` tree including `media-stack/config`) restored via Dropbox
+sync rather than a single-shot download link (the link tool's 15-minute expiry isn't viable for
+a file that size); all 15 `.db`/`.sqlite`/`.sqlite3` files then overwritten with their
+SQLite-online-backup-API snapshots (guaranteed-consistent, unlike the live tar copies) and
+verified via `PRAGMA integrity_check`. `nzbdav-rclone` crash-looped on first boot with
+`mountpoint does not exist: /mnt/nzbdav` - a fresh host never has that directory, unlike the old
+install where it silently persisted across reinstalls; see [Backup/DR details](CLAUDE.md) in
+`CLAUDE.md` for the fix and why it isn't covered by any backup script. Sonarr's automatic
+missing-episode search was briefly (and incorrectly) suspected of mass-re-grabbing due to a
+restore regression - stopped as a precaution, then a full tar-vs-disk cross-check showed all
+341 shows with real backed-up content matched disk exactly; the apparent regression was one
+show (RuPaul's Drag Race) that had never had any downloaded episodes before the wipe either.
+Sonarr restarted once confirmed safe. Separately, the 616-file dead-debrid-symlink gap open
+since the v11.0.0 removal (see [Known gaps and limitations](#known-gaps-and-limitations)) was
+finally re-acquired as part of this same session - 611 files found, matched to their Radarr/
+Sonarr file records, and cleared for normal re-download.
