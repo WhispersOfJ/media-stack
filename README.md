@@ -1,10 +1,10 @@
 # The Stack
 
-Current version: **v11.1.0**
+Current version: **v11.2.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet - streamed, not downloaded - and serves the result through a containerized Plex.
-Torrent/debrid support was removed entirely in v11.0.0 (see [History](#history)). 20 services,
+Torrent/debrid support was removed entirely in v11.0.0 (see [History](#history)). 16 services,
 one compose file, every image pinned and healthchecked. Two operator surfaces: a custom
 dashboard (Control Panel) and a custom CLI (`stack-*` fish functions).
 
@@ -175,18 +175,14 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 9 | `control-panel` | built from `./control-panel` | 8420 | extras |
 | 10 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
 | 11 | `quickstart` | `kometateam/quickstart:latest` | 7171 | extras |
-| 12 | `labelarr` | `ghcr.io/nullable-eth/labelarr:v1.4.0` | none | extras |
-| 13 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 14 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 15 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
-| 16 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 17 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 18 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
-| 19 | `beszel` | `henrygd/beszel:latest` | 8090 | extras |
-| 20 | `beszel-agent` | `henrygd/beszel-agent:latest` | none | extras |
+| 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 13 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 15 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 16 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
 
 `docker compose up -d` brings up the 7 core services; `docker compose --profile extras up
--d` adds the other 13. Both are safe to re-run; Compose only recreates what is out of sync
+-d` adds the other 9. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg, rclone-alldebrid, Zilean,
 zilean-postgres, Byparr - were removed entirely; see [History](#history).)
 
@@ -1888,7 +1884,7 @@ now empty (was `ZILEAN_POSTGRES_PASSWORD`/`ZILEAN_API_KEY`). `config/decypharr/`
 `config/decypharr-alldebrid/`, `config/zurg/`, and `config/zilean-postgres/` deleted after
 backing up their real API keys/tokens outside the repo.
 
-**v11.1.0** (current): Full disaster-recovery restore executed 2026-07-20 onto a fresh CachyOS
+**v11.1.0**: Full disaster-recovery restore executed 2026-07-20 onto a fresh CachyOS
 install (the deliberate destructive ext4 reinstall this stack's own disaster-recovery runbook
 had been prepared for), plus the same-day cleanup it enabled. `Claude-FULL-backup-20260720.tar.zst`
 (~108GB, the uncut `~/Claude` tree including `media-stack/config`) restored via Dropbox
@@ -1907,3 +1903,28 @@ Sonarr restarted once confirmed safe. Separately, the 616-file dead-debrid-symli
 since the v11.0.0 removal (see [Known gaps and limitations](#known-gaps-and-limitations)) was
 finally re-acquired as part of this same session - 611 files found, matched to their Radarr/
 Sonarr file records, and cleared for normal re-download.
+
+**v11.2.0** (current): Radarr and Sonarr consolidated down to a single "ANY" quality profile
+each, by explicit request - every other profile deleted on both apps (Sonarr:
+`WEB-1080p`/`WEB-2160p`/`Low Quality`; Radarr: `HD Bluray + WEB`/`Remux + WEB 2160p`/
+`Low Quality`). Neither app's API allows deleting an in-use profile, so everything referencing
+the old profiles was reassigned to `ANY` first: all 708 Sonarr series and all 16,936 Radarr
+movies via each app's bulk `series`/`movie` editor endpoint, plus - less obviously - both
+apps' import lists (each carries its own default quality profile for newly-added items) and,
+Radarr-only, all 1,299 Collections (no bulk editor exists for these; updated one at a time via
+`PUT /api/v3/collection/{id}}`). Recyclarr - the daily-cron TRaSH-Guides sync that managed the
+now-deleted profiles - was removed entirely in the same pass: `docker-compose.yml` service
+block, `config/recyclarr/`, Control Panel's `CONTAINER_LABELS` entry and `/api/recyclarr/status`
+route, the `stack-recyclarr-status` fish function (deleted from both this host and its
+`dotfiles-cave` source repo), and every skill doc (`trash-guides-applier`, `arr-config-sync`,
+`stack-cli-usenet-queue`) that assumed it was still running.
+
+Beszel/`beszel-agent` (host/container resource monitoring) and Labelarr (TMDb-keywords-as-
+Plex-labels) were also removed entirely, by the same explicit request, following the same
+recipe: compose service blocks, `config/beszel`/`config/beszel-agent`/`config/labelarr`
+(all three gitignored, not tracked in git to begin with), Control Panel's `CONTAINER_LABELS`
+entries, the `BESZEL_*`/`TMDB_READ_ACCESS_TOKEN` `.env`/`.env.example` variables (the latter
+confirmed unused by anything else before deletion), and the containers/images themselves. The
+host firewall rule opened for Beszel's port 8090 earlier the same day was deleted along with
+it; Labelarr's port 9090 was never LAN-exposed (bound to `127.0.0.1` only) so needed no
+firewall change either way. Service count: 20 → 16.

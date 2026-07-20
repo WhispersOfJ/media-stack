@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (20 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (16 services, one `docker-compose.yml`):
 indexes content via Prowlarr, requests via Seerr, organizes via two `*arr`-family apps
 (Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
 Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
@@ -44,7 +44,7 @@ isolation.
 sanitized public mirror; `../StackScripts`, a standalone redistribution of the `stack-*` CLI +
 Control Panel) — a new `stack-*` command added here isn't finished until it's mirrored to both.
 
-## Full service inventory (all 20, by subsystem)
+## Full service inventory (all 16, by subsystem)
 
 Not a duplicate of README's service table (image/port/profile) — this is the *relationship*
 map: what each service actually talks to, so a question about any one container can be
@@ -60,12 +60,10 @@ Torznab entry, was disabled then deleted, see the landmines/History sections).
 start-order — the only FUSE mount left in this stack as of v11.0.0).
 
 **`*arr` apps** — `radarr` (core, port 7878, movies, `/data/movies`) ·
-`sonarr` (core, port 8989, TV, `/data/shows`) · `recyclarr` (extras, no port, daily-cron
-TRaSH Guides custom-format sync for both, scoped to avoid competing with the manual
-"Unlimited" quality profile — not a real-time daemon despite running as one; both apps also
-carry a third, user-defined "Low Quality" profile (720p ceiling, WEB/HDTV only) as of
-v10.19.0, see the landmine below on why it deliberately doesn't get its own
-quality-definition sizes).
+`sonarr` (core, port 8989, TV, `/data/shows`) — both single-quality-profile ("ANY") as of
+v11.2.0, see [History](README.md#history); Recyclarr (TRaSH Guides custom-format sync) was
+removed entirely the same version, so there is no automated custom-format management on
+either app anymore.
 
 **Usenet** — `nzbdav` (core, port 3001→3000, WebDAV-streamed Usenet, SABnzbd-API compatible,
 **the only download client on both Radarr and Sonarr as of v11.0.0** — was priority-1 behind
@@ -79,11 +77,9 @@ data model, moot now that those app families are gone anyway).
 stack's publish-to-0.0.0.0 pattern, per Plex's own Docker guidance on GDM/DLNA/NAT-PMP under
 bridge networking).
 
-**Monitoring** — `tautulli` (extras, port 8182, Plex stats/history) · `beszel` (extras, port
-8090, host/container resource-monitoring hub, replaced Glances in v10.9.9 — see the Glances
-bullet above, this was undocumented outside `docker-compose.yml` until 2026-07-16) ·
-`beszel-agent` (extras, no port, reports this host to the `beszel` hub over stacknet
-WebSocket, `depends_on: beszel: condition: service_started`).
+**Monitoring** — `tautulli` (extras, port 8182, Plex stats/history). `beszel`/`beszel-agent`
+(Glances' v10.9.9 replacement) removed entirely in v11.2.0, by explicit request — no
+host/container resource-monitoring hub currently in this stack.
 
 **Plex lifecycle** — `maintainerr` (extras, port 6246, rule-based watched/stale-content
 cleanup; all server connections configured post-boot via its own UI, not env vars; rules ship
@@ -96,11 +92,9 @@ below).
 
 **Metadata/overlays** — `kometa` (extras, no port, `entrypoint: sleep infinity` override is
 load-bearing — see landmines below; runs only via Control Panel's on-demand
-`/api/kometa/run` exec, never as PID 1) · `labelarr` (extras, no port mapped — its optional
-webhook listener needs Plex Pass and isn't configured here, so nothing publishes 9090; pulls
-TMDb keywords onto Plex items as labels via its own 1-hour timer instead, reads Radarr/Sonarr
-for TMDb-id lookups; complements Kometa, doesn't overlap it — Kometa builds collections/
-overlays, this writes item-level labels).
+`/api/kometa/run` exec, never as PID 1). `labelarr` (TMDb-keywords-as-Plex-labels) removed
+entirely in v11.2.0, by explicit request — no item-level Plex label automation currently in
+this stack; Kometa's own collections/overlays are unaffected.
 
 **Post-processing** — `unpackerr` (extras, no port, RAR extraction for Radarr/Sonarr's
 downloads).
@@ -296,31 +290,18 @@ throughout its history section, and there's no substitute for it here.
   are gone too, not just left degraded (Control Panel itself was never re-wired to Beszel below).
   A Prometheus + Grafana monitoring stack was also researched and briefly proposed the same
   session, then cancelled before anything was built or added to `docker-compose.yml`.
-  **Glances' actual replacement is `beszel`/`beszel-agent`** (added later, exact version not
-  dated in this file — check `git log -- docker-compose.yml` if the timing matters), a hub+agent
-  resource/container monitor at `http://<HOST_IP>:8090`. It was undocumented outside
-  `docker-compose.yml` itself until a 2026-07-16 audit found it missing from
-  `control-panel/app.py`'s `CONTAINER_LABELS`, README's service table, and this very bullet —
-  see README's History `[10.12.1]` entry. `beszel` has no healthcheck (scratch-based image, no
-  shell to exec a probe into — confirmed live, `CMD-SHELL` fails with "no such file or
-  directory" despite the endpoint answering fine on a manual curl); don't read "no healthcheck"
-  on this one container as neglect, it's the same class of issue as NeutArr's missing `curl`
-  below, just with no fallback binary at all.
+  **Glances' replacement, `beszel`/`beszel-agent`, was itself removed entirely in v11.2.0** —
+  see [History](README.md#history). This stack currently has no host/container
+  resource-monitoring hub of any kind.
 
 ## Known current landmines (not historical — still true as of last audit)
 
-- **Radarr's and Sonarr's "Quality Definitions" (min/max file size per resolution tier) are one
-  flat, instance-wide list each — confirmed live via `GET /api/v3/qualitydefinition` — not
-  scoped per quality profile.** Both apps carry three Recyclarr-managed profiles as of v10.19.0
-  (two TRaSH stock tiers, e.g. Radarr's "HD Bluray + WEB"/"Remux + WEB 2160p", plus a
-  user-defined "Low Quality" tier added that version for small-file-size requests), and all
-  three share the *same* instance-wide size definitions (`type: series`/`type: movie` in
-  `recyclarr.yml`) - "Low Quality" controls resolution/source tier only (720p ceiling,
-  WEB/HDTV, everything above disabled), not an independent file-size ceiling, since a second
-  `quality_definition` block would silently overwrite the sizes every other profile on the
-  instance still depends on. Same constraint that made the former "[Anime] Remux-1080p" profile
-  (removed v10.19.0) never get its own `type: anime` sizes either - still real, just with a
-  different profile hitting it now.
+- ~~Radarr's and Sonarr's "Quality Definitions" are one flat, instance-wide list each, not
+  scoped per quality profile~~ **Moot as of v11.2.0**: both apps were consolidated down to a
+  single "ANY" quality profile each (all other profiles deleted, everything reassigned - see
+  [History](README.md#history)), so there's only one profile per instance to share the
+  instance-wide size definitions with now. Recyclarr (which managed the now-deleted
+  TRaSH-tier profiles) was removed entirely the same version.
 - **Kometa's `sleep infinity` entrypoint override is load-bearing, not a placeholder.** Removing
   it makes every container restart trigger a full unwanted Kometa run against the whole library.
 - **A direct subpath bind of `/mnt/nzbdav` (`rslave`) does not reliably survive the FUSE

@@ -164,9 +164,6 @@ CONTAINER_LABELS = {
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
     "maintainerr": ("Maintainerr", "Plex library lifecycle - rule-based cleanup, wired but rules start disabled"),
-    "recyclarr": ("Recyclarr", "TRaSH Guides custom-format sync, Radarr/Sonarr only"),
-    "beszel": ("Beszel", "host/container resource monitoring hub - replaced Glances in v10.9.9"),
-    "beszel-agent": ("Beszel Agent", "reports this host's stats to the beszel hub"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 
@@ -3251,21 +3248,6 @@ def stack_top(by: str = "cpu", limit: int = 10):
     rows = [r for r in rows if r[key] is not None]
     rows.sort(key=lambda r: r[key], reverse=True)
     return ok(f"Top {min(limit, len(rows))} containers by {by}.", items=rows[:limit])
-
-
-@app.get("/api/recyclarr/status")
-def recyclarr_status():
-    """Recyclarr is cron-driven with no persistent API of its own (unlike
-    every other app this file talks to), so this is the only way to see
-    its last run: its own container's last log lines, straight from
-    Docker, not a mounted log file."""
-    try:
-        c = docker_client.containers.get("recyclarr")
-    except docker.errors.NotFound:
-        fail("Container 'recyclarr' not found.")
-    lines = c.logs(tail=30).decode("utf-8", errors="replace").splitlines()
-    relevant = [line for line in lines if line.strip()][-15:]
-    return ok(f"Last {len(relevant)} log line(s) from recyclarr.", lines=relevant)
 
 
 @app.get("/api/maintainerr/rules")
