@@ -371,6 +371,14 @@ throughout its history section, and there's no substitute for it here.
   is no retained history for that leg at all**, unlike the restic repo's normal snapshot
   retention. Already established this script isn't the real DR mechanism; this is the specific
   reason why (one bad run can silently replace the only copy).
+- **A from-scratch host restore needs `/mnt/nzbdav` created manually before `docker compose up`,
+  or `nzbdav-rclone` crash-loops.** Confirmed live during the 2026-07-20 full restore onto a
+  fresh CachyOS install: the host bind-mount target for the FUSE mount (`/mnt/nzbdav:/mnt/nzbdav`
+  in `docker-compose.yml`) doesn't exist on a truly fresh disk the way it silently persisted
+  across the old install's reinstalls, so rclone fails with `mountpoint does not exist:
+  /mnt/nzbdav` in a tight restart loop until `sudo mkdir -p /mnt/nzbdav` is run first. Not
+  covered by any backup/restore script since it's host filesystem state outside `~/Claude`
+  entirely — add this as a manual pre-step to any future from-scratch restore runbook.
 
 ## Historical incidents worth knowing before touching related code
 
