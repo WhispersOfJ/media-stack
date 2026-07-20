@@ -7,11 +7,10 @@ description: Backup, restore, and diff configuration (root folders, quality prof
 
 Talks to the Radarr/Sonarr/Prowlarr REST APIs (all share the same
 Servarr API shape — `/api/v3` for the *arr apps, `/api/v1` for Prowlarr) to export,
-diff, and replicate configuration as JSON. This is not a replacement for
-`recyclarr` (already deployed in this stack for TRaSH-Guides quality-profile sync —
-see the `trash-guides-applier` skill) — it covers the config recyclarr doesn't touch:
-root folders, download clients, indexers, notification connections, and full-app
-backup/restore snapshots.
+diff, and replicate configuration as JSON. Covers root folders, download clients,
+indexers, notification connections, and full-app backup/restore snapshots — for
+quality-profile/custom-format work specifically, see the `trash-guides-applier` skill
+(Recyclarr, this stack's former scheduled sync for that, was removed entirely in v11.2.0).
 
 ## Auth
 

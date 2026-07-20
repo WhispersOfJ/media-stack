@@ -98,45 +98,6 @@ services:
     mem_reservation: 256m
     cpus: 2
 
-  # Custom Format / Quality Profile sync from TRaSH Guides, for Sonarr and
-  # Radarr only. Runs as a persistent daemon on its
-  # own cron schedule rather than a one-shot job, per Recyclarr's own
-  # reference docker-compose.yml. Config lives in config/recyclarr/
-  # recyclarr.yml - deliberately scoped to only add new custom formats to
-  # the existing "Unlimited" quality profile, not create a competing
-  # profile or touch the two pre-existing manual block formats (see
-  # recyclarr.yml's own comments for why reset_unmatched_scores is left
-  # off).
-  recyclarr:
-    image: ghcr.io/recyclarr/recyclarr:latest
-    restart: unless-stopped
-    logging: *common-logging
-    container_name: recyclarr
-    profiles: [extras]
-    networks: [stacknet]
-    read_only: true
-    tmpfs: [/tmp]
-    user: "${PUID}:${PGID}"
-    environment:
-      TZ: ${TZ}
-      CRON_SCHEDULE: "0 6 * * *"  # once daily, 6am
-      # Missing since Recyclarr was first added - recyclarr.yml's !env_var
-      # RADARR_API_KEY/SONARR_API_KEY directives had nothing to resolve
-      # against inside this container. Confirmed live via its own logs:
-      # every single scheduled run since at least 2026-07-14 failed at the
-      # config-parse stage ("undefined environment variable
-      # SONARR_API_KEY"), meaning custom-format/profile sync has never
-      # actually run - not a regression, broken since day one.
-      RADARR_API_KEY: ${RADARR_API_KEY}
-      SONARR_API_KEY: ${SONARR_API_KEY}
-    volumes:
-      - ./config/recyclarr:/config
-    # No prior limit at all - found live via a resource audit. A scheduled
-    # sync daemon idling most of the day (~3MB observed) - minimum viable
-    # ceiling, not a real constraint.
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1
 
   # ---------------------------------------------------------------------
   # Usenet - streaming, no local disk (NzbDAV: WebDAV filesystem + rclone
@@ -349,7 +310,14 @@ services:
     # - "Scanning TV Shows", not a transcode). HW transcoding covers
     # play/decode, not scan/analysis/thumbnail passes, so this can spike on
     # its own. 12 of 16 threads leaves 4-thread desktop headroom on this host.
-    mem_limit: 6g
+    # mem_limit trimmed 6g -> 3g in a stack-wide mem_limit audit (v11.2.0):
+    # observed real usage was 231MB/6GiB (3.76%) with hardware transcoding
+    # doing all play/decode work (GPU-offloaded, not RAM-bound) - 3g still
+    # leaves ~13x headroom over the observed baseline. Not based on a live
+    # peak measurement during a heavy scan, unlike the cpus note above - if
+    # a future library scan is ever OOMKilled against this limit, raise it
+    # and document the real peak here rather than guessing again.
+    mem_limit: 3g
     mem_reservation: 512m
     cpus: 12
 
@@ -586,65 +554,6 @@ services:
     mem_reservation: 128m
     cpus: 2
 
-  # Pulls TMDb keywords onto Plex items as labels/genres (e.g. "revenge",
-  # "based on a manga") - complements Kometa (collections/overlays) rather
-  # than overlapping it; neither touches the other's output. Webhook-enabled
-  # as of the 2026-07-18 optimization pass (Plex Pass confirmed already in
-  # use - see plex-webhook-listener.py) - PROCESS_TIMER stretched to 24h as
-  # a fallback sweep since library.new events now trigger processing within
-  # WEBHOOK_DEBOUNCE instead of waiting up to an hour. Registering
-  # http://<HOST_IP>:9090/webhook in Plex's own Settings -> Webhooks is a
-  # manual, account-level step (same pattern as plex-webhook-listener.py's
-  # own webhook, not tracked by this repo) - it is NOT done by this compose
-  # change alone.
-  labelarr:
-    <<: *common
-    image: ghcr.io/nullable-eth/labelarr:v1.4.0
-    container_name: labelarr
-    profiles: [extras]
-    networks: [stacknet]
-    ports:
-      # 127.0.0.1-bound, same exposure pattern as plex-webhook-listener.py's
-      # PLEX_WEBHOOK_PORT - Plex sends from the host itself (network_mode:
-      # host), and the README's own network-exposure note warns /scan and
-      # /webhook carry no auth, so this must never be a bare 9090:9090.
-      - "127.0.0.1:9090:9090"
-    environment:
-      <<: *common-env
-      PLEX_TOKEN: ${PLEX_TOKEN}
-      # Plex runs network_mode: host (see the plex service above) - every
-      # other container reaches it via HOST_IP:32400, never a stacknet
-      # hostname. Same pattern control-panel's PLEX_URL and Kometa's own
-      # config.yml plex_server_url already use.
-      PLEX_SERVER: ${HOST_IP}
-      PLEX_PORT: "32400"
-      PLEX_REQUIRES_HTTPS: "false"
-      TMDB_READ_ACCESS_TOKEN: ${TMDB_READ_ACCESS_TOKEN}
-      MOVIE_PROCESS_ALL: "true"
-      TV_PROCESS_ALL: "true"
-      USE_RADARR: "true"
-      RADARR_URL: http://radarr:7878
-      RADARR_API_KEY: ${RADARR_API_KEY}
-      USE_SONARR: "true"
-      SONARR_URL: http://sonarr:8989
-      SONARR_API_KEY: ${SONARR_API_KEY}
-      DATA_DIR: /data
-      WEBHOOK_ENABLED: "true"
-      WEBHOOK_PORT: "9090"
-      WEBHOOK_DEBOUNCE: 30s
-      PROCESS_TIMER: 24h
-    volumes:
-      - ./config/labelarr:/data
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep labelarr || exit 1"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    mem_limit: 256m
-    mem_reservation: 64m
-    cpus: 1
-
   unpackerr:
     restart: unless-stopped
     logging: *common-logging
@@ -788,56 +697,3 @@ services:
     mem_limit: 1g
     mem_reservation: 64m
     cpus: 2
-
-  # ---------------------------------------------------------------------
-  # Monitoring
-  # ---------------------------------------------------------------------
-  # Replaces Glances (removed in v10.9.9) - hub+agent resource/container
-  # monitor, ~10-15MB agent footprint vs Glances/Netdata's much heavier
-  # ones. Agent connects to the hub over stacknet via WebSocket (TOKEN +
-  # KEY), not the unix-socket variant - simpler given both containers are
-  # already on the same compose network. TOKEN/KEY are blank until the hub
-  # generates them on first boot (see BESZEL_AGENT_TOKEN/KEY in .env) -
-  # the agent just retries the handshake until they're filled in.
-  beszel:
-    <<: *common
-    image: henrygd/beszel:latest
-    container_name: beszel
-    profiles: [extras]
-    networks: [stacknet]
-    environment:
-      APP_URL: http://${HOST_IP}:8090
-      USER_EMAIL: ${BESZEL_USER_EMAIL}
-      USER_PASSWORD: ${BESZEL_USER_PASSWORD}
-    # No healthcheck - image is scratch-based (no /bin/sh, no curl/wget),
-    # confirmed live: CMD-SHELL fails outright with "exec: /bin/sh: no such
-    # file or directory" despite the endpoint itself answering fine on a
-    # manual curl from the host. Same class of issue as neutarr's missing
-    # curl, but this image has no fallback binary to exec into either.
-    volumes:
-      - ./config/beszel:/beszel_data
-    ports:
-      - "8090:8090"
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1
-
-  beszel-agent:
-    <<: *common
-    image: henrygd/beszel-agent:latest
-    container_name: beszel-agent
-    profiles: [extras]
-    networks: [stacknet]
-    depends_on:
-      beszel:
-        condition: service_started
-    environment:
-      HUB_URL: http://beszel:8090
-      TOKEN: ${BESZEL_AGENT_TOKEN}
-      KEY: ${BESZEL_AGENT_KEY}
-    volumes:
-      - ./config/beszel-agent:/var/lib/beszel-agent
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    mem_limit: 128m
-    mem_reservation: 16m
-    cpus: 1

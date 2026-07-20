@@ -1046,18 +1046,6 @@
     "LogContainer": "{1}"
   },
   {
-    "Name": "stack-recyclarr-status",
-    "Description": "Show Recyclarr recent log output (last sync result)",
-    "Method": "GET",
-    "PathTemplate": "/api/recyclarr/status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-resource-check",
     "Description": "List containers missing mem_limit/cpus",
     "Method": "GET",
