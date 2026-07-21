@@ -562,6 +562,33 @@ def plex_empty_trash(library: str | None = None):
     return ok(f"Trash emptied on: {', '.join(s['title'] for s in targets)}.")
 
 
+@app.post("/api/plex/analyze")
+def plex_analyze(library: str | None = None):
+    """Queues Plex's per-item deep analysis (loudness, chapter thumbnails,
+    intro/credits/ad markers, voice activity) for one library, or every
+    library if none given - `PUT /library/sections/{key}/analyze`, confirmed
+    live (200) against this server. Scoped to a section, unlike the
+    whole-server `deep-media-analysis` Butler task below
+    (`/api/plex/butler/deep-media-analysis`); use this one to target just
+    the library whose per-library analysis settings you changed, without
+    re-running analysis server-wide."""
+    try:
+        sections = plex_sections()
+        targets = sections if library is None else [s for s in sections if s["title"].lower() == library.lower()]
+        if not targets:
+            fail(f"No library found matching '{library}'.")
+        for s in targets:
+            r = httpx.put(
+                f"{PLEX_URL}/library/sections/{s['key']}/analyze",
+                headers=plex_headers(),
+                timeout=30,
+            )
+            r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Analyze failed: {e}")
+    return ok(f"Deep analysis queued for: {', '.join(s['title'] for s in targets)}.")
+
+
 @app.post("/api/plex/optimize-db")
 def plex_optimize_db():
     try:
@@ -580,6 +607,59 @@ def plex_clean_bundles():
     except httpx.HTTPError as e:
         fail(f"Clean bundles failed: {e}")
     return ok("Cleanup of old bundles started.")
+
+
+# Every other Butler task Plex's own /butler endpoint currently advertises
+# (confirmed live, not guessed - GET /butler?X-Plex-Token=... on this
+# server). OptimizeDatabase/CleanOldBundles already have dedicated routes
+# above and are left out of this dict to avoid a duplicate path for the
+# same task. AutomaticUpdates is Plex's app-update checker, unrelated to
+# library media - included anyway since the user's own request was "all"
+# of them, not a curated subset.
+PLEX_BUTLER_TASKS = {
+    "automatic-updates": "AutomaticUpdates",
+    "backup-database": "BackupDatabase",
+    "clean-log-files": "ButlerTaskCleanSupplementalLogFiles",
+    "generate-ad-markers": "ButlerTaskGenerateAdMarkers",
+    "generate-credits-markers": "ButlerTaskGenerateCreditsMarkers",
+    "generate-intro-markers": "ButlerTaskGenerateIntroMarkers",
+    "generate-voice-activity": "ButlerTaskGenerateVoiceActivity",
+    "clean-cache-files": "CleanOldCacheFiles",
+    "deep-media-analysis": "DeepMediaAnalysis",
+    "garbage-collect-blobs": "GarbageCollectBlobs",
+    "garbage-collect-media": "GarbageCollectLibraryMedia",
+    "generate-chapter-thumbs": "GenerateChapterThumbs",
+    "generate-media-index": "GenerateMediaIndexFiles",
+    "loudness-analysis": "LoudnessAnalysis",
+    "music-analysis": "MusicAnalysis",
+    "process-assets": "ProcessAssets",
+    "refresh-epg": "RefreshEpgGuides",
+    "refresh-libraries": "RefreshLibraries",
+    "refresh-local-media": "RefreshLocalMedia",
+    "upgrade-media-analysis": "UpgradeMediaAnalysis",
+}
+
+
+@app.post("/api/plex/butler/{task}")
+def plex_butler_task(task: str):
+    """Fires one named Butler task on demand, the same mechanism behind
+    the dedicated optimize-db/clean-bundles routes above - `task` is this
+    stack's own kebab-case alias (see PLEX_BUTLER_TASKS), not Plex's raw
+    CamelCase task name, so the CLI/URL stays consistent with every other
+    /api/plex/* route. `deep-media-analysis` is the one that actually runs
+    full deep analysis (loudness, chapter thumbs, intro/credits/ad markers,
+    voice activity) across the whole server in one pass - the per-library
+    `PUT /library/sections/{key}/analyze` call is a narrower, section-scoped
+    alternative to this, not the same thing."""
+    plex_task = PLEX_BUTLER_TASKS.get(task)
+    if plex_task is None:
+        fail(f"Unknown Butler task '{task}'. Known: {', '.join(sorted(PLEX_BUTLER_TASKS))}")
+    try:
+        r = httpx.post(f"{PLEX_URL}/butler/{plex_task}", headers=plex_headers(), timeout=30)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Butler task '{task}' failed: {e}")
+    return ok(f"Butler task started: {task}.")
 
 
 @app.get("/api/plex/updates")
