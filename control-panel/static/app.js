@@ -1268,11 +1268,32 @@ async function runLetterboxdPopular(cmd) {
   return callApi(cmd.Method, prepared.path, JSON.stringify({ url: "https://letterboxd.com/films/" }));
 }
 
+/* Generic /api/arr/{app}/import-list/add caller - covers every
+   implementation (PlexRssImport, PlexImport, RadarrListImport,
+   CustomImport, TMDbCompanyImport, TMDbKeywordImport, TraktListImport)
+   through one manifest shape (cmd.BodyFields.{Implementation,Name|NameArg,
+   Fields,SearchArg}) instead of a dedicated handler per implementation. */
+async function runImportListAdd(cmd, values) {
+  const spec = cmd.BodyFields;
+  const path = prepareCommand(cmd, values).path;
+  const fields = {};
+  for (const f of spec.Fields || []) fields[f.Key] = argValue(cmd, values, f.ArgName);
+  const search = spec.SearchArg ? argValue(cmd, values, spec.SearchArg) !== "no-search" : true;
+  const body = {
+    implementation: spec.Implementation,
+    name: spec.NameArg ? argValue(cmd, values, spec.NameArg) : spec.Name,
+    fields,
+    search_on_add: search,
+  };
+  return callApi(cmd.Method, path, JSON.stringify(body));
+}
+
 async function execCommand(cmd, values) {
   if (cmd.BodyMode === "manual-import-by-index") return runManualImportByIndex(cmd, values);
   if (cmd.BodyMode === "log-levels-reset") return runLogLevelsReset(values);
   if (cmd.BodyMode === "letterboxd-filmography") return runLetterboxdFilmography(cmd, values);
   if (cmd.BodyMode === "letterboxd-popular") return runLetterboxdPopular(cmd);
+  if (cmd.BodyMode === "import-list-add") return runImportListAdd(cmd, values);
   const prepared = prepareCommand(cmd, values);
   return callApi(prepared.method, prepared.path, prepared.body);
 }

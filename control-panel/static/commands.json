@@ -134,6 +134,29 @@
     "LogContainer": "{1}"
   },
   {
+    "Name": "stack-arr-list-implementations",
+    "Description": "List every import-list implementation Radarr/Sonarr supports",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/import-list/implementations",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
     "Name": "stack-arr-logs",
     "Description": "Tail an *arr app's container log directly",
     "Method": "GET",
@@ -218,6 +241,18 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-backup-integrity-check",
+    "Description": "Run an on-demand restic integrity check on both backup repos",
+    "Method": "POST",
+    "PathTemplate": "/api/backup-integrity-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
     "Name": "stack-backup-restore-test",
     "Description": "Restore one file from the latest local snapshot to confirm restores actually work",
     "Method": "POST",
@@ -246,6 +281,68 @@
     "Description": "Check both local and off-site restic repos have a recent snapshot",
     "Method": "GET",
     "PathTemplate": "/api/backup-verify",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-bazarr-history",
+    "Description": "Show recent Bazarr subtitle download history",
+    "Method": "GET",
+    "PathTemplate": "/api/bazarr/history",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "20",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-bazarr-provider-status",
+    "Description": "Show per-provider throttle/error state in Bazarr",
+    "Method": "GET",
+    "PathTemplate": "/api/bazarr/provider-status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-bazarr-search-missing",
+    "Description": "Trigger an on-demand Bazarr missing-subtitle search",
+    "Method": "POST",
+    "PathTemplate": "/api/bazarr/search-missing",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-bazarr-wanted",
+    "Description": "List movies/episodes still missing subtitles in Bazarr",
+    "Method": "GET",
+    "PathTemplate": "/api/bazarr/wanted",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -333,6 +430,29 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": "{2}"
+  },
+  {
+    "Name": "stack-customformat-diff",
+    "Description": "Diff current Radarr/Sonarr custom-format scores against the last check",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/customformat-snapshot",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
   },
   {
     "Name": "stack-cutoff-unmet",
@@ -695,6 +815,18 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-nzbdav-delete-failures",
+    "Description": "Delete all Failed entries from NzbDAV history",
+    "Method": "POST",
+    "PathTemplate": "/api/nzbdav/delete-failures",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
     "Name": "stack-nzbdav-history",
     "Description": "Show NzbDAV's recent download history (completed/failed)",
     "Method": "GET",
@@ -820,6 +952,73 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-plex-analyze",
+    "Description": "Queue deep media analysis on one Plex library, or all of them",
+    "Method": "POST",
+    "PathTemplate": "/api/plex/analyze",
+    "Query": [
+      {
+        "Key": "library",
+        "ArgName": "library name",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "library name",
+        "Choices": null,
+        "Optional": true,
+        "Default": "",
+        "Rest": true
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-plex-butler",
+    "Description": "Trigger a named Plex Butler task on demand",
+    "Method": "POST",
+    "PathTemplate": "/api/plex/butler/{1}",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "task",
+        "Choices": [
+          "automatic-updates",
+          "backup-database",
+          "clean-log-files",
+          "generate-ad-markers",
+          "generate-credits-markers",
+          "generate-intro-markers",
+          "generate-voice-activity",
+          "clean-cache-files",
+          "deep-media-analysis",
+          "garbage-collect-blobs",
+          "garbage-collect-media",
+          "generate-chapter-thumbs",
+          "generate-media-index",
+          "loudness-analysis",
+          "music-analysis",
+          "process-assets",
+          "refresh-epg",
+          "refresh-libraries",
+          "refresh-local-media",
+          "upgrade-media-analysis"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
     "Name": "stack-plex-duplicates",
     "Description": "Flag Plex movies carrying redundant duplicate files",
     "Method": "GET",
@@ -910,6 +1109,57 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-plex-rss-import",
+    "Description": "Add a Plex Watchlist RSS feed as a Radarr/Sonarr import list",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/import-list/add",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "plex-watchlist-rss-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "no-search",
+        "Choices": [
+          "",
+          "no-search"
+        ],
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "import-list-add",
+    "BodyFields": {
+      "Implementation": "PlexRssImport",
+      "Name": "Plex Watchlist RSS",
+      "Fields": [
+        {
+          "Key": "url",
+          "ArgName": "plex-watchlist-rss-url",
+          "Array": false
+        }
+      ],
+      "SearchArg": "no-search"
+    },
+    "LogContainer": ""
+  },
+  {
     "Name": "stack-plex-sessions",
     "Description": "Show active Plex streaming sessions",
     "Method": "GET",
@@ -934,6 +1184,44 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-plex-watchlist-import",
+    "Description": "Add your Plex watchlist as a Radarr/Sonarr import list",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/import-list/add",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "no-search",
+        "Choices": [
+          "",
+          "no-search"
+        ],
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "import-list-add",
+    "BodyFields": {
+      "Implementation": "PlexImport",
+      "Name": "Plex Watchlist",
+      "Fields": [],
+      "SearchArg": "no-search"
+    },
+    "LogContainer": ""
+  },
+  {
     "Name": "stack-prowlarr-indexers",
     "Description": "List Prowlarr indexers with enabled state and priority",
     "Method": "GET",
@@ -955,6 +1243,54 @@
     "Confirm": false,
     "BodyMode": "",
     "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-radarr-list-import",
+    "Description": "Add a hosted Radarr-list-format URL as a Radarr import list",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/import-list/add",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "list-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "display-name",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "no-search",
+        "Choices": [
+          "",
+          "no-search"
+        ],
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "import-list-add",
+    "BodyFields": {
+      "Implementation": "RadarrListImport",
+      "NameArg": "display-name",
+      "Fields": [
+        {
+          "Key": "url",
+          "ArgName": "list-url",
+          "Array": false
+        }
+      ],
+      "SearchArg": "no-search"
+    },
     "LogContainer": ""
   },
   {
@@ -1089,6 +1425,54 @@
     "LogContainer": ""
   },
   {
+    "Name": "stack-sonarr-custom-list-import",
+    "Description": "Add a generic JSON/RSS feed as a Sonarr import list",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/sonarr/import-list/add",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "base-url",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "display-name",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "no-search",
+        "Choices": [
+          "",
+          "no-search"
+        ],
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "import-list-add",
+    "BodyFields": {
+      "Implementation": "CustomImport",
+      "NameArg": "display-name",
+      "Fields": [
+        {
+          "Key": "baseUrl",
+          "ArgName": "base-url",
+          "Array": false
+        }
+      ],
+      "SearchArg": "no-search"
+    },
+    "LogContainer": ""
+  },
+  {
     "Name": "stack-status",
     "Description": "Show live state/health of every media-stack container",
     "Method": "GET",
@@ -1124,6 +1508,114 @@
     "Confirm": false,
     "BodyMode": "",
     "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-stats",
+    "Description": "Show Tautulli 30-day watch statistics",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/stats",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tmdb-company-import",
+    "Description": "Add a TMDB studio filmography as a Radarr import list",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/import-list/add",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "tmdb-company-id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "display-name",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "no-search",
+        "Choices": [
+          "",
+          "no-search"
+        ],
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "import-list-add",
+    "BodyFields": {
+      "Implementation": "TMDbCompanyImport",
+      "NameArg": "display-name",
+      "Fields": [
+        {
+          "Key": "companyId",
+          "ArgName": "tmdb-company-id",
+          "Array": false
+        }
+      ],
+      "SearchArg": "no-search"
+    },
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tmdb-keyword-import",
+    "Description": "Add a TMDB keyword-filtered list as a Radarr import list",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/import-list/add",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "tmdb-keyword-id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "display-name",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "no-search",
+        "Choices": [
+          "",
+          "no-search"
+        ],
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "import-list-add",
+    "BodyFields": {
+      "Implementation": "TMDbKeywordImport",
+      "NameArg": "display-name",
+      "Fields": [
+        {
+          "Key": "keywordId",
+          "ArgName": "tmdb-keyword-id",
+          "Array": false
+        }
+      ],
+      "SearchArg": "no-search"
+    },
     "LogContainer": ""
   },
   {
@@ -1177,6 +1669,76 @@
     "Confirm": false,
     "BodyMode": "",
     "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-trakt-list-import",
+    "Description": "Add a public Trakt list as a Radarr/Sonarr import list",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/import-list/add",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "trakt-username",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "trakt-listname",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "display-name",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "no-search",
+        "Choices": [
+          "",
+          "no-search"
+        ],
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "import-list-add",
+    "BodyFields": {
+      "Implementation": "TraktListImport",
+      "NameArg": "display-name",
+      "Fields": [
+        {
+          "Key": "username",
+          "ArgName": "trakt-username",
+          "Array": false
+        },
+        {
+          "Key": "listname",
+          "ArgName": "trakt-listname",
+          "Array": false
+        }
+      ],
+      "SearchArg": "no-search"
+    },
     "LogContainer": ""
   },
   {

@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v11.5.1**
+Current version: **v11.6.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet - streamed, not downloaded - and serves the result through a containerized Plex.
@@ -900,6 +900,8 @@ stack-cleanuparr-instances                      # which *arr apps Cleanuparr act
 stack-neutarr-status                            # per-app enabled state from NeutArr's own config
 stack-arr-logs radarr 200                       # tail a container's log directly
 stack-plex-empty-trash "TV Shows"               # scoped to one library, or every library if none given
+stack-plex-analyze "TV Shows"                   # queue deep media analysis, scoped to one library or all
+stack-plex-butler deep-media-analysis           # fire any one Plex Butler task on demand (see full list below)
 stack-image-check                               # digest/exact-version-pinned images vs their registry
 stack-disk-usage                                # per-app config/ directory size, largest first
 stack-version                                   # README's declared version + live container count
@@ -2053,3 +2055,78 @@ Clean working tree beforehand, nothing lost. No other file in this repo referenc
 one already-historical [History](#history) entry (the 2026 sync noting its command list was
 regenerated to 69 commands), left untouched rather than rewritten - past entries here record
 what was true at the time, not what's true now.
+
+**v11.6.0**: Plex deep-media-analysis support added, prompted by a live check confirming the
+account carries an active Plex Pass subscription (`myPlexSubscription="1"` via `/` -
+independent of the `plexinc/pms-docker` image's *update channel*, which stays on public per
+the Image pinning policy below; the two are unrelated settings). A per-library audit
+(`/library/sections/{key}/prefs`) found Movies already had every analysis setting on
+(`enableBIFGeneration`, `enableCreditsMarkerGeneration`, `enableAdMarkerGeneration`,
+`enableVoiceActivityGeneration`), while TV Shows had three of five off against the
+library-type default - fixed via a `PUT` to the same endpoint, confirmed by reading the
+settings back afterward rather than assuming the write took.
+
+Two new Control Panel routes and 22 new `stack-*` commands followed, all confirmed live
+against the running Plex container (not assumed from Plex's docs):
+
+- **`/api/plex/analyze`** (`stack-plex-analyze [library ...]`) - `PUT
+  /library/sections/{key}/analyze`, queues deep analysis (loudness, chapter thumbnails,
+  intro/credits/ad markers, voice activity) for one named library (case-insensitive title
+  match, same convention as `stack-plex-empty-trash`) or every library if none given. This is
+  the *section-scoped* trigger - use it to re-analyze just the library whose settings above
+  were just changed, without touching the rest of the server.
+- **`/api/plex/butler/{task}`** (`stack-plex-butler <task>`, plus one dedicated
+  `stack-plex-<task>` wrapper per task) - fires any single Plex Butler maintenance task on
+  demand via `POST /butler/{PlexTaskName}`. The full task list was read live from this
+  server's own `GET /butler` (not guessed or taken from Plex's docs, which don't fully
+  enumerate internal task names) and mapped to kebab-case aliases in `PLEX_BUTLER_TASKS`:
+  - `stack-plex-deep-media-analysis` - the whole-server counterpart to `stack-plex-analyze`
+    above (`DeepMediaAnalysis`); runs full deep analysis across every library in one pass,
+    not just one section.
+  - `stack-plex-backup-database` (`BackupDatabase`) - backs up Plex's database to its
+    configured backup directory on demand, rather than waiting for its own schedule.
+  - `stack-plex-clean-log-files` (`ButlerTaskCleanSupplementalLogFiles`) - deletes old
+    supplemental Plex log files.
+  - `stack-plex-generate-ad-markers` (`ButlerTaskGenerateAdMarkers`) - generates ad-break
+    markers for eligible media.
+  - `stack-plex-generate-credits-markers` (`ButlerTaskGenerateCreditsMarkers`) - generates
+    end-credits markers for eligible media.
+  - `stack-plex-generate-intro-markers` (`ButlerTaskGenerateIntroMarkers`) - generates intro
+    markers for eligible media.
+  - `stack-plex-generate-voice-activity` (`ButlerTaskGenerateVoiceActivity`) - generates
+    voice-activity data (used for Plex's dialogue-boost audio feature).
+  - `stack-plex-clean-cache-files` (`CleanOldCacheFiles`) - deletes old Plex cache files.
+  - `stack-plex-garbage-collect-blobs` (`GarbageCollectBlobs`) - garbage-collects unused
+    metadata blobs.
+  - `stack-plex-garbage-collect-media` (`GarbageCollectLibraryMedia`) - garbage-collects
+    unused library media records.
+  - `stack-plex-generate-chapter-thumbs` (`GenerateChapterThumbs`) - generates chapter
+    thumbnail (BIF) preview-image files.
+  - `stack-plex-generate-media-index` (`GenerateMediaIndexFiles`) - generates media index
+    files Plex uses for fast seeking.
+  - `stack-plex-loudness-analysis` (`LoudnessAnalysis`) - analyzes audio loudness for volume
+    leveling.
+  - `stack-plex-music-analysis` (`MusicAnalysis`) - analyzes music library audio (moot while
+    this stack has no music library, kept since the task still exists on the server).
+  - `stack-plex-process-assets` (`ProcessAssets`) - processes pending local assets (posters,
+    themes, etc).
+  - `stack-plex-refresh-epg` (`RefreshEpgGuides`) - refreshes Live TV/DVR EPG guide data (moot
+    while this stack runs no tuner, same reasoning as music analysis above).
+  - `stack-plex-refresh-libraries` (`RefreshLibraries`) - refreshes metadata for every
+    library; distinct from `stack-plex scan`, which only looks for new files on disk.
+  - `stack-plex-refresh-local-media` (`RefreshLocalMedia`) - refreshes local media file
+    changes.
+  - `stack-plex-upgrade-media-analysis` (`UpgradeMediaAnalysis`) - re-runs analysis only for
+    items whose analysis version is outdated, rather than everything.
+  - `stack-plex-automatic-updates` (`AutomaticUpdates`) - triggers Plex's own app-update
+    checker; unrelated to library media, included for completeness since it's one of the
+    tasks the live server advertises.
+
+  `OptimizeDatabase` and `CleanOldBundles` already had dedicated routes/commands
+  (`stack-plex optimize-db` / `stack-plex clean-bundles`, see above) before this version, so
+  they were left out of `PLEX_BUTLER_TASKS` rather than given a second, duplicate path to the
+  same task.
+
+Plex's own version was checked as part of this work (`stack-plex-updates`): running
+`1.43.3.10828-00f62d37d` with no update available on its current (public) channel - already
+current, no action needed.
