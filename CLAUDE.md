@@ -95,7 +95,13 @@ below).
 
 **Metadata/overlays** — `kometa` (extras, no port, `entrypoint: sleep infinity` override is
 load-bearing — see landmines below; runs only via Control Panel's on-demand
-`/api/kometa/run` exec, never as PID 1). `labelarr` (TMDb-keywords-as-Plex-labels) removed
+`/api/kometa/run` exec, never as PID 1) · `quickstart` (extras, port 7171, image
+`kometateam/quickstart:latest`, container name `kometa-quickstart` — the official Kometa-Team
+wizard for building `config/kometa/config.yml` interactively; a config-editing tool, not an
+alternative way to run Kometa. Its own volume, `./config/quickstart:/config`, is deliberately
+separate from `config/kometa` — a config built there has to be copied by hand into
+`config/kometa/config.yml`, the `kometa` service above is still what actually runs against
+that file). `labelarr` (TMDb-keywords-as-Plex-labels) removed
 entirely in v11.2.0, by explicit request — no item-level Plex label automation currently in
 this stack; Kometa's own collections/overlays are unaffected.
 
