@@ -1,12 +1,12 @@
 ---
 name: stack-cli-usenet-queue
-description: Exact fish CLI command reference for NzbDAV, Cleanuparr, NeutArr, Maintainerr, and Prowlarr status/queue operations against this stack's Control Panel. Use whenever the user asks about the Usenet download queue/history, Cleanuparr strikes, NeutArr hunting state, Maintainerr rules, or Prowlarr indexer state from the terminal. Trigger phrases: "check the nzbdav queue", "nzbdav history", "cleanuparr strikes", "is neutarr connected", "maintainerr rules", "prowlarr indexers".
+description: Exact fish CLI command reference for NzbDAV, Cleanuparr, NeutArr, and Prowlarr status/queue operations against this stack's Control Panel. Use whenever the user asks about the Usenet download queue/history, Cleanuparr strikes, NeutArr hunting state, or Prowlarr indexer state from the terminal. Trigger phrases: "check the nzbdav queue", "nzbdav history", "cleanuparr strikes", "is neutarr connected", "prowlarr indexers".
 ---
 
 # Stack CLI: Usenet & Queue Automation
 
 <skill_scope skill="stack-cli-usenet-queue">
-This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every NzbDAV/Cleanuparr/NeutArr/Maintainerr/Prowlarr terminal command in this stack is already known, without reading the fish source fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/app.py`. Recyclarr (and its `stack-recyclarr-status` command) was removed entirely in v11.2.0.
+This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every NzbDAV/Cleanuparr/NeutArr/Prowlarr terminal command in this stack is already known, without reading the fish source fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/app.py`. Recyclarr (and its `stack-recyclarr-status` command) was removed entirely in v11.2.0. Maintainerr (and its `stack-maintainerr-rules` command, `/api/maintainerr/rules` route) was removed entirely, by explicit request (never used) - there is no Plex library lifecycle management in this stack.
 
 **Related skill:** `usenet-orchestrator` is a different mechanism entirely - a standalone Python script that talks to NzbDAV's own SABnzbd-compatible API directly (not through Control Panel) and can retry/clear-failed items and diagnose a specific stuck-file-that-won't-stop-retrying via container log analysis. Reach for `usenet-orchestrator` for queue *mutation* (retry, clear-failed) or the stuck-file diagnostic; reach for the commands here for quick read-only status checks and NzbDAV's own connection settings.
 </skill_scope>
@@ -31,7 +31,6 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 | `stack-cleanuparr-instances` | none | Which `*arr` apps Cleanuparr has an *actual connected instance* for, as opposed to just network-reachable - a real gap found live once (an app had network access and a config placeholder but no connected instance, so queue-cleaning silently wasn't covering it). |
 | `stack-cleanuparr-strikes` | `[limit]` (default 15) | Recent stalled/slow/malware strikes Cleanuparr has issued. |
 | `stack-neutarr-status` | none | Per-app enabled/disabled state from NeutArr's own config - confirms which apps it's actually hunting missing content for. |
-| `stack-maintainerr-rules` | none | Configured Maintainerr rules and their active/inactive state. Rules ship disabled by default in this stack - a rule showing `off` may be intentional, not a misconfiguration. |
 | `stack-prowlarr-indexers` | none | Every configured Prowlarr indexer's enabled state and sync priority. |
 </command_reference>
 
@@ -40,7 +39,6 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 <common_mistakes>
 <general_anti_patterns>
 - **Assuming a network-reachable Cleanuparr means it's covering an app.** Reachability and having an actual connected instance in Cleanuparr's own config are two different things - always check `stack-cleanuparr-instances`, not just that the container is up, before assuming strikes/cleanup are active for a given app.
-- **Treating a Maintainerr rule showing `off` as broken.** Rules ship disabled by default in this stack on purpose (they can delete matching media on a real schedule) - `off` is the safe default, not necessarily neglect.
 </general_anti_patterns>
 </common_mistakes>
 
@@ -48,6 +46,6 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 
 <resources>
 **Local:**
-- `~/.config/fish/functions/stack-nzbdav*.fish`, `stack-cleanuparr*.fish`, `stack-neutarr-status.fish`, `stack-maintainerr-rules.fish`, `stack-prowlarr-indexers.fish` - the actual fish source these commands wrap
+- `~/.config/fish/functions/stack-nzbdav*.fish`, `stack-cleanuparr*.fish`, `stack-neutarr-status.fish`, `stack-prowlarr-indexers.fish` - the actual fish source these commands wrap
 - `control-panel/app.py` in this repo - the real behavior behind every endpoint these commands call
 </resources>
