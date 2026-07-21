@@ -633,18 +633,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-maintainerr-rules",
-    "Description": "List configured Maintainerr rules and their state",
-    "Method": "GET",
-    "PathTemplate": "/api/maintainerr/rules",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-mdblist-import",
     "Description": "Import an MDBList list into Radarr and Sonarr",
     "Method": "POST",

@@ -43,7 +43,6 @@ TAUTULLI_URL = "http://tautulli:8181"
 SEERR_URL = "http://seerr:5055"
 TMDB_KEY = os.environ.get("TMDB_KEY")
 TMDB_URL = "https://api.themoviedb.org/3"
-MAINTAINERR_URL = "http://maintainerr:6246"
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
 
@@ -164,7 +163,6 @@ CONTAINER_LABELS = {
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
-    "maintainerr": ("Maintainerr", "Plex library lifecycle - rule-based cleanup, wired but rules start disabled"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 
@@ -3249,22 +3247,6 @@ def stack_top(by: str = "cpu", limit: int = 10):
     rows = [r for r in rows if r[key] is not None]
     rows.sort(key=lambda r: r[key], reverse=True)
     return ok(f"Top {min(limit, len(rows))} containers by {by}.", items=rows[:limit])
-
-
-@app.get("/api/maintainerr/rules")
-def maintainerr_rules():
-    """Configured Maintainerr rules and their enabled state - README notes
-    rules ship disabled by default, so this is a quick check of whether
-    that's still true without opening its UI."""
-    try:
-        r = httpx.get(f"{MAINTAINERR_URL}/api/rules", timeout=15)
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"Maintainerr lookup failed: {e}")
-    rules = r.json()
-    items = [{"name": rule.get("name"), "active": rule.get("isActive"),
-              "collection": (rule.get("collection") or {}).get("title")} for rule in rules]
-    return ok(f"{len(items)} rule(s) configured.", items=items)
 
 
 @app.get("/api/arr/{app_name}/cutoff-unmet")

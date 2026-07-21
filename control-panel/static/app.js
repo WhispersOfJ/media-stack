@@ -79,10 +79,9 @@ const QUICK_LINKS = [
   { id: "nzbdav", label: "NzbDAV", port: 3001 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "tautulli", label: "Tautulli", port: 8182 },
+  { id: "bazarr", label: "Bazarr", port: 6767 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
   { id: "neutarr", label: "NeutArr", port: 9705 },
-  { id: "maintainerr", label: "Maintainerr", port: 6246 },
-  { id: "beszel", label: "Beszel", port: 8090 },
 ];
 
 function buildQuickLinks() {
