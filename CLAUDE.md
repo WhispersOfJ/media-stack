@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (16 services, one `docker-compose.yml`):
+A Docker Compose media-acquisition-and-serving stack (17 services, one `docker-compose.yml`):
 indexes content via Prowlarr, requests via Seerr, organizes via two `*arr`-family apps
 (Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
 Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
@@ -44,7 +44,7 @@ isolation.
 sanitized public mirror; `../StackScripts`, a standalone redistribution of the `stack-*` CLI +
 Control Panel) — a new `stack-*` command added here isn't finished until it's mirrored to both.
 
-## Full service inventory (all 16, by subsystem)
+## Full service inventory (all 17, by subsystem)
 
 Not a duplicate of README's service table (image/port/profile) — this is the *relationship*
 map: what each service actually talks to, so a question about any one container can be
@@ -80,6 +80,12 @@ bridge networking).
 **Monitoring** — `tautulli` (extras, port 8182, Plex stats/history). `beszel`/`beszel-agent`
 (Glances' v10.9.9 replacement) removed entirely in v11.2.0, by explicit request — no
 host/container resource-monitoring hub currently in this stack.
+
+**Subtitles** — `bazarr` (extras, port 6767, watches Radarr/Sonarr for missing subtitles;
+reinstalled from scratch in v11.3.0 after being removed entirely in v10.2.0, no prior config
+survived; wired to both apps and 39 no-account/no-API-key subtitle providers post-boot via its
+own `/api/system/settings` form-encoded endpoint — see README's dedicated section for the
+gotchas in that endpoint before touching it again).
 
 **Plex lifecycle** — `maintainerr` (extras, port 6246, rule-based watched/stale-content
 cleanup; all server connections configured post-boot via its own UI, not env vars; rules ship

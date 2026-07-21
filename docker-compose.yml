@@ -349,6 +349,36 @@ services:
     mem_reservation: 64m
     cpus: 2
 
+  # Subtitle management for Radarr/Sonarr - connected via API key post-boot
+  # (Bazarr has no env-var wiring for this, same pattern as Maintainerr
+  # below), watches both libraries for missing English subs and downloads
+  # from whichever configured providers have them. Removed entirely in
+  # v10.2.0 (see README History); this is a from-scratch reinstall, not a
+  # restore - no config/bazarr state survived the removal.
+  bazarr:
+    <<: *common
+    image: ghcr.io/hotio/bazarr:release
+    container_name: bazarr
+    profiles: [extras]
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6767/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/bazarr:/config
+      - ./media/movies:/data/movies
+      - ./media/shows:/data/shows
+    ports:
+      - "6767:6767"
+    # No prior baseline to size against (fresh reinstall) - matching
+    # Tautulli's ceiling as the nearest comparable companion-app footprint.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
+
   # Plex library lifecycle management - auto-removes watched/stale content on
   # rules configured through its own UI (e.g. "delete movies X days after
   # watched", "remove episodes X days after airing"), keeping the local
@@ -548,6 +578,7 @@ services:
       TZ: ${TZ}
     volumes:
       - ./config/quickstart:/config
+      - ./config/plex:/plex-config
     ports:
       - "7171:7171"
     mem_limit: 1g
