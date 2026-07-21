@@ -2147,6 +2147,28 @@ def queue_status():
     except HTTPException:
         result["plex"] = {"label": "Plex", "error": "unreachable"}
 
+    # Bazarr has no in-progress download to bucket as downloading/stalled - a
+    # subtitle grab completes synchronously within one API call, there's no
+    # multi-second transfer to sample twice like the arr/nzbdav/plex sources
+    # above. Its "wanted" list is the honest analog of a queue here: items
+    # still waiting to be searched, which is exactly the "queued" bucket
+    # already means for every other source.
+    try:
+        headers = _bazarr_headers()
+        movies_wanted = httpx.get(f"{BAZARR_URL}/api/movies/wanted", headers=headers, timeout=20)
+        movies_wanted.raise_for_status()
+        episodes_wanted = httpx.get(f"{BAZARR_URL}/api/episodes/wanted", headers=headers, timeout=20)
+        episodes_wanted.raise_for_status()
+        queued = [{"title": m.get("title"), "note": "missing subtitle"}
+                  for m in movies_wanted.json().get("data", [])]
+        queued += [{"title": f'{e.get("seriesTitle")} - {e.get("episode_number", "")}', "note": "missing subtitle"}
+                   for e in episodes_wanted.json().get("data", [])]
+        grand_total += len(queued)
+        result["bazarr"] = {"label": "Bazarr", "total": len(queued),
+                             "downloading": [], "stalled": [], "queued": queued, "importing": []}
+    except (HTTPException, httpx.HTTPError) as e:
+        result["bazarr"] = {"label": "Bazarr", "error": str(e) if isinstance(e, httpx.HTTPError) else "unreachable"}
+
     active = sum(len(v.get("downloading", [])) for v in result.values())
     return ok(
         f"{grand_total} item(s) across {len(result)} queues, {active} actively downloading.",
@@ -2341,6 +2363,31 @@ def backlog_status():
         else:
             item["eta"] = f"unknown - no imports in the last {RECENT_IMPORT_LOOKBACK_HOURS}h to measure a rate from"
         result[app_name] = item
+
+    # Bazarr's missing count is real (movies + episodes still lacking a
+    # subtitle), but there's no rate/ETA to project it forward with - its
+    # history API only exposes a pre-formatted relative string ("3 hours
+    # ago") for the timestamp field, not a parseable date like the arr
+    # apps' own /history, so faking a rate off that would be guessing, not
+    # measuring. Missing count alone is still a real, useful number.
+    try:
+        headers = _bazarr_headers()
+        movies_wanted = httpx.get(f"{BAZARR_URL}/api/movies/wanted", headers=headers, params={"length": 1}, timeout=20)
+        movies_wanted.raise_for_status()
+        episodes_wanted = httpx.get(f"{BAZARR_URL}/api/episodes/wanted", headers=headers, params={"length": 1}, timeout=20)
+        episodes_wanted.raise_for_status()
+        missing = movies_wanted.json().get("total", 0) + episodes_wanted.json().get("total", 0)
+        result["bazarr"] = {
+            "label": "Bazarr",
+            "missing": missing,
+            "recent_imports_sampled": 0,
+            "rate_per_hour": 0.0,
+            "eta": "none - nothing missing" if missing == 0
+                   else "unknown - Bazarr's history API has no parseable timestamp to measure a rate from",
+        }
+    except (HTTPException, httpx.HTTPError) as e:
+        result["bazarr"] = {"label": "Bazarr", "error": str(e) if isinstance(e, httpx.HTTPError) else "unreachable"}
+
     total_missing = sum(v.get("missing", 0) for v in result.values())
     return ok(f"{total_missing} item(s) missing across {len(result)} apps.", apps=result)
 
