@@ -40,6 +40,7 @@ NZBDAV_ADMIN_PASSWORD = os.environ.get("NZBDAV_ADMIN_PASSWORD")
 HOST_IP = os.environ.get("HOST_IP")
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 TAUTULLI_URL = "http://tautulli:8181"
+BAZARR_URL = "http://bazarr:6767"
 SEERR_URL = "http://seerr:5055"
 TMDB_KEY = os.environ.get("TMDB_KEY")
 TMDB_URL = "https://api.themoviedb.org/3"
@@ -58,6 +59,20 @@ def _tautulli_key() -> str | None:
         for line in f:
             if line.strip().startswith("api_key"):
                 return line.split("=", 1)[1].strip()
+    return None
+
+
+def _bazarr_key() -> str | None:
+    """Bazarr generates its own API key on first boot into
+    config/config.yaml's auth.apikey - never an env var, same story as
+    Tautulli/Seerr above."""
+    path = os.path.join(HOST_CONFIG_DIR, "bazarr", "config", "config.yaml")
+    if not os.path.isfile(path):
+        return None
+    with open(path) as f:
+        for line in f:
+            if line.strip().startswith("apikey"):
+                return line.split(":", 1)[1].strip()
     return None
 
 
@@ -261,6 +276,15 @@ class LetterboxdListAddRequest(BaseModel):
     quality_profile: str | None = None
     limit: int | None = None
     dry_run: bool = False
+
+
+class ImportListAddRequest(BaseModel):
+    implementation: str
+    name: str
+    fields: dict = {}
+    search_on_add: bool = True
+    monitor: str | None = None
+    minimum_availability: str = "released"
 
 
 class MDBListImportRequest(BaseModel):
@@ -815,14 +839,14 @@ def posters_sync_stream():
 # through its separate ASP.NET backend instead - that one has no static key
 # at all, only a session cookie from POST /login.
 # ---------------------------------------------------------------------
-def nzbdav_api(mode: str, **params) -> dict:
+def nzbdav_api(mode: str, timeout: int = 15, **params) -> dict:
     if not NZBDAV_API_KEY:
         fail("NzbDAV isn't configured (NZBDAV_API_KEY not set)", status_code=503)
     try:
         r = httpx.get(
             f"{NZBDAV_URL}/api",
             params={"mode": mode, "output": "json", "apikey": NZBDAV_API_KEY, **params},
-            timeout=15,
+            timeout=timeout,
         )
         r.raise_for_status()
     except httpx.HTTPError as e:
@@ -2720,7 +2744,7 @@ def image_check():
     return ok(msg, images=results)
 
 
-def _restic(repo_path: str, args: list, text: bool = True) -> subprocess.CompletedProcess:
+def _restic(repo_path: str, args: list, text: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
     """Both repos are mounted read-only into this container - deliberately,
     there's no legitimate reason Control Panel needs write access to a
     backup repo. restic still tries to take a lock file for most commands,
@@ -2736,7 +2760,7 @@ def _restic(repo_path: str, args: list, text: bool = True) -> subprocess.Complet
     env = dict(os.environ)
     env["RESTIC_REPOSITORY"] = repo_path
     env["RESTIC_PASSWORD_FILE"] = HOST_RESTIC_PASSWORD_FILE
-    return subprocess.run(["restic", "--no-lock", *args], env=env, capture_output=True, text=text, timeout=60)
+    return subprocess.run(["restic", "--no-lock", *args], env=env, capture_output=True, text=text, timeout=timeout)
 
 
 @app.get("/api/backup-verify")
@@ -3289,6 +3313,250 @@ def arr_import_lists(app_name: str):
     return ok(f"{len(items)} import list(s) configured for {cfg['label']}.", items=items)
 
 
+@app.get("/api/arr/{app_name}/import-list/implementations")
+def arr_import_list_implementations(app_name: str):
+    """Every import-list type Radarr/Sonarr's own build supports, whether
+    configured here or not - a discovery aid for `import-list/add` below,
+    since the useful ones (Simkl, TMDb Company/Keyword/User, Plex, Custom)
+    are easy to miss without reading each app's Settings -> Import Lists
+    schema directly."""
+    if app_name not in ("radarr", "sonarr"):
+        fail("Only radarr and sonarr have import lists.", status_code=400)
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/importlist/schema", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} lookup failed: {e}")
+    items = sorted({s["implementation"]: s.get("implementationName", s["implementation"]) for s in r.json()}.items())
+    return ok(f"{len(items)} import-list implementation(s) available on {cfg['label']}.",
+              items=[{"implementation": k, "name": v} for k, v in items])
+
+
+@app.post("/api/arr/{app_name}/import-list/add")
+def arr_import_list_add(app_name: str, payload: ImportListAddRequest):
+    """Generic import-list creator - wraps whichever native implementation
+    the caller names (e.g. PlexImport, SimklUserImport, TMDbCompanyImport,
+    TMDbKeywordImport, TMDbUserImport, TraktUserImport, CustomImport,
+    RadarrListImport) by overlaying only the fields that implementation
+    needs on top of its own live schema, rather than hand-maintaining a
+    separate field template per type in this file."""
+    if app_name not in ("radarr", "sonarr"):
+        fail("Only radarr and sonarr have import lists.", status_code=400)
+    cfg = ARR_APPS[app_name]
+    try:
+        schemas = httpx.get(f"{cfg['url']}/api/{cfg['api']}/importlist/schema", headers={"X-Api-Key": cfg["key"]}, timeout=20).json()
+        folders = httpx.get(f"{cfg['url']}/api/{cfg['api']}/rootfolder", headers={"X-Api-Key": cfg["key"]}, timeout=20).json()
+        profiles = httpx.get(f"{cfg['url']}/api/{cfg['api']}/qualityprofile", headers={"X-Api-Key": cfg["key"]}, timeout=20).json()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} lookup failed: {e}")
+    template = next((s for s in schemas if s["implementation"] == payload.implementation), None)
+    if template is None:
+        fail(f"Unknown import-list implementation '{payload.implementation}' for {cfg['label']}.", status_code=400)
+    if not folders or not profiles:
+        fail(f"{cfg['label']} has no root folder / quality profile configured.")
+
+    body = dict(template)
+    body["name"] = payload.name
+    body["enabled"] = True
+    body["enableAuto"] = payload.search_on_add
+    body["searchOnAdd"] = payload.search_on_add
+    body["rootFolderPath"] = folders[0]["path"]
+    body["qualityProfileId"] = profiles[0]["id"]
+    body["monitor"] = payload.monitor or ("movieOnly" if app_name == "radarr" else "all")
+    if app_name == "radarr":
+        body["minimumAvailability"] = payload.minimum_availability
+    field_values = dict(payload.fields)
+    if payload.implementation == "PlexImport" and "accessToken" not in field_values and PLEX_TOKEN:
+        field_values["accessToken"] = PLEX_TOKEN
+
+    # Trakt/Simkl/TMDb-user import types need an OAuth token Radarr/Sonarr
+    # only ever obtain through their own UI's "Authenticate" button - not
+    # something this endpoint can complete on its own. But that token is
+    # tied to the underlying account, not the individual list: if another
+    # list of the same OAuth family (matched by implementation prefix, e.g.
+    # any "Trakt*Import") is already configured on this app, its token
+    # works for a new one too. Confirmed live: this Radarr's existing
+    # TraktListImport entries (DCAU/DCEU) already carry a valid
+    # accessToken/refreshToken, reusable here without a fresh OAuth pass.
+    oauth_families = ("Trakt", "Simkl", "TMDbUser")
+    family = next((f for f in oauth_families if payload.implementation.startswith(f)), None)
+    if family:
+        oauth_field_names = {"accessToken", "refreshToken", "expires", "authUser"}
+        donor = next(
+            (lst for lst in httpx.get(f"{cfg['url']}/api/{cfg['api']}/importlist",
+                                       headers={"X-Api-Key": cfg["key"]}, timeout=20).json()
+             if lst["implementation"].startswith(family)
+             and any(f["name"] == "accessToken" and f.get("value") for f in lst["fields"])),
+            None,
+        )
+        if donor:
+            for f in donor["fields"]:
+                if f["name"] in oauth_field_names and f["name"] not in field_values:
+                    field_values[f["name"]] = f.get("value")
+        elif not any(k in field_values for k in oauth_field_names):
+            fail(f"No existing {family}-authenticated import list found on {cfg['label']} to reuse a token from - "
+                 f"authenticate one list of this type through {cfg['label']}'s own UI first (Settings -> Import Lists "
+                 f"-> Add -> {payload.implementation}'s \"Authenticate\" button), then this endpoint can reuse it "
+                 f"for every list after.", status_code=409)
+
+    body["fields"] = [dict(f, value=field_values[f["name"]]) if f["name"] in field_values else f
+                       for f in template["fields"]]
+
+    try:
+        r = httpx.post(f"{cfg['url']}/api/{cfg['api']}/importlist", json=body, headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        fail(f"{cfg['label']} import-list creation failed: {e.response.text.strip() or e}")
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} import-list creation failed: {e}")
+    return ok(f"Import list '{payload.name}' ({payload.implementation}) added to {cfg['label']}.", id=r.json().get("id"))
+
+
+@app.get("/api/tautulli/stats")
+def tautulli_stats():
+    """Tautulli's own home-stats widget data (most watched, most active
+    users/platforms over the last 30 days) - a server-wide view, distinct
+    from stack-tautulli-history's per-session log."""
+    key = _tautulli_key()
+    if not key:
+        fail("No Tautulli API key found (config.ini not present yet - has it completed setup?).", status_code=500)
+    try:
+        r = httpx.get(f"{TAUTULLI_URL}/api/v2", params={"apikey": key, "cmd": "get_home_stats", "time_range": 30}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Tautulli lookup failed: {e}")
+    data = r.json().get("response", {}).get("data", [])
+    items = [{"title": stat.get("stat_title"), "rows": [row.get("title") or row.get("user") or row.get("platform")
+              for row in stat.get("rows", [])[:5]]} for stat in data if stat.get("rows")]
+    return ok(f"{len(items)} stat categor{'y' if len(items) == 1 else 'ies'} from the last 30 days.", items=items)
+
+
+def _bazarr_headers():
+    key = _bazarr_key()
+    if not key:
+        fail("No Bazarr API key found (config.yaml not present yet - has it completed setup?).", status_code=500)
+    return {"X-API-KEY": key}
+
+
+@app.get("/api/bazarr/wanted")
+def bazarr_wanted():
+    """Movies/episodes Bazarr still has no subtitle for, across both
+    libraries - the same list its own scheduled search works through,
+    surfaced without opening its UI."""
+    try:
+        movies = httpx.get(f"{BAZARR_URL}/api/movies/wanted", headers=_bazarr_headers(), timeout=20)
+        movies.raise_for_status()
+        episodes = httpx.get(f"{BAZARR_URL}/api/episodes/wanted", headers=_bazarr_headers(), timeout=20)
+        episodes.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Bazarr lookup failed: {e}")
+    movie_items = [m.get("title") for m in movies.json().get("data", [])]
+    episode_items = [f'{e.get("seriesTitle")} - {e.get("episode_number", "")}' for e in episodes.json().get("data", [])]
+    return ok(f"{len(movie_items)} movie(s), {len(episode_items)} episode(s) still missing subtitles.",
+              movies=movie_items, episodes=episode_items)
+
+
+@app.post("/api/bazarr/search-missing")
+def bazarr_search_missing():
+    """Triggers Bazarr's missing-subtitle search job on demand instead of
+    waiting for its scheduler (default every 6h) - the same job
+    `wanted_search_missing_subtitles_movies`/`_series` runs automatically."""
+    try:
+        r = httpx.post(f"{BAZARR_URL}/api/system/tasks", headers=_bazarr_headers(),
+                        data={"taskid": "wanted_search_missing_subtitles_movies"}, timeout=20)
+        r.raise_for_status()
+        r2 = httpx.post(f"{BAZARR_URL}/api/system/tasks", headers=_bazarr_headers(),
+                         data={"taskid": "wanted_search_missing_subtitles_series"}, timeout=20)
+        r2.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Couldn't trigger Bazarr's search: {e}")
+    return ok("Missing-subtitle search triggered for both movies and series.")
+
+
+@app.get("/api/bazarr/history")
+def bazarr_history(limit: int = 20):
+    """Recent subtitle download history (both movies and episodes),
+    newest first - successes and failures both, so a provider that's
+    silently failing every download shows up without checking each item."""
+    try:
+        movies = httpx.get(f"{BAZARR_URL}/api/movies/history", headers=_bazarr_headers(),
+                            params={"length": limit}, timeout=20)
+        movies.raise_for_status()
+        episodes = httpx.get(f"{BAZARR_URL}/api/episodes/history", headers=_bazarr_headers(),
+                              params={"length": limit}, timeout=20)
+        episodes.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Bazarr lookup failed: {e}")
+    items = []
+    for rec in movies.json().get("data", [])[:limit]:
+        items.append({"title": rec.get("title"), "action": rec.get("description"), "provider": rec.get("provider")})
+    for rec in episodes.json().get("data", [])[:limit]:
+        items.append({"title": rec.get("seriesTitle"), "action": rec.get("description"), "provider": rec.get("provider")})
+    return ok(f"{len(items)} recent history entr{'y' if len(items) == 1 else 'ies'}.", items=items)
+
+
+@app.get("/api/bazarr/provider-status")
+def bazarr_provider_status():
+    """Per-provider throttle/error state for every enabled subtitle
+    source - catches a provider that's silently rate-limited or erroring
+    on every request, invisible from a plain enabled/disabled list."""
+    try:
+        r = httpx.get(f"{BAZARR_URL}/api/providers", headers=_bazarr_headers(), timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Bazarr lookup failed: {e}")
+    items = [{"name": p.get("name"), "status": p.get("status"), "retry": p.get("retry")} for p in r.json().get("data", [])]
+    problems = [i["name"] for i in items if i["status"] != "Good"]
+    msg = "All providers healthy." if not problems else f"Problem with: {', '.join(problems)}"
+    return ok(msg, items=items)
+
+
+@app.post("/api/backup-integrity-check")
+def backup_integrity_check():
+    """On-demand `restic check` (10% data subset, same sampling
+    backup-config.sh's own monthly automatic check uses) against both
+    repos - for verifying right now rather than waiting for the 1st of
+    the month, e.g. right after a repo's been touched by hand."""
+    repos = {"local": HOST_BACKUP_LOCAL, "offsite": HOST_BACKUP_OFFSITE}
+    out = {}
+    for name, path in repos.items():
+        if not os.path.isdir(path):
+            out[name] = {"status": "missing", "path": path}
+            continue
+        r = _restic(path, ["check", "--read-data-subset=10%"], timeout=600)
+        out[name] = {"status": "ok" if r.returncode == 0 else "error",
+                      "detail": None if r.returncode == 0 else (r.stderr or r.stdout).strip()[:500]}
+    problems = [n for n, v in out.items() if v["status"] != "ok"]
+    msg = "Both repos passed integrity check." if not problems else f"Problem with: {', '.join(problems)}"
+    return ok(msg, repos=out)
+
+
+@app.get("/api/arr/{app_name}/customformat-snapshot")
+def arr_customformat_snapshot(app_name: str):
+    """Current custom-format list and scores for the given app's quality
+    profile(s) - stack-customformat-diff caches this response locally and
+    diffs successive calls, since neither app has a native change log for
+    format-score edits made through the API."""
+    if app_name not in ("radarr", "sonarr"):
+        fail("Only radarr and sonarr have custom formats.", status_code=400)
+    cfg = ARR_APPS[app_name]
+    try:
+        cf = httpx.get(f"{cfg['url']}/api/{cfg['api']}/customformat", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        cf.raise_for_status()
+        profiles = httpx.get(f"{cfg['url']}/api/{cfg['api']}/qualityprofile", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        profiles.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} lookup failed: {e}")
+    cf_names = {c["id"]: c["name"] for c in cf.json()}
+    snapshot = {}
+    for profile in profiles.json():
+        snapshot[profile["name"]] = {
+            cf_names.get(item["format"], str(item["format"])): item["score"] for item in profile["formatItems"]
+        }
+    return ok(f"{len(cf_names)} custom format(s) across {len(snapshot)} profile(s) on {cfg['label']}.", profiles=snapshot)
+
+
 @app.get("/api/nzbdav/stats")
 def nzbdav_stats():
     """Aggregate counts instead of the raw queue/history dumps
@@ -3301,6 +3569,51 @@ def nzbdav_stats():
     return ok(f"{len(queue)} queued ({mb_left:.0f}MB left), {len(history)} in recent history "
               f"({fail_count} failed).", queued=len(queue), mb_left=round(mb_left), history_count=len(history),
               history_failed=fail_count)
+
+
+@app.post("/api/nzbdav/delete-failures")
+def nzbdav_delete_failures():
+    """On-demand version of scripts/nzbdav-prune-history.py (also run every
+    4h by stack-nzbdav-prune-history.timer) - deletes every "Failed" history
+    entry. A Failed row has no surviving output (storage is null, nothing
+    ever wrote to disk) but still blocks re-grabbing an NZB with a matching
+    release name ("Duplicate nzb: the download folder for this nzb already
+    exists" - confirmed live 2026-07-19 even with nothing on disk), so
+    there's no reason to keep one once logged. nzbdav's delete endpoint
+    takes exactly one GUID per call (no batch form despite otherwise
+    mirroring SABnzbd's API), so deletes fan out across threads rather
+    than running serially - same-host calls, not rate-limited."""
+    history = nzbdav_api("history", limit=0, timeout=180)
+    slots = history.get("history", {}).get("slots", [])
+    failed = [s for s in slots if (s.get("status") or "") == "Failed"]
+    if not failed:
+        return ok("No failed history entries to delete.", deleted=0, errors=0)
+
+    def delete_one(slot):
+        try:
+            r = httpx.get(f"{NZBDAV_URL}/api", params={
+                "mode": "history", "name": "delete", "value": slot["nzo_id"],
+                "apikey": NZBDAV_API_KEY, "output": "json",
+            }, timeout=30)
+            r.raise_for_status()
+            result = r.json()
+        except httpx.HTTPError as e:
+            return False, f'{slot.get("name")}: {e}'
+        if result.get("status"):
+            return True, None
+        return False, f'{slot.get("name")}: {result.get("error")}'
+
+    deleted, errors = 0, []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
+        for ok_, message in pool.map(delete_one, failed):
+            if ok_:
+                deleted += 1
+            else:
+                errors.append(message)
+    msg = f"Deleted {deleted}/{len(failed)} failed history entries."
+    if errors:
+        msg += f" {len(errors)} error(s)."
+    return ok(msg, deleted=deleted, errors=errors[:20])
 
 
 @app.get("/api/plex/recently-added")

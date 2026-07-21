@@ -40,10 +40,10 @@ linked table of contents. Read the relevant section there before making changes;
 covers what you need to get oriented and the things that aren't obvious from reading one file in
 isolation.
 
-**See `AGENTS.md` for this repo's sync obligation to `../StackMaster`** (the standalone
-redistribution of the `stack-*` CLI + Control Panel; `Stackalicious`/`StackScripts`, the two
-repos it replaced, were deleted outright on 2026-07-19 — don't point new agents at either) —
-a new `stack-*` command added here isn't finished until it's mirrored there.
+**This stack has no public downstream mirror — see `AGENTS.md`.** `StackMaster` (and before it,
+`Stackalicious`/`StackScripts`) were deleted outright from GitHub, most recently 2026-07-21,
+for privatization. Every `stack-*` command lives only in this host's own fish functions plus
+this repo's `control-panel/app.py` — nothing to mirror anywhere.
 
 ## Full service inventory (all 16, by subsystem)
 

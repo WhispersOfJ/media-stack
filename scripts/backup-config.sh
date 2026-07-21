@@ -74,12 +74,26 @@ fi
 # .env.example's "Off-site backup" section). Same exclude list, own retention
 # pass, tagged "(remote)" in every notification so a local-only failure and a
 # remote-only failure are never confused with each other.
+#
+# Unlike the local repo (which stays root-owned by design - see the module
+# comment), this target lives inside a folder a user-level daemon (Dropbox)
+# actively syncs. Root-owned files it can't read are invisible to it, and a
+# sync client that finds it can't read/reconcile most of a folder's contents
+# may fall back to treating it as empty rather than partially-synced -
+# confirmed live: a completed 103GB backup here was wiped on both local disk
+# and the Dropbox cloud side within two hours of being written root-owned,
+# with no error surfaced anywhere. `chown` back to the invoking user
+# immediately after every write/prune closes this - a later sudo restic call
+# against this repo still works fine (root can always read a user-owned
+# file), only the reverse (a non-root daemon reading a root-owned file)
+# was ever the problem.
 if [ -n "$BACKUP_REMOTE_REPOSITORY" ]; then
   (
     export RESTIC_REPOSITORY="$BACKUP_REMOTE_REPOSITORY"
     export RESTIC_PASSWORD_FILE="${BACKUP_REMOTE_PASSWORD_FILE:-$HOME/backups/.restic-password}"
     sudo -n -E restic backup ./config "${RESTIC_EXCLUDES[@]}"
     remote_status=$?
+    sudo -n chown -R "$(id -u):$(id -g)" "$BACKUP_REMOTE_REPOSITORY"
     if [ "$remote_status" -ne 0 ] && [ "$remote_status" -ne 3 ]; then
       ./scripts/notify-discord.sh "Backup (remote) failed (restic exit $remote_status)" error
       exit "$remote_status"
@@ -88,6 +102,7 @@ if [ -n "$BACKUP_REMOTE_REPOSITORY" ]; then
       ./scripts/notify-discord.sh "Backup (remote) snapshot succeeded but retention pruning failed" warn
       exit 1
     fi
+    sudo -n chown -R "$(id -u):$(id -g)" "$BACKUP_REMOTE_REPOSITORY"
     if [ "$remote_status" -eq 3 ]; then
       ./scripts/notify-discord.sh "Backup (remote) completed with some files unreadable (exit 3, snapshot still good)" warn
     else
