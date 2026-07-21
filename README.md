@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v11.5.0**
+Current version: **v11.5.1**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet - streamed, not downloaded - and serves the result through a containerized Plex.
@@ -2055,3 +2055,13 @@ point - now lives only in this host's own fish functions plus this repo's
 `AGENTS.md` was rewritten accordingly. Pre-existing uncommitted work in that deleted clone
 (an unrelated in-progress `stack-queue-status` "Totals" section, never pushed anywhere) was
 confirmed with the user before being allowed to go with it rather than silently discarded.
+
+**v11.5.1**: `stack-tui` (github.com/WhispersOfJ/stack-tui, a terminal UI front end over the
+same Control Panel API the fish CLI drives) deleted outright from GitHub and its local clone
+removed, following the same privatization request - its own README described it as the third
+layer of a four-repo chain requiring `Stackalicious`/`StackScripts` to already be running,
+both deleted earlier this session, so it had no working dependency chain left regardless.
+Clean working tree beforehand, nothing lost. No other file in this repo referenced it outside
+one already-historical [History](#history) entry (the 2026 sync noting its command list was
+regenerated to 69 commands), left untouched rather than rewritten - past entries here record
+what was true at the time, not what's true now.
