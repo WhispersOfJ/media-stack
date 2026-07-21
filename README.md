@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v11.4.0**
+Current version: **v11.5.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet - streamed, not downloaded - and serves the result through a containerized Plex.
@@ -982,12 +982,11 @@ you specifically want IMDb-sourced content, search MDBList itself for a mirror -
 `https://mdblist.com/lists/adamosborne01/imdb-top-250` is a community-maintained, fully working
 copy of the IMDb Top 250 reachable through the exact same `stack-mdblist-import` command above.
 
-The full CLI (~60 commands), plus a standalone restyled Control Panel and a credential-entry
-installer, is also distributed as its own repo:
-[`StackScripts`](https://github.com/WhispersOfJ/StackScripts). Unlike `Stackalicious` (the
-sanitized mirror of this repo), `StackScripts` is generalized: no hardcoded IP or host paths,
-config collected through a browser-based setup wizard. Per `AGENTS.md`, every new `stack-*`
-command added here must be mirrored to both siblings in the same pass.
+The full CLI (~60 commands) lives entirely in this host's own `~/.config/fish/functions/`,
+backed by `control-panel/app.py` in this repo - no public mirror. A standalone redistributable
+version (`StackScripts`, later merged into `StackMaster`) existed at points in this project's
+history but was deleted outright from GitHub as of 2026-07-21, for privatization - see
+`AGENTS.md`. There is currently no downstream repo to keep in sync.
 
 ## Backups
 
@@ -1978,7 +1977,7 @@ anime-exclusive streaming-service formats CR/VRV/FUNi/ABEMA/ADN/B-Global/Bilibil
 and a "Prefer Season Packs" custom format (`ReleaseTypeSpecification` = Season Pack, +25) was
 re-added to Sonarr after being lost in v11.2.0's quality-profile consolidation.
 
-**v11.4.0** (current): Bazarr's provider list narrowed from the 39 enabled in v11.3.0 down to
+**v11.4.0**: Bazarr's provider list narrowed from the 39 enabled in v11.3.0 down to
 9, in two follow-up passes - first removing every single-region/single-language site that
 doesn't carry English subtitles at all (Bulgarian, Romanian, Croatian, Greek, Turkish, Hebrew,
 Chinese, Latvian, Hungarian, Indonesian, Polish, Spanish, French, Persian - 28 providers),
@@ -1998,3 +1997,61 @@ needing its own cleanup (unlike Beszel's v11.2.0 removal, which did have one). B
 up Maintainerr's Quick Links slot in Control Panel's dashboard, since it never had one of its
 own from the v11.3.0 reinstall - a gap from that session, closed here rather than left for a
 separate pass.
+
+**v11.5.0** (current): ~40 new `stack-*` fish commands added - list-import wrappers around
+native Radarr/Sonarr import-list implementations that were installed but never configured
+(Plex watchlist/RSS, Simkl/TMDb-user/Trakt-user OAuth families via token reuse from an already-
+authenticated list on the same app, TMDb company/keyword lists, generic Sonarr `CustomImport`
+and `RadarrListImport` URL wrappers), four Bazarr operational commands (wanted, on-demand
+missing-subtitle search, history, per-provider throttle status), a Tautulli 30-day stats
+command, an on-demand restic integrity check, a custom-format score differ (caches the last
+snapshot locally, since neither app has a native change log for API-driven score edits), and
+`stack-nzbdav-delete-failures` (deletes every "Failed" NzbDAV history entry on demand - the
+same job `stack-nzbdav-prune-history.timer` already runs every 4h; first live run cleared
+6,631 stale entries). Plus 3 host-diagnostic commands (git status across every repo under
+`~/Claude`, an SSH setup doctor, stack timer health) and 20 system-maintenance/package-
+management commands (pacman/AUR updates and orphan/cache cleanup, kernel-mismatch and pending-
+reboot checks, SMART disk health, disk-free thresholds, journal error summarization and
+vacuuming, failed-systemd-unit listing, a consolidated cron/timer view, firewall/listening-port
+status, zombie-process check, PSI pressure-stall snapshot, Docker disk usage, Flatpak updates,
+uptime/last-boot report, and an arch-audit wrapper).
+
+A planned Wikipedia-list-import command (scraping "List of highest-grossing films"-style
+wikitables) was designed, then dropped after live testing: Wikimedia's edge blocks Python
+`httpx` at the client-fingerprint level regardless of User-Agent or even a policy-compliant
+bot identification string through their own documented API - confirmed via two separate tests
+from inside the Control Panel container, both a raw page fetch and `action=parse` through
+`api.php`, both 403 with an explicit "respect our robot policy" message. `curl` from the host
+itself gets a clean 200 on the identical URL - this is a TLS/HTTP client fingerprint
+distinction, not a UA or IP-based block, and not something worth working around.
+
+A second real bug surfaced independently while building these: `docker-compose.yml`'s
+`control-panel` service still bind-mounted `/home/daddybear/backups` and
+`/home/daddybear/Dropbox/stack-restic-repo-offsite` - the same stale pre-reinstall username
+already fixed once this session in `.env`'s `BACKUP_REMOTE_REPOSITORY`, missed here because it
+was a separate file. This silently broke `stack-backup-verify`/`stack-backup-status` (both
+reported "missing"/"error" against paths that no longer existed) until caught live and fixed.
+
+**A genuine backup incident happened investigating that fix, not before it**: the offsite
+restic repo (freshly initialized and backed up with a real 103GB/213,943-file snapshot
+earlier the same session) was found completely empty - on local disk *and* confirmed via the
+Dropbox API directly against the cloud side, both at the identical timestamp. Root cause:
+`backup-config.sh`'s offsite leg runs `restic` under `sudo` (needed to read Plex's mode-600
+config files), which left every object in the repo root-owned - inside `~/Dropbox`, a folder
+Dropbox's own sync daemon manages running as the regular user, not root. A sync client unable
+to read most of a folder's own content appears to have reset it rather than partially
+syncing. Fixed by `chown`-ing the offsite repo back to the invoking user immediately after
+every backup and prune call in `scripts/backup-config.sh` - a later `sudo restic` call against
+it still works fine (root can always read a user-owned file; only the reverse was ever the
+problem). Re-initialized and re-backed-up after the fix, confirmed actually reaching Dropbox's
+cloud this time before moving on.
+
+**This stack's CLI was privatized the same session**: `StackMaster` (github.com/WhispersOfJ/
+StackMaster, the standalone redistributable CLI + control panel that superseded
+`Stackalicious`/`StackScripts`) was deleted outright from GitHub at the user's explicit
+request, and its local clone removed. Every `stack-*` command - all ~100 of them at this
+point - now lives only in this host's own fish functions plus this repo's
+`control-panel/app.py`; there is no downstream sibling to keep in sync anymore, and
+`AGENTS.md` was rewritten accordingly. Pre-existing uncommitted work in that deleted clone
+(an unrelated in-progress `stack-queue-status` "Totals" section, never pushed anywhere) was
+confirmed with the user before being allowed to go with it rather than silently discarded.
