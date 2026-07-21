@@ -26,7 +26,7 @@ chronological [History](#history) section is at the end.
 - [Plex](#plex)
 - [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
-- [Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-labelarr-cleanuparr-neutarr-unpackerr-watchtower)
+- [Automation extras: Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-cleanuparr-neutarr-unpackerr-watchtower)
 - [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
 - [Bazarr: subtitle management](#bazarr-subtitle-management)
 - [Control Panel](#control-panel)
@@ -523,7 +523,7 @@ curl -s -H "X-Api-Key: $RADARR_API_KEY" \
   jq '.customFormats, .customFormatScore'
 ```
 
-## Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower
+## Automation extras: Kometa, Cleanuparr, NeutArr, Unpackerr, Watchtower
 
 **Kometa** (`kometateam/kometa@sha256:98a0df...`; official image, not the LinuxServer fork,
 which resets `/config` ownership on every start) automates Plex collections, metadata, and
@@ -548,18 +548,6 @@ separate from `config/kometa` - per Quickstart's own docs, that path holds its S
 database, generated-YAML history, and run logs, not the Kometa config itself. A config built
 there has to be copied by hand into `config/kometa/config.yml`; the `kometa` service above is
 still what actually runs against that file, unchanged by adding this.
-
-**Labelarr** (`ghcr.io/nullable-eth/labelarr:v1.4.0`) pulls TMDb keywords onto Plex items as
-labels (e.g. "revenge", "based on a manga") so Plex's own filter/search UI gets more granular
-- complements Kometa rather than overlapping it; Kometa builds collections/overlays, this
-writes item-level labels, and neither reads or modifies the other's output. Runs its own
-1-hour timer (processes immediately on container start too), connected to Plex, TMDb (a
-separate v4 read-access token, `TMDB_READ_ACCESS_TOKEN` - not the v3 `TMDB_KEY` Control Panel
-uses), Radarr, and Sonarr (for TMDb-id lookups when a file path alone doesn't carry one). No
-web UI and no port published - its optional webhook-triggered mode needs Plex Pass and isn't
-configured here, so it's timer-only. `MOVIE_PROCESS_ALL`/`TV_PROCESS_ALL` cover every library
-of each type rather than naming specific ones, so it needs no reconfiguration as libraries
-come and go.
 
 **Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) and **NeutArr**
 (`iampuid0/neutarr:1.9.1`, port 9705) automate what Control Panel's "unstick" and
