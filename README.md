@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v11.3.0**
+Current version: **v11.4.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet - streamed, not downloaded - and serves the result through a containerized Plex.
@@ -29,7 +29,6 @@ chronological [History](#history) section is at the end.
 - [Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-labelarr-cleanuparr-neutarr-unpackerr-watchtower)
 - [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
 - [Bazarr: subtitle management](#bazarr-subtitle-management)
-- [Maintainerr: Plex library lifecycle](#maintainerr-plex-library-lifecycle)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
 - [Backups](#backups)
@@ -48,7 +47,7 @@ A Usenet-only media stack: an indexer layer (Prowlarr), a request front-end (See
 `*arr` apps (Radarr, Sonarr; Lidarr was removed in v10.9.9 and Whisparr in v10.12.0, see
 [History](#history)), Usenet acquisition that streams rather than downloads (NzbDAV), a
 containerized Plex, and automation/monitoring extras (Kometa, Cleanuparr, NeutArr, Unpackerr,
-Watchtower, Tautulli, Maintainerr). Ebooks briefly had a dedicated app (Bindery) plus a reader
+Watchtower, Tautulli, Bazarr). Ebooks briefly had a dedicated app (Bindery) plus a reader
 (Calibre-Web); both were retired in v10.9.8 with no replacement (see
 [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)). Adult content
 cataloging (Stash) was also removed in v10.12.0, along with Whisparr, which had managed its
@@ -174,17 +173,16 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 7 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host net) | core |
 | 8 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
 | 9 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
-| 10 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
-| 11 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 12 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
-| 13 | `quickstart` | `kometateam/quickstart:latest` | 7171 | extras |
-| 14 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 15 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 16 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 17 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 10 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 11 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
+| 12 | `quickstart` | `kometateam/quickstart:latest` | 7171 | extras |
+| 13 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 14 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 15 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 16 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
 
 `docker compose up -d` brings up the 7 core services; `docker compose --profile extras up
--d` adds the other 10. Both are safe to re-run; Compose only recreates what is out of sync
+-d` adds the other 9. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg, rclone-alldebrid, Zilean,
 zilean-postgres, Byparr - were removed entirely; see [History](#history).)
 
@@ -659,7 +657,7 @@ bazarr:
     - "6767:6767"
 ```
 
-Like Maintainerr below, Radarr/Sonarr connections and every other setting go through Bazarr's
+Radarr/Sonarr connections and every other setting go through Bazarr's
 own settings endpoint, not environment variables - and unlike most of this stack's other
 apps, that endpoint isn't in Bazarr's own published Swagger spec (`/api/swagger.json`); it's
 `POST /api/system/settings`, form-encoded, undocumented because it's meant for Bazarr's own
@@ -701,53 +699,6 @@ first place - that's what the "Block: Foreign Audio w/o English Subs" custom for
 apps' quality profiles, see [The *arr apps](#the-arr-apps)) is for, and that CF is a
 release-title-regex approximation for exactly the reason Bazarr exists: neither app can see
 actual embedded subtitle tracks before a release is grabbed.
-
-## Maintainerr: Plex library lifecycle
-
-**Maintainerr** removes watched/stale content on rules you define, covering the other half of
-the request lifecycle Seerr starts, so the local `./media` footprint does not grow unbounded. It was the one adoptable idea from an evaluation of
-[RandomNinjaAtk/arr-scripts](https://github.com/RandomNinjaAtk/arr-scripts) (most of which
-requires LinuxServer.io init-hook directories the hotio images here lack, duplicates existing
-functionality, or conflicts with the no-local-disk architecture).
-
-```yaml
-# docker-compose.yml
-maintainerr:
-  image: ghcr.io/maintainerr/maintainerr:latest
-  user: "${PUID}:${PGID}"
-  volumes:
-    - ./config/maintainerr:/opt/data
-  ports:
-    - "6246:6246"
-```
-
-Server connections (Plex, Radarr, Sonarr, Seerr, Tautulli) are configured through its
-settings API/UI, not environment variables:
-
-```bash
-# Plex requires the auth token saved first, separately
-curl -X POST -H "Content-Type: application/json" http://localhost:6246/api/settings/plex/token \
-  -d "{\"plex_auth_token\": \"$PLEX_TOKEN\"}"
-curl -X PATCH -H "Content-Type: application/json" http://localhost:6246/api/settings \
-  -d '{"plex_hostname":"192.168.4.105","plex_port":32400,"plex_ssl":0,
-       "plex_machine_id":"72ecc884f6bcd5f8bc4e4562b6b81e03ea9209e5","plex_manual_mode":1}'
-
-# Radarr/Sonarr/Seerr/Tautulli are one call each
-curl -X POST -H "Content-Type: application/json" http://localhost:6246/api/settings/radarr \
-  -d "{\"serverName\":\"Radarr\",\"url\":\"http://radarr:7878\",\"apiKey\":\"$RADARR_API_KEY\"}"
-```
-
-Two starter rules were imported from Maintainerr's community rule library (the highest-karma
-entries for a Seerr-based setup), one each for Movies and TV Shows: "seen by the Seerr
-requester & older than 30 days, OR unwatched & older than 90 days." Both were created with
-`isActive: false`. The rule engine runs on a cron schedule (`rules_handler_job_cron`, every 8
-hours by default) and deletes matching media, so review the rules in the UI (`Rules` tab) and
-enable them yourself:
-
-```bash
-curl -s http://localhost:6246/api/rules | \
-  python3 -c "import sys,json; [print(r['id'], r['name'], r['isActive']) for r in json.load(sys.stdin)]"
-```
 
 ## Control Panel
 
@@ -1386,9 +1337,9 @@ rotated into `.env`). Zurg's `music`/`books` groups restored. Decypharr categori
 added at `/mnt/zurg/adult`. CLI and setup wizard extended to five `*arr` apps. Whisparr
 "Unlimited" quality profile added to match Radarr/Sonarr.
 
-**v10.3.0**: Maintainerr added (see
-[Maintainerr](#maintainerr-plex-library-lifecycle)); two community rules imported, left
-`isActive: false`. Native Discord notification connections added to all five `*arr` apps.
+**v10.3.0**: Maintainerr added (Plex library lifecycle management - removed entirely in
+v11.4.0, see below); two community rules imported, left `isActive: false`. Native Discord
+notification connections added to all five `*arr` apps.
 
 **v10.4.0**: Zurg `anime-shows`/`anime-movies` routing groups and matching Plex libraries
 added. Restarting Zurg for the new groups left `/mnt/zurg` empty: the mount's
@@ -1997,7 +1948,7 @@ firewall change either way. Service count: 20 → 16.
 (port 6767, extras profile, `./config/bazarr`/`./media/movies`/`./media/shows` mounts, no
 prior baseline so `mem_limit` matched to Tautulli's 512m as the nearest comparable companion
 app). Wired to both Radarr and Sonarr via their existing API keys (Bazarr has no env-var
-config path for this, same as Maintainerr - done post-boot through its `/api/system/settings`
+config path for this - done post-boot through its `/api/system/settings`
 form-encoded endpoint, undocumented in its own Swagger spec; note for future config-via-API
 work here: that endpoint's boolean fields require lowercase `true`/`false` strings, not
 Python-style `True`/`False` - the latter fails dynaconf's type validator with a misleading
@@ -2026,3 +1977,24 @@ Uncensored, v0-v4 fansub versioning, 10bit, Dual Audio, Dubs Only, VOSTFR, and S
 anime-exclusive streaming-service formats CR/VRV/FUNi/ABEMA/ADN/B-Global/Bilibili/HIDIVE/WKN),
 and a "Prefer Season Packs" custom format (`ReleaseTypeSpecification` = Season Pack, +25) was
 re-added to Sonarr after being lost in v11.2.0's quality-profile consolidation.
+
+**v11.4.0** (current): Bazarr's provider list narrowed from the 39 enabled in v11.3.0 down to
+9, in two follow-up passes - first removing every single-region/single-language site that
+doesn't carry English subtitles at all (Bulgarian, Romanian, Croatian, Greek, Turkish, Hebrew,
+Chinese, Latvian, Hungarian, Indonesian, Polish, Spanish, French, Persian - 28 providers),
+then removing the one remaining anime-exclusive source (`animetosho`, a torrent-based anime
+indexer). Final list: `bsplayer`, `embeddedsubtitles`, `gestdown`, `subf2m`, `subs4free`,
+`subs4series`, `subsarr`, `tvsubtitles`, `yifysubtitles` - all either English-first sites or
+language-agnostic (`embeddedsubtitles`/`subsarr`).
+
+Maintainerr removed entirely, by explicit request (never used) - `docker-compose.yml` service
+block, `config/maintainerr` (never gitignored-only local state, no real secrets to preserve),
+Control Panel's `MAINTAINERR_URL`, `CONTAINER_LABELS` entry, `/api/maintainerr/rules` route,
+and its Quick Links entry, the `stack-maintainerr-rules` fish function and its `stack-help`
+listing, and its `commands.json` CLI-command entry. The only port-6246 rule found on the host
+was Docker's own auto-managed DNAT/nftables entry for the published port - confirmed it
+cleans up automatically on container/network removal, not a separate manual firewall rule
+needing its own cleanup (unlike Beszel's v11.2.0 removal, which did have one). Bazarr picked
+up Maintainerr's Quick Links slot in Control Panel's dashboard, since it never had one of its
+own from the v11.3.0 reinstall - a gap from that session, closed here rather than left for a
+separate pass.
