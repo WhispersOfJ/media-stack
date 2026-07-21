@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v11.2.0**
+Current version: **v11.3.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet - streamed, not downloaded - and serves the result through a containerized Plex.
@@ -28,6 +28,7 @@ chronological [History](#history) section is at the end.
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-kometa-labelarr-cleanuparr-neutarr-unpackerr-watchtower)
 - [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
+- [Bazarr: subtitle management](#bazarr-subtitle-management)
 - [Maintainerr: Plex library lifecycle](#maintainerr-plex-library-lifecycle)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
@@ -172,17 +173,18 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 6 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
 | 7 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host net) | core |
 | 8 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
-| 9 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 10 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
-| 11 | `quickstart` | `kometateam/quickstart:latest` | 7171 | extras |
-| 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 13 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 15 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
-| 16 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 9 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
+| 10 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 | extras |
+| 11 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 12 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
+| 13 | `quickstart` | `kometateam/quickstart:latest` | 7171 | extras |
+| 14 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 15 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 16 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 17 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
 
 `docker compose up -d` brings up the 7 core services; `docker compose --profile extras up
--d` adds the other 9. Both are safe to re-run; Compose only recreates what is out of sync
+-d` adds the other 10. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg, rclone-alldebrid, Zilean,
 zilean-postgres, Byparr - were removed entirely; see [History](#history).)
 
@@ -488,25 +490,32 @@ would require both a manager and a reader again.
 
 ## Custom formats and quality profiles
 
-Radarr and Sonarr each carry one custom format, **"Block - Sample, Russian, Low-Quality
-Sources"**, scored `-10000` in the one quality profile each app has (`Unlimited`;
-`minFormatScore` is `0`, so this is a hard reject). Four `required: false` conditions OR'd
-together; any one match rejects the release:
+Radarr and Sonarr were consolidated to a single quality profile each in v11.2.0, named
+**`ANY`** on both apps (not `Unlimited` - renamed as part of that consolidation; see
+[History](#history)). Recyclarr (the daily TRaSH-Guides sync that had managed a narrower set
+of hygiene custom formats since v10.5.0) was removed entirely in the same pass - there is no
+scheduled custom-format sync of any kind on either app anymore; every custom format below is
+hand-maintained via each app's API, not templated from an external guide.
 
-```bash
-# 1. Sample releases (title-level; a bundled sample file inside an otherwise
-#    clean release is caught by each app's own per-file detection)
-(?i)\bsample\b
+Custom format highlights on both apps (not exhaustive - check `GET /api/v3/customformat`
+against either app for the full current list):
 
-# 2. Russian language - Radarr/Sonarr's built-in LanguageSpecification (value 11)
-
-# 3. Russian/Korean text or script - literal tags plus Cyrillic and Hangul
-#    Unicode ranges, so a release matches even with wrong language metadata
-(?i)\b(rus|russian|kor|korean)\b|[Ѐ-ӿ]|[가-힣ᄀ-ᇿ㄰-㆏]
-
-# 4. Blocked low-trust sources/groups
-(?i)\b(WEB-DL|WEBRip|BDRip|HDRip|DVDRip|HDTV|AMZN|NF|DSNP|CR|YTS|TGX|TorrentGalaxy|FGT|LOL|KILLERS|EPSiLON|Erai-raws)\b|rartv|rarbg|eztv
-```
+- **"Block - Sample, Russian, Low-Quality Sources"** (`-10000`, hard reject): sample releases,
+  Russian audio/text (including Cyrillic/Hangul Unicode ranges so wrong language metadata
+  doesn't slip through), and a blocklist of low-trust sources/groups.
+- **"Block: Foreign Audio w/o English Subs"** (`-10000`, added v11.3.0): matches when audio
+  language is not English *and* the release title carries no subtitle-availability tag
+  (`ENG SUB`, `MULTI...SUB`, `ENGDL`, etc). A release-title-regex approximation, not a
+  substitute for Bazarr actually managing subtitles post-download - see
+  [Bazarr](#bazarr-subtitle-management) for why neither app can do better than this
+  pre-download.
+- **"Prefer Season Packs"** (Sonarr only, `+25`, re-added v11.3.0 after being lost in v11.2.0's
+  profile consolidation): `ReleaseTypeSpecification` = Season Pack, so Sonarr favors a season
+  pack over single/multi-episode releases when both are available.
+- All anime-specific custom formats (BD/Web tier ladders, fansub versioning, dual-audio,
+  anime-exclusive streaming services) were removed from both apps in the same v11.3.0 session,
+  following the anime library removal itself (v10.19.0) - the CF definitions had outlived the
+  content they scored.
 
 Check what a release title scores with each app's parse endpoint:
 
@@ -515,13 +524,6 @@ curl -s -H "X-Api-Key: $RADARR_API_KEY" \
   "http://192.168.4.105:7878/api/v3/parse?title=Movie.Name.2024.1080p.WEB-DL.RUS" | \
   jq '.customFormats, .customFormatScore'
 ```
-
-This replaced an earlier Recyclarr + TRaSH-Guides sync (41/40 per-quality-tier custom
-formats, synced daily), removed in v3.0.0. Recyclarr was reinstated in v10.5.0 with a
-narrower scope: it targets the same `Unlimited` profile directly and syncs five
-resolution-agnostic hygiene custom formats (Scene, Obfuscated, Retags, No-RlsGroup, Bad Dual
-Groups). `reset_unmatched_scores` is off so the manual blocklist format stays untouched by
-syncs. See [History](#history).
 
 ## Automation extras: Kometa, Labelarr, Cleanuparr, NeutArr, Unpackerr, Watchtower
 
@@ -638,6 +640,67 @@ Adminer was removed in v10.9.9 with no replacement (a same-day CloudBeaver swap 
 reverted). There is no web DB GUI; `zilean-postgres`, its one-time subject, was itself removed
 along with the rest of the debrid layer (see [History](#history)) - no Postgres instance runs
 in this stack anymore.
+
+## Bazarr: subtitle management
+
+**Bazarr** watches Radarr/Sonarr for missing subtitles and downloads them from whichever
+configured providers have them. Removed entirely in v10.2.0; reinstalled from scratch in
+v11.3.0 (see [History](#history)) - no prior `config/bazarr` state to restore.
+
+```yaml
+# docker-compose.yml
+bazarr:
+  image: ghcr.io/hotio/bazarr:release
+  volumes:
+    - ./config/bazarr:/config
+    - ./media/movies:/data/movies
+    - ./media/shows:/data/shows
+  ports:
+    - "6767:6767"
+```
+
+Like Maintainerr below, Radarr/Sonarr connections and every other setting go through Bazarr's
+own settings endpoint, not environment variables - and unlike most of this stack's other
+apps, that endpoint isn't in Bazarr's own published Swagger spec (`/api/swagger.json`); it's
+`POST /api/system/settings`, form-encoded, undocumented because it's meant for Bazarr's own
+frontend rather than external API consumers. Two gotchas worth keeping in mind before touching
+this again: boolean fields need lowercase `true`/`false` strings (`True`/`False` fails
+dynaconf's type validator with a misleading `"must is_type_of bool but it is True"` error), and
+array-valued fields (`enabled_providers` among them) need one repeated form key per value, not
+a single comma/space-joined string - trivial with `curl --data-urlencode` called once per
+value, but easy to get wrong from a shell that doesn't word-split unquoted variables the way
+you expect (this host's interactive shell is zsh, not bash - `for p in $PROVIDERS` silently
+does *not* split on whitespace there without `${=PROVIDERS}` or an actual array).
+
+```bash
+curl -X POST -H "X-API-KEY: $BAZARR_API_KEY" http://localhost:6767/api/system/settings \
+  --data-urlencode "settings-general-use_sonarr=true" \
+  --data-urlencode "settings-sonarr-ip=sonarr" \
+  --data-urlencode "settings-sonarr-port=8989" \
+  --data-urlencode "settings-sonarr-apikey=$SONARR_API_KEY" \
+  --data-urlencode "settings-general-enabled_providers=gestdown" \
+  --data-urlencode "settings-general-enabled_providers=yifysubtitles" \
+  --data-urlencode "languages-enabled=en" \
+  --data-urlencode 'languages-profiles=[{"profileId":1,"name":"English","cutoff":null,
+    "items":[{"id":1,"language":"en","forced":"False","hi":"False","audio_exclude":"False"}],
+    "mustContain":[],"mustNotContain":[],"originalFormat":null,"tag":null}]'
+```
+
+Bazarr's own API key lives in `config/bazarr/config/config.yaml` under `auth.apikey`,
+auto-generated on first boot - there's no env var for it.
+
+**Provider selection**: only providers that need zero account/API key/passkey are enabled (39
+of Bazarr's ~65 bundled providers - the full list and exclusion reasoning is in the v11.3.0
+[History](#history) entry). This is a deliberate ceiling, not an oversight - adding any
+excluded provider means creating an account/API key with that service first, which is a
+per-provider decision this repo doesn't make on your behalf.
+
+**What this does and doesn't cover**: Bazarr downloads real subtitle files after a movie/
+episode already exists on disk. It has no way to influence what Radarr/Sonarr grab in the
+first place - that's what the "Block: Foreign Audio w/o English Subs" custom format (both
+apps' quality profiles, see [The *arr apps](#the-arr-apps)) is for, and that CF is a
+release-title-regex approximation for exactly the reason Bazarr exists: neither app can see
+actual embedded subtitle tracks before a release is grabbed.
 
 ## Maintainerr: Plex library lifecycle
 
@@ -1904,7 +1967,7 @@ since the v11.0.0 removal (see [Known gaps and limitations](#known-gaps-and-limi
 finally re-acquired as part of this same session - 611 files found, matched to their Radarr/
 Sonarr file records, and cleared for normal re-download.
 
-**v11.2.0** (current): Radarr and Sonarr consolidated down to a single "ANY" quality profile
+**v11.2.0**: Radarr and Sonarr consolidated down to a single "ANY" quality profile
 each, by explicit request - every other profile deleted on both apps (Sonarr:
 `WEB-1080p`/`WEB-2160p`/`Low Quality`; Radarr: `HD Bluray + WEB`/`Remux + WEB 2160p`/
 `Low Quality`). Neither app's API allows deleting an in-use profile, so everything referencing
@@ -1928,3 +1991,38 @@ confirmed unused by anything else before deletion), and the containers/images th
 host firewall rule opened for Beszel's port 8090 earlier the same day was deleted along with
 it; Labelarr's port 9090 was never LAN-exposed (bound to `127.0.0.1` only) so needed no
 firewall change either way. Service count: 20 → 16.
+
+**v11.3.0** (current): Bazarr reinstalled - a from-scratch install, not a restore, since no
+`config/bazarr` state survived the v10.2.0 removal. `docker-compose.yml` service block added
+(port 6767, extras profile, `./config/bazarr`/`./media/movies`/`./media/shows` mounts, no
+prior baseline so `mem_limit` matched to Tautulli's 512m as the nearest comparable companion
+app). Wired to both Radarr and Sonarr via their existing API keys (Bazarr has no env-var
+config path for this, same as Maintainerr - done post-boot through its `/api/system/settings`
+form-encoded endpoint, undocumented in its own Swagger spec; note for future config-via-API
+work here: that endpoint's boolean fields require lowercase `true`/`false` strings, not
+Python-style `True`/`False` - the latter fails dynaconf's type validator with a misleading
+"must is_type_of bool but it is True" error). A single "English" languages profile (id 1,
+non-forced, non-HI) was created and set as the default profile for both new movies and new
+series so every existing/future library item picks it up automatically. Every bundled
+subtitle provider that needs zero account/API key/passkey was enabled (39 total, cross-checked
+against each provider's own Python `__init__` signature inside the container rather than
+assumed from memory) - excluded: HDBits, AvistaZ/AvistaZ Network/Cinemaz, Karagarga (all
+private-tracker-gated), Addic7ed/OpenSubtitles.com/SubDL/SubSource/SubX/Assrt/Betaseries/
+Napisy24/Titlovi/Titulky/Ktuvit/Legendasdivx/LegendasNet/XSubs (each needs a registered
+account or API key), Jimaku (requires an API key), WhisperAI (a transcription fallback, not a
+subtitle source, needs its own endpoint). Gestdown (Addic7ed's anonymous-access mirror) was
+enabled in Addic7ed's place for English TV subs. Both libraries synced in immediately (5,548
+movies, 79 series) and a full local-subtitle index kicked off for both; the actual
+missing-subtitle download search was left to Bazarr's own scheduler (default every 6h) rather
+than forced synchronously, since a first-run search across the full library against 39
+providers is a multi-hour operation better left backgrounded than blocking on. Known
+limitation, not a bug: Radarr/Sonarr custom formats can't see actual embedded subtitle tracks
+pre-download (that data only exists post-grab), so the "Block: Foreign Audio w/o English Subs"
+custom format added the same session to both apps' quality profiles is a release-title-regex
+approximation, not a real substitute for Bazarr actually managing subtitles after the fact -
+the two are complementary, not redundant. Same session, same both-apps scope: all anime-only
+custom formats removed (35 from Sonarr, 27 from Radarr - BD/Web anime tiers, Raws, LQ Groups,
+Uncensored, v0-v4 fansub versioning, 10bit, Dual Audio, Dubs Only, VOSTFR, and Sonarr's
+anime-exclusive streaming-service formats CR/VRV/FUNi/ABEMA/ADN/B-Global/Bilibili/HIDIVE/WKN),
+and a "Prefer Season Packs" custom format (`ReleaseTypeSpecification` = Season Pack, +25) was
+re-added to Sonarr after being lost in v11.2.0's quality-profile consolidation.

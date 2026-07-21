@@ -9,5 +9,5 @@ OnFailure=notify-failure@%n.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=%h/Stack
-ExecStart=%h/Stack/scripts/check-container-health.sh
+WorkingDirectory=/home/bear/Claude/media-stack
+ExecStart=/home/bear/Claude/media-stack/scripts/check-container-health.sh

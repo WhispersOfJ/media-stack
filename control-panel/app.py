@@ -157,6 +157,7 @@ CONTAINER_LABELS = {
     "nzbdav-rclone": ("rclone", "NzbDAV mount"),
     "seerr": ("Seerr", None),
     "tautulli": ("Tautulli", None),
+    "bazarr": ("Bazarr", "subtitle management - watches Radarr/Sonarr for missing subs"),
     "kometa": ("Kometa", None),
     "kometa-quickstart": ("Kometa Quickstart", "config.yml wizard, port 7171 - not an alternate Kometa runtime"),
     "unpackerr": ("Unpackerr", None),

@@ -10,7 +10,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=%h/Stack
+WorkingDirectory=/home/bear/Claude/media-stack
 ExecStart=/usr/bin/docker compose --profile extras up -d
 ExecStop=/usr/bin/docker compose --profile extras down
 TimeoutStartSec=300

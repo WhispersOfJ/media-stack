@@ -5,5 +5,5 @@ OnFailure=notify-failure@%n.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=%h/Stack
-ExecStart=/usr/bin/python3 %h/Stack/scripts/arr-app-backup.py
+WorkingDirectory=/home/bear/Claude/media-stack
+ExecStart=/usr/bin/python3 /home/bear/Claude/media-stack/scripts/arr-app-backup.py
