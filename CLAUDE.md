@@ -400,6 +400,30 @@ throughout its history section, and there's no substitute for it here.
 
 ## Historical incidents worth knowing before touching related code
 
+- **All four rotatable API keys (Radarr, Sonarr, Prowlarr, NzbDAV) were rotated 2026-07-22**,
+  triggered by a live Sonarr key found hardcoded in `.claude/settings.local.json` (an
+  untracked, personal-override file — see its own `.gitignore` entry added the same day).
+  Radarr's and Sonarr's `apiKey` field in `config/host` silently ignores changes via a plain
+  API PUT — the actual key lives in `config/<app>/config.xml`'s `<ApiKey>` element and only
+  takes effect after a container restart; there is no REST-only way to rotate it. Doing so
+  also required setting `AuthenticationMethod` from `Forms` (with blank, already-unusable
+  username/password — GET always returns empty for these fields even when populated, and PUT
+  validation demands them non-empty for `Forms`) to `None`, since the real credentials were
+  never known and re-supplying them wasn't an option — a deliberate, approved security
+  tradeoff, not an oversight. Every consumer of the old Radarr/Sonarr keys was updated and
+  live-tested afterward: Prowlarr's Applications sync entries (`/api/v1/applications/{id}`,
+  needs the read-only `id` field stripped before a PUT to Seerr's equivalent endpoint, and
+  before that field, before the PUT will validate), Seerr's `/api/v1/settings/radarr|sonarr`,
+  Bazarr's own `/api/system/settings` form-encoded endpoint (see
+  [Bazarr](README.md#bazarr-subtitle-management) for its gotchas), Cleanuparr's `arr_instances`
+  SQLite table (edited with the container stopped first, same WAL-safety practice as the
+  Lidarr/Whisparr removals), and NeutArr's `radarr.json`/`sonarr.json` (NeutArr itself stays
+  stopped regardless, per the NzbDAV connection-leak landmine above). NzbDAV's own SABnzbd-
+  compatible key lives at config key `api.key` (rotatable via the same login+update-config
+  pattern as `usenet.providers`) and also needed updating in Radarr's and Sonarr's own NzbDAV
+  download-client entries (`/api/v3/downloadclient/1`). Plex's token was deliberately left
+  alone — it's a sign-in session token, not a simple regenerate-via-API key, and carries a
+  real risk of disrupting connected clients.
 - **NeutArr was getting OOM-killed roughly every 30 minutes inside its 512MB `mem_limit`, fixed
   2026-07-18 by raising it to 1g.** Invisible from any dashboard because `restart: unless-stopped`
   just quietly restarted it — `docker stats`/`docker inspect` (OOMKilled flag / restart count) was
