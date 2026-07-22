@@ -1,6 +1,6 @@
 ---
 name: stack-cli-infra-ops
-description: Exact fish CLI command reference for container control, backups, and infrastructure diagnostics against this stack's Control Panel (status, restart, resource/mount/permission/image checks, backup verify/status, Seerr requests, top). Use whenever the user asks to check overall stack health, restart a container from the terminal, verify backups, or check for OOM kills, missing mem_limits, stale mounts, or unreadable config files. Trigger phrases: "check stack status", "restart this container", "verify the backup", "any oom kills", "check mount health", "top containers by cpu", "seerr requests".
+description: Exact fish CLI command reference for container control, backups, and infrastructure diagnostics against this stack's Control Panel (status, restart, resource/mount/permission/image checks, backup verify/status/integrity-check, Seerr requests, top), plus a handful of local disk/backup commands that don't go through Control Panel at all (disk-free thresholds, Docker disk usage, a one-off Claude-dir tarball). Use whenever the user asks to check overall stack health, restart a container from the terminal, verify or integrity-check backups, check disk free space or Docker's disk usage, or check for OOM kills, missing mem_limits, stale mounts, or unreadable config files. Trigger phrases: "check stack status", "restart this container", "verify the backup", "run a backup integrity check", "any oom kills", "check mount health", "top containers by cpu", "seerr requests", "how much disk space is free", "docker disk usage breakdown".
 ---
 
 # Stack CLI: Infra & Ops
@@ -16,9 +16,11 @@ This is a command reference, not an operational tool: it exists so the exact fis
 ## Calling convention
 
 <calling_convention>
-Many commands here (`stack-status`, `stack-resource-check`, `stack-mount-health`, `stack-oom-check`, `stack-perms-check`, `stack-image-check`, `stack-version`, `stack-backup-verify`, `stack-backup-restore-test`) are one-line `__stack_api GET/POST <path>` calls that just print the response's `message` field. The rest `curl` directly and pipe through an inline `python3 -c "..."` formatter for structured output.
+Many commands here (`stack-status`, `stack-resource-check`, `stack-mount-health`, `stack-oom-check`, `stack-perms-check`, `stack-image-check`, `stack-version`, `stack-backup-verify`, `stack-backup-restore-test`) are one-line `__stack_api GET/POST <path>` calls that just print the response's `message` field. `stack-backup-integrity-check` instead `curl`s `/api/backup-integrity-check` directly and pipes through an inline `python3 -c "..."` formatter, since it needs to print a per-repo status line, not just one message. The rest of the structured-output commands follow that same curl+python3 shape.
 
 None of these read a `STACK_HOST_IP` environment variable - the Control Panel URL is a literal hardcoded string in every function.
+
+**Three commands in this file are not Control Panel wrappers at all** - `stack-claude-full-backup`, `stack-disk-free`, and `stack-docker-disk-usage` run local tools directly (`tar`, `df`, `docker system df`) against this host, with no HTTP call anywhere in their source. They're grouped here by theme (backup/disk), not by mechanism - don't assume every command in this file hits `192.168.4.105:8420` just because most of them do.
 </calling_convention>
 
 ## Command reference
@@ -36,10 +38,14 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 | `stack-perms-check` | none | Config files unreadable by group/other - these silently fail to back up rather than erroring loudly. |
 | `stack-image-check` | none | Checks digest- or exact-version-pinned images for a newer registry digest (channel-tag images are already covered by Watchtower and not what this checks). |
 | `stack-disk-usage` | none | Per-app `config/` directory size, largest first. |
+| `stack-disk-free` | `[warn-pct default 80] [crit-pct default 90]` | `df -h` filtered to real filesystems (tmpfs/devtmpfs/overlay/squashfs excluded), one `[ok\|warn\|FAIL]` line per mount by use percentage. Host-level free space - distinct from `stack-disk-usage`'s per-app `config/` directory sizes. |
+| `stack-docker-disk-usage` | none | `docker system df` - images/containers/volumes/build-cache totals. Which Docker-managed category is eating disk, not per-app config size (`stack-disk-usage`) and not host filesystem free space (`stack-disk-free`). |
 | `stack-version` | none | This repo's README-declared version plus a live core/extras container count - a doc-vs-reality drift check. |
 | `stack-backup-verify` | none | Confirms both the local and off-site restic repos have a recent snapshot. |
 | `stack-backup-restore-test` | none | Actually restores one file from the latest local snapshot to prove restores work, not just that a snapshot exists. |
 | `stack-backup-status` | none | Full snapshot history (count, oldest, newest) for both restic repos - distinct from `stack-backup-verify`'s latest-only check. |
+| `stack-backup-integrity-check` | none | On-demand `restic check` (10% data-subset sampling, same as `backup-config.sh`'s own monthly automatic check) against both repos, right now instead of waiting for the 1st of the month. Can take a few minutes - a deeper check than `stack-backup-verify`'s fast freshness-only check. |
+| `stack-claude-full-backup` | none | One-off full `~/Claude` tree `tar.zst` (no excludes) to `~/Dropbox/Stack and Claude Backups`, dated (`Claude-full-backup-YYYYMMDD.tar.zst`) - see common_mistakes before treating this as a real backup mechanism. |
 | `stack-notify-test` | none | Sends a real test message through the stack's Discord webhook - confirms it still works without waiting for a real failure to find out it doesn't. |
 | `stack-top` | `[cpu\|mem] [limit]` (default cpu, 10) | Top containers by resource usage, compact - faster than scanning every card in the dashboard grid. |
 | `stack-seerr-requests` | `[pending\|approved\|available\|all]` (default pending) | Media requests sitting in Seerr, by status - confirms a request actually landed there before chasing why it's not showing up in Radarr/Sonarr. |
@@ -52,6 +58,7 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 - **Using `stack-container restart` on `nzbdav-rclone` or any FUSE-mount owner.** This command has no cascade awareness - restarting a mount-owning container without also restarting everything that bind-mounts its output (radarr, sonarr, plex, unpackerr, cleanuparr) leaves those dependents serving a stale mount handle until *they're* separately restarted. Use `docker-compose-manager`'s cascade-aware restart for that container specifically, not this.
 - **Reading "container looks up" as "container is fine."** `restart: unless-stopped` means an OOM-killed container just silently restarts with no other visible symptom - `stack-oom-check` is the only way this class of problem surfaces; a clean `stack-status` doesn't rule it out.
 - **Assuming a snapshot existing means restores work.** `stack-backup-verify` only checks that a recent snapshot exists; `stack-backup-restore-test` is the one that actually proves a restore succeeds. Prefer the latter when the question is really "can I trust this backup," not just "did it run."
+- **Treating `stack-claude-full-backup` as a real disaster-recovery mechanism.** It isn't - restic (`stack-backup-verify`/`stack-backup-status`/`stack-backup-restore-test`) is the actual DR mechanism for this stack, per this repo's own `CLAUDE.md`. `stack-claude-full-backup` is a manual, one-off `tar.zst` of the whole `~/Claude` tree (no excludes, so it re-copies the ~100GB `config/` directory restic already covers separately) to Dropbox. Its filename is date-stamped (`Claude-full-backup-YYYYMMDD.tar.zst`), so it does retain one dated copy per day - it does *not* overwrite a single file in place the way the separate, systemd-scheduled `scripts/backup-claude-dir.sh` does (that one writes a fixed `Claude-backup-latest.tar.zst`, replaced every run, genuinely zero history). Don't conflate the two: `stack-claude-full-backup` keeps per-day copies but running it more than once on the same day overwrites *that day's* file, and none of this is a substitute for restic's real retention.
 </general_anti_patterns>
 
 <from_fish>
@@ -63,6 +70,7 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 
 <resources>
 **Local:**
-- `~/.config/fish/functions/stack-status.fish`, `stack-container.fish`, `stack-restart-all.fish`, `stack-resource-check.fish`, `stack-log-levels.fish`, `stack-mount-health.fish`, `stack-oom-check.fish`, `stack-perms-check.fish`, `stack-image-check.fish`, `stack-disk-usage.fish`, `stack-version.fish`, `stack-backup-*.fish`, `stack-notify-test.fish`, `stack-top.fish`, `stack-seerr-requests.fish` - the actual fish source these commands wrap
-- `control-panel/app.py` in this repo - the real behavior behind every endpoint these commands call
+- `~/.config/fish/functions/stack-status.fish`, `stack-container.fish`, `stack-restart-all.fish`, `stack-resource-check.fish`, `stack-log-levels.fish`, `stack-mount-health.fish`, `stack-oom-check.fish`, `stack-perms-check.fish`, `stack-image-check.fish`, `stack-disk-usage.fish`, `stack-disk-free.fish`, `stack-docker-disk-usage.fish`, `stack-version.fish`, `stack-backup-*.fish`, `stack-claude-full-backup.fish`, `stack-notify-test.fish`, `stack-top.fish`, `stack-seerr-requests.fish` - the actual fish source these commands wrap
+- `control-panel/app.py` in this repo - the real behavior behind every Control-Panel-backed endpoint these commands call (does not cover `stack-claude-full-backup`, `stack-disk-free`, `stack-docker-disk-usage` - those run local tools directly, see calling_convention)
+- `scripts/backup-claude-dir.sh` in this repo - the separate, systemd-scheduled, overwrite-in-place tarball script `stack-claude-full-backup` is often confused with; read this file's own comments to see why it's not the same thing
 </resources>

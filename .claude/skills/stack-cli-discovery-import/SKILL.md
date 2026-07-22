@@ -1,6 +1,6 @@
 ---
 name: stack-cli-discovery-import
-description: Exact fish CLI command reference for IMDb/MDBList rating lookups and bulk-adding films to Radarr from Letterboxd or MDBList URLs, against this stack's Control Panel. Use whenever the user asks to add a Letterboxd film/list/watchlist/collection/filmography to Radarr, import an MDBList list, or look up a title's rating from the terminal. Trigger phrases: "add this letterboxd list to radarr", "import my letterboxd watchlist", "add this mdblist to radarr and sonarr", "what's this movie's imdb rating", "add this director's filmography".
+description: Exact fish CLI command reference for IMDb/MDBList rating lookups and bulk-adding films/shows to Radarr/Sonarr from Letterboxd, MDBList, Trakt, TMDB, or generic list URLs, against this stack's Control Panel. Use whenever the user asks to add a Letterboxd film/list/watchlist/collection/filmography to Radarr, import an MDBList or Trakt list, add a TMDB studio/keyword list, add a generic hosted list as an import list, or look up a title's rating from the terminal. Trigger phrases: "add this letterboxd list to radarr", "import my letterboxd watchlist", "add this mdblist to radarr and sonarr", "what's this movie's imdb rating", "add this director's filmography", "add this trakt list to sonarr", "add this tmdb company/keyword list to radarr".
 ---
 
 # Stack CLI: Discovery & List Import
@@ -17,6 +17,8 @@ The rating lookups (`stack-rating-imdb`, `stack-rating-mdblist`) are one-line `_
 Every list-import command (`stack-mdblist-import` and all `stack-letterboxd-radarr-*` commands) shares the same flag set and body shape: they use fish's `argparse` to accept `--no-search`, `--no-monitor`, `--dry-run`, and (list-shaped ones only) `--limit N`, build a JSON body (`url`/`list_url`, `search`, `monitored`, `dry_run`, optionally `limit`), and POST it via `__stack_api`. All three flags default to the safe/complete behavior when omitted: search **on**, monitored **on**, dry-run **off**. Pass `--dry-run` first when trying an unfamiliar list to see what *would* be added without writing anything.
 
 None of these read a `STACK_HOST_IP` environment variable - the Control Panel URL is a literal hardcoded string in every function. Both rating lookups use the OMDb/MDBList API keys already present in Kometa's own `config.yml` - no separate account or key is needed.
+
+The "add-a-list-source" commands (`stack-radarr-list-import`, `stack-sonarr-custom-list-import`, `stack-tmdb-company-import`, `stack-tmdb-keyword-import`, `stack-trakt-list-import`) are a simpler family than the Letterboxd ones above: each just POSTs a Radarr/Sonarr native import-list config (`implementation`, `name`, `fields`) to `/api/arr/<app>/import-list/add`, rather than scraping anything. They only take `--no-search`, not the full `--no-monitor`/`--dry-run`/`--limit` set - same on/off default (search **on** unless `--no-search` is passed), just a narrower flag set since there's no scrape step to preview with `--dry-run`. Use `stack-arr-list-implementations` (see the `stack-cli-arr-fleet` skill) to see every implementation type an app's build supports before reaching for one of these.
 </calling_convention>
 
 ## Command reference
@@ -27,6 +29,11 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 | `stack-rating-imdb` | `<imdb-id>` | A title's IMDb rating via OMDb. |
 | `stack-rating-mdblist` | `<imdb-id>` | A title's MDBList score, plus its IMDb sub-rating if MDBList has one. |
 | `stack-mdblist-import` | `<mdblist-list-url> [--no-search] [--no-monitor] [--dry-run] [--limit N]` | Imports an MDBList list, routing movies to Radarr and TV shows to Sonarr in one call. Works on any public MDBList list, including their mirrors of common IMDb lists (search mdblist.com for e.g. "imdb top 250") - this is the workaround for the fact that IMDb's own list pages sit behind a Cloudflare-class bot challenge and can't be scraped directly. |
+| `stack-radarr-list-import` | `<list-url> <display-name> [--no-search]` | Adds a hosted Radarr-list-format JSON URL as a Radarr import list (`RadarrListImport`) - community-curated lists published in that exact schema, distinct from `stack-sonarr-custom-list-import`'s generic form. |
+| `stack-sonarr-custom-list-import` | `<base-url> <display-name> [--no-search]` | Adds a generic JSON/RSS feed as a Sonarr import list (`CustomImport`) - for any curated series list hosted as a URL that isn't covered by a dedicated implementation (Trakt/IMDb/Plex/Simkl). |
+| `stack-tmdb-company-import` | `<tmdb-company-id> <display-name> [--no-search]` | Adds a studio's filmography as a Radarr import list (`TMDbCompanyImport`) - find the company id from a TMDB URL like `themoviedb.org/company/2` (A24). |
+| `stack-tmdb-keyword-import` | `<tmdb-keyword-id> <display-name> [--no-search]` | Adds a TMDB keyword-filtered list as a Radarr import list (`TMDbKeywordImport`) - e.g. keyword id 4565 is "time travel". Find ids via a movie page's Keywords section (no public numeric-lookup UI on TMDB). |
+| `stack-trakt-list-import` | `<radarr\|sonarr> <trakt-username> <trakt-listname> <display-name> [--no-search]` | Adds a public Trakt list as an import list (`TraktListImport`). Reuses whichever app already has a Trakt OAuth token from an existing list (this stack's Radarr has DCAU/DCEU lists, Sonarr has Top250TV/True Crime already authenticated) - no fresh "Authenticate with Trakt" pass needed unless neither app has one yet, in which case add one list manually through the app's own UI first and every command here can piggyback on it after. |
 | `stack-letterboxd-radarr` | `<film-url> [--no-search] [--no-monitor] [--dry-run]` | Scrapes one film's TMDb id off its Letterboxd page and adds it to Radarr. |
 | `stack-letterboxd-radarr-list` | `<list-url> [--no-search] [--no-monitor] [--limit N] [--dry-run]` | Same technique applied to a custom list (`letterboxd.com/<user>/list/<slug>/`) - scrapes every film's slug off the paginated grid (max 10 pages / 720 films), then each film's own page for its TMDb id. |
 | `stack-letterboxd-radarr-watchlist` | `<user-watchlist-url> [--no-search] [--no-monitor] [--limit N] [--dry-run]` | Same technique applied to a user's watchlist. |
@@ -45,6 +52,8 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 - **Reading an intermittent failure from `stack-letterboxd-radarr-collection` as a real bug.** That specific `/films/in/` path is Cloudflare-challenge-gated; a failure there is expected some fraction of the time and worth a simple retry before investigating further.
 - **Forgetting `--dry-run` exists before running an unfamiliar list against Radarr for real.** Every list-import command supports it - use it first on any list whose size or content isn't already known, especially before a whole filmography or a large custom list.
 - **Assuming these commands need a separate scraping container or credentials.** All scraping and TMDb-id resolution happens server-side in Control Panel using keys already present in Kometa's own config - there's nothing else to set up or authenticate.
+- **Expecting `--dry-run`/`--no-monitor`/`--limit` on the add-a-list-source commands.** `stack-radarr-list-import`, `stack-sonarr-custom-list-import`, `stack-tmdb-company-import`, `stack-tmdb-keyword-import`, and `stack-trakt-list-import` only accept `--no-search` - they register a native import-list config for the app to pull on its own schedule, there's nothing to scrape/preview up front.
+- **Running `stack-trakt-list-import` expecting it to authenticate Trakt for you.** It reuses an existing OAuth token already on the target app; if neither Radarr nor Sonarr has ever authenticated with Trakt, add one list manually in that app's UI first.
 </general_anti_patterns>
 </common_mistakes>
 
@@ -52,7 +61,7 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 
 <resources>
 **Local:**
-- `~/.config/fish/functions/stack-rating-*.fish`, `stack-mdblist-import.fish`, `stack-letterboxd-radarr*.fish` - the actual fish source these commands wrap
+- `~/.config/fish/functions/stack-rating-*.fish`, `stack-mdblist-import.fish`, `stack-letterboxd-radarr*.fish`, `stack-radarr-list-import.fish`, `stack-sonarr-custom-list-import.fish`, `stack-tmdb-company-import.fish`, `stack-tmdb-keyword-import.fish`, `stack-trakt-list-import.fish` - the actual fish source these commands wrap
 - `scripts/scrape_letterboxd.py` in this repo - builds the featured-lists cache `stack-letterboxd-radarr-list-random` draws from
 - `control-panel/app.py` in this repo - the real behavior behind every endpoint these commands call
 </resources>
