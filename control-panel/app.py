@@ -25,7 +25,6 @@ from urllib.parse import urlparse
 
 import docker
 import httpx
-import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
