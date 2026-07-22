@@ -524,3 +524,65 @@ throughout its history section, and there's no substitute for it here.
   deliberate exception to this stack's normal "no Remote Path Mappings" convention) was
   removed along with Decypharr itself in v11.0.0** — this stack has no Remote Path Mappings
   at all now, no exceptions.
+
+## Workflow playbook: recurring task types
+
+Add to this section as new recurring task shapes come up. Goal: the next session facing
+the same *kind* of problem starts from the playbook, not from scratch.
+
+**A bundled/off-the-shelf dependency has a bug** (first hit 2026-07-22, NzbDAV's connection
+leak — see the landmine above):
+1. Rule out our own config first with a raw, protocol-level test that bypasses the app
+   entirely (e.g. a manual `openssl s_client` NNTP auth) before concluding upstream is
+   broken — this is what actually distinguished "our MaxConnections setting" from "NzbDAV
+   itself" here.
+2. Clone the upstream repo to a scratch dir (never into this repo) and read the real source
+   before guessing at a fix from logs alone.
+3. **Test any patch against a fake/unreachable endpoint first, never straight to the real
+   live third-party service** — a connection/retry-logic fix can turn into a rapid-fire
+   storm against a real account the moment it works correctly. Confirmed live: fixing
+   NzbDAV's socket leak let retries fire fast enough to escalate a real account's failure
+   count from ~90 over several minutes to 778 within one second. Only test against the real
+   service briefly, after the fake-endpoint test confirms the retry rate is sane.
+4. Fork the upstream repo (`gh repo fork <owner>/<repo> --clone=false`), push a branch, open
+   a real PR referencing the filed issue — don't just comment with a diff.
+5. For a broader security/leak audit of the dependency's source, reach for the
+   `fullstack-dev-skills:security-reviewer` plugin skill (SAST/dependency-audit/secrets-scan
+   focus) rather than this repo's own `/security-review` (scoped to git-diff PR review,
+   explicitly excludes whole-codebase resource-leak findings — confirmed by a subagent that
+   tried it and bounced off) or an unstructured general-purpose-agent prompt.
+   `fullstack-dev-skills:debugging-wizard` is worth trying for the initial stack-trace/log
+   correlation phase too, ahead of manual log reading.
+6. Don't pin this stack's `docker-compose.yml` to a local/fork build permanently — leave the
+   stock image pinned until the fix actually merges upstream into a real release, and record
+   the PR/issue link plus the revert-when-merged condition here instead.
+
+**Rotating a credential that multiple apps consume** (first hit 2026-07-22, Radarr/Sonarr/
+Prowlarr/NzbDAV keys, after one turned up hardcoded in `.claude/settings.local.json`):
+1. Start with the `secret-injector` skill (`rotate the radarr api key` is a listed trigger
+   phrase) instead of hand-rolling this with raw `curl`/`sed` — it writes `.env` safely
+   (value via stdin only, never echoed to a log or shell history) and can leak-scan the
+   working tree for the old value still hardcoded somewhere.
+2. Every consumer needs updating separately — nothing here shares one source of truth:
+   - The issuing app's own key: Radarr/Sonarr live in `config/<app>/config.xml`'s
+     `<ApiKey>` — a plain API `PUT /api/v3/config/host` silently ignores changes to
+     `apiKey`, it has to be edited in the XML directly and the container restarted.
+     Prowlarr: same pattern, `config/prowlarr/config.xml`. NzbDAV: config key `api.key`,
+     rotatable through its login+get-config/update-config pattern (see the provider-config
+     gotcha above for that pattern's shape).
+   - Prowlarr's Applications sync entries (`/api/v1/applications/{id}`) — strip the
+     read-only `id` field before PUTting back, or it 400s.
+   - Seerr's `/api/v1/settings/radarr|sonarr/{id}` — same read-only `id`-field gotcha.
+   - Bazarr's `/api/system/settings` form-encoded endpoint (see
+     [Bazarr](README.md#bazarr-subtitle-management) for its own gotchas).
+   - Cleanuparr's `arr_instances` SQLite row — stop the container first (WAL-safety, same
+     practice as the Lidarr/Whisparr removals), edit directly; no REST endpoint exists for
+     this table.
+   - NeutArr's `config/neutarr/<app>.json` `api_key` field — plain JSON edit, safe whenever
+     NeutArr's own container is stopped.
+   - Radarr/Sonarr's own NzbDAV download-client entry (`/api/v3/downloadclient/1`) needs
+     NzbDAV's key too — separate from Radarr/Sonarr's own issuing-app key above.
+   - `control-panel` needs `--force-recreate` afterward — it only reads `.env` at
+     container-*create* time (see the Commands section above).
+3. Test each consumer's connection afterward via its own `/test`-style endpoint rather than
+   assuming the write took — most of the endpoints above have one.
