@@ -372,6 +372,39 @@ throughout its history section, and there's no substitute for it here.
   Thundernews provider password was also rotated during this investigation (ruled out as the
   cause — the old password authenticated instantly and successfully in every manual test);
   both `.env` and NzbDAV's own `config/nzbdav/db.sqlite` were updated to match.
+  **Root cause found and fixed upstream 2026-07-22**, by reading NzbDAV's own source
+  (`nzbdav-dev/nzbdav`, cloned to a scratch dir, not part of this repo): two bugs, both in
+  `backend/Clients/Usenet/`. (1) `UsenetStreamingClient.CreateNewConnection` opens the real
+  TCP/TLS socket via `ConnectAsync` before `AuthenticateAsync`, but never disposes the
+  connection if `AuthenticateAsync` throws — the socket is a local variable only returned to
+  the caller on success, so a failed login abandons an open connection forever (relying on
+  GC finalization, which is neither immediate nor guaranteed under load). This is the actual
+  leak. (2) `ProviderCircuitBreaker`'s own doc comment claims "a single probe attempt is
+  allowed" once tripped, but nothing enforces that — `MultiProviderNntpClient.
+  GetOrderedProviders()` falls back to the tripped provider anyway when it's the only one
+  configured, so every concurrent caller (each queued item, each health-check segment check)
+  independently probes it at once with zero coordination. Fixing bug (1) alone made bug (2)
+  *worse*, not better: once permits stopped leaking, retries fired fast enough to escalate
+  from ~90 consecutive failures over several minutes (pre-fix) to 778 consecutive failures
+  logged within a single second (fix (1) alone, live against the real account) — confirmed
+  live, this is why the connection leak was accidentally throttling the retry storm the whole
+  time. Both fixes together (dispose-on-failure + a real single-probe gate in
+  `ProviderCircuitBreaker` via `TryEnterProbe`) were verified locally: real connection count
+  stayed within the configured `MaxConnections` instead of growing unbounded, and real
+  connection attempts against a tripped provider dropped to roughly one every 1-2 seconds
+  instead of hundreds per second — tested first against a deliberately unreachable fake
+  endpoint (zero risk to the real account), then briefly against the real account once that
+  was confirmed safe. Filed as
+  [nzbdav-dev/nzbdav PR #478](https://github.com/nzbdav-dev/nzbdav/pull/478) (fork:
+  `WhispersOfJ/nzbdav`, branch `fix/connection-leak-and-circuit-breaker-storm`). **Not merged
+  upstream yet as of this writing** — `docker-compose.yml` still pins `nzbdav/nzbdav:latest`
+  (the stock, unpatched image), not the local patched build, since redeploying an unmerged
+  fork build permanently isn't appropriate for this repo's normal image-pinning policy.
+  Auth still failed against the real account even with both fixes applied, live-tested
+  2026-07-22 — most likely the account itself is genuinely rate-limited/degraded from this
+  session's heavy testing (a separate, external, time-based condition), not a remaining code
+  bug. Re-test once PR #478 is merged into a real release, or once enough time has passed for
+  the account to recover on its own.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
