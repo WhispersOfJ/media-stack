@@ -160,7 +160,6 @@ CONTAINER_LABELS = {
     "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),
     "nzbdav-rclone": ("rclone", "NzbDAV mount"),
     "seerr": ("Seerr", None),
-    "tautulli": ("Tautulli", None),
     "bazarr": ("Bazarr", "subtitle management - watches Radarr/Sonarr for missing subs"),
     "jellystat": ("Jellystat", "Jellyfin watch-history/stats dashboard"),
     "jellystat-db": ("Jellystat DB", "Postgres backing Jellystat"),
@@ -3274,7 +3273,13 @@ def cleanuparr_strikes(limit: int = 15):
 def tautulli_history(limit: int = 10):
     """Recent Plex watch history via Tautulli - what actually got watched,
     not just what's in the library. Tautulli's own API key, read live from
-    its config.ini (see _tautulli_key() above)."""
+    its config.ini (see _tautulli_key() above).
+
+    Dead code, pending rework: Tautulli was removed entirely (Plex-only,
+    no Jellyfin support - see CLAUDE.md's migration History), replaced by
+    Jellystat. Left as-is rather than reworked immediately, same treatment
+    as the /api/plex/* routes - it already 503s gracefully below since
+    config/tautulli/config.ini no longer exists, not a new failure mode."""
     key = _tautulli_key()
     if not key:
         fail("Could not read Tautulli's API key from config/tautulli/config.ini.", status_code=503)
@@ -3528,7 +3533,9 @@ def arr_import_list_add(app_name: str, payload: ImportListAddRequest):
 def tautulli_stats():
     """Tautulli's own home-stats widget data (most watched, most active
     users/platforms over the last 30 days) - a server-wide view, distinct
-    from stack-tautulli-history's per-session log."""
+    from stack-tautulli-history's per-session log.
+
+    Dead code, pending rework - see /api/tautulli/history above."""
     key = _tautulli_key()
     if not key:
         fail("No Tautulli API key found (config.ini not present yet - has it completed setup?).", status_code=500)

@@ -293,30 +293,6 @@ services:
   # Optional / recommended extras - start with:
   #   docker compose --profile extras up -d
   # =======================================================================
-  tautulli:
-    <<: *common
-    image: ghcr.io/hotio/tautulli:release
-    container_name: tautulli
-    profiles: [extras]
-    networks: [stacknet]
-    # Container's own web UI listens internally on Tautulli's default 8181;
-    # public port stays 8182.
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/tautulli:/config
-    # No prior ceiling - simple companion app, modest observed footprint,
-    # cheap insurance.
-    ports:
-      - "8182:8181"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-
   # ---------------------------------------------------------------------
   # Jellystat: Jellyfin watch-history/stats dashboard, the Tautulli
   # equivalent for Jellyfin (Tautulli itself is Plex-only, no Jellyfin
