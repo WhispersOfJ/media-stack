@@ -24,9 +24,8 @@ Jellyfin runs the same two libraries Plex's final config did (Movies `/data/movi
 over, and no longer needs Plex's `network_mode: host` exception — Jellyfin runs on the same
 `stacknet` bridge as every other service, so that exception no longer exists anywhere in this
 stack. Jellystat (plus its own `jellystat-db` Postgres — this stack's first Postgres dependency
-since `zilean-postgres` was removed in v11.0.0) replaces Tautulli's role for Jellyfin
-specifically, since Tautulli is Plex-only and has nothing left to monitor; Tautulli itself
-hasn't been removed, only left pointed at a media server that no longer exists. **Kometa and
+since `zilean-postgres` was removed in v11.0.0) replaces Tautulli's role for Jellyfin —
+Tautulli itself was removed entirely (Plex-only, nothing left to monitor). **Kometa and
 its Quickstart companion were removed entirely** (no automated collections/overlays/metadata
 tool currently runs in this stack) after confirming Kometa cannot talk to Jellyfin at all —
 its own JSON config schema has no `jellyfin`/`emby` top-level property, only `plex` (several
@@ -102,16 +101,21 @@ Not yet confirmed live either way — flagged here as an unverified, high-suspic
 confirmed bug, since verifying it means actually watching something and this pass was
 documentation-only.)
 
-**Monitoring** — `tautulli` (extras, port 8182, Plex stats/history — Plex is gone as of
-2026-07-22, so this container is now pointed at a media server that no longer exists; not
-removed, just orphaned, since the migration didn't decide Tautulli's fate one way or the
-other) · `jellystat` + `jellystat-db` (extras, port 8087, Jellyfin stats/history — the
-Tautulli-equivalent for Jellyfin, added 2026-07-22 since Tautulli itself is Plex-only;
-`jellystat-db` is `postgres:18.1`, this stack's first Postgres dependency since
-`zilean-postgres` was removed in v11.0.0, not yet started — waiting on Jellyfin having real
-playback data first, and with no backup-coverage plan yet, a known gap, see Backup/DR section
-below). `beszel`/`beszel-agent` (Glances' v10.9.9 replacement) removed entirely in v11.2.0, by
-explicit request — no host/container resource-monitoring hub currently in this stack.
+**Monitoring** — `tautulli` removed entirely 2026-07-22, same session as the rest of the
+Plex-to-Jellyfin migration (Plex-only, nothing left to monitor once Plex was gone; initially
+left orphaned pointed at a dead media server, then fully removed on explicit follow-up
+request — compose block, `config/tautulli/`, and its `control-panel/app.py` routes' container
+listing entry all gone; the two `/api/tautulli/*` history/stats routes themselves were left as
+documented dead code, same treatment as `/api/plex/*`, since they already 503 gracefully once
+`config/tautulli/config.ini` doesn't exist) · `jellystat` + `jellystat-db` (extras, port 8087,
+Jellyfin stats/history, the Tautulli-equivalent — `jellystat-db` is `postgres:18.1`, this
+stack's first Postgres dependency since `zilean-postgres` was removed in v11.0.0, still with no
+backup-coverage plan, a known gap, see Backup/DR section below). Both containers are up,
+healthy, and fully configured — confirmed live via `jellystat-db`'s own `app_config` table
+(real `JF_HOST`/`JF_API_KEY`, admin user `bear` matching Jellyfin's real user ID) and a
+populated `jf_library_items` table (7,799 rows synced). `beszel`/`beszel-agent` (Glances'
+v10.9.9 replacement) removed entirely in v11.2.0, by explicit request — no host/container
+resource-monitoring hub currently in this stack.
 
 **Subtitles** — `bazarr` (extras, port 6767, watches Radarr/Sonarr for missing subtitles;
 reinstalled from scratch in v11.3.0 after being removed entirely in v10.2.0, no prior config
@@ -613,9 +617,16 @@ section, and there's no substitute for it for that class of change.
   directly (partial data dir cleared first). A second bug: `jellystat`'s own healthcheck
   (`curl -sf http://localhost:3000/`) failed every time with `curl: not found` — this image has
   no curl, only `wget` (confirmed via `docker exec`); fixed by switching the healthcheck to
-  `wget -qO-`. Both containers are up and healthy now, but Jellystat's own first-run setup
-  (admin account, pointing it at Jellyfin's URL/API key) is still pending — an interactive step
-  left for the user, same reasoning as Jellyfin's own setup wizard above.
+  `wget -qO-`. Both containers are up and healthy, and Jellystat's own first-run setup is
+  **complete** — confirmed directly via `jellystat-db`'s `app_config` table (real
+  `JF_HOST`/`JF_API_KEY`, admin user `bear` matching Jellyfin's real user ID,
+  `PartialJellyfinSync`/`JellyfinSync`/`Backup` tasks scheduled) and a populated
+  `jf_library_items` table (7,799 rows), not just assumed from the containers being up.
+  **Tautulli itself was removed entirely** the same follow-up session (compose block,
+  `config/tautulli/`, its `CONTAINER_LABELS` entry) — initially left orphaned pointed at the
+  now-gone Plex, then fully removed on explicit request; its two `/api/tautulli/*` routes were
+  left as documented dead code (503 gracefully, same treatment as `/api/plex/*`) rather than
+  reworked, since Jellystat already covers the same role.
 
   **Kometa cannot talk to Jellyfin at all** — confirmed directly against `kometa-team/kometa`'s
   own `config-schema.json`, which has no `jellyfin`/`emby` top-level property, only `plex`. This

@@ -29,7 +29,7 @@ chronological [History](#history) section is at the end.
 - [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [Automation extras: Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-cleanuparr-neutarr-unpackerr-watchtower)
-- [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
+- [Monitoring extras: Jellystat](#monitoring-extras-jellystat)
 - [Bazarr: subtitle management](#bazarr-subtitle-management)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
@@ -64,10 +64,10 @@ reading `kometa-team/kometa`'s `config-schema.json` directly, contradicting seve
 that claim otherwise), so Kometa and its Quickstart companion were **removed entirely** (see
 [Jellyfin](#jellyfin) and [History](#history) `[11.7.0]`) - **no automated Plex/Jellyfin
 collections, overlays, or metadata-enrichment tool of any kind currently runs in this stack**;
-**Tautulli is Plex-only** and has been replaced by **Jellystat** (plus its own Postgres,
-`jellystat-db` - this stack's first Postgres dependency since `zilean-postgres` was removed in
-v11.0.0) as the watch-history/stats dashboard. See [Jellyfin](#jellyfin) and
-[History](#history) `[11.7.0]`.
+**Tautulli was removed entirely** (Plex-only, nothing left to monitor) and replaced by
+**Jellystat** (plus its own Postgres, `jellystat-db` - this stack's first Postgres dependency
+since `zilean-postgres` was removed in v11.0.0) as the watch-history/stats dashboard. See
+[Monitoring extras](#monitoring-extras-jellystat) and [History](#history) `[11.7.0]`.
 
 **Torrent and debrid (Decypharr, Zurg, rclone-alldebrid, Zilean, Byparr) were removed
 entirely** (see [History](#history)) - the stack ran debrid-first originally, flipped to
@@ -96,7 +96,7 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 # 3. Bring the core stack up
 docker compose up -d
 
-# 4. Everything else (Tautulli, Jellystat, Unpackerr, Watchtower,
+# 4. Everything else (Jellystat, Unpackerr, Watchtower,
 #    Cleanuparr, NeutArr, Control Panel, ...)
 docker compose --profile extras up -d
 ```
@@ -208,25 +208,25 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 5 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | none | core |
 | 6 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
 | 7 | `jellyfin` | `lscr.io/linuxserver/jellyfin:latest` | 8096 | core |
-| 8 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182 | extras |
-| 9 | `jellystat-db` | `postgres:18.1` | none | extras |
-| 10 | `jellystat` | `cyfershepard/jellystat:latest` | 8087 | extras |
-| 11 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
-| 12 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 13 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 14 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 15 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 16 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 8 | `jellystat-db` | `postgres:18.1` | none | extras |
+| 9 | `jellystat` | `cyfershepard/jellystat:latest` | 8087 | extras |
+| 10 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
+| 11 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 13 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 15 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
 
 `jellyfin` replaced `plex` entirely in v11.7.0 - same table position (#7), same core profile,
 different image/port. `jellystat-db`/`jellystat` are new the same version, Tautulli's
-Jellyfin-equivalent (Tautulli is Plex-only). `kometa` and `quickstart` were initially stopped
-the same version, then removed entirely (compose blocks and `config/kometa`/`config/quickstart`
-both deleted from disk) at explicit follow-up request - see [Jellyfin](#jellyfin). Service
-table: 18 → 16 rows.
+Jellyfin-equivalent (Tautulli is Plex-only, and was itself removed entirely on the same
+follow-up request as Kometa below - compose block and `config/tautulli/` both deleted). `kometa`
+and `quickstart` were initially stopped the same version, then removed entirely (compose blocks
+and `config/kometa`/`config/quickstart` both deleted from disk) at explicit follow-up
+request - see [Jellyfin](#jellyfin). Service table: 18 → 15 rows.
 
 `docker compose up -d` brings up the 7 core services; `docker compose --profile extras up
--d` adds the other 9. Both are safe to re-run; Compose only recreates what is out of sync
+-d` adds the other 8. Both are safe to re-run; Compose only recreates what is out of sync
 with `docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg, rclone-alldebrid, Zilean,
 zilean-postgres, Byparr - were removed entirely; see [History](#history).)
 
@@ -525,13 +525,14 @@ collections, overlays, or metadata-enrichment tool of any kind currently runs in
 See [Automation extras](#automation-extras-cleanuparr-neutarr-unpackerr-watchtower) and
 [History](#history) `[11.7.0]`.
 
-**Tautulli is Plex-only** and has nothing left to monitor; it has not been removed, only left
-pointed at a media server that no longer exists. **Jellystat** replaces its role for Jellyfin -
-see [Monitoring extras](#monitoring-extras-tautulli).
+**Tautulli was removed entirely** (Plex-only, nothing left to monitor). **Jellystat** replaces
+its role for Jellyfin - see [Monitoring extras](#monitoring-extras-jellystat).
 
-**Seerr has not yet been repointed at Jellyfin** - still pointed at Plex as of this writing.
-See [Architecture](#architecture) for why (one media server at a time, a human login step
-required).
+**Seerr has been repointed at Jellyfin** - `mediaServerType` switched, admin account
+re-linked after a stale-session-cookie false start, and an orphaned Plex user's 144 requests
+reassigned before deleting that dead row rather than losing them. See
+[Architecture](#architecture) for why this needed a human login step (one media server at a
+time, no API-only path).
 
 **Watch history was not migrated.** `qdm12/plex-to-jellyfin`
 (`ghcr.io/qdm12/plex-to-jellyfin`) was attempted, then **explicitly abandoned by the user's own
@@ -751,13 +752,17 @@ in v11.7.0, does **not** carry that exception forward - `lscr.io/linuxserver/jel
 is a mutable channel tag, so Watchtower auto-updates it same as any other channel-tag image
 unless that's deliberately changed. See [Image pinning policy](#image-pinning-policy).
 
-## Monitoring extras: Tautulli
+## Monitoring extras: Jellystat
 
-**Tautulli** (`ghcr.io/hotio/tautulli:release`, port 8182): Plex watch-history/stats
-dashboard. **Plex was removed entirely in v11.7.0** (see [Jellyfin](#jellyfin) and
-[History](#history)) - Tautulli is Plex-only, so this container is now pointed at a media
-server that no longer exists. It has not been removed itself, only left orphaned; the
-migration didn't decide its fate one way or the other.
+**Tautulli was removed entirely** (`ghcr.io/hotio/tautulli:release`, formerly port 8182: Plex
+watch-history/stats dashboard). **Plex was removed entirely in v11.7.0** (see
+[Jellyfin](#jellyfin) and [History](#history)) - Tautulli is Plex-only, so it was initially
+left orphaned pointed at a media server that no longer existed, then fully removed on
+follow-up request the same session: compose block, `config/tautulli/` (263MB, no credentials
+of note, deleted with no backup), and its `control-panel/app.py` container-listing entry all
+gone. Its two `/api/tautulli/*` routes (history, stats) were left as documented dead code -
+same treatment as `/api/plex/*` - since they already 503 gracefully once
+`config/tautulli/config.ini` no longer exists, and Jellystat already covers the same role.
 
 **Jellystat** (`cyfershepard/jellystat:latest`, port 8087, plus its own Postgres,
 `jellystat-db` on `postgres:18.1`) was added the same version as Tautulli's Jellyfin-
@@ -774,8 +779,10 @@ single `/var/lib/postgresql` mount), fixed by mounting `/var/lib/postgresql` dir
 `jellystat`'s own healthcheck (`curl -sf http://localhost:3000/`) failed every time because the
 image has no `curl`, only `wget` - fixed by switching the test to
 `wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1`. Jellystat's own first-run setup
-(admin account creation, then pointing it at Jellyfin's URL/API key) is still pending as an
-interactive step for the user, same reasoning as Jellyfin's own setup wizard.
+is **complete** - confirmed directly via `jellystat-db`'s `app_config` table (real
+`JF_HOST`/`JF_API_KEY`, admin user matching Jellyfin's real user ID, sync tasks scheduled) and
+a populated `jf_library_items` table (7,799 rows synced), not just assumed from the containers
+being up.
 
 Glances and Dozzle were removed in v10.9.9 (neither had a config volume, so no data was
 involved). Glances powered Control Panel's Overview "Host CPU/memory/disk/uptime" tiles via
@@ -1489,7 +1496,7 @@ after first boot" section and default to `changeme`; re-running `--setup` loads 
   `PLEX_TOKEN`/`PLEX_URL`); stale `config/plex/...` restic excludes in
   `scripts/backup-config.sh` (removed, now empty-target-safe). **Still genuinely open**:
   `jellystat-db` has zero backup coverage (see
-  [Monitoring extras](#monitoring-extras-tautulli)); `control-panel/app.py`'s 14 `/api/plex/*`
+  [Monitoring extras](#monitoring-extras-jellystat)); `control-panel/app.py`'s 14 `/api/plex/*`
   routes and its `Plex` API-hit-counter label are still unreworked dead references (see
   [Control Panel](#control-panel)) - they 503 via the existing missing-env-var fallback rather
   than silently misbehaving, but aren't rebuilt against Jellyfin's API yet; Seerr and poster
@@ -2404,9 +2411,24 @@ unsupported location" - 18+ manages its own version-specific subdirectory under 
 `jellystat`'s own healthcheck (`curl -sf http://localhost:3000/`) failed every time with
 `curl: not found` - this image has no `curl`, only `wget` (confirmed via `docker exec`), fixed
 by switching the test to `wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1`. Both
-containers are now up and healthy. Jellystat's own first-run setup (admin account creation,
-then pointing it at Jellyfin's URL/API key) is still pending as an interactive step for the
-user - same reasoning as Jellyfin's own setup wizard.
+containers are up and healthy, and Jellystat's own first-run setup is **complete** - confirmed
+directly via `jellystat-db`'s `app_config` table (real `JF_HOST`/`JF_API_KEY`, admin user
+matching Jellyfin's real user ID, sync tasks scheduled) and a populated `jf_library_items`
+table (7,799 rows), not just assumed from the containers being up. **Tautulli itself was
+removed entirely** on the same follow-up request as Kometa below: compose block,
+`config/tautulli/` (263MB, no credentials of note, deleted with no backup), and its
+`control-panel/app.py` container-listing entry all gone; its two `/api/tautulli/*` routes
+(history, stats) were left as documented dead code rather than reworked, same treatment as
+`/api/plex/*`, since they already 503 gracefully and Jellystat covers the same role now.
+Seerr was also repointed at Jellyfin the same session (`main.mediaServerType` switched to
+`2`/`JELLYFIN`, confirmed against `seerr-team/seerr`'s own `server/constants/server.ts`; a
+stale browser session cookie masked the first login attempt since Seerr's JWT auth is
+stateless, not tied to the user record; the new account only got `permissions: 32` instead of
+admin since Seerr only auto-grants admin to the very first user ever created and this instance
+already had one, fixed by setting `permissions: 2` directly in `config/seerr/db/db.sqlite3`'s
+`user` table with the container stopped first; the old Plex-linked account's 144 real
+`media_request` rows were reassigned to the new account before deleting the dead row, not
+dropped).
 
 **Kometa cannot talk to Jellyfin at all** - confirmed directly against
 `kometa-team/kometa`'s own `config-schema.json`, which has no `jellyfin`/`emby` top-level
