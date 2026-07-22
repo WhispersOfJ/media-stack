@@ -30,8 +30,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-PLEX_URL = (os.environ.get("PLEX_URL") or "").rstrip("/")
-PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
+JELLYFIN_URL = (os.environ.get("JELLYFIN_URL") or "").rstrip("/")
+JELLYFIN_API_KEY = os.environ.get("JELLYFIN_API_KEY")
 NZBDAV_URL = "http://nzbdav:3000"
 NZBDAV_API_KEY = os.environ.get("NZBDAV_API_KEY")
 NZBDAV_ADMIN_USER = os.environ.get("NZBDAV_ADMIN_USER")
@@ -183,7 +183,7 @@ CONTAINER_LABELS = {
 # directly, or a fresh `from httpx import request`, stays consistent.
 _API_HOST_LABELS = {urlparse(cfg["url"]).hostname: cfg["label"] for cfg in ARR_APPS.values()}
 _API_HOST_LABELS.update({
-    urlparse(PLEX_URL).hostname: "Plex",
+    urlparse(JELLYFIN_URL).hostname: "Jellyfin",
     urlparse(NZBDAV_URL).hostname: "NzbDAV",
 })
 # Seeded at 0 for every known app, not left empty until each app's first
@@ -455,201 +455,174 @@ def api_hit_counts():
 
 
 # ---------------------------------------------------------------------
-# Plex
+# Jellyfin
 # ---------------------------------------------------------------------
-def plex_headers():
-    if not PLEX_URL or not PLEX_TOKEN:
-        fail("Plex isn't configured (PLEX_URL/PLEX_TOKEN not set)", status_code=503)
-    return {"Accept": "application/json", "X-Plex-Token": PLEX_TOKEN}
+def jellyfin_headers():
+    if not JELLYFIN_URL or not JELLYFIN_API_KEY:
+        fail("Jellyfin isn't configured (JELLYFIN_URL/JELLYFIN_API_KEY not set)", status_code=503)
+    return {"X-Emby-Token": JELLYFIN_API_KEY}
 
 
-@app.post("/api/plex/scan")
-def plex_scan():
+@app.post("/api/jellyfin/scan")
+def jellyfin_scan():
     try:
-        r = httpx.get(f"{PLEX_URL}/library/sections/all/refresh", headers=plex_headers(), timeout=15)
+        r = httpx.post(f"{JELLYFIN_URL}/Library/Refresh", headers=jellyfin_headers(), timeout=15)
         r.raise_for_status()
     except httpx.HTTPError as e:
-        fail(f"Plex scan failed: {e}")
+        fail(f"Jellyfin scan failed: {e}")
     return ok("Scan for new files started across every library.")
 
 
-def plex_sections() -> list[dict]:
-    r = httpx.get(f"{PLEX_URL}/library/sections", headers=plex_headers(), timeout=15)
+def jellyfin_libraries() -> list[dict]:
+    r = httpx.get(f"{JELLYFIN_URL}/Library/VirtualFolders", headers=jellyfin_headers(), timeout=15)
     r.raise_for_status()
-    return r.json()["MediaContainer"].get("Directory", [])
+    return r.json()
 
 
-@app.get("/api/plex/libraries")
-def plex_libraries():
-    """Library names as Plex itself knows them, read live rather than
-    hardcoded. Dead code pending the Plex->Jellyfin route rework (see
-    CLAUDE.md's migration History) - Kometa, this endpoint's original
-    consumer, was removed entirely."""
+@app.get("/api/jellyfin/libraries")
+def jellyfin_libraries_route():
+    """Library names/ids as Jellyfin itself knows them, read live rather
+    than hardcoded - same idea as the old /api/plex/libraries."""
     try:
-        sections = plex_sections()
+        libraries = jellyfin_libraries()
     except httpx.HTTPError as e:
-        fail(f"Could not read Plex libraries: {e}")
-    return [{"key": s["key"], "title": s["title"]} for s in sections]
+        fail(f"Could not read Jellyfin libraries: {e}")
+    return [{"key": lib["ItemId"], "title": lib["Name"]} for lib in libraries]
 
 
-@app.post("/api/plex/empty-trash")
-def plex_empty_trash(library: str | None = None):
-    """Empties trash on every library, or just one if `library` (matched
-    case-insensitively against its title) is given - the scoped form is
-    what actually cleared the stale Movies/TV Shows entries after this
-    session's content-routing fix, without touching every other library
-    along with them. A plain scan only adds new files; it never prunes
-    entries whose file disappeared, which is what this actually does."""
+# Jellyfin has no per-library-scoped "deep analysis" call the way Plex's
+# `PUT /library/sections/{key}/analyze` did - the closest equivalents are
+# these four server-wide scheduled tasks, so the old dedicated
+# /api/plex/analyze route and the /api/plex/butler/deep-media-analysis
+# task are consolidated into one server-wide action here rather than kept
+# as two separate library-scoped-vs-whole-server concepts that Jellyfin's
+# task API doesn't actually distinguish.
+DEEP_ANALYSIS_TASKS = [
+    "RefreshChapterImages",
+    "RefreshTrickplayImages",
+    "IntroSkipperDetectSegmentsTask",
+    "AudioNormalization",
+]
+
+
+def _jellyfin_tasks() -> list[dict]:
+    r = httpx.get(f"{JELLYFIN_URL}/ScheduledTasks", headers=jellyfin_headers(), timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def _trigger_jellyfin_task(task_key: str) -> str:
+    """Looks up a Jellyfin scheduled task by its real Key (e.g.
+    RefreshLibrary, OptimizeDatabaseTask) and fires it via its Id (a GUID,
+    not the Key itself - confirmed live, POST /ScheduledTasks/Running/{id}
+    needs the Id field from GET /ScheduledTasks, not the Key string)."""
+    tasks = _jellyfin_tasks()
+    task = next((t for t in tasks if t.get("Key") == task_key), None)
+    if task is None:
+        fail(f"Jellyfin has no scheduled task with key '{task_key}'.", status_code=500)
+    r = httpx.post(f"{JELLYFIN_URL}/ScheduledTasks/Running/{task['Id']}", headers=jellyfin_headers(), timeout=30)
+    r.raise_for_status()
+    return task.get("Name", task_key)
+
+
+@app.post("/api/jellyfin/deep-analysis")
+def jellyfin_deep_analysis():
+    """Runs full deep analysis across every library: chapter images,
+    trickplay thumbnails, Intro Skipper's intro/credits detection, and
+    audio normalization - the closest Jellyfin equivalent to Plex's old
+    server-wide deep-media-analysis Butler task."""
+    started = []
     try:
-        sections = plex_sections()
-        targets = sections if library is None else [s for s in sections if s["title"].lower() == library.lower()]
-        if not targets:
-            fail(f"No library found matching '{library}'.")
-        for s in targets:
-            r = httpx.put(
-                f"{PLEX_URL}/library/sections/{s['key']}/emptyTrash",
-                headers=plex_headers(),
-                timeout=30,
-            )
-            r.raise_for_status()
+        for key in DEEP_ANALYSIS_TASKS:
+            started.append(_trigger_jellyfin_task(key))
     except httpx.HTTPError as e:
-        fail(f"Empty trash failed: {e}")
-    return ok(f"Trash emptied on: {', '.join(s['title'] for s in targets)}.")
+        fail(f"Deep analysis failed: {e}")
+    return ok(f"Deep analysis started: {', '.join(started)}.")
 
 
-@app.post("/api/plex/analyze")
-def plex_analyze(library: str | None = None):
-    """Queues Plex's per-item deep analysis (loudness, chapter thumbnails,
-    intro/credits/ad markers, voice activity) for one library, or every
-    library if none given - `PUT /library/sections/{key}/analyze`, confirmed
-    live (200) against this server. Scoped to a section, unlike the
-    whole-server `deep-media-analysis` Butler task below
-    (`/api/plex/butler/deep-media-analysis`); use this one to target just
-    the library whose per-library analysis settings you changed, without
-    re-running analysis server-wide."""
+@app.post("/api/jellyfin/optimize-db")
+def jellyfin_optimize_db():
     try:
-        sections = plex_sections()
-        targets = sections if library is None else [s for s in sections if s["title"].lower() == library.lower()]
-        if not targets:
-            fail(f"No library found matching '{library}'.")
-        for s in targets:
-            r = httpx.put(
-                f"{PLEX_URL}/library/sections/{s['key']}/analyze",
-                headers=plex_headers(),
-                timeout=30,
-            )
-            r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"Analyze failed: {e}")
-    return ok(f"Deep analysis queued for: {', '.join(s['title'] for s in targets)}.")
-
-
-@app.post("/api/plex/optimize-db")
-def plex_optimize_db():
-    try:
-        r = httpx.post(f"{PLEX_URL}/butler/OptimizeDatabase", headers=plex_headers(), timeout=30)
-        r.raise_for_status()
+        name = _trigger_jellyfin_task("OptimizeDatabaseTask")
     except httpx.HTTPError as e:
         fail(f"Database optimize failed: {e}")
-    return ok("Database optimization started.")
+    return ok(f"{name} started.")
 
 
-@app.post("/api/plex/clean-bundles")
-def plex_clean_bundles():
-    try:
-        r = httpx.post(f"{PLEX_URL}/butler/CleanOldBundles", headers=plex_headers(), timeout=30)
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"Clean bundles failed: {e}")
-    return ok("Cleanup of old bundles started.")
-
-
-# Every other Butler task Plex's own /butler endpoint currently advertises
-# (confirmed live, not guessed - GET /butler?X-Plex-Token=... on this
-# server). OptimizeDatabase/CleanOldBundles already have dedicated routes
-# above and are left out of this dict to avoid a duplicate path for the
-# same task. AutomaticUpdates is Plex's app-update checker, unrelated to
-# library media - included anyway since the user's own request was "all"
-# of them, not a curated subset.
-PLEX_BUTLER_TASKS = {
-    "automatic-updates": "AutomaticUpdates",
-    "backup-database": "BackupDatabase",
-    "clean-log-files": "ButlerTaskCleanSupplementalLogFiles",
-    "generate-ad-markers": "ButlerTaskGenerateAdMarkers",
-    "generate-credits-markers": "ButlerTaskGenerateCreditsMarkers",
-    "generate-intro-markers": "ButlerTaskGenerateIntroMarkers",
-    "generate-voice-activity": "ButlerTaskGenerateVoiceActivity",
-    "clean-cache-files": "CleanOldCacheFiles",
-    "deep-media-analysis": "DeepMediaAnalysis",
-    "garbage-collect-blobs": "GarbageCollectBlobs",
-    "garbage-collect-media": "GarbageCollectLibraryMedia",
-    "generate-chapter-thumbs": "GenerateChapterThumbs",
-    "generate-media-index": "GenerateMediaIndexFiles",
-    "loudness-analysis": "LoudnessAnalysis",
-    "music-analysis": "MusicAnalysis",
-    "process-assets": "ProcessAssets",
-    "refresh-epg": "RefreshEpgGuides",
-    "refresh-libraries": "RefreshLibraries",
-    "refresh-local-media": "RefreshLocalMedia",
-    "upgrade-media-analysis": "UpgradeMediaAnalysis",
+# Every other maintenance task Jellyfin's own /ScheduledTasks endpoint
+# currently advertises (confirmed live via GET /ScheduledTasks on this
+# server, not guessed), excluding OptimizeDatabaseTask and the four
+# DEEP_ANALYSIS_TASKS above (already have dedicated routes). Several Plex
+# Butler concepts have no Jellyfin equivalent at all and are dropped
+# entirely rather than mapped to something approximate: garbage-collect-
+# blobs/-media (no "unused blob/media record" GC concept in Jellyfin),
+# generate-ad-markers (no ad-break detection), generate-voice-activity (no
+# dialogue-boost data), music-analysis (no music library in this stack
+# anyway), process-assets (closest real equivalent, RefreshPeople, is
+# included below under its own name instead), backup-database (no built-in
+# DB backup task exists), refresh-libraries/refresh-local-media (folded
+# into RefreshLibrary/scan, no separate task), upgrade-media-analysis (no
+# distinct re-analysis-only concept - re-running the relevant task above
+# is the equivalent).
+JELLYFIN_TASKS = {
+    "clean-cache-files": "DeleteCacheFiles",
+    "clean-log-files": "CleanLogFiles",
+    "clean-transcode-files": "DeleteTranscodeFiles",
+    "clean-activity-log": "CleanActivityLog",
+    "clean-collections-playlists": "CleanCollectionsAndPlaylists",
+    "cleanup-user-data": "CleanupUserDataTask",
+    "refresh-people": "RefreshPeople",
+    "refresh-guide": "RefreshGuide",
+    "clean-intro-skipper-cache": "CPBIntroSkipperCleanCache",
+    "keyframe-extraction": "KeyframeExtraction",
+    "download-subtitles": "DownloadSubtitles",
+    "download-lyrics": "DownloadLyrics",
+    "plugin-updates": "PluginUpdates",
+    "box-sets-scan": "TMDbBoxSetsRefreshLibraryTask",
+    "playback-history-backup": "PlaybackHistoryRunBackup",
+    "playback-history-trim": "PlaybackHistoryTrimTask",
 }
 
 
-@app.post("/api/plex/butler/{task}")
-def plex_butler_task(task: str):
-    """Fires one named Butler task on demand, the same mechanism behind
-    the dedicated optimize-db/clean-bundles routes above - `task` is this
-    stack's own kebab-case alias (see PLEX_BUTLER_TASKS), not Plex's raw
-    CamelCase task name, so the CLI/URL stays consistent with every other
-    /api/plex/* route. `deep-media-analysis` is the one that actually runs
-    full deep analysis (loudness, chapter thumbs, intro/credits/ad markers,
-    voice activity) across the whole server in one pass - the per-library
-    `PUT /library/sections/{key}/analyze` call is a narrower, section-scoped
-    alternative to this, not the same thing."""
-    plex_task = PLEX_BUTLER_TASKS.get(task)
-    if plex_task is None:
-        fail(f"Unknown Butler task '{task}'. Known: {', '.join(sorted(PLEX_BUTLER_TASKS))}")
+@app.post("/api/jellyfin/task/{task}")
+def jellyfin_task(task: str):
+    """Fires one named Jellyfin scheduled task on demand - `task` is this
+    stack's own kebab-case alias (see JELLYFIN_TASKS), not Jellyfin's raw
+    PascalCase task Key, so the CLI/URL stays consistent with every other
+    /api/jellyfin/* route."""
+    jellyfin_key = JELLYFIN_TASKS.get(task)
+    if jellyfin_key is None:
+        fail(f"Unknown task '{task}'. Known: {', '.join(sorted(JELLYFIN_TASKS))}")
     try:
-        r = httpx.post(f"{PLEX_URL}/butler/{plex_task}", headers=plex_headers(), timeout=30)
-        r.raise_for_status()
+        name = _trigger_jellyfin_task(jellyfin_key)
     except httpx.HTTPError as e:
-        fail(f"Butler task '{task}' failed: {e}")
-    return ok(f"Butler task started: {task}.")
+        fail(f"Task '{task}' failed: {e}")
+    return ok(f"Task started: {name}.")
 
 
-@app.get("/api/plex/updates")
-def plex_updates():
-    """Checks Plex's own update-checker rather than trying to compare
-    version strings against anything external - `/identity` gives the
-    running version, `/updater/status` is Plex's own undocumented-but-real
-    endpoint for whether it's found something newer on its current channel.
-    This container is pinned deliberately (see README's Image pinning
-    policy / Plex section) - this is a check, never an auto-apply action."""
+@app.get("/api/jellyfin/updates")
+def jellyfin_updates():
+    """Reports Jellyfin's own running version via /System/Info. Unlike
+    Plex (excluded from Watchtower's train, see README's Image pinning
+    policy), Jellyfin's linuxserver image is on Watchtower's normal
+    channel-tag train already - there's no separate "check for a Jellyfin
+    update" concept to build here, Watchtower already owns that."""
     try:
-        r = httpx.get(f"{PLEX_URL}/identity", headers=plex_headers(), timeout=10)
+        r = httpx.get(f"{JELLYFIN_URL}/System/Info", headers=jellyfin_headers(), timeout=10)
         r.raise_for_status()
-        running_version = r.json().get("MediaContainer", {}).get("version")
     except httpx.HTTPError as e:
-        fail(f"Could not read Plex's running version: {e}")
-    available = []
-    try:
-        r = httpx.get(f"{PLEX_URL}/updater/status", headers=plex_headers(), timeout=10)
-        r.raise_for_status()
-        for u in r.json().get("MediaContainer", {}).get("Release", []):
-            available.append({"version": u.get("version"), "added_at": u.get("added")})
-    except httpx.HTTPError:
-        # Not fatal - the official image's updater channel can be
-        # unreachable/disabled in a container without breaking anything
-        # else; the running version above is still real and useful on its
-        # own.
-        pass
-    return {"running_version": running_version, "update_available": bool(available), "releases": available}
+        fail(f"Could not read Jellyfin's running version: {e}")
+    info = r.json()
+    return {"running_version": info.get("Version"), "server_name": info.get("ServerName")}
 
 
 # ---------------------------------------------------------------------
-# Poster sync - replaces a movie/show's Plex poster with the top-voted
-# TMDb poster, matched via the tmdb:// (or tvdb:///imdb:// as fallback)
-# Guid Plex's new agent already carries per item. TMDb only, not
+
+# ---------------------------------------------------------------------
+# Poster sync - replaces a movie/show's Jellyfin poster with the top-voted
+# TMDb poster, matched via the item's ProviderIds (Tmdb, falling back to
+# Tvdb/Imdb via TMDb's /find endpoint) - the Jellyfin-native equivalent of
+# what used to match against Plex's Guid array. TMDb only, not
 # ThePosterDB - TPDb's own Terms of Service (https://theposterdb.com/terms)
 # explicitly forbids automated scraping and it has no public API, so there
 # is no ToS-compliant way to pull posters from it programmatically. TMDb
@@ -671,37 +644,30 @@ def tmdb_get(path: str, **params) -> dict:
     return r.json()
 
 
-def tmdb_id_for_item(meta: dict, media_type: str) -> int | None:
-    """media_type is Plex's own section type ("movie"/"show") for the item
-    this Guid list came from. Prefers a direct tmdb:// Guid (present on
-    both movies and shows under Plex's new agent, confirmed live against
-    this library) and only falls back to TMDb's /find endpoint (external
-    ID lookup, not scraping) for items still on an older match."""
-    guids = {}
-    for g in meta.get("Guid", []):
-        gid = g.get("id", "")
-        if "://" in gid:
-            source, value = gid.split("://", 1)
-            guids[source] = value
-
-    if "tmdb" in guids:
+def tmdb_id_for_item(provider_ids: dict, media_type: str) -> int | None:
+    """media_type is "movie"/"show" for the item this ProviderIds dict
+    came from. Prefers a direct Tmdb id (present on both movies and shows,
+    confirmed live against this library) and only falls back to TMDb's
+    /find endpoint (external ID lookup, not scraping) for items still
+    matched only by Tvdb/Imdb."""
+    if provider_ids.get("Tmdb"):
         try:
-            return int(guids["tmdb"])
+            return int(provider_ids["Tmdb"])
         except ValueError:
             pass
 
     kind = "movie" if media_type == "movie" else "tv"
-    if "tvdb" in guids and media_type == "show":
+    if provider_ids.get("Tvdb") and media_type == "show":
         try:
-            found = tmdb_get(f"/find/{guids['tvdb']}", external_source="tvdb_id")
+            found = tmdb_get(f"/find/{provider_ids['Tvdb']}", external_source="tvdb_id")
             results = found.get("tv_results") or []
             if results:
                 return results[0]["id"]
         except httpx.HTTPError:
             pass
-    if "imdb" in guids:
+    if provider_ids.get("Imdb"):
         try:
-            found = tmdb_get(f"/find/{guids['imdb']}", external_source="imdb_id")
+            found = tmdb_get(f"/find/{provider_ids['Imdb']}", external_source="imdb_id")
             results = found.get(f"{kind}_results") or []
             if results:
                 return results[0]["id"]
@@ -723,51 +689,49 @@ def tmdb_best_poster_url(tmdb_id: int, media_type: str) -> str | None:
     return f"https://image.tmdb.org/t/p/original{best['file_path']}"
 
 
+JELLYFIN_COLLECTION_TYPES = {"movies": "movie", "tvshows": "show"}
+
+
 def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
     try:
-        sections = plex_sections()
+        libraries = jellyfin_libraries()
     except httpx.HTTPError as e:
-        q.put(f"ERROR Could not read Plex libraries: {e}")
+        q.put(f"ERROR Could not read Jellyfin libraries: {e}")
         return
-    section = next((s for s in sections if s["title"].lower() == library_title.lower()), None)
-    if not section or section.get("type") not in ("movie", "show"):
+    library = next((lib for lib in libraries if lib["Name"].lower() == library_title.lower()), None)
+    if not library or library.get("CollectionType") not in JELLYFIN_COLLECTION_TYPES:
         q.put(f"ERROR No movie/show library found matching '{library_title}'.")
         return
-    media_type = section["type"]
+    media_type = JELLYFIN_COLLECTION_TYPES[library["CollectionType"]]
+    item_type = "Movie" if media_type == "movie" else "Series"
 
     try:
         r = httpx.get(
-            f"{PLEX_URL}/library/sections/{section['key']}/all?X-Plex-Container-Size=100000",
-            headers=plex_headers(), timeout=60,
+            f"{JELLYFIN_URL}/Items",
+            params={
+                "ParentId": library["ItemId"], "Recursive": "true", "IncludeItemTypes": item_type,
+                "Fields": "ProviderIds", "Limit": 100000,
+            },
+            headers=jellyfin_headers(), timeout=60,
         )
         r.raise_for_status()
     except httpx.HTTPError as e:
         q.put(f"ERROR Could not list '{library_title}': {e}")
         return
 
-    items = r.json()["MediaContainer"].get("Metadata", [])
+    items = r.json().get("Items", [])
     total = len(items)
     q.put(f"INFO Scanning {total} items in '{library_title}' ({media_type}){' - dry run' if dry_run else ''}…")
 
     updated = skipped = failed = 0
     for i, item in enumerate(items, 1):
-        rating_key = item["ratingKey"]
-        title = item.get("title", "Unknown")
-        year = item.get("year", "")
+        item_id = item["Id"]
+        title = item.get("Name", "Unknown")
+        year = item.get("ProductionYear", "")
         label = f"{title} ({year})" if year else title
 
-        # The section listing's Metadata entries don't carry Guid - only
-        # the single-item metadata endpoint does (confirmed live).
-        try:
-            meta_r = httpx.get(f"{PLEX_URL}/library/metadata/{rating_key}", headers=plex_headers(), timeout=15)
-            meta_r.raise_for_status()
-            meta = meta_r.json()["MediaContainer"]["Metadata"][0]
-        except httpx.HTTPError as e:
-            q.put(f"FAIL [{i}/{total}] {label}: could not read metadata ({e})")
-            failed += 1
-            continue
-
-        tmdb_id = tmdb_id_for_item(meta, media_type)
+        provider_ids = item.get("ProviderIds") or {}
+        tmdb_id = tmdb_id_for_item(provider_ids, media_type)
         if tmdb_id is None:
             q.put(f"SKIP [{i}/{total}] {label}: no TMDb match")
             skipped += 1
@@ -785,9 +749,14 @@ def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
             continue
 
         try:
+            img_r = httpx.get(poster_url, timeout=30)
+            img_r.raise_for_status()
+            content_type = img_r.headers.get("content-type", "image/jpeg")
             up_r = httpx.post(
-                f"{PLEX_URL}/library/metadata/{rating_key}/posters",
-                params={"url": poster_url}, headers=plex_headers(), timeout=30,
+                f"{JELLYFIN_URL}/Items/{item_id}/Images/Primary",
+                content=img_r.content,
+                headers={**jellyfin_headers(), "Content-Type": content_type},
+                timeout=30,
             )
             up_r.raise_for_status()
         except httpx.HTTPError as e:
@@ -798,9 +767,9 @@ def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
         q.put(f"OK [{i}/{total}] {label}: poster updated")
         updated += 1
         # TMDb's rate limit is roughly 40 req/10s; this loop already makes
-        # 2-3 calls per item (metadata, images, sometimes /find), so a
-        # small pause keeps it well clear of that without slowing a
-        # several-thousand-item library down to a crawl.
+        # 2-3 calls per item (images, sometimes /find), so a small pause
+        # keeps it well clear of that without slowing a several-thousand-
+        # item library down to a crawl.
         time.sleep(0.25)
 
     q.put(f"DONE {updated} updated, {skipped} skipped, {failed} failed out of {total}.")
@@ -808,21 +777,24 @@ def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
 
 @app.get("/api/posters/libraries")
 def posters_libraries():
-    """Movie/show libraries only - same live-from-Plex source as
-    /api/plex/libraries, filtered to the section types this sync actually
-    knows how to handle."""
+    """Movie/show libraries only - same live-from-Jellyfin source as
+    /api/jellyfin/libraries, filtered to the collection types this sync
+    actually knows how to handle."""
     try:
-        sections = plex_sections()
+        libraries = jellyfin_libraries()
     except httpx.HTTPError as e:
-        fail(f"Could not read Plex libraries: {e}")
-    return [{"key": s["key"], "title": s["title"], "type": s["type"]} for s in sections if s.get("type") in ("movie", "show")]
+        fail(f"Could not read Jellyfin libraries: {e}")
+    return [
+        {"key": lib["ItemId"], "title": lib["Name"], "type": JELLYFIN_COLLECTION_TYPES[lib["CollectionType"]]}
+        for lib in libraries if lib.get("CollectionType") in JELLYFIN_COLLECTION_TYPES
+    ]
 
 
 @app.post("/api/posters/sync")
 def posters_sync(payload: PosterSyncRequest):
     if not TMDB_KEY:
         fail("TMDb isn't configured (TMDB_KEY not set in .env).", status_code=503)
-    plex_headers()  # raises 503 if Plex isn't configured
+    jellyfin_headers()  # raises 503 if Jellyfin isn't configured
 
     with POSTER_SYNC_LOCK:
         if POSTER_SYNC_STATE["running"]:
@@ -866,6 +838,7 @@ def posters_sync_stream():
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+# ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
 # NzbDAV - Usenet streaming layer (WebDAV + rclone, no local disk - see
 # README.md's Usenet Pipeline section). Queue/history below go through its
@@ -2121,41 +2094,39 @@ def _bucket_nzbdav_item(s: dict, prev_mbleft: dict[str, float]) -> tuple[str, di
     return "stalled", item
 
 
-# Plex has no byte size to drain - its own /activities progress (0-100)
-# for library scans, deep media analysis, thumbnail generation, etc. is
-# the equivalent signal, measured the same way (live delta over the same
-# sample window, not trusted as-is - unlike the download clients above
-# Plex's own progress numbers are usually real and moving, but a scan can
-# still sit at one percentage for a while on a large/slow library section).
-def _plex_activities() -> list[dict]:
+# Jellyfin has no byte size to drain - its own /ScheduledTasks progress
+# (0-100, CurrentProgressPercentage) for running library scans, deep
+# analysis, thumbnail generation, etc. is the equivalent signal, measured
+# the same way (live delta over the same sample window, not trusted as-is
+# - same reasoning this stack already learned the hard way this session:
+# a scan can genuinely stall at one percentage for a long stretch on a
+# large/slow library, not just report one honestly).
+def _jellyfin_running_tasks() -> list[dict]:
     try:
-        r = httpx.get(f"{PLEX_URL}/activities", headers=plex_headers(), timeout=15)
-        r.raise_for_status()
+        tasks = _jellyfin_tasks()
     except httpx.HTTPError as e:
-        fail(f"Plex activities lookup failed: {e}")
-    return r.json().get("MediaContainer", {}).get("Activity", [])
+        fail(f"Jellyfin scheduled-tasks lookup failed: {e}")
+    return [t for t in tasks if t.get("State") == "Running"]
 
 
-def _plex_progress_snapshot() -> dict[str, int]:
+def _jellyfin_progress_snapshot() -> dict[str, float]:
     try:
-        return {a["uuid"]: a.get("progress", 0) for a in _plex_activities()}
+        return {t["Id"]: t.get("CurrentProgressPercentage") or 0 for t in _jellyfin_running_tasks()}
     except HTTPException:
         return {}
 
 
-def _bucket_plex_activity(a: dict, prev_progress: dict[str, int]) -> tuple[str, dict]:
-    title = a.get("title") or "?"
-    if a.get("subtitle"):
-        title = f"{title}: {a['subtitle']}"
-    progress = a.get("progress", 0)
-    item = {"title": title, "progress": f"{progress}%"}
-    prev = prev_progress.get(a["uuid"])
+def _bucket_jellyfin_task(t: dict, prev_progress: dict[str, float]) -> tuple[str, dict]:
+    title = t.get("Name") or t.get("Key") or "?"
+    progress = t.get("CurrentProgressPercentage") or 0
+    item = {"title": title, "progress": f"{progress:.0f}%"}
+    prev = prev_progress.get(t["Id"])
     if prev is not None and progress > prev:
         rate = (progress - prev) / QUEUE_SAMPLE_SECONDS  # percent per second
         eta = (100 - progress) / rate if rate > 0 else float("inf")
         item["eta"] = format_eta(eta)
         return "downloading", item
-    item["note"] = "no progress observed (large section, or genuinely stalled)"
+    item["note"] = "no progress observed (large library, or genuinely stalled)"
     return "stalled", item
 
 
@@ -2169,7 +2140,7 @@ def queue_status():
     each app's own timeleft."""
     before_arr = {app_name: _arr_sizeleft_snapshot(app_name) for app_name in QUEUE_ARR_APPS}
     before_nzbdav = _nzbdav_mbleft_snapshot()
-    before_plex = _plex_progress_snapshot()
+    before_jellyfin = _jellyfin_progress_snapshot()
     time.sleep(QUEUE_SAMPLE_SECONDS)
 
     result = {}
@@ -2200,20 +2171,20 @@ def queue_status():
         result["nzbdav"] = {"label": "NzbDAV", "error": "unreachable"}
 
     try:
-        activities = _plex_activities()
+        running_tasks = _jellyfin_running_tasks()
         buckets = {"downloading": [], "stalled": [], "queued": [], "importing": []}
-        for a in activities:
-            bucket, item = _bucket_plex_activity(a, before_plex)
+        for t in running_tasks:
+            bucket, item = _bucket_jellyfin_task(t, before_jellyfin)
             buckets[bucket].append(item)
-        grand_total += len(activities)
-        result["plex"] = {"label": "Plex", "total": len(activities), **buckets}
+        grand_total += len(running_tasks)
+        result["jellyfin"] = {"label": "Jellyfin", "total": len(running_tasks), **buckets}
     except HTTPException:
-        result["plex"] = {"label": "Plex", "error": "unreachable"}
+        result["jellyfin"] = {"label": "Jellyfin", "error": "unreachable"}
 
     # Bazarr has no in-progress download to bucket as downloading/stalled - a
     # subtitle grab completes synchronously within one API call, there's no
-    # multi-second transfer to sample twice like the arr/nzbdav/plex sources
-    # above. Its "wanted" list is the honest analog of a queue here: items
+    # multi-second transfer to sample twice like the arr/nzbdav/jellyfin
+    # sources above. Its "wanted" list is the honest analog of a queue here: items
     # still waiting to be searched, which is exactly the "queued" bucket
     # already means for every other source.
     try:
@@ -3080,8 +3051,8 @@ def arr_recently_added(app_name: str, limit: int = 10):
     return ok(f"{len(out)} most recently added to {cfg['label']}.", items=out)
 
 
-@app.get("/api/plex/duplicates")
-def plex_duplicates(min_gb: float = 5.0):
+@app.get("/api/jellyfin/duplicates")
+def jellyfin_duplicates(min_gb: float = 5.0):
     """Scans every movie library for items whose combined file size looks
     like more than one real release stacked up - the exact shape of a real
     session where three movies turned out to be carrying 200-300GB each
@@ -3090,24 +3061,31 @@ def plex_duplicates(min_gb: float = 5.0):
     with one real multi-version upgrade (2-3 files) rarely trips this;
     the genuine duplicate cases were 5-10x their largest file."""
     try:
-        sections = plex_sections()
+        libraries = jellyfin_libraries()
     except httpx.HTTPError as e:
-        fail(f"Could not read Plex libraries: {e}")
-    movie_sections = [s for s in sections if s.get("type") == "movie"]
+        fail(f"Could not read Jellyfin libraries: {e}")
+    movie_libraries = [lib for lib in libraries if lib.get("CollectionType") == "movies"]
     flagged = []
-    for s in movie_sections:
+    for lib in movie_libraries:
         try:
-            r = httpx.get(f"{PLEX_URL}/library/sections/{s['key']}/all", headers=plex_headers(), timeout=30)
+            r = httpx.get(
+                f"{JELLYFIN_URL}/Items",
+                params={
+                    "ParentId": lib["ItemId"], "Recursive": "true", "IncludeItemTypes": "Movie",
+                    "Fields": "MediaSources", "Limit": 100000,
+                },
+                headers=jellyfin_headers(), timeout=30,
+            )
             r.raise_for_status()
         except httpx.HTTPError:
             continue
-        for v in r.json().get("MediaContainer", {}).get("Metadata", []):
+        for v in r.json().get("Items", []):
             # De-duped by exact byte size first - a library with more than
             # one configured root path can have a single real file show up
-            # as two "Media" entries with identical sizes. Real duplicates
-            # are near-impossible to collide on exact byte size by
-            # accident; that's the whole signal this endpoint relies on.
-            sizes = list({int(p.get("size") or 0) for m in v.get("Media", []) for p in m.get("Part", [])})
+            # as two MediaSources entries with identical sizes. Real
+            # duplicates are near-impossible to collide on exact byte size
+            # by accident; that's the whole signal this endpoint relies on.
+            sizes = list({int(m.get("Size") or 0) for m in v.get("MediaSources", [])})
             if len(sizes) < 2:
                 continue
             total = sum(sizes)
@@ -3115,54 +3093,52 @@ def plex_duplicates(min_gb: float = 5.0):
             if total < min_gb * 1e9 or total < largest * 1.5:
                 continue
             flagged.append({
-                "title": v.get("title"), "year": v.get("year"), "ratingKey": v.get("ratingKey"),
+                "title": v.get("Name"), "year": v.get("ProductionYear"), "id": v.get("Id"),
                 "file_count": len(sizes), "total_gb": round(total / 1e9, 1), "largest_gb": round(largest / 1e9, 1),
             })
     flagged.sort(key=lambda f: f["total_gb"], reverse=True)
     return ok(f"{len(flagged)} movie(s) look like they're carrying redundant duplicate files.", items=flagged)
 
 
-TMDB_LEGACY_GUID_RE = re.compile(r"com\.plexapp\.agents\.themoviedb://")
-
-
-@app.get("/api/plex/tmdb-missing")
-def plex_tmdb_missing():
+@app.get("/api/jellyfin/tmdb-missing")
+def jellyfin_tmdb_missing():
     """Every movie/show (top-level, not episodes) across every library with
-    no TMDb link - neither the new agent's tmdb:// Guid nor the legacy
-    com.plexapp.agents.themoviedb:// agent id. Read-only, matches the
-    checks in scripts/audit-tmdb-links.py but against all movie/show
-    libraries at once instead of one named library.
+    no TMDb id in its ProviderIds. Read-only, matches the checks in
+    scripts/audit-tmdb-links.py but against all movie/show libraries at
+    once instead of one named library.
 
-    Uses includeGuids=1 on the section listing itself (confirmed live to
-    carry the full Guid array) rather than a per-item metadata call -
-    the poster-sync code above needs a per-item fetch because it wants
-    write-time-fresh data, this only needs the Guid list, so one request
-    per library covers a few thousand items instead of one request each."""
+    Uses Fields=ProviderIds on the item listing itself rather than a
+    per-item metadata call - the poster-sync code needs a per-item fetch
+    because it wants write-time-fresh data, this only needs the provider
+    id, so one request per library covers a few thousand items instead of
+    one request each."""
     try:
-        sections = plex_sections()
+        libraries = jellyfin_libraries()
     except httpx.HTTPError as e:
-        fail(f"Could not read Plex libraries: {e}")
-    targets = [s for s in sections if s.get("type") in ("movie", "show")]
+        fail(f"Could not read Jellyfin libraries: {e}")
+    targets = [lib for lib in libraries if lib.get("CollectionType") in JELLYFIN_COLLECTION_TYPES]
 
     missing = []
-    for s in targets:
+    for lib in targets:
+        item_type = "Movie" if JELLYFIN_COLLECTION_TYPES[lib["CollectionType"]] == "movie" else "Series"
         try:
             r = httpx.get(
-                f"{PLEX_URL}/library/sections/{s['key']}/all?includeGuids=1&X-Plex-Container-Size=200000",
-                headers=plex_headers(), timeout=60,
+                f"{JELLYFIN_URL}/Items",
+                params={
+                    "ParentId": lib["ItemId"], "Recursive": "true", "IncludeItemTypes": item_type,
+                    "Fields": "ProviderIds", "Limit": 200000,
+                },
+                headers=jellyfin_headers(), timeout=60,
             )
             r.raise_for_status()
         except httpx.HTTPError:
             continue
-        for item in r.json()["MediaContainer"].get("Metadata", []):
-            has_tmdb = any(g.get("id", "").startswith("tmdb://") for g in item.get("Guid", []))
-            if not has_tmdb and TMDB_LEGACY_GUID_RE.search(item.get("guid") or ""):
-                has_tmdb = True
-            if has_tmdb:
+        for item in r.json().get("Items", []):
+            if (item.get("ProviderIds") or {}).get("Tmdb"):
                 continue
             missing.append({
-                "library": s["title"], "title": item.get("title"), "year": item.get("year"),
-                "ratingKey": item.get("ratingKey"),
+                "library": lib["Name"], "title": item.get("Name"), "year": item.get("ProductionYear"),
+                "id": item.get("Id"),
             })
     return ok(f"{len(missing)} item(s) missing a TMDb link.", items=missing)
 
@@ -3185,30 +3161,34 @@ def prowlarr_indexers():
     return ok(f"{enabled}/{len(items)} indexers enabled.", items=items)
 
 
-@app.get("/api/plex/sessions")
-def plex_sessions():
-    """Who's watching what right now, direct play vs transcode - Plex's
-    own /status/sessions, not proxied through Tautulli (which only sees
-    what it's been running long enough to have logged)."""
+@app.get("/api/jellyfin/sessions")
+def jellyfin_sessions():
+    """Who's watching what right now, direct play vs transcode - Jellyfin's
+    own /Sessions, not proxied through Jellystat (which only sees what
+    it's been running long enough to have logged). Filtered to sessions
+    that actually have a NowPlayingItem - /Sessions also lists idle admin
+    connections (e.g. this very dashboard's own Jellyfin API session)."""
     try:
-        r = httpx.get(f"{PLEX_URL}/status/sessions", headers=plex_headers(), timeout=10)
+        r = httpx.get(f"{JELLYFIN_URL}/Sessions", headers=jellyfin_headers(), timeout=10)
         r.raise_for_status()
     except httpx.HTTPError as e:
-        fail(f"Could not read Plex sessions: {e}")
+        fail(f"Could not read Jellyfin sessions: {e}")
     sessions = []
-    for v in r.json().get("MediaContainer", {}).get("Metadata", []):
-        user = v.get("User") or {}
-        player = v.get("Player") or {}
-        media = (v.get("Media") or [{}])[0]
-        title = f"{v['grandparentTitle']} - {v['title']}" if v.get("grandparentTitle") else v.get("title")
-        duration = int(v.get("duration") or 1)
+    for v in r.json():
+        item = v.get("NowPlayingItem")
+        if not item:
+            continue
+        play_state = v.get("PlayState") or {}
+        title = f"{item['SeriesName']} - {item['Name']}" if item.get("SeriesName") else item.get("Name")
+        duration_ticks = int(item.get("RunTimeTicks") or 1)
+        position_ticks = int(play_state.get("PositionTicks") or 0)
         sessions.append({
             "title": title,
-            "user": user.get("title"),
-            "player": player.get("product"),
-            "state": player.get("state"),
-            "decision": media.get("videoDecision") or media.get("selected"),
-            "progress_pct": round(int(v.get("viewOffset") or 0) / max(duration, 1) * 100, 1),
+            "user": v.get("UserName"),
+            "player": v.get("Client"),
+            "state": "paused" if play_state.get("IsPaused") else "playing",
+            "decision": play_state.get("PlayMethod"),
+            "progress_pct": round(position_ticks / max(duration_ticks, 1) * 100, 1),
         })
     return ok(f"{len(sessions)} active session(s).", sessions=sessions)
 
@@ -3277,9 +3257,11 @@ def tautulli_history(limit: int = 10):
 
     Dead code, pending rework: Tautulli was removed entirely (Plex-only,
     no Jellyfin support - see CLAUDE.md's migration History), replaced by
-    Jellystat. Left as-is rather than reworked immediately, same treatment
-    as the /api/plex/* routes - it already 503s gracefully below since
-    config/tautulli/config.ini no longer exists, not a new failure mode."""
+    Jellystat. Left as-is rather than reworked immediately - it already
+    503s gracefully below since config/tautulli/config.ini no longer
+    exists, not a new failure mode. (Unlike Tautulli, every former
+    /api/plex/* route has since been fully reworked against Jellyfin's
+    own API - see CLAUDE.md's migration History.)"""
     key = _tautulli_key()
     if not key:
         fail("Could not read Tautulli's API key from config/tautulli/config.ini.", status_code=503)
@@ -3483,8 +3465,11 @@ def arr_import_list_add(app_name: str, payload: ImportListAddRequest):
     if app_name == "radarr":
         body["minimumAvailability"] = payload.minimum_availability
     field_values = dict(payload.fields)
-    if payload.implementation == "PlexImport" and "accessToken" not in field_values and PLEX_TOKEN:
-        field_values["accessToken"] = PLEX_TOKEN
+    # PlexImport used to get its accessToken auto-filled from this stack's
+    # own PLEX_TOKEN - Plex was removed entirely (see CLAUDE.md's migration
+    # History), so that secret no longer exists; PlexImport still works as
+    # an implementation type here if the caller supplies accessToken
+    # themselves, just without the auto-fill shortcut.
 
     # Trakt/Simkl/TMDb-user import types need an OAuth token Radarr/Sonarr
     # only ever obtain through their own UI's "Authenticate" button - not
@@ -3734,30 +3719,32 @@ def nzbdav_delete_failures():
     return ok(msg, deleted=deleted, errors=errors[:20])
 
 
-@app.get("/api/plex/recently-added")
-def plex_recently_added(limit: int = 15):
-    """What actually finished importing and became visible in Plex, across
-    every library - complements arr_recently_added() above (which shows
-    what was *added to management*, not necessarily downloaded yet)."""
+@app.get("/api/jellyfin/recently-added")
+def jellyfin_recently_added(limit: int = 15):
+    """What actually finished importing and became visible in Jellyfin,
+    across every library - complements arr_recently_added() above (which
+    shows what was *added to management*, not necessarily downloaded
+    yet)."""
     try:
-        r = httpx.get(f"{PLEX_URL}/library/all", params={"sort": "addedAt:desc", "type": 1},
-                       headers=plex_headers(), timeout=20)
+        r = httpx.get(
+            f"{JELLYFIN_URL}/Items",
+            params={
+                "Recursive": "true", "IncludeItemTypes": "Movie,Series", "SortBy": "DateCreated",
+                "SortOrder": "Descending", "Limit": limit, "Fields": "DateCreated",
+            },
+            headers=jellyfin_headers(), timeout=20,
+        )
         r.raise_for_status()
     except httpx.HTTPError as e:
-        fail(f"Could not read Plex's recently-added list: {e}")
-    movies = r.json().get("MediaContainer", {}).get("Metadata", [])
-    try:
-        r = httpx.get(f"{PLEX_URL}/library/all", params={"sort": "addedAt:desc", "type": 2},
-                       headers=plex_headers(), timeout=20)
-        r.raise_for_status()
-        shows = r.json().get("MediaContainer", {}).get("Metadata", [])
-    except httpx.HTTPError:
-        shows = []
-    combined = sorted(movies + shows, key=lambda el: el.get("addedAt") or 0, reverse=True)[:limit]
-    items = [{"title": el.get("title"), "year": el.get("year"), "type": el.get("type"),
-              "addedAt": el.get("addedAt"), "librarySectionTitle": el.get("librarySectionTitle")}
-             for el in combined]
-    return ok(f"{len(items)} most recently added item(s) across Plex movie/show libraries.", items=items)
+        fail(f"Could not read Jellyfin's recently-added list: {e}")
+    items = [
+        {
+            "title": el.get("Name"), "year": el.get("ProductionYear"), "type": el.get("Type"),
+            "addedAt": el.get("DateCreated"),
+        }
+        for el in r.json().get("Items", [])
+    ]
+    return ok(f"{len(items)} most recently added item(s) across Jellyfin movie/show libraries.", items=items)
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

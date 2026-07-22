@@ -694,14 +694,80 @@ section, and there's no substitute for it for that class of change.
   unaffected either way, since it was already configured to reach Jellyfin via `HOST_IP:8096`,
   not the Docker service name.
 
-  **Still explicitly pending, not done as of this writing** — don't assume otherwise:
-  `control-panel/app.py`'s 14 Plex-specific routes (`/api/plex/*`) still say `plex`, unreworked
-  (they 503 via the existing missing-env-var fallback now that `PLEX_URL`/`PLEX_TOKEN` are gone
-  — same failure mode as always, not new). The 5 newly-installed plugins have since loaded
-  successfully after the restart above. **A real, unrelated discovery made mid-migration is
-  filed as its own bullet above** (the Plex Media Scanner mass-deletion finding) — see there
-  for the tie-back to this file's existing "unexplained mass Radarr/Sonarr library deletion"
-  entry.
+  **`control-panel/app.py`'s 14 Plex-specific routes fully reworked to Jellyfin's real API**
+  (later same overall migration effort, not left dead): `plex_headers()` → `jellyfin_headers()`
+  (`X-Emby-Token` header); `/api/plex/scan` → `/api/jellyfin/scan` (`POST /Library/Refresh`);
+  `/api/plex/libraries` → `/api/jellyfin/libraries` (`GET /Library/VirtualFolders`);
+  `/api/plex/analyze` + `/api/plex/butler/deep-media-analysis` **consolidated** into
+  `/api/jellyfin/deep-analysis` (fires `RefreshChapterImages`, `RefreshTrickplayImages`,
+  `IntroSkipperDetectSegmentsTask`, `AudioNormalization` together — Jellyfin's task API has no
+  per-library scope the way Plex's dedicated analyze call did, so the library-scoped-vs-
+  whole-server distinction Plex had doesn't carry over); `/api/plex/optimize-db` →
+  `/api/jellyfin/optimize-db` (`OptimizeDatabaseTask`); `/api/plex/butler/{task}` →
+  `/api/jellyfin/task/{task}` against a new `JELLYFIN_TASKS` dict built from Jellyfin's own
+  live `GET /ScheduledTasks` (confirmed real Keys, not guessed) — a task is fired by looking up
+  its real Id (a GUID) by Key and `POST`ing `/ScheduledTasks/Running/{id}`, since Jellyfin's
+  running-task endpoint takes the Id, not the Key string; `/api/plex/updates` →
+  `/api/jellyfin/updates` (simplified to a version report only — Jellyfin's linuxserver image
+  is already on Watchtower's normal channel-tag train, unlike Plex which was deliberately kept
+  off it, so there's no separate update-check concept to build); `/api/plex/duplicates` and
+  `/api/plex/tmdb-missing` → `/api/jellyfin/duplicates`/`/api/jellyfin/tmdb-missing` (Plex's
+  `Media`/`Part`/`Guid` shapes replaced by Jellyfin's `MediaSources`/`ProviderIds`, live-tested
+  against the real library — `tmdb-missing` correctly found the still-unmatched "4 Months 3
+  Weeks and 2 Days" item this session's own Seerr sync logs had already flagged, confirming the
+  logic is right, not a fluke); `/api/plex/sessions` → `/api/jellyfin/sessions` (`GET
+  /Sessions`, filtered to sessions carrying a `NowPlayingItem` — idle admin connections show up
+  in the raw list too); `/api/plex/recently-added` → `/api/jellyfin/recently-added` (`GET
+  /Items?SortBy=DateCreated`). Poster sync (`/api/posters/*`) reworked the same way: TMDb
+  matching now keys off `ProviderIds.Tmdb`/`.Tvdb`/`.Imdb` instead of Plex's Guid array, and the
+  actual upload is `POST /Items/{id}/Images/Primary` with raw image bytes instead of Plex's
+  URL-fetch endpoint — verified live via a real dry-run against the Movies library. Two
+  concepts dropped entirely, no Jellyfin equivalent exists: `/api/plex/empty-trash` (no
+  per-library trash concept) and `/api/plex/clean-bundles` (no per-item "bundle" directory
+  scheme). `queue-status`'s Plex-activity folding (`_plex_activities`/`_bucket_plex_activity`)
+  replaced by `_jellyfin_running_tasks`/`_bucket_jellyfin_task` against the same
+  `/ScheduledTasks` data, live-tested showing real progress/ETA for a genuine concurrent
+  deep-analysis run. All 109 unit tests pass (3 needed updating for the renamed bucketing
+  function), ruff clean. The 5 previously-installed plugins have since loaded successfully
+  after the restart mentioned above. **A real, unrelated discovery made mid-migration is filed
+  as its own bullet above** (the Plex Media Scanner mass-deletion finding) — see there for the
+  tie-back to this file's existing "unexplained mass Radarr/Sonarr library deletion" entry.
+
+  **Every `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` fish function reworked or removed**
+  (tracked in `~/.dotfiles`, not this repo — see this file's own note on that). Every Plex
+  maintenance function got a `stack-jellyfin-*` equivalent against the routes above; functions
+  backing a dropped Plex-only concept (empty-trash, Plex-watchlist/RSS import, and every
+  individual Butler-task wrapper with no real Jellyfin task behind it — garbage-collect-
+  blobs/-media, generate-ad-markers, generate-voice-activity, music-analysis, backup-database,
+  refresh-libraries/-local-media, upgrade-media-analysis) were deleted outright, not left
+  dead. `stack-kometa-run` and both `stack-tautulli-*` functions deleted (both apps removed
+  entirely). Auditing every function's own body (not just filenames) for stray references
+  caught real breakage beyond the obvious renames: `stack-nzbdav-restart` still listed `plex`
+  in its five mount-dependent containers to health-check; `stack-tmdb-missing` and
+  `stack-queue-status` still called/referenced the deleted `/api/plex/*` routes directly (would
+  have 404'd or silently mis-ordered output); `stack-rating-imdb`/`-mdblist`'s comments still
+  described reading Kometa's `config.yml` instead of the new standalone `OMDB_KEY`/
+  `MDBLIST_KEY` secrets. `stack-help.fish` rewritten to match. Every touched function was
+  fish-syntax-checked (`fish -n`) and the core ones live-tested against the real running stack.
+
+  **`jellystat-db` now has real backup coverage**: `scripts/backup-config.sh` gained a logical
+  `pg_dump` step (`docker exec jellystat-db pg_dump -U jellystat jfstat`) written to
+  `config/jellystat-db-dump/jfstat.sql`, overwritten each run (restic's own snapshot retention
+  is what gives this history across days, not a dated filename) — the raw `config/jellystat-db`
+  datadir itself is now explicitly `--exclude`d from restic, since a naive file-level copy of a
+  live Postgres datadir has no WAL-consistency guarantee (the same lesson this project already
+  learned once with `zilean-postgres`). Verified live: a full `backup-config.sh` run produced
+  an 11,163,545-byte `jfstat.sql` (45,540 lines) with an empty error log, not just assumed to
+  work from reading the script.
+
+  **Real hardware transcoding confirmed working**, not just configured: a manual `PlaybackInfo`
+  request with a deliberately incompatible `DeviceProfile` (forcing `SupportsDirectPlay: false`)
+  against a real library item, followed by actually fetching an HLS segment (not just the
+  playlist — the transcode process only spawns once a segment is requested), produced a real
+  `ffmpeg` process inside the container with `-hwaccel vaapi -hwaccel_output_format vaapi
+  -codec:v:0 h264_vaapi` and a `scale_vaapi` filter - genuine VAAPI hardware encode/scale via
+  `/dev/dri/renderD128`, not software fallback. A real 394KB `.ts` segment was produced and the
+  test session closed afterward.
 
   **Seerr, since repointed at Jellyfin** (fixed same session, only supports one media server at
   a time per its own GitHub issue #511): `config/seerr/settings.json`'s `main.mediaServerType`
