@@ -760,8 +760,9 @@ watch-history/stats dashboard). **Plex was removed entirely in v11.7.0** (see
 left orphaned pointed at a media server that no longer existed, then fully removed on
 follow-up request the same session: compose block, `config/tautulli/` (263MB, no credentials
 of note, deleted with no backup), and its `control-panel/app.py` container-listing entry all
-gone. Its two `/api/tautulli/*` routes (history, stats) were left as documented dead code -
-same treatment as `/api/plex/*` - since they already 503 gracefully once
+gone. Its two `/api/tautulli/*` routes (history, stats) were left as documented dead code
+(unlike the former `/api/plex/*` routes, which have since been fully reworked against
+Jellyfin's API, see [History](#history) `[11.7.0]`) - they already 503 gracefully once
 `config/tautulli/config.ini` no longer exists, and Jellystat already covers the same role.
 
 **Jellystat** (`cyfershepard/jellystat:latest`, port 8087, plus its own Postgres,
@@ -890,11 +891,15 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/status` | GET | Running/health state for every container in the compose project |
 | `/api/containers` | GET | Full grid: state, health, image, live CPU/mem per container |
 | `/api/api-hit-counts` | GET | Live per-app outbound API call counter (see below) |
-| `/api/plex/scan` \| `/empty-trash` \| `/optimize-db` \| `/clean-bundles` | POST | Plex maintenance actions - **dead code as of v11.7.0**, see below |
-| `/api/plex/libraries` | GET | Library names/keys, read live from Plex - **dead code as of v11.7.0**, see below |
-| `/api/plex/updates` | GET | Running Plex version + any newer release on its channel (check only) - **dead code as of v11.7.0**, see below |
-| `/api/plex/duplicates` | GET | Movie libraries only; flags items whose combined file size looks like redundant duplicate releases - **dead code as of v11.7.0**, see below |
-| `/api/plex/tmdb-missing` | GET | Every movie/show across every library with no TMDb link (see `scripts/audit-tmdb-links.py`) - **dead code as of v11.7.0**, see below |
+| `/api/jellyfin/scan` \| `/optimize-db` | POST | Jellyfin maintenance actions - no `empty-trash`/`clean-bundles` equivalent exists, dropped entirely (see below) |
+| `/api/jellyfin/libraries` | GET | Library names/keys, read live from Jellyfin |
+| `/api/jellyfin/deep-analysis` | POST | Chapter images + trickplay + Intro Skipper detection + audio normalization, every library at once |
+| `/api/jellyfin/task/{task}` | POST | Fires one named Jellyfin scheduled task (see below for the full mapping) |
+| `/api/jellyfin/updates` | GET | Running Jellyfin version (update-checking itself is Watchtower's job for this image, see below) |
+| `/api/jellyfin/duplicates` | GET | Movie libraries only; flags items whose combined file size looks like redundant duplicate releases |
+| `/api/jellyfin/tmdb-missing` | GET | Every movie/show across every library with no TMDb link (see `scripts/audit-tmdb-links.py`) |
+| `/api/jellyfin/sessions` | GET | Who's watching what right now, direct play vs transcode |
+| `/api/jellyfin/recently-added` | GET | Most recently added items across Jellyfin's movie/show libraries |
 | `/api/posters/libraries` | GET | Movie/show libraries only, for the poster sync picker (see below) |
 | `/api/posters/sync` | POST | `{"library": "...", "dry_run": bool}` → starts a poster sync, one job at a time |
 | `/api/posters/sync/stream` | GET | SSE progress feed for the running (or just-finished) poster sync |
@@ -911,27 +916,31 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/stack/restart-all` | POST | Restarts everything except itself, mount providers first (see below) |
 
 **`/api/kometa/run` was deleted outright when Kometa was removed entirely in v11.7.0** (its
-`KometaRunRequest` Pydantic model went with it) - unlike the `/api/plex/*` routes below, there
+`KometaRunRequest` Pydantic model went with it) - unlike the old `/api/plex/*` routes, there
 was no missing-env-var 503 fallback for it to degrade into, since none was ever built; calling
 this endpoint now 404s, it simply no longer exists.
 
-**All 14 `/api/plex/*` routes in `control-panel/app.py` (the 5 above plus `/api/plex/analyze`,
-`/api/plex/butler/{task}` and its per-task wrappers, see [History](#history) `[11.6.0]`) are
-still unreworked dead code as of v11.7.0.** `PLEX_URL`/`PLEX_TOKEN` were removed from `.env` in
-the same migration that added Jellyfin, so every one of these routes now 503s via the same
-missing-env-var fallback they always used when unconfigured - not a new failure mode, just a
-newly-permanent one until someone rewrites them against Jellyfin's API. The poster-sync
-routes above (`/api/posters/*`) have the same problem: poster sync reads/writes Plex's own
-Guid and poster-upload API directly (see below), so it is currently non-functional too, for
-the same reason, not yet reworked.
+**All 14 former `/api/plex/*` routes were reworked against Jellyfin's real API, same overall
+migration effort** (see [History](#history) `[11.7.0]` for the full route-by-route mapping and
+what changed under the hood - `jellyfin_headers()`'s `X-Emby-Token` header, task-triggering by
+looking up a task's real Id via its Key rather than guessing an endpoint shape, Jellyfin's lack
+of a per-library analyze scope forcing `/api/plex/analyze` and the old
+`/api/plex/butler/deep-media-analysis` to consolidate into one `/api/jellyfin/deep-analysis`
+call, etc). Two Plex-only concepts had no Jellyfin equivalent at all and were dropped entirely
+rather than approximated: `empty-trash` (no per-library trash concept in Jellyfin) and
+`clean-bundles` (no per-item "bundle" directory scheme). The poster-sync routes
+(`/api/posters/*`) were reworked the same way - TMDb matching now keys off Jellyfin's
+`ProviderIds` instead of Plex's Guid array, and the actual image write is
+`POST /Items/{id}/Images/Primary` with raw bytes instead of Plex's URL-fetch endpoint - both
+verified live via a real dry-run against the Movies library, not just read for syntax.
 
 ### Live API hit counter
 
-Container cards for apps the panel talks to over HTTP (Radarr, Sonarr, Plex, NzbDAV) show a
+Container cards for apps the panel talks to over HTTP (Radarr, Sonarr, Jellyfin, NzbDAV) show a
 running count of outbound calls since the panel last started. Cosmetic only: in-memory
-`Counter`, resets on restart, no persistence, no per-endpoint breakdown. The `Plex` label is
-unreworked as of v11.7.0 (see [Jellyfin](#jellyfin)) - it stays at zero now, since every
-`/api/plex/*` route 503s before making an outbound call.
+`Counter`, resets on restart, no persistence, no per-endpoint breakdown. The old `Plex` label
+was replaced with `Jellyfin` as part of the same route rework above (see [Jellyfin](#jellyfin))
+- it counts real outbound Jellyfin API calls now, not stuck at zero.
 
 ```python
 # control-panel/app.py - wraps httpx.request itself rather than touching
@@ -1051,12 +1060,13 @@ start/stop/restart/exec endpoints.
 A terminal interface to Control Panel's API, tracked in `~/.dotfiles`
 (`.config/fish/functions/`), built on one private helper:
 
-**Every `stack-plex-*` command below (and plain `stack-plex ...`) is currently non-functional
-as of v11.7.0** - they call the still-unreworked `/api/plex/*` routes described in
-[Control Panel](#control-panel), which now 503 since Plex is gone and `PLEX_URL`/`PLEX_TOKEN`
-no longer exist in `.env`. Listed here as-is (not deleted) since they're accurate historical
-documentation of what the CLI does and will do again once `control-panel/app.py` is reworked
-against Jellyfin's API - not yet done.
+**Every `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` command has been reworked or removed
+as of v11.7.0** (see [History](#history) `[11.7.0]`) - every Plex maintenance command has a
+`stack-jellyfin-*` equivalent against the routes in [Control Panel](#control-panel) above;
+commands backing a dropped Plex-only concept (empty-trash, Plex-watchlist/RSS import, and
+every individual Butler-task wrapper with no real Jellyfin task behind it) were deleted
+outright rather than left dead; `stack-kometa-run` and both `stack-tautulli-*` commands were
+deleted (both apps removed entirely, no Jellyfin-side equivalent for either).
 
 ```fish
 # ~/.dotfiles/.config/fish/functions/__stack_api.fish
@@ -1072,8 +1082,8 @@ stack-status                                    # live health of every container
 stack-arr radarr rss-sync                       # radarr/sonarr; or search-missing / unstick / unstick-importing
 stack-arr-import-candidates sonarr              # list files ready to manually import
 stack-arr-import sonarr 0                       # import candidate #0 from the list above
-stack-plex scan                                 # or empty-trash / optimize-db / clean-bundles
-stack-plex-libraries                            # list Plex library names
+stack-jellyfin scan                             # or optimize-db
+stack-jellyfin-libraries                        # list Jellyfin library names
 stack-nzbdav-queue                              # current Usenet download queue
 stack-nzbdav-history 20                         # recent history, default limit 20
 stack-nzbdav-set-connections 50                 # set the Usenet provider's max connections
@@ -1488,21 +1498,24 @@ after first boot" section and default to `changeme`; re-running `--setup` loads 
   was removed entirely in v11.7.0.
 - **`media/youtube` is an inert leftover** from a removed Pinchflat integration; nothing
   reads or writes it.
-- **Remaining open gaps from the v11.7.0 Plex-to-Jellyfin migration** (each documented in
-  place, collected here for visibility). Fixed same-day, not open anymore: Jellyfin's missing
-  `/mnt/nzbdav` mount (found and fixed - see [Jellyfin](#jellyfin)); `control-panel/app.py`'s
-  `MOUNT_DEPENDENTS` set (now `jellyfin`, not `plex`); `scripts/setup_wizard.py`'s
-  `POST_BOOT_KEYS`/`REQUIRED_KEYS` (now name `JELLYFIN_API_KEY`/`JELLYFIN_URL`, not the removed
-  `PLEX_TOKEN`/`PLEX_URL`); stale `config/plex/...` restic excludes in
-  `scripts/backup-config.sh` (removed, now empty-target-safe). **Still genuinely open**:
-  `jellystat-db` has zero backup coverage (see
-  [Monitoring extras](#monitoring-extras-jellystat)); `control-panel/app.py`'s 14 `/api/plex/*`
-  routes and its `Plex` API-hit-counter label are still unreworked dead references (see
-  [Control Panel](#control-panel)) - they 503 via the existing missing-env-var fallback rather
-  than silently misbehaving, but aren't rebuilt against Jellyfin's API yet; Seerr and poster
-  sync are still pointed at the now-gone Plex; no Jellyfin-side webhook/report equivalent
-  exists for the two Plex alerting scripts deleted with Plex (see
-  [Alerting](#alerting-discord)).
+- **The v11.7.0 Plex-to-Jellyfin migration's gap list is now fully closed** (each item
+  documented in place, collected here for visibility). Fixed same-day: Jellyfin's missing
+  `/mnt/nzbdav` mount; `control-panel/app.py`'s `MOUNT_DEPENDENTS` set (now `jellyfin`, not
+  `plex`); `scripts/setup_wizard.py`'s `POST_BOOT_KEYS`/`REQUIRED_KEYS`; stale
+  `config/plex/...` restic excludes. Fixed in the same overall effort, slightly later:
+  `control-panel/app.py`'s all 14 former `/api/plex/*` routes reworked to real Jellyfin
+  endpoints (see [Control Panel](#control-panel) and [History](#history) `[11.7.0]` for the
+  full route-by-route mapping) - none are dead references anymore; every
+  `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` fish function (tracked in `~/.dotfiles`)
+  reworked to a `stack-jellyfin-*` equivalent or removed outright if no Jellyfin equivalent
+  exists; `jellystat-db` now has real logical-backup coverage via a `pg_dump` step in
+  `scripts/backup-config.sh`, verified live; Seerr repointed at Jellyfin and poster sync
+  reworked against Jellyfin's `ProviderIds`/image-upload API, both verified live; real
+  hardware transcoding confirmed working via an actual VAAPI `ffmpeg` process, not just
+  configured. **Genuinely still open, no Jellyfin-side equivalent built**: no webhook/report
+  equivalent exists for the two Plex alerting scripts deleted with Plex (see
+  [Alerting](#alerting-discord)) - this is the one piece of the original Plex tooling with no
+  Jellyfin-side replacement at all yet.
 - **A still-unexplained mass Radarr/Sonarr library-loss event** occurred once early on (1,605
   movies deleted in a 0.1-second burst with no matching API call logged; ~90 Sonarr series
   briefly added then removed with no deletion log line). Root cause was never identified.
@@ -2418,8 +2431,9 @@ table (7,799 rows), not just assumed from the containers being up. **Tautulli it
 removed entirely** on the same follow-up request as Kometa below: compose block,
 `config/tautulli/` (263MB, no credentials of note, deleted with no backup), and its
 `control-panel/app.py` container-listing entry all gone; its two `/api/tautulli/*` routes
-(history, stats) were left as documented dead code rather than reworked, same treatment as
-`/api/plex/*`, since they already 503 gracefully and Jellystat covers the same role now.
+(history, stats) were left as documented dead code rather than reworked (unlike the former
+`/api/plex/*` routes, later fully reworked against Jellyfin's API in this same entry below),
+since they already 503 gracefully and Jellystat covers the same role now.
 Seerr was also repointed at Jellyfin the same session (`main.mediaServerType` switched to
 `2`/`JELLYFIN`, confirmed against `seerr-team/seerr`'s own `server/constants/server.ts`; a
 stale browser session cookie masked the first login attempt since Seerr's JWT auth is
@@ -2482,10 +2496,15 @@ project's own long-unexplained mass Radarr/Sonarr library-loss event (see
 [Known gaps and limitations](#known-gaps-and-limitations)) - confirmed not caused by the
 same-day NzbDAV connection-leak bug. Since Plex is now gone, this can't be root-caused further.
 
-**Still explicitly pending as of this writing**: `control-panel/app.py`'s 14 `/api/plex/*`
-routes and its `MOUNT_DEPENDENTS` set are unreworked (they 503/no-op the same way they always
-did when unconfigured); Seerr has not been repointed at Jellyfin (needs a human login step,
-one media server at a time per its own GitHub issue #511); poster sync is non-functional until
-reworked against Jellyfin's API; `scripts/setup_wizard.py`'s `POST_BOOT_KEYS` still names the
-now-removed `PLEX_TOKEN` and is missing `JELLYFIN_API_KEY`. See
-[Known gaps and limitations](#known-gaps-and-limitations) for the full consolidated list.
+**Closed out in the same overall migration effort, slightly later** (all verified live, not
+just read for syntax): all 14 former `/api/plex/*` routes reworked against Jellyfin's real
+API (see [Control Panel](#control-panel) above for the full route-by-route mapping);
+`MOUNT_DEPENDENTS` fixed; Seerr repointed at Jellyfin (`mediaServerType` switched, admin
+account re-linked after a stale-session-cookie false start, the old Plex-linked account's 144
+requests reassigned before deleting the dead row); poster sync reworked against Jellyfin's
+`ProviderIds`/image-upload API; `scripts/setup_wizard.py`'s `POST_BOOT_KEYS`/`REQUIRED_KEYS`
+fixed; every `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` fish function reworked or
+removed; `jellystat-db` given real logical-backup coverage; real VAAPI hardware transcoding
+confirmed working via an actual `ffmpeg` process, not just configured. See
+[Known gaps and limitations](#known-gaps-and-limitations) for the one genuinely remaining
+item (no Jellyfin-side equivalent for the two deleted Plex alerting scripts).

@@ -22,6 +22,7 @@ cd "$(dirname "$0")/.." || exit
 env_get() { [ -f .env ] && grep -E "^${1}=" .env | head -1 | cut -d'=' -f2-; }
 BACKUP_REMOTE_REPOSITORY="$(env_get BACKUP_REMOTE_REPOSITORY)"
 BACKUP_REMOTE_PASSWORD_FILE="$(env_get BACKUP_REMOTE_PASSWORD_FILE)"
+JELLYSTAT_POSTGRES_USER="$(env_get JELLYSTAT_POSTGRES_USER)"
 
 export RESTIC_REPOSITORY="$HOME/backups/stack-restic-repo"
 export RESTIC_PASSWORD_FILE="$HOME/backups/.restic-password"
@@ -29,7 +30,32 @@ export RESTIC_PASSWORD_FILE="$HOME/backups/.restic-password"
 RESTIC_EXCLUDES=(
   --exclude "config/*/logs"
   --exclude "config/*/log"
+  # Raw file-level backup of a live Postgres datadir is unsafe (no WAL
+  # consistency guarantee the way pg_basebackup/pg_dump provide) - this
+  # stack learned that lesson once already with zilean-postgres. The
+  # logical pg_dump step below is the real backup; the raw datadir itself
+  # is excluded outright rather than silently included as a false sense of
+  # coverage.
+  --exclude "config/jellystat-db"
 )
+
+# Logical backup for jellystat-db (postgres:18.1) - this stack's only
+# Postgres-backed service since zilean-postgres was removed in v11.0.0.
+# Dumped to a plain .sql file inside ./config so it rides along with the
+# rest of the restic backup below, same as every other app's config here.
+# Overwrites in place each run - restic's own snapshot retention (below)
+# is what gives this history across days, not a dated filename.
+JELLYSTAT_DUMP_DIR="./config/jellystat-db-dump"
+mkdir -p "$JELLYSTAT_DUMP_DIR"
+if docker inspect jellystat-db >/dev/null 2>&1; then
+  if docker exec jellystat-db pg_dump -U "${JELLYSTAT_POSTGRES_USER:-jellystat}" jfstat \
+      > "$JELLYSTAT_DUMP_DIR/jfstat.sql.tmp" 2>"$JELLYSTAT_DUMP_DIR/jfstat.dump.log"; then
+    mv "$JELLYSTAT_DUMP_DIR/jfstat.sql.tmp" "$JELLYSTAT_DUMP_DIR/jfstat.sql"
+  else
+    rm -f "$JELLYSTAT_DUMP_DIR/jfstat.sql.tmp"
+    ./scripts/notify-discord.sh "jellystat-db pg_dump failed - see $JELLYSTAT_DUMP_DIR/jfstat.dump.log, last jfstat.sql (if any) is stale" warn
+  fi
+fi
 
 # sudo -n -E (preserves RESTIC_REPOSITORY/RESTIC_PASSWORD_FILE): originally
 # added because several Plex files (Preferences.xml, .LocalAdminToken) were
