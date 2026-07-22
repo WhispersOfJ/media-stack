@@ -29,22 +29,19 @@ export RESTIC_PASSWORD_FILE="$HOME/backups/.restic-password"
 RESTIC_EXCLUDES=(
   --exclude "config/*/logs"
   --exclude "config/*/log"
-  --exclude "config/plex/Plex Media Server/Metadata"
-  --exclude "config/plex/Plex Media Server/Cache"
-  --exclude "config/plex/Plex Media Server/Codecs"
-  --exclude "config/plex/Plex Media Server/Logs"
-  --exclude "config/plex/Plex Media Server/Crash Reports"
-  --exclude "config/plex-transcode"
 )
 
-# sudo -n -E (preserves RESTIC_REPOSITORY/RESTIC_PASSWORD_FILE): several
-# Plex files (Preferences.xml, .LocalAdminToken) are mode 600 owned by
-# whatever host account happens to share PLEX_UID=955's numeric id - not
-# readable by this user, and Plex recreates them with the same restrictive
-# mode on every write, so a one-time chmod doesn't stick. Same reasoning
-# backup-claude-dir.sh already uses sudo -n tar for. Confirmed live: these
-# files were silently missing from every snapshot (restic exit 3) until
-# this was added.
+# sudo -n -E (preserves RESTIC_REPOSITORY/RESTIC_PASSWORD_FILE): originally
+# added because several Plex files (Preferences.xml, .LocalAdminToken) were
+# mode 600 owned by whatever host account happened to share Plex's
+# PLEX_UID=955 numeric id - not readable by this user, and Plex recreated
+# them with the same restrictive mode on every write, so a one-time chmod
+# didn't stick. Plex is gone now (config/plex/ deleted entirely, see
+# CLAUDE.md's migration History) and Jellyfin's own config/jellyfin
+# (owned via PUID/PGID like every other app here) hasn't shown the same
+# 600-mode pattern in a quick check - kept anyway since sudo -n -E is
+# harmless when not strictly needed, and repo objects are already
+# root-owned from every prior run (see below).
 sudo -n -E restic backup ./config "${RESTIC_EXCLUDES[@]}"
 backup_status=$?
 

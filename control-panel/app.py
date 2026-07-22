@@ -90,25 +90,17 @@ def _seerr_key() -> str | None:
         return None
 
 
-def _kometa_config() -> dict:
-    """Kometa's config.yml already holds user-supplied OMDb/MDBList API
-    keys (both optional, entered once for Kometa's own metadata lookups) -
-    reading them live off the mounted config here means the ratings
-    endpoints below need zero new secrets/.env entries, same reasoning as
-    _tautulli_key/_seerr_key above."""
-    path = os.path.join(HOST_CONFIG_DIR, "kometa", "config.yml")
-    if not os.path.isfile(path):
-        return {}
-    with open(path) as f:
-        return yaml.safe_load(f) or {}
-
-
 def _omdb_key() -> str | None:
-    return _kometa_config().get("omdb", {}).get("apikey") or None
+    # Used to live-read off Kometa's config.yml (both keys were entered
+    # once for Kometa's own metadata lookups) - Kometa was removed entirely
+    # (no Jellyfin support, see CLAUDE.md's migration History), so these are
+    # now real standalone .env secrets instead of an orphaned read off a
+    # deleted file.
+    return os.environ.get("OMDB_KEY") or None
 
 
 def _mdblist_key() -> str | None:
-    return _kometa_config().get("mdblist", {}).get("apikey") or None
+    return os.environ.get("MDBLIST_KEY") or None
 # Read-only host mounts added specifically for the stack-* diagnostic
 # endpoints below (resource-check through neutarr-hunt) - see
 # docker-compose.yml's control-panel volumes for what backs each of these.
@@ -120,8 +112,7 @@ HOST_RESTIC_PASSWORD_FILE = "/host-backups/.restic-password"
 HOST_README = "/host-README.md"
 
 # Internal stacknet hostnames - not HOST_IP, since this container reaches
-# every *arr app over the docker network directly (same pattern Kometa's
-# own config.yml uses).
+# every *arr app over the docker network directly.
 ARR_APPS = {
     "radarr": {
         "url": "http://radarr:7878",
@@ -166,14 +157,14 @@ CONTAINER_LABELS = {
     "radarr": ("Radarr", None),
     "sonarr": ("Sonarr", None),
     "prowlarr": ("Prowlarr", None),
-    "plex": ("Plex", None),
+    "jellyfin": ("Jellyfin", None),
     "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),
     "nzbdav-rclone": ("rclone", "NzbDAV mount"),
     "seerr": ("Seerr", None),
     "tautulli": ("Tautulli", None),
     "bazarr": ("Bazarr", "subtitle management - watches Radarr/Sonarr for missing subs"),
-    "kometa": ("Kometa", None),
-    "kometa-quickstart": ("Kometa Quickstart", "config.yml wizard, port 7171 - not an alternate Kometa runtime"),
+    "jellystat": ("Jellystat", "Jellyfin watch-history/stats dashboard"),
+    "jellystat-db": ("Jellystat DB", "Postgres backing Jellystat"),
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
@@ -244,10 +235,6 @@ async def verify_same_origin(request: Request, call_next):
                     content={"ok": False, "message": "Rejected: Origin did not match this panel's host."},
                 )
     return await call_next(request)
-
-
-class KometaRunRequest(BaseModel):
-    libraries: list[str] | None = None
 
 
 class NzbdavConnectionsRequest(BaseModel):
@@ -470,37 +457,6 @@ def api_hit_counts():
 
 
 # ---------------------------------------------------------------------
-# Kometa
-# ---------------------------------------------------------------------
-@app.post("/api/kometa/run")
-def kometa_run(payload: KometaRunRequest = KometaRunRequest()):
-    try:
-        c = docker_client.containers.get("kometa")
-    except docker.errors.NotFound:
-        fail("Kometa container not found.")
-    if c.status != "running":
-        fail(f"Kometa container is {c.status}, not running.")
-    cmd = ["python3", "/kometa.py", "--run"]
-    scope = "every library"
-    if payload.libraries:
-        # Kometa's own --run-libraries takes a pipe-separated list, not comma
-        # (confirmed live: a comma-joined multi-library value fails the whole
-        # run with "Config Error: No libraries were found in config" - a
-        # single-library run never hit this since there's no delimiter to
-        # get wrong). Was silently broken for any multi-library scoped run
-        # since this endpoint was written.
-        cmd += ["--run-libraries", "|".join(payload.libraries)]
-        scope = ", ".join(payload.libraries)
-    try:
-        # detach=True: fire the run and return immediately rather than
-        # blocking the request for however long a full Kometa pass takes.
-        c.exec_run(cmd=cmd, detach=True)
-    except Exception as e:
-        fail(f"Failed to start Kometa run: {e}")
-    return ok(f"Kometa run started ({scope}) - watch its live CPU on the Containers grid below for progress.")
-
-
-# ---------------------------------------------------------------------
 # Plex
 # ---------------------------------------------------------------------
 def plex_headers():
@@ -527,9 +483,10 @@ def plex_sections() -> list[dict]:
 
 @app.get("/api/plex/libraries")
 def plex_libraries():
-    """Library names as Plex itself knows them - Kometa's --run-libraries
-    flag needs an exact, case-sensitive match, so this is read live from
-    Plex rather than hardcoded against config/kometa/config.yml."""
+    """Library names as Plex itself knows them, read live rather than
+    hardcoded. Dead code pending the Plex->Jellyfin route rework (see
+    CLAUDE.md's migration History) - Kometa, this endpoint's original
+    consumer, was removed entirely."""
     try:
         sections = plex_sections()
     except httpx.HTTPError as e:
@@ -698,7 +655,7 @@ def plex_updates():
 # ThePosterDB - TPDb's own Terms of Service (https://theposterdb.com/terms)
 # explicitly forbids automated scraping and it has no public API, so there
 # is no ToS-compliant way to pull posters from it programmatically. TMDb
-# is a real, documented, keyed API (the same TMDB_KEY Kometa already uses).
+# is a real, documented, keyed API (TMDB_KEY, this app's own secret).
 #
 # One job at a time, in-memory only (no persistence across a panel
 # restart) - progress streams over SSE to whichever browser tab has the
@@ -1032,16 +989,17 @@ def nzbdav_unstick():
 
 
 # ---------------------------------------------------------------------
-# Ratings lookups - OMDb (IMDb) and MDBList. Both keys already live in
-# Kometa's own config.yml (entered once for Kometa's metadata lookups),
-# read live via _omdb_key()/_mdblist_key() rather than duplicated into
-# .env - same reasoning as Tautulli/Seerr's keys above.
+# Ratings lookups - OMDb (IMDb) and MDBList. Both keys used to live in
+# Kometa's own config.yml (entered once for Kometa's metadata lookups) and
+# were read live off that file - Kometa was removed entirely (no Jellyfin
+# support, see CLAUDE.md's migration History), so these are now real
+# standalone OMDB_KEY/MDBLIST_KEY .env secrets instead.
 # ---------------------------------------------------------------------
 @app.get("/api/ratings/imdb")
 def rating_imdb(imdb_id: str):
     key = _omdb_key()
     if not key:
-        fail("No OMDb API key found in Kometa's config.yml (omdb.apikey).", status_code=500)
+        fail("No OMDb API key found (OMDB_KEY not set in .env).", status_code=500)
     try:
         r = httpx.get("https://www.omdbapi.com/", params={"i": imdb_id, "apikey": key}, timeout=15)
         r.raise_for_status()
@@ -1067,7 +1025,7 @@ def rating_imdb(imdb_id: str):
 def rating_mdblist(imdb_id: str):
     key = _mdblist_key()
     if not key:
-        fail("No MDBList API key found in Kometa's config.yml (mdblist.apikey).", status_code=500)
+        fail("No MDBList API key found (MDBLIST_KEY not set in .env).", status_code=500)
     try:
         r = httpx.get("https://mdblist.com/api/", params={"apikey": key, "i": imdb_id}, timeout=15)
         r.raise_for_status()
@@ -1123,7 +1081,7 @@ MDBLIST_URL_RE = re.compile(r"^https://mdblist\.com/lists/([^/]+)/([^/]+)/?$")
 def mdblist_import_list(payload: MDBListImportRequest):
     key = _mdblist_key()
     if not key:
-        fail("No MDBList API key found in Kometa's config.yml (mdblist.apikey).", status_code=500)
+        fail("No MDBList API key found (MDBLIST_KEY not set in .env).", status_code=500)
 
     match = MDBLIST_URL_RE.match(payload.list_url.strip())
     if not match:
@@ -2597,7 +2555,7 @@ def container_logs_stream(name: str, tail: int = 100):
 # MOUNT_PROVIDERS, so nzbdav-rclone always finds nzbdav ready.
 MOUNT_PREREQS = {"nzbdav"}
 MOUNT_PROVIDERS = {"nzbdav-rclone"}
-MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}
+MOUNT_DEPENDENTS = {"radarr", "sonarr", "jellyfin", "unpackerr", "cleanuparr"}
 
 
 def wait_for_healthy(container, timeout=60):

@@ -235,91 +235,59 @@ services:
     cpus: 2
 
   # ---------------------------------------------------------------------
-  # Media server. Containerized from a native install in 3.3.0; the native
-  # plexmediaserver package, its systemd unit, and /var/lib/plex were fully
-  # removed in 4.8.0 - this container is the only Plex on the host now, no
-  # rollback fallback kept. See CHANGELOG for both.
+  # Media server (Jellyfin) - replaced Plex entirely (removed in full: see
+  # CLAUDE.md's History for the migration and CHANGELOG). LinuxServer image
+  # chosen for consistency with this stack's existing PUID/PGID convention
+  # (every hotio-style service uses the same pattern) - not a claim the
+  # official jellyfin/jellyfin image is worse, just a deliberate match to
+  # how every other service here is run.
+  # Back on stacknet (bridge), not network_mode: host - a brief attempt at
+  # host networking for UDP client-discovery (port 7359, used by mobile
+  # apps' Bonjour-style LAN scan) was tried and deliberately reverted at the
+  # user's request. Client-discovery does not work on bridge networking as
+  # a result (same limitation Plex's network_mode: host used to solve) -
+  # accepted tradeoff, not an oversight.
   # ---------------------------------------------------------------------
-  plex:
-    restart: unless-stopped
-    logging: *common-logging
-    # Official image, not a LinuxServer-style fork - a PUID/PGID-forcing
-    # image would recursively chown the ~33GB library to PUID/PGID on first
-    # boot (same reason the Kometa entry below avoids the LinuxServer fork).
-    # public channel, not Plex Pass (beta) - the official image only
-    # publishes the public channel. Deliberate, not an oversight - public
-    # channel on the official image is the more conservative choice for a
-    # containerized production library anyway.
-    # Bump this tag deliberately, not via Watchtower (see below).
-    image: plexinc/pms-docker:1.43.3.10828-00f62d37d
-    container_name: plex
-    # Plex's own guidance for Docker: GDM auto-discovery, DLNA, and
-    # remote-access NAT-PMP/UPnP negotiation are all unreliable on bridge
-    # networking. Every other service in this stack already publishes
-    # directly to 0.0.0.0 with no reverse proxy, so this is a deliberate,
-    # documented exception to the stacknet/published-port pattern rather
-    # than an inconsistency - no networks:/ports: block, both are invalid
-    # alongside network_mode: host.
-    network_mode: host
-    environment:
-      TZ: ${TZ}
-      # Matches the uid/gid the native install used to own the library as,
-      # so the migrated ~33GB library needed zero chown. The native install
-      # is gone now (4.8.0), but this uid/gid still owns config/plex on
-      # disk, so it stays.
-      PLEX_UID: "955"
-      PLEX_GID: "955"
-      # Native Arch install set this to a flat directory (no
-      # Library/Application Support nesting); set it the same way here so
-      # config/plex/Plex Media Server could be copied over verbatim from
-      # /var/lib/plex without restructuring it.
-      PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR: /config
+  jellyfin:
+    <<: *common
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    networks: [stacknet]
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:32400/identity || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8096/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
     volumes:
-      - ./config/plex:/config
-      - ./config/plex-transcode:/transcode
-      # Debrid removal (see CHANGELOG) left the TV library with a second,
-      # now-dead Location entry at /mnt/zurg/shows (confirmed live via
-      # /library/sections - never cleaned up in Plex's own DB, since removing
-      # a library Location from Plex risks it offering to delete the
-      # underlying metadata/watch history, not something to do without
-      # explicit confirmation). This mount only needs to cover /mnt/nzbdav
-      # now - what every remaining symlink actually resolves through.
+      - ./config/jellyfin:/config
+      - ./media/movies:/data/movies
+      - ./media/shows:/data/shows
+      # Every file under both root folders is a symlink into NzbDAV's own
+      # WebDAV filesystem (e.g. /mnt/nzbdav/.ids/...), never a real file -
+      # this mount was missing for a while after Jellyfin's initial deploy,
+      # exactly reproducing the Stash bug this stack's CLAUDE.md already
+      # documents: every symlink resolved to a path that didn't exist inside
+      # this container's own mount namespace, so Jellyfin silently added
+      # zero episodes (series/season folders are real directories and
+      # matched fine; the episode files themselves are what's symlinked).
       - /mnt/nzbdav:/mnt/nzbdav:rslave
-      # Not yet an actual library location in Plex today (verified against
-      # the DB), but every arr app's writable root folder lives here and
-      # the README has long recommended adding it - mounted now so it's
-      # available the moment that's done, at the same absolute path the
-      # arr apps themselves use it at.
-      - ./media:/home/bear/Stack/media
+    # Same iGPU render node and GIDs Plex used to hold - VAAPI render nodes
+    # support concurrent processes, this is just the sole remaining consumer
+    # now.
     devices:
       - /dev/dri/renderD128:/dev/dri/renderD128
-    # video/render host GIDs - renderD128 is already world-writable
-    # (confirmed: crw-rw-rw-), so this is a defensive fallback rather than
-    # strictly required for VAAPI hardware transcoding to work.
     group_add:
       - "983"
       - "987"
-    # Caught live during tuning: a library scan alone briefly pushed this to
-    # 100% CPU with zero active playback sessions (confirmed via /activities
-    # - "Scanning TV Shows", not a transcode). HW transcoding covers
-    # play/decode, not scan/analysis/thumbnail passes, so this can spike on
-    # its own. 12 of 16 threads leaves 4-thread desktop headroom on this host.
-    # mem_limit trimmed 6g -> 3g in a stack-wide mem_limit audit (v11.2.0):
-    # observed real usage was 231MB/6GiB (3.76%) with hardware transcoding
-    # doing all play/decode work (GPU-offloaded, not RAM-bound) - 3g still
-    # leaves ~13x headroom over the observed baseline. Not based on a live
-    # peak measurement during a heavy scan, unlike the cpus note above - if
-    # a future library scan is ever OOMKilled against this limit, raise it
-    # and document the real peak here rather than guessing again.
+    ports:
+      - "8096:8096"
+    # Starting at parity with Plex's own ceiling - tune down once real
+    # usage is observed via docker stats, same practice as every other
+    # service in this file.
     mem_limit: 3g
     mem_reservation: 512m
-    cpus: 12
+    cpus: 6
 
   # =======================================================================
   # Optional / recommended extras - start with:
@@ -348,6 +316,78 @@ services:
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
+
+  # ---------------------------------------------------------------------
+  # Jellystat: Jellyfin watch-history/stats dashboard, the Tautulli
+  # equivalent for Jellyfin (Tautulli itself is Plex-only, no Jellyfin
+  # support exists). Needs its own Postgres - this stack's last Postgres
+  # dependency (zilean-postgres) was removed entirely in v11.0.0; this
+  # reintroduces one deliberately. Add ./config/jellystat-db to the backup
+  # story explicitly (a logical dump step, not raw-file backup of a live
+  # datadir) rather than assuming restic's existing exclusions cover it -
+  # this stack has already been burned once by a DB-backed service getting
+  # zero backup coverage by default.
+  # ---------------------------------------------------------------------
+  jellystat-db:
+    restart: unless-stopped
+    logging: *common-logging
+    image: postgres:18.1
+    container_name: jellystat-db
+    profiles: [extras]
+    networks: [stacknet]
+    environment:
+      POSTGRES_USER: ${JELLYSTAT_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${JELLYSTAT_POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${JELLYSTAT_POSTGRES_USER}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      # postgres:18+ manages its own version-specific subdirectory under a
+      # single /var/lib/postgresql mount, not the old .../data convention -
+      # confirmed live: the old mount path crash-looped the container with
+      # "PostgreSQL data in an old, unsupported location" on first boot.
+      - ./config/jellystat-db:/var/lib/postgresql
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 1
+
+  jellystat:
+    restart: unless-stopped
+    logging: *common-logging
+    image: cyfershepard/jellystat:latest
+    container_name: jellystat
+    profiles: [extras]
+    networks: [stacknet]
+    depends_on:
+      jellystat-db:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ}
+      POSTGRES_USER: ${JELLYSTAT_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${JELLYSTAT_POSTGRES_PASSWORD}
+      POSTGRES_IP: jellystat-db
+      POSTGRES_PORT: "5432"
+      JWT_SECRET: ${JELLYSTAT_JWT_SECRET}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/jellystat-backup:/app/backend/backup-data
+    # Host port 8087, not upstream's default 3000 - this stack's own
+    # history already has a documented "who owns port 3000" thread
+    # (DebridMediaManager, then deliberately left free when NzbDAV moved to
+    # 3001); picking a clean unused port here rather than reviving that.
+    ports:
+      - "8087:3000"
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 1
 
   # Subtitle management for Radarr/Sonarr - connected via API key post-boot
   # (Bazarr has no env-var wiring for this, same pattern as Maintainerr
@@ -400,8 +440,14 @@ services:
       retries: 3
       start_period: 15s
     environment:
-      PLEX_URL: ${PLEX_URL}
-      PLEX_TOKEN: ${PLEX_TOKEN}
+      # Plex removed entirely (full migration to Jellyfin) - these replace
+      # the old PLEX_URL/PLEX_TOKEN pair. app.py's actual Plex-route rework
+      # (14 routes, see CLAUDE.md's migration plan) is still pending as its
+      # own follow-up; until then every /api/plex/* route 503s the same way
+      # it always has when its required env vars are unset - by design, not
+      # a new failure mode.
+      JELLYFIN_URL: ${JELLYFIN_URL}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
       NZBDAV_API_KEY: ${NZBDAV_API_KEY}
@@ -424,9 +470,14 @@ services:
       # auth, just closing the cross-origin-POST hole given this panel's
       # docker.sock access.
       HOST_IP: ${HOST_IP}
-      # Poster sync only (/api/posters/sync) - same key Kometa already uses
-      # for its own TMDb metadata, no new secret.
+      # Poster sync only (/api/posters/sync) - this app's own TMDb key.
       TMDB_KEY: ${TMDB_KEY}
+      # /api/ratings/imdb, /api/ratings/mdblist - used to be read live off
+      # Kometa's own config.yml; standalone secrets now that Kometa was
+      # removed entirely (no Jellyfin support - see CLAUDE.md's migration
+      # History).
+      OMDB_KEY: ${OMDB_KEY}
+      MDBLIST_KEY: ${MDBLIST_KEY}
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # actually execs into containers (Kometa's on-demand run) and issues
@@ -463,87 +514,6 @@ services:
       - "8420:8420"
     mem_limit: 512m
     mem_reservation: 64m
-    cpus: 2
-
-  # Automated Plex collections/metadata/overlays. Official image only - the
-  # LinuxServer fork resets /config ownership to PUID/PGID (or 911:911 if
-  # unset) on every start, which the official image doesn't do and most of
-  # the wiki's examples assume you're not using anyway. The stable channel is
-  # still :latest (not :nightly/:develop) - now digest-pinned since upstream's
-  # newest tagged release (v2.4.4) doesn't match what :latest actually ships,
-  # so a tag pin would silently jump forward instead of freezing what's
-  # running. Bump this digest deliberately when ready to take a newer build.
-  # No web UI of its own - runs as a scheduled batch job against Plex's API,
-  # so no port is published; see Homepage/Heimdall entries for how it's
-  # surfaced there instead.
-  kometa:
-    restart: unless-stopped
-    logging: *common-logging
-    image: kometateam/kometa@sha256:98a0df2694edea467ac8870bcecddea3ec0bc14a071721372fb9fa811a829902
-    container_name: kometa
-    profiles: [extras]
-    networks: [stacknet]
-    # No run_time is set in config/kometa/config.yml, but the image's default
-    # entrypoint (`python3 kometa.py --`) still runs a full pass immediately
-    # on every container start/restart regardless - confirmed live (a 19+
-    # hour single run since this container's last start, no cron/systemd
-    # timer/webhook trigger found anywhere). That's the only thing that ever
-    # made this "scheduled" rather than on-demand. Overriding entrypoint to
-    # idle instead: Control Panel's /api/kometa/run already runs Kometa
-    # on-demand via `docker exec ... python3 /kometa.py --run` (see
-    # control-panel/app.py's kometa_run()), which works against an idling
-    # container exactly the same as a busy one - exec doesn't care what PID 1
-    # is doing. Don't remove this override without re-adding some other guard
-    # against the auto-run-on-start behavior, or every restart/host reboot
-    # silently kicks off a full run again.
-    entrypoint: ["/tini", "-s", "--"]
-    command: ["sleep", "infinity"]
-    # Matches the command override above - confirms the idle placeholder
-    # process is alive, not kometa.py (which now only ever runs via the
-    # on-demand exec, not as the container's main process).
-    healthcheck:
-      test: ["CMD-SHELL", "grep -aq 'sleep infinity' /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/kometa:/config
-    # 642MB was observed resident during an actual run; idling on the
-    # entrypoint override above should sit well under this, but the ceiling
-    # is sized for real overlay/poster-generation runs triggered on demand,
-    # not the idle baseline.
-    mem_limit: 2g
-    mem_reservation: 256m
-    cpus: 4
-
-  # Web UI (port 7171) for building config/kometa/config.yml interactively -
-  # the official Kometa-Team Quickstart wizard, not an alternative Kometa
-  # runtime. Its own /config volume is deliberately NOT config/kometa - per
-  # Quickstart's own README, that path holds its SQLite db, generated-YAML
-  # history, and run logs, and is explicitly documented as not being the
-  # Kometa config directory. A config built here has to be copied by hand
-  # into config/kometa/config.yml; the kometa service above still owns
-  # actually running against that file (Control Panel's on-demand
-  # /api/kometa/run exec is unchanged by adding this).
-  quickstart:
-    restart: unless-stopped
-    logging: *common-logging
-    image: kometateam/quickstart:latest
-    container_name: kometa-quickstart
-    profiles: [extras]
-    networks: [stacknet]
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/quickstart:/config
-      - ./config/plex:/plex-config
-    ports:
-      - "7171:7171"
-    mem_limit: 1g
-    mem_reservation: 128m
     cpus: 2
 
   unpackerr:
