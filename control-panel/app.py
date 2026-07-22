@@ -1004,6 +1004,33 @@ def nzbdav_set_connections(payload: NzbdavConnectionsRequest):
     return ok(f"Set max connections to {payload.max_connections} for {names}.")
 
 
+@app.post("/api/nzbdav/unstick")
+def nzbdav_unstick():
+    # Recurring failure chain confirmed live 2026-07-21: NzbDAV's mode=history query
+    # hangs once HistoryItems grows large, Sonarr's periodic client-status poll times
+    # out against it and marks the download client "downloadClientUnavailable", Sonarr
+    # then re-grabs releases it thinks aren't downloading, and those re-grabs 500 against
+    # NzbDAV's (Category, FileName) unique constraint on already-active queue items.
+    # Probe the same endpoint Sonarr polls before restarting, so this is a no-op when
+    # NzbDAV is actually healthy.
+    try:
+        r = httpx.get(
+            f"{NZBDAV_URL}/api",
+            params={"mode": "history", "output": "json", "apikey": NZBDAV_API_KEY, "limit": 1},
+            timeout=8,
+        )
+        r.raise_for_status()
+        return ok("NzbDAV is responding normally - no restart needed.")
+    except httpx.HTTPError:
+        pass
+    c = find_project_container("nzbdav", reject_self=True)
+    try:
+        c.restart(timeout=30)
+    except Exception as e:
+        fail(f"NzbDAV restart failed: {e}")
+    return ok("NzbDAV's history query was hanging - restarted the container.")
+
+
 # ---------------------------------------------------------------------
 # Ratings lookups - OMDb (IMDb) and MDBList. Both keys already live in
 # Kometa's own config.yml (entered once for Kometa's metadata lookups),
@@ -3692,7 +3719,7 @@ def nzbdav_stats():
     queue = nzbdav_api("queue").get("queue", {}).get("slots", [])
     history = nzbdav_api("history", limit=100).get("history", {}).get("slots", [])
     fail_count = sum(1 for h in history if (h.get("status") or "").lower() == "failed")
-    mb_left = sum(s.get("mbleft") or 0 for s in queue)
+    mb_left = sum(float(s.get("mbleft") or 0) for s in queue)
     return ok(f"{len(queue)} queued ({mb_left:.0f}MB left), {len(history)} in recent history "
               f"({fail_count} failed).", queued=len(queue), mb_left=round(mb_left), history_count=len(history),
               history_failed=fail_count)

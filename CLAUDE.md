@@ -344,6 +344,34 @@ throughout its history section, and there's no substitute for it here.
   removed entirely (v11.0.0), matching the `storage` path NzbDAV's own history API reports
   (`/mnt/nzbdav/completed-symlinks/<category>/...`). If a future download client changes its
   reported path convention, this mount needs to move with it.
+- **NzbDAV leaks NNTP connections past its own configured `MaxConnections`, unbounded, from
+  at least three independent code paths (download queue workers, `HealthCheckService`'s
+  repair job, and ordinary WebDAV file reads/playback) that don't appear to share one
+  enforced cap.** Confirmed live 2026-07-22: reproduced identically across the stable
+  `v0.6.4` release and the `pre-release` tag (which adds a circuit breaker for multi-provider
+  failover — useless here since this stack runs a single Thundernews provider with no
+  backup to fail over to), across `MaxConnections` set to 2/4/10/20, and with the repair job
+  (`repair.enable`) both on and off. Connection count climbs unbounded in every combination
+  (observed peaks of 86, then 40→66 again minutes later after a full `docker compose rm -f
+  nzbdav` + recreate — ruling out stale in-memory state, since a brand-new container
+  reproduces it within seconds). This exceeds the account's real, provider-confirmed
+  50-connection limit and gets the account explicitly rejected by Thundernews
+  (`CouldNotLoginToUsenetException: ... 502 Connection failure. Please contact technical
+  support.`), not just timed out. **This also breaks playback of already-completed library
+  files, not just new downloads** — this stack has no local media disk, so NzbDAV streams
+  every byte live from Usenet even for "completed" items; a plain `dd` read of an existing
+  movie through `/mnt/nzbdav/completed-symlinks/...` hung and failed with the same exception.
+  Filed upstream as
+  [nzbdav-dev/nzbdav#477](https://github.com/nzbdav-dev/nzbdav/issues/477). Until fixed,
+  restarting the `nzbdav` container (`stack-nzbdav-restart` or `stack-nzbdav-unstick`) only
+  buys a small window before the leak catches back up — not a durable fix. As of this
+  writing, Radarr, Sonarr, and NeutArr are stopped and both apps' RSS Sync intervals are set
+  to `0` (disabled) specifically because of this bug, so automation doesn't keep feeding a
+  queue that can't complete; re-enable them (and restart Radarr/Sonarr, `docker compose up -d
+  radarr sonarr`, `docker compose up -d neutarr`) once the upstream issue is resolved. The
+  Thundernews provider password was also rotated during this investigation (ruled out as the
+  cause — the old password authenticated instantly and successfully in every manual test);
+  both `.env` and NzbDAV's own `config/nzbdav/db.sqlite` were updated to match.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
