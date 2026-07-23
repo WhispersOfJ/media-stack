@@ -13,14 +13,6 @@ healthchecked. Two operator surfaces: a custom dashboard (Control Panel, redesig
 v11.8.0 - no boxed/card layout, no tabs, a permanently pinned live log console) and a custom CLI
 (`stack-*` fish functions).
 
-**Known gap in this document as of v11.8.0**: the `## Jellyfin`, `## The Usenet pipeline:
-NzbDAV`, and `## Monitoring extras: Jellystat` sections below, plus the `### Historical: Plex,
-removed v11.7.0` subsection, were never updated for the Jellyfin-to-Plex reversion or the
-NzbDAV-to-AltMount replacement - they still describe the brief v11.7.0 state as if it were
-current. Real current state (Plex, AltMount, no Jellystat) is accurately documented in
-`CLAUDE.md`; treat this file's subsystem sections on those three topics as stale pending a
-dedicated rewrite pass, not as a source of truth, until that pass happens.
-
 This is the only document in this repo besides raw config files. It merges the former
 `README.md`, `TECHNICAL.md`, and `CHANGELOG.md`, organized by subsystem. A condensed
 chronological [History](#history) section is at the end.
@@ -33,14 +25,14 @@ chronological [History](#history) section is at the end.
 - [Directory layout](#directory-layout)
 - [The full service list](#the-full-service-list)
 - [The *arr apps](#the-arr-apps)
-- [The Usenet pipeline: NzbDAV](#the-usenet-pipeline-nzbdav)
+- [The Usenet pipeline: AltMount](#the-usenet-pipeline-altmount)
 - [Indexing: Prowlarr](#indexing-prowlarr)
 - [Requests: Seerr](#requests-seerr)
-- [Jellyfin](#jellyfin)
+- [Media server: Plex](#media-server-plex)
 - [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [Automation extras: Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-cleanuparr-neutarr-unpackerr-watchtower)
-- [Monitoring extras: Jellystat](#monitoring-extras-jellystat)
+- [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
 - [Bazarr: subtitle management](#bazarr-subtitle-management)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
@@ -58,33 +50,33 @@ chronological [History](#history) section is at the end.
 
 A Usenet-only media stack: an indexer layer (Prowlarr), a request front-end (Seerr), two
 `*arr` apps (Radarr, Sonarr; Lidarr was removed in v10.9.9 and Whisparr in v10.12.0, see
-[History](#history)), Usenet acquisition that streams rather than downloads (NzbDAV), a
-containerized **Jellyfin**, and automation/monitoring extras (Cleanuparr, NeutArr, Unpackerr,
-Watchtower, Bazarr, Jellystat). Ebooks briefly had a dedicated app (Bindery) plus a reader
-(Calibre-Web); both were retired in v10.9.8 with no replacement (see
+[History](#history)), Usenet acquisition that streams rather than downloads (**AltMount**),
+and **Plex** for serving, plus automation extras (Cleanuparr, NeutArr, Unpackerr, Watchtower,
+Bazarr). Ebooks briefly had a dedicated app (Bindery) plus a reader (Calibre-Web); both were
+retired in v10.9.8 with no replacement (see
 [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)). Adult content
 cataloging (Stash) was also removed in v10.12.0, along with Whisparr, which had managed its
-underlying library.
+underlying library. Tautulli, Kometa, and Kometa's Quickstart companion still have real compose
+service blocks and pulled images in this stack, but no running or even stopped container exists
+for any of the three as of the last audit - treat them as present-but-dormant, not removed (see
+[History](#history)).
 
-**Plex was removed entirely in v11.7.0, replaced by Jellyfin** (see [History](#history) for
-the full migration). Jellyfin carries over Plex's final two libraries exactly - Movies
-(`/data/movies`), Shows (`/data/shows`) - and the same VAAPI hardware-transcode device. Kometa
-and Tautulli, both Plex-specific integrations, were affected: **Kometa cannot talk to Jellyfin
-at all** (no `jellyfin`/`emby` property in its own config schema, only `plex` - confirmed by
-reading `kometa-team/kometa`'s `config-schema.json` directly, contradicting several blog posts
-that claim otherwise), so Kometa and its Quickstart companion were **removed entirely** (see
-[Jellyfin](#jellyfin) and [History](#history) `[11.7.0]`) - **no automated Plex/Jellyfin
-collections, overlays, or metadata-enrichment tool of any kind currently runs in this stack**;
-**Tautulli was removed entirely** (Plex-only, nothing left to monitor) and replaced by
-**Jellystat** (plus its own Postgres, `jellystat-db` - this stack's first Postgres dependency
-since `zilean-postgres` was removed in v11.0.0) as the watch-history/stats dashboard. See
-[Monitoring extras](#monitoring-extras-jellystat) and [History](#history) `[11.7.0]`.
+**Jellyfin briefly replaced Plex in v11.7.0 and was fully reverted back to Plex the same day**,
+after repeated unresolved library-scan hangs (see [History](#history) for the full migration
+and reversion). Jellyfin, Jellystat, and jellystat-db were all removed entirely as part of that
+reversion - there is no Jellyfin anywhere in this stack, and no Jellystat/Postgres dependency
+either. Kometa never supported Jellyfin in the first place (no `jellyfin`/`emby` property in
+its own config schema, only `plex` - confirmed by reading `kometa-team/kometa`'s
+`config-schema.json` directly, contradicting several blog posts that claim otherwise); see
+[History](#history) `[11.7.0]` for how that and Tautulli's Plex-only status factored into the
+migration and its reversion.
 
 **Torrent and debrid (Decypharr, Zurg, rclone-alldebrid, Zilean, Byparr) were removed
 entirely** (see [History](#history)) - the stack ran debrid-first originally, flipped to
 Usenet-preferred in v10.14.1, and finally went Usenet-only once that migration proved out.
-NzbDAV covers acquisition as a WebDAV virtual filesystem streamed on demand, not a local
-download. NZBGet, which wrote real files to disk, was removed earlier (see
+AltMount covers acquisition as a WebDAV virtual filesystem streamed on demand, not a local
+download; it replaced NzbDAV entirely, after an unfixed upstream connection-leak bug (see
+[History](#history)). NZBGet, which wrote real files to disk, was removed earlier still (see
 [History](#history)).
 
 This assumes familiarity with Docker Compose. Every web UI publishes directly to the LAN with
@@ -107,8 +99,8 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 # 3. Bring the core stack up
 docker compose up -d
 
-# 4. Everything else (Jellystat, Unpackerr, Watchtower,
-#    Cleanuparr, NeutArr, Control Panel, ...)
+# 4. Everything else (Tautulli, Bazarr, Kometa (dormant), Control Panel,
+#    Unpackerr, Watchtower, Cleanuparr, NeutArr, ...)
 docker compose --profile extras up -d
 ```
 
@@ -118,10 +110,9 @@ form over the same file. Mechanics of the installer image and wizard are in
 
 Three values can only be collected after first boot, once the relevant app has generated
 them: `RADARR_API_KEY`, `SONARR_API_KEY` (each app's **Settings > General > Security**), and
-`JELLYFIN_API_KEY` (Jellyfin's own **Dashboard > Advanced > API Keys**, generated after its
-own setup wizard completes). **`scripts/setup_wizard.py` was not updated for the v11.7.0
-Plex-to-Jellyfin migration** - it still treats the now-removed `PLEX_TOKEN` as the third
-post-boot-only field instead of `JELLYFIN_API_KEY`; see
+`PLEX_TOKEN` (via `plex.tv/claim` during Plex's own setup, or `Preferences.xml`'s
+`PlexOnlineToken` afterward). `scripts/setup_wizard.py`'s `POST_BOOT_KEYS` already covers all
+three correctly; see
 [Installer image and setup wizard](#installer-image-and-setup-wizard) for the details. Enter
 these via a second `--setup` run (it reloads the existing `.env` as defaults), then:
 
@@ -138,52 +129,47 @@ a `.env` change. Use `--force-recreate`.
 Prowlarr ──indexes──> your Usenet indexers
    │
    ▼
-Radarr/Sonarr ──grab──> NzbDAV (SABnzbd-compatible API) ──streams via WebDAV──> rclone
-                         mount at /mnt/nzbdav ──symlinked into──> each app's root folder:
-                         ./media/<type> → /data/<type>
+Radarr/Sonarr ──grab──> AltMount (SABnzbd-compatible API) ──streams via its own
+                         internal rclone/FUSE mount──> /mnt/altmount
+                         AltMount's SYMLINK import_dir (./media/altmount-import, same
+                         filesystem as every root folder) ──symlinked into──> each
+                         app's root folder: ./media/<type> → /data/<type>
 
-./media/{movies,shows}  → /data/{...}  → every app's writable root folder
+./media/{movies,shows}  → /data/{...}  → every app's writable root folder, 100%
+                                          symlinks, zero real media files on disk
 
-Jellyfin (bridge networking on stacknet, port 8096 - no network_mode: host,
-unlike Plex; ./media/{movies,shows} bind-mounted directly)
+Plex (network_mode: host - GDM auto-discovery/DLNA/remote-access NAT-PMP/UPnP
+negotiation are unreliable on bridge networking; every other service here still
+publishes directly to stacknet with no reverse proxy)
 ```
 
 Root folders live on regular host disk (`./media/<type>`), matching every app's own tracked
-root folder path. The only FUSE mount left in this stack is `nzbdav-rclone`'s, at
-`/mnt/nzbdav` - every service that reads a root folder's symlinks needs that same mount
-(Radarr, Sonarr, Unpackerr, Cleanuparr, and Jellyfin). **Jellyfin's compose block was
-initially deployed with no `/mnt/nzbdav` mount at all**, reproducing exactly the class of bug
-Stash's first deploy hit (see [Known gaps and limitations](#known-gaps-and-limitations)): the
-library scan completed with no error and matched all 418 shows at the series/season level
-(real directories), but silently added zero episodes, because every episode file is a symlink
-into `/mnt/nzbdav` and every `readlink` resolved to a path that didn't exist in Jellyfin's own
-mount namespace. **Confirmed live and fixed same-day**: a sample episode file
-(`100 Foot Wave (2021) {tvdb-396600}/Season 3/...mkv`) was verified as a dangling symlink
-inside the container (`cat` failed with "No such file or directory"), the mount
-(`/mnt/nzbdav:/mnt/nzbdav:rslave`) was added to Jellyfin's compose block, and the same file
-was reverified as readable (real Matroska bytes) before re-triggering the library scan.
+root folder path. The only FUSE mount in this stack is `altmount`'s own (no separate rclone
+sidecar, unlike the old NzbDAV setup - see [History](#history)), at `/mnt/altmount` - every
+service that reads a root folder's symlinks needs that same mount (Radarr, Sonarr, Plex,
+Unpackerr, Cleanuparr).
 
 > **FUSE mount fragility.** A direct subpath bind of a FUSE mountpoint
-> (`/mnt/nzbdav:/mnt/nzbdav:rslave`) does not reliably survive the FUSE process being
-> recreated underneath it (an nzbdav-rclone image update, a resource-limit change, a plain
-> restart). Confirmed live 2026-07-18 during the torrent/debrid removal: recreating
-> `nzbdav-rclone` and its five dependents (Radarr, Sonarr, Plex, Unpackerr, Cleanuparr) in the
-> same batch left every dependent unable to start at all (`transport endpoint is not
-> connected`) until `nzbdav-rclone` was restarted alone first and the stale host-level mount
-> was cleared with a lazy unmount (`sudo umount -l /mnt/nzbdav`). Control Panel's whole-stack
-> restart (see [Control Panel](#control-panel)) already sequences this: mount providers first,
-> wait for healthy, dependents last.
+> (`/mnt/altmount:/mnt/altmount:rslave`) does not reliably survive the FUSE process being
+> recreated underneath it (an image update, a resource-limit change, a plain restart) -
+> confirmed live more than once for this exact mount-owner-plus-five-dependents shape (see
+> [History](#history)). Never `sudo umount` it yourself to "clear" it - with `rshared`
+> propagation this can tear down the real live mount instead of just a stale reference.
+> Confirm the mount owner itself is healthy first, then restart the five dependents. Control
+> Panel's whole-stack restart (see [Control Panel](#control-panel)) already sequences this:
+> mount provider first, wait for healthy, dependents last.
 
-`control-panel/app.py`'s `MOUNT_DEPENDENTS` set (see [Control Panel](#control-panel)) has been
-updated for the Plex-to-Jellyfin migration: `{"radarr", "sonarr", "jellyfin", "unpackerr",
-"cleanuparr"}` - `plex` replaced with `jellyfin`, now that Jellyfin is a confirmed
-`/mnt/nzbdav` consumer like the rest of this set.
+`control-panel/app.py`'s mount-ordering sets (see [Control Panel](#control-panel)):
+`MOUNT_PROVIDERS = {"altmount"}`, `MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr",
+"cleanuparr"}` - `MOUNT_PREREQS` is empty, since AltMount owns its own mount directly with no
+separate sidecar to wait on first, unlike the old NzbDAV/`nzbdav-rclone` pair.
 
 Seerr (formerly Overseerr/Jellyseerr; the projects merged) is the user-facing request page,
-talking to Radarr and Sonarr, and - as of this writing - **still pointed at Plex, not yet
-repointed at Jellyfin**: Seerr only supports one media server at a time (confirmed via its own
-GitHub issue #511) and repointing it needs a human login step in its own settings UI, not an
-API-only change. Treat "Seerr talks to Jellyfin" as not yet true until that step happens.
+talking to Radarr and Sonarr, and is pointed at Plex - `mediaServerType: 1` (`PLEX`), Plex
+libraries enabled and synced. Seerr only supports one media server at a time (confirmed via
+its own GitHub issue #511); this required a real human "Sign in with Plex" step in its own
+settings UI after Plex's return, not an API-only change - see [History](#history) for that
+reconnection.
 
 **Torrent and debrid support (Decypharr, Zurg, rclone-alldebrid, Zilean, Byparr) was removed
 entirely** - see [History](#history) for the full removal and the architecture that preceded
@@ -198,12 +184,18 @@ Stack/
 ├── README.md
 ├── config/<app>/                     # each app's persistent config (gitignored)
 ├── control-panel/                    # custom-built dashboard (own Dockerfile)
-├── config/nzbdav/, config/nzbdav-rclone/rclone.conf   # NzbDAV + its rclone mount sidecar
+├── config/altmount/                  # AltMount's own config + internal rclone/FUSE mount state
 ├── scripts/                          # backup/alert/setup automation, stdlib-only Python or bash
 ├── systemd/                          # user-scope units for boot automation, backups, alerts
-└── media/{movies,shows,music,books,adult,audiobooks,youtube}  # every arr app's writable root
-                                       # folder, mounted at /data/<type>; youtube/ is an inert
-                                       # leftover from a removed Pinchflat integration
+└── media/{movies,shows,music,books,comics,audiobooks,altmount-import,youtube}
+                                       # every arr app's writable root folder, mounted at
+                                       # /data/<type>; altmount-import/ is AltMount's SYMLINK
+                                       # import_dir (same filesystem as movies/shows, so a
+                                       # "hardlink" import produces another symlink, never a
+                                       # real copy); music/books/comics/audiobooks/youtube are
+                                       # inert leftovers from removed integrations (Lidarr,
+                                       # Bindery/Calibre-Web, Pinchflat) with no current app
+                                       # reading them
 ```
 
 ## The full service list
@@ -215,35 +207,41 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 1 | `prowlarr` | `ghcr.io/hotio/prowlarr:release` | 9696 | core |
 | 2 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
 | 3 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
-| 4 | `nzbdav` | `nzbdav/nzbdav:latest` | 3001→3000 | core |
-| 5 | `nzbdav-rclone` | `rclone/rclone:1.74.4` | none | core |
-| 6 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
-| 7 | `jellyfin` | `lscr.io/linuxserver/jellyfin:latest` | 8096 | core |
-| 8 | `jellystat-db` | `postgres:18.1` | none | extras |
-| 9 | `jellystat` | `cyfershepard/jellystat:latest` | 8087 | extras |
-| 10 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
-| 11 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 4 | `altmount` | `altmount-local-fix:obscure-pass` (temporary local build, see below) | 8081→8080 | core |
+| 5 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
+| 6 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host networking) | core |
+| 7 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182→8181 | extras |
+| 8 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
+| 9 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 10 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
+| 11 | `quickstart` (`kometa-quickstart`) | `kometateam/quickstart:latest` | 7171 | extras |
 | 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
 | 13 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
 | 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
 | 15 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
 
-`jellyfin` replaced `plex` entirely in v11.7.0 - same table position (#7), same core profile,
-different image/port. `jellystat-db`/`jellystat` are new the same version, Tautulli's
-Jellyfin-equivalent (Tautulli is Plex-only, and was itself removed entirely on the same
-follow-up request as Kometa below - compose block and `config/tautulli/` both deleted). `kometa`
-and `quickstart` were initially stopped the same version, then removed entirely (compose blocks
-and `config/kometa`/`config/quickstart` both deleted from disk) at explicit follow-up
-request - see [Jellyfin](#jellyfin). Service table: 18 → 15 rows.
+**Jellyfin briefly replaced Plex in v11.7.0 and was fully reverted back to Plex the same day**
+(see [History](#history) for the migration and the reversion) - `jellyfin`, `jellystat`, and
+`jellystat-db` were all removed entirely as part of that reversion, and there is no Jellyfin
+anywhere in this stack now. `tautulli`, `kometa`, and `quickstart` still have real compose
+service blocks and pulled images (they were never removed, despite this file's own older
+entries claiming otherwise - that narrative was stale, corrected on a later audit), **but no
+running or even stopped container currently exists for any of the three** - treat them as
+present-but-dormant, not active. `nzbdav`/`nzbdav-rclone` were removed entirely and replaced by
+`altmount` on 2026-07-23, after an unfixed upstream connection-leak bug (see
+[History](#history)) - `altmount` owns its own internal rclone/FUSE mount directly, so there is
+no separate sidecar container the way NzbDAV needed one. Service table: 18 → 15 rows.
 
-`docker compose up -d` brings up the 7 core services; `docker compose --profile extras up
--d` adds the other 8. Both are safe to re-run; Compose only recreates what is out of sync
-with `docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg, rclone-alldebrid, Zilean,
-zilean-postgres, Byparr - were removed entirely; see [History](#history).)
+`docker compose up -d` brings up the 6 core services; `docker compose --profile extras up
+-d` adds the other 9 (of which 3 - Tautulli, Kometa, Quickstart - stay dormant unless started
+by hand, since nothing currently depends on them). Both are safe to re-run; Compose only
+recreates what is out of sync with `docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg,
+rclone-alldebrid, Zilean, zilean-postgres, Byparr - were removed entirely; see
+[History](#history).)
 
 ## The *arr apps
 
-Both follow the same wiring: Prowlarr pushes Usenet indexers down via `fullSync`, NzbDAV is
+Both follow the same wiring: Prowlarr pushes Usenet indexers down via `fullSync`, AltMount is
 the only download client, Unpackerr extracts RAR'd releases, the root folder is
 `./media/<type>` mounted at `/data/<type>`, and Control Panel provides RSS sync /
 search-missing / unstick / unstick-importing / manual-import for each.
@@ -310,7 +308,7 @@ Zurg (Real-Debrid FUSE mount), Decypharr (two instances - qBittorrent-API gatewa
 Real-Debrid + AllDebrid), rclone-alldebrid (AllDebrid FUSE mount), Zilean + zilean-postgres
 (DMM cache-hash indexer), and Byparr (Cloudflare bypass, only needed by torrent trackers) were
 **all removed entirely** - see [History](#history) for the full removal and rationale. This
-stack is Usenet-only now (see [The Usenet pipeline: NzbDAV](#the-usenet-pipeline-nzbdav)).
+stack is Usenet-only now (see [The Usenet pipeline: AltMount](#the-usenet-pipeline-altmount)).
 
 Worth preserving from the old debrid era, in case anything like it comes back: Zurg's
 content-routing config (`config/zurg/config.yml`, gitignored, deleted with the rest of that
@@ -323,99 +321,100 @@ lesson, not tied to Zurg specifically: when removing an app that owns a content-
 group/filter of any kind, removing the group itself has to be part of that same removal
 checklist** - nothing else in this stack ever caught it on its own.
 
-## The Usenet pipeline: NzbDAV
+## The Usenet pipeline: AltMount
 
-**NzbDAV** (`nzbdav/nzbdav:latest` plus an `nzbdav-rclone` sidecar) is a virtual filesystem,
-not a local downloader: it exposes Usenet content as a WebDAV server, `nzbdav-rclone` mounts
-that WebDAV at `/mnt/nzbdav`, and completed downloads appear there as symlinks streamed on
-demand.
+**AltMount** (`ghcr.io/javi11/altmount`, temporarily a locally-patched build - see below) is a
+virtual filesystem, not a local downloader: it exposes Usenet content over its own internal
+rclone/FUSE mount at `/mnt/altmount`, with no separate sidecar container the way the old
+NzbDAV setup needed one.
 
 ```yaml
 # docker-compose.yml
-nzbdav:
-  image: nzbdav/nzbdav:latest
-  # Host port 3001 - DebridMediaManager used to own 3000 on this host
-  # (removed v10.20.0), left at 3001 rather than reclaiming 3000. Internally
-  # still :3000 (other containers reach it as http://nzbdav:3000 over
-  # stacknet, unaffected by the host mapping).
-  ports: ["3001:3000"]
+altmount:
+  image: altmount-local-fix:obscure-pass  # see the pinning note below
+  environment:
+    PORT: "8080"
+    JWT_SECRET: ${ALTMOUNT_JWT_SECRET}
+    COOKIE_DOMAIN: ${HOST_IP}
   volumes:
-    - ./config/nzbdav:/config
-    - /mnt:/mnt
-
-nzbdav-rclone:
-  image: rclone/rclone:1.74.4
-  command:
-    - "mount"
-    - "nzbdav:"
-    - "/mnt/nzbdav"
-    - "--vfs-cache-mode=full"
-    - "--vfs-cache-max-size=20G"
-    - "--vfs-cache-max-age=24h"
-    # buffer-size=0 avoids double-caching (the OS/media-server already buffer
-    # reads - Jellyfin now, Plex before it); read-ahead sized for high-bitrate
-    # remux playback
-    - "--buffer-size=0M"
-    - "--vfs-read-ahead=512M"
+    - ./config/altmount:/config
+    - /mnt:/mnt:rshared
+    - ./media/altmount-import:/mnt/altmount-import
+  devices:
+    - /dev/fuse:/dev/fuse:rwm
+  cap_add: ["SYS_ADMIN"]
+  security_opt: ["apparmor:unconfined"]
+  ports: ["8081:8080"]
 ```
 
-**Provider**: a block-account news server is configured in NzbDAV's own UI (**Settings >
-Usenet**), stored in `config/nzbdav/db.sqlite`'s `ConfigItems` table, not in a config file or
-`.env`. `.env.example` documents the credentials anyway (`NZBDAV_PROVIDER_*`,
-`NZBDAV_WEBDAV_*`, `NZBDAV_ADMIN_*`, `NZBDAV_API_KEY`) per this stack's convention: if a
-credential lives in an app's own database or config rather than being read from `.env`,
-`.env.example` still documents it as the reference copy, with a comment saying where it
-actually lives. NzbDAV itself never reads `.env`.
+**Provider**: the Thundernews block-account credentials live in `config/altmount/config.yaml`
+(`ALTMOUNT_PROVIDER_HOST`/`_PORT`/`_USERNAME`/`_PASSWORD` in `.env.example` document the
+reference copy). **Temporary local build**: `altmount-local-fix:obscure-pass` fixes a real
+upstream bug (`createConfig()` omitted rclone's `obscure: true` flag, writing the WebDAV
+password to `rclone.conf` in plaintext - rclone then tried to de-obscure that plaintext as if
+it were already-obscured ciphertext, producing a permanent 401). Revert to
+`ghcr.io/javi11/altmount:latest` once this fix lands upstream - no issue/PR filed yet as of
+this writing.
 
-**Import strategy** is "Symlinks - Plex" in NzbDAV's SABnzbd-compatible settings (backed by
-the `api.import-strategy` config key, values `symlinks`/`strm`), with `Rclone Mount Directory`
-pointed at `/mnt/nzbdav`. This is what makes Radarr/Sonarr treat completed downloads as
-importable files. **Evaluated and deliberately rejected as part of the v11.7.0
-Plex-to-Jellyfin migration** - NzbDAV does have a genuine STRM mode (confirmed by reading its
-own source, `backend/Queue/PostProcessors/CreateStrmFilesPostProcessor.cs`: it writes a plain
-text `.strm` file containing a direct HTTP URL back to NzbDAV's own `/view/...` endpoint,
-bypassing the `/mnt/nzbdav` FUSE mount entirely - genuinely Emby/Jellyfin-only, Plex never
-supported `.strm`). The setting is **global to NzbDAV**, not something Jellyfin could opt into
-on its own - switching it changes what every consumer receives, Radarr/Sonarr included. Kept
-on `symlinks` because of real, documented risk on the Radarr/Sonarr side: an open, unresolved
-Radarr bug (`Radarr/Radarr#11435`) describes a grab-import-delete loop specific to `.strm`
-files delivered by a SABnzbd-compatible client (exactly NzbDAV's own emulation), Radarr's own
-`VideoFileInfoReader` runs `ffprobe` directly against the `.strm` text file (which always
-fails, breaking resolution/codec media-info extraction), and a live user of this exact
-NzbDAV+Radarr/Sonarr combination (`nzbdav-dev/nzbdav` Discussion #175, Nov 2025) reports being
-"forced to still use rclone because the arrs can't figure out how to import .strm files."
-The symlink approach has known, already-documented failure modes in this stack (see
-[Jellyfin](#jellyfin)'s missing-mount fix above) but they're understood and fixable; the STRM
-path has an open bug report for this exact software combination. Revisit only if that Radarr
-issue is confirmed fixed in a real release.
+**Import strategy** is `SYMLINK` (`import.import_strategy` in `config/altmount/config.yaml`),
+with `import.import_dir` pointed at `/mnt/altmount-import` - the same host filesystem as every
+`*arr` app's root folder (`./media/movies`, `./media/shows`, both under `/`, confirmed via
+`df`), so Radarr's/Sonarr's `copyUsingHardlinks: true` produces another symlink instead of a
+real byte copy. This wasn't always true: `import_strategy` was originally `NONE` (a direct
+copy/hardlink import) combined with `copyUsingHardlinks: false`, which together silently wrote
+318.7GB of real files to local disk before being caught and fixed - see [History](#history)
+for the full incident and why `SYMLINK` is the enforced, verified-working state now.
 
-NzbDAV is every `*arr` app's only download client (torrent/debrid was removed entirely - see
-[History](#history)). API examples via Control Panel's proxy - queue/history
-go through NzbDAV's SABnzbd-style query API (keyed by `NZBDAV_API_KEY`); its settings
-(Usenet provider config) go through a separate backend with no static key, only a session
-cookie from its own `POST /login` - Control Panel logs in with `NZBDAV_ADMIN_USER`/
-`NZBDAV_ADMIN_PASSWORD` on every call:
+AltMount is every `*arr` app's only download client (torrent/debrid was removed entirely, and
+NzbDAV before it - see [History](#history)). API examples via Control Panel's proxy, over
+AltMount's SABnzbd-compatible query API (keyed by `ALTMOUNT_API_KEY`):
 
 ```bash
 # Current Usenet download queue
-curl -s http://192.168.4.105:8420/api/nzbdav/queue | jq .
+curl -s http://192.168.4.105:8420/api/altmount/queue | jq .
 
 # Recent history (completed/failed), last 20 by default
-curl -s http://192.168.4.105:8420/api/nzbdav/history | jq .
-
-# Set every configured Usenet provider's max connections
-curl -s -X POST http://192.168.4.105:8420/api/nzbdav/set-connections \
-  -H 'Content-Type: application/json' -d '{"max_connections": 50}' | jq .
+curl -s http://192.168.4.105:8420/api/altmount/history | jq .
 ```
 
-**UI quirk**: NzbDAV's "Add Provider"/"Test Connection" form only submits once every field
-has been focused/touched in the browser, including fields already holding a valid default.
-Clicking the button while any field is untouched does nothing: no request fires, nothing is
-written to `db.sqlite`, and no error appears. Click or tab through every field first.
+**Known API bug**: the queue-delete endpoint (`mode=queue&name=delete`) only accepts one
+`value` (a single `nzo_id`) per call despite normal SABnzbd convention supporting a
+comma-separated list, and it **always returns `{"status": true}` regardless of whether
+anything was actually deleted** (confirmed by reading `internal/api/sabnzbd_handlers.go`'s
+`handleSABnzbdQueueDelete` directly - the fallback path always reports success). Loop one
+DELETE call per `nzo_id` and verify against the real queue afterward; don't trust the reported
+status.
 
-This replaced NZBGet, a real local downloader (files land on `./usenet`, then import into the
-library), which did not match the stack's no-local-disk model. Its old `config/nzbget/` and
-`usenet/` directories were left on disk, unused.
+### Historical: NzbDAV, replaced by AltMount 2026-07-23
+
+**NzbDAV** (`nzbdav/nzbdav:latest` plus an `nzbdav-rclone` sidecar) served this same role
+before AltMount - a WebDAV virtual filesystem, `nzbdav-rclone` mounting that WebDAV at
+`/mnt/nzbdav`, completed downloads appearing there as symlinks streamed on demand. It was
+removed entirely after an unfixed upstream connection-leak bug (`UsenetStreamingClient.
+CreateNewConnection` never disposed a connection when auth failed, compounded by a circuit
+breaker that didn't actually enforce its documented single-probe limit) drove real accounts
+into provider-side rejection and caused recurring library-scan hangs against both Radarr/
+Sonarr and, briefly, Jellyfin. Filed upstream as
+[nzbdav-dev/nzbdav#477](https://github.com/nzbdav-dev/nzbdav/issues/477) (the leak) and
+[nzbdav-dev/nzbdav PR #478](https://github.com/nzbdav-dev/nzbdav/pull/478) (the fix, from fork
+`WhispersOfJ/nzbdav`) - not merged upstream as of this writing, moot now that AltMount replaced
+NzbDAV entirely rather than waiting on it. See [History](#history) for the full incident,
+the evaluation that led to choosing AltMount over `nzbdav-rs` (a from-scratch Rust rewrite,
+architecturally immune to the same bug class but far less active upstream), and the
+subsequent bulk re-link/library-abandonment that came with the cutover.
+
+NzbDAV had a genuine STRM import mode too (`backend/Queue/PostProcessors/
+CreateStrmFilesPostProcessor.cs` wrote a plain `.strm` file containing a direct HTTP URL back
+to NzbDAV's own `/view/...` endpoint, bypassing the FUSE mount entirely - genuinely
+Emby/Jellyfin-only, Plex never supported `.strm`), evaluated and deliberately rejected during
+the brief v11.7.0 Jellyfin era because of a real, still-open Radarr bug
+(`Radarr/Radarr#11435`, a grab-import-delete loop specific to `.strm` files from a
+SABnzbd-compatible client) and a live user report of the exact same combination being
+unworkable (`nzbdav-dev/nzbdav` Discussion #175). Moot now along with the rest of NzbDAV.
+
+This replaced NZBGet before it, a real local downloader (files land on `./usenet`, then import
+into the library), which did not match the stack's no-local-disk model. Its old
+`config/nzbget/` and `usenet/` directories were left on disk, unused.
 
 ## Indexing: Prowlarr
 
@@ -450,8 +449,12 @@ Whisparr application-sync entry was deleted with Whisparr in v10.12.0.
 
 **Seerr** (`ghcr.io/seerr-team/seerr@sha256:c92d2d...`, port 5055; formerly
 Overseerr/Jellyseerr, the projects merged) is the request entry point: search for a movie or
-show, click Request. Connected to Radarr and Sonarr as default servers (the `Unlimited`
-quality profile on both, `/data/movies`/`/data/shows`).
+show, click Request. Connected to Radarr and Sonarr as default servers (the `ANY` quality
+profile on both, `/data/movies`/`/data/shows` - see
+[Custom formats and quality profiles](#custom-formats-and-quality-profiles) for why it's named
+`ANY`, not `Unlimited`). Pointed at Plex (`mediaServerType: 1`) - see
+[Architecture](#architecture) and [History](#history) for the Jellyfin-era detour and the
+reconnection back.
 
 ```bash
 # Seerr's settings API accepts its stored API key as X-Api-Key - no session
@@ -459,103 +462,131 @@ quality profile on both, `/data/movies`/`/data/shows`).
 curl -s -H "X-Api-Key: $SEERR_API_KEY" http://192.168.4.105:5055/api/v1/settings/radarr | jq .
 ```
 
-## Jellyfin
+## Media server: Plex
 
-Containerized, LinuxServer image (`lscr.io/linuxserver/jellyfin:latest`) - **replaced Plex
-entirely in v11.7.0**, see [History](#history) for the full migration. LinuxServer's
-PUID/PGID-forcing convention was chosen deliberately here, matching every hotio-style service
-in this stack, not a claim that the official `jellyfin/jellyfin` image is worse.
+Containerized, official `plexinc/pms-docker` image (not a LinuxServer fork - a PUID/PGID-
+forcing image would recursively `chown` the whole library on first boot, which this fresh
+install doesn't need). `network_mode: host` - see [Architecture](#architecture) for why
+(GDM auto-discovery, DLNA, and remote-access NAT-PMP/UPnP negotiation are all unreliable on
+bridge networking; this is the one service in the stack still using host networking).
 
 ```yaml
 # docker-compose.yml
-jellyfin:
-  image: lscr.io/linuxserver/jellyfin:latest
-  networks: [stacknet]
+plex:
+  image: plexinc/pms-docker:1.43.3.10828-00f62d37d
+  network_mode: host
+  environment:
+    PLEX_UID: "955"
+    PLEX_GID: "955"
+    PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR: /config
   volumes:
-    - ./config/jellyfin:/config
+    - ./config/plex:/config
+    - ./config/plex-transcode:/transcode
     - ./media/movies:/data/movies
     - ./media/shows:/data/shows
+    - /mnt/altmount:/mnt/altmount:rslave
   devices:
-    - /dev/dri/renderD128:/dev/dri/renderD128   # same AMD Radeon 680M iGPU Plex used, VAAPI hardware transcode
-  group_add: ["983", "987"]
-  ports: ["8096:8096"]
+    - /dev/dri/renderD128:/dev/dri/renderD128
 ```
 
-- Bridge networking on `stacknet`, port 8096 published directly - **no `network_mode: host`**,
-  unlike Plex. Plex needed the host network for GDM auto-discovery, DLNA, and NAT-PMP/UPnP
-  remote-access negotiation; Jellyfin has no equivalent requirement here, so this stack no
-  longer has any service using `network_mode: host` at all.
-- Two libraries, matching Plex's final two exactly: Movies (`/data/movies`), Shows
-  (`/data/shows`). Metadata providers: TheMovieDb + OMDb on Movies; TheTVDB + TheMovieDb + OMDb
-  on Shows. **OMDb ships bundled with Jellyfin core already active** - not a separate catalog
-  plugin install, a correction made mid-migration after an earlier draft plan wrongly assumed
-  it needed installing. **A second assumption corrected the same session**: this bundled
-  OMDb plugin's own configuration schema (`GET /Plugins/{id}/Configuration`) exposes only
-  `{"CastAndCrew": true}` - no API key field at all, confirmed live rather than guessed. There
-  is nothing pending here; the "needs its API key entered" note in earlier drafts of this
-  migration was itself wrong.
+- **A fresh install, not a restore** - `config/plex/` (34GB, including all prior watch
+  history/ratings) was deleted with no archive during the brief v11.7.0 Jellyfin migration (see
+  the historical section below), so this is a brand-new server, claimed via a real
+  `plex.tv/claim` token (`PLEX_CLAIM`, valid ~4 minutes, added temporarily to `.env` then
+  removed). Two libraries created via `POST /library/sections`, matching Radarr's/Sonarr's root
+  folders exactly: Movies (`/data/movies`), Shows (`/data/shows`).
+- Same VAAPI hardware-transcode device (`/dev/dri/renderD128`) as before. **Real hardware
+  transcoding confirmed working, not just configured** - a deliberately-incompatible
+  `PlaybackInfo` request followed by fetching a real HLS segment produced a genuine
+  `ffmpeg -hwaccel vaapi ... -codec:v:0 h264_vaapi` process, not a software fallback.
+- `mem_limit: 3g`/`cpus: 12` - the `cpus` ceiling is sized from a real scan-only CPU spike (a
+  library scan alone briefly hit 100% CPU with zero playback sessions active - hardware
+  transcode covers play/decode, not scan/analysis); `mem_limit` is sized from an observed
+  231MB/6GiB (3.76%) baseline with real headroom, not from a peak measurement during a heavy
+  scan - if a future scan is ever OOMKilled against this limit, raise it and record the real
+  peak here.
+- The image is a manually-bumped version tag, deliberately kept off Watchtower's auto-update
+  train (see [Image pinning policy](#image-pinning-policy)) - PMS version changes on a live
+  library are applied by hand.
+- `/mnt/altmount:/mnt/altmount:rslave` only matters for content imported through AltMount from
+  now on - see [Architecture](#architecture) for the FUSE-mount-cascade caveat this mount
+  shares with Radarr/Sonarr/Unpackerr/Cleanuparr.
+
+**Kometa is Plex's only supported integration** (unlike Jellyfin, which it never supported at
+all - confirmed directly against `kometa-team/kometa`'s own `config-schema.json`: no
+`jellyfin`/`emby` top-level property, only `plex`), but **Kometa currently doesn't run** -
+its compose block and image are present (see [The full service list](#the-full-service-list))
+but no container is running or even stopped, present-but-dormant like Tautulli and Quickstart.
+**No automated Plex collections, overlays, or metadata-enrichment tool of any kind currently
+runs in this stack** as a result, even though the one tool that could do it (Kometa) is
+compatible with the current media server.
+
+**Tautulli** is Plex's watch-history/stats dashboard and is also currently dormant (same
+present-but-dormant status as Kometa) - see
+[Monitoring extras: Tautulli](#monitoring-extras-tautulli).
+
+**Seerr is repointed at Plex** - `mediaServerType: 1`, a real "Sign in with Plex" login
+completed by the user (not fabricable via API - Seerr's own `/api/v1/settings/plex` route
+needs the admin user's live Plex OAuth token to test the connection), and the account's
+`plexId`/`plexUsername`/`plexToken` populated for real. See [History](#history) for the full
+reconnection, including why Seerr couldn't be auto-repointed the way Bazarr was.
+
+**Watch history was not migrated, twice over.** Jellyfin never got Plex's old watch history
+(`qdm12/plex-to-jellyfin` was attempted, then explicitly abandoned by the user's own decision),
+and this current Plex install is itself a fresh server with no migrated history from the
+pre-migration Plex instance either - see the historical section below for that instance's own
+final state. A deliberate, known gap both times, not an oversight.
+
+### Historical: Jellyfin briefly replaced Plex, v11.7.0 (reverted the same day)
+
+Kept as historical record, same convention as this file's other removed-app sections (Lidarr,
+Whisparr, the debrid pipeline). **Jellyfin (`lscr.io/linuxserver/jellyfin:latest`) replaced
+Plex entirely for one day**, then was **fully reverted back to Plex the same day** after
+repeated, unresolved library-scan hangs tied to the NzbDAV connection-leak bug (see
+[The Usenet pipeline: AltMount](#the-usenet-pipeline-altmount)'s historical section) - the user
+explicitly chose full reversion over continuing to debug Jellyfin, accepting that Jellyfin's
+own watch history/config was lost with no archive, the same treatment Plex's config got during
+the original migration. See [History](#history) for the complete incident.
+
+- Two libraries carried over from Plex exactly: Movies (`/data/movies`), Shows
+  (`/data/shows`), same VAAPI device. Metadata providers: TheMovieDb + OMDb on Movies; TheTVDB
+  + TheMovieDb + OMDb on Shows - OMDb ships bundled with Jellyfin core already active, a
+  correction made mid-migration after an earlier draft plan wrongly assumed it needed
+  installing separately.
 - **Initially deployed with no `/mnt/nzbdav` mount at all**, unlike every other consumer of a
-  root folder's symlinks (Radarr, Sonarr, Unpackerr, Cleanuparr all bind it) - reproduced the
-  exact class of bug Stash's first deploy hit (see [Known gaps and limitations](#known-gaps-and-limitations)):
-  the scan completed with no error, matched all 418 shows at the series/season level, and
-  silently added zero episodes, since every episode file is a symlink into `/mnt/nzbdav` and
-  resolved to nothing inside the container. Confirmed live (a sample episode file was a
-  dangling symlink, `cat` failed with "No such file or directory") and fixed same-day by adding
-  `/mnt/nzbdav:/mnt/nzbdav:rslave` to the compose block, reverified readable, and the library
-  rescanned.
-- Same VAAPI hardware-transcode device (`/dev/dri/renderD128`) carried over from Plex's config
-  - render nodes support concurrent processes, so this is just the sole remaining consumer now.
-- `mem_limit: 3g`/`cpus: 6` - starting at parity with Plex's old ceiling (Plex ran `6GB`/`12`),
-  not yet tuned down against real observed usage the way every other service's limit in this
-  file is (see [Resource limits](#resource-limits)).
-- Plugins installed: Playback Reporting, Chapter Segments Provider, TMDb Box Sets (official
-  catalog), plus two third-party plugins - Intro Skipper
-  (`https://intro-skipper.org/manifest.json`) and a "Bazarr" plugin
-  (`https://raw.githubusercontent.com/enoch85/bazarr-jellyfin/main/manifest.json`). All five
-  are pending a Jellyfin container restart to actually load - not yet confirmed active.
-- The image is a mutable `:latest` channel tag, unlike Plex's old manually-bumped version pin -
-  it is **not** excluded from Watchtower's auto-update train the way Plex was (see
-  [Image pinning policy](#image-pinning-policy)).
+  root folder's symlinks - reproduced the exact class of bug Stash's first deploy hit (see
+  [Known gaps and limitations](#known-gaps-and-limitations)): the scan completed with no error,
+  matched all 418 shows at the series/season level, and silently added zero episodes, since
+  every episode file is a symlink into `/mnt/nzbdav` and resolved to nothing inside the
+  container. Fixed same-day by adding the mount, then moot entirely once Jellyfin was removed.
+- Plugins installed before the revert: Playback Reporting, Chapter Segments Provider, TMDb Box
+  Sets (official catalog), plus Intro Skipper and a third-party "Bazarr" plugin.
+- **Kometa never supported Jellyfin at all** (see the current section above for the same
+  `config-schema.json` finding) - several blog-post sources (jellywatch.app etc.) claiming
+  otherwise were wrong/outdated even at the time; the real state was, and still is, an open,
+  unimplemented Jellyfin feature request (features.jellyfin.org/posts/2899). Kometa and
+  Quickstart were stopped, then removed entirely as a follow-up during the Jellyfin era -
+  both came back (compose blocks restored) once Plex returned, though neither has been started
+  since (see the present-but-dormant note above).
+- **Tautulli was removed entirely** during the Jellyfin era (Plex-only, nothing left to
+  monitor) and **Jellystat** (plus its own Postgres, `jellystat-db`) took its place as the
+  watch-history/stats dashboard for Jellyfin - both `jellystat` and `jellystat-db` were
+  themselves removed entirely in the reversion back to Plex; Tautulli's compose block came back
+  instead, dormant as noted above.
+- **Seerr was repointed at Jellyfin, then had to be repointed back to Plex** on the reversion -
+  see [History](#history) for both reconnections; the second one needed a fresh admin re-link
+  since the account had gone Jellyfin-local (`userType: 3`) in between.
+- Watch-history migration from Plex to Jellyfin (`qdm12/plex-to-jellyfin`) was attempted, then
+  explicitly abandoned by the user's own decision - moot now regardless, since Jellyfin itself
+  is gone.
 
-**Kometa cannot talk to Jellyfin at all.** Confirmed directly against
-`kometa-team/kometa`'s own `config-schema.json`: no `jellyfin`/`emby` top-level property
-exists, only `plex`. Several blog-post sources (jellywatch.app etc.) claiming Kometa supports
-Jellyfin are wrong/outdated as of this check; the real state is an open, unimplemented
-Jellyfin feature request on Jellyfin's own tracker (features.jellyfin.org/posts/2899). Kometa
-and its Quickstart companion were initially just **stopped** (`docker compose stop kometa
-quickstart`, config/compose untouched), then, at explicit follow-up request the same session,
-**removed entirely**: both compose service blocks deleted, `config/kometa` (901MB) and
-`config/quickstart` (469MB) deleted from disk. `config/kometa/config.yml` specifically was
-backed up first (`~/backups/removed-configs/kometa-config.yml.bak-2026-07-22`) since, unlike
-Plex's own config, it held real third-party credentials with no other copy anywhere - a Trakt
-client ID/secret and a GitHub personal access token, plus the OMDb and MDBList API keys, which
-were promoted to standalone `.env` secrets (`OMDB_KEY`, `MDBLIST_KEY`) since Control Panel used
-to read them live off this file (see [Control Panel](#control-panel) for the new env-var
-wiring). **No automated Plex/Jellyfin
-collections, overlays, or metadata-enrichment tool of any kind currently runs in this stack.**
-See [Automation extras](#automation-extras-cleanuparr-neutarr-unpackerr-watchtower) and
-[History](#history) `[11.7.0]`.
+### Historical: the pre-migration Plex install, removed v11.7.0
 
-**Tautulli was removed entirely** (Plex-only, nothing left to monitor). **Jellystat** replaces
-its role for Jellyfin - see [Monitoring extras](#monitoring-extras-jellystat).
-
-**Seerr has been repointed at Jellyfin** - `mediaServerType` switched, admin account
-re-linked after a stale-session-cookie false start, and an orphaned Plex user's 144 requests
-reassigned before deleting that dead row rather than losing them. See
-[Architecture](#architecture) for why this needed a human login step (one media server at a
-time, no API-only path).
-
-**Watch history was not migrated.** `qdm12/plex-to-jellyfin`
-(`ghcr.io/qdm12/plex-to-jellyfin`) was attempted, then **explicitly abandoned by the user's own
-decision** ("don't worry about the watch history") - Jellyfin's libraries start with no
-migrated watch history/ratings from Plex. A deliberate, known gap, not an oversight.
-
-### Historical: Plex, removed v11.7.0
-
-Everything below this point describes Plex as it existed before removal - kept as historical
-record, same convention as this file's other removed-app sections (Lidarr, Whisparr, the
-debrid pipeline). Plex ran as the official `plexinc/pms-docker` image, `network_mode: host`,
-with two live libraries at the time of removal:
+Describes the Plex instance that existed **before** the Jellyfin migration - a different
+install than the current fresh one described above, since `config/plex/` was deleted with no
+archive when this instance was decommissioned. Kept as historical record. It ran as the same
+official `plexinc/pms-docker` image, `network_mode: host`, with two live libraries at the time
+of removal:
 
 | Key | Title | Type | Agent | Locations |
 |---|---|---|---|---|
@@ -585,9 +616,12 @@ items out of the map... for being unavailable"), with `autoEmptyTrash` confirmed
 Radarr/Sonarr side), Plex's next scan found the symlinks broken, and `autoEmptyTrash` silently
 deleted the corresponding library items. Confirmed *not* caused by the same-day NzbDAV
 connection-leak bug - no Plex log activity from 2026-07-22 shows any removal events, only
-normal scan/analysis noise. Since Plex is now removed entirely, this can never be root-caused
-further; it closes the loop on what was learned, not the underlying uncertainty (the original
-Radarr/Sonarr-side file loss still has no confirmed cause, only this newly-found symptom).
+normal scan/analysis noise. Since this specific Plex instance's own database was deleted with
+no archive during the Jellyfin migration (see [Media server: Plex](#media-server-plex)'s
+historical section above), this can never be root-caused further even though Plex itself is
+running again as a fresh install now - it closes the loop on what was learned, not the
+underlying uncertainty (the original Radarr/Sonarr-side file loss still has no confirmed
+cause, only this newly-found symptom).
 
 ### Plex "Anime Movies" and "Anime Shows" libraries (removed)
 
@@ -597,9 +631,10 @@ Added v10.4.0, removed entirely 2026-07-18 along with the rest of this stack's a
 
 ### The retired "Music", "Audiobooks", and "Adult" libraries
 
-**None of these three existed in Plex by the time it was removed.** Only two libraries were
-live at that point: Movies, TV Shows (see the table above) - both now carried over to
-Jellyfin.
+**None of these three existed in Plex by the time this instance was removed.** Only two
+libraries were live at that point: Movies, TV Shows (see the table above) - both carried over
+first to Jellyfin, then, after the reversion, re-created fresh on the current Plex install (see
+[Media server: Plex](#media-server-plex)).
 
 **Plex's "Adult" library was removed in v10.9.9** via the Plex API
 (`DELETE /library/sections/{key}`) - a documented, deliberate removal. It was a Movie-type
@@ -638,10 +673,9 @@ fixed in v10.9.7, but no content ever came in before both services were removed.
 service.
 
 Plex had no ebook agent (`/system/agents` listed no book identifier) at the time this was
-written; Plex itself was removed entirely in v11.7.0, replaced by Jellyfin (see
-[Jellyfin](#jellyfin)) - whether Jellyfin's own library-type/plugin ecosystem changes this
-calculus hasn't been checked. Bringing ebooks back would require both a manager and a reader
-again regardless of media server.
+written, and Plex is the stack's media server again after the brief Jellyfin detour (see
+[Media server: Plex](#media-server-plex)) - unchanged conclusion either way. Bringing ebooks
+back would require both a manager and a reader again regardless of media server.
 
 ## Custom formats and quality profiles
 
@@ -682,21 +716,26 @@ curl -s -H "X-Api-Key: $RADARR_API_KEY" \
 
 ## Automation extras: Cleanuparr, NeutArr, Unpackerr, Watchtower
 
-**Kometa and its Quickstart companion were removed entirely in v11.7.0** (a follow-up to the
-same version's Plex-to-Jellyfin migration - see [Jellyfin](#jellyfin) and
-[History](#history) `[11.7.0]` for the full removal). Kometa (`kometateam/kometa@sha256:98a0df...`)
-used to automate Plex collections, metadata, and overlay art as a scheduled batch job
-(05:00 daily by default), connected to Plex, TMDb, Radarr, Sonarr, Tautulli, and Trakt;
-Quickstart (`kometateam/quickstart:latest`, port 7171) was the official Kometa-Team wizard for
-building its `config.yml` interactively. Both were evaluated for Jellyfin support and found
-incompatible - `kometa-team/kometa`'s own `config-schema.json` has no `jellyfin`/`emby`
+**Kometa and its Quickstart companion are present but dormant** - real compose service blocks
+and pulled images exist (see [The full service list](#the-full-service-list)), but no
+container is running or even stopped for either. Kometa (`kometateam/kometa@sha256:98a0df...`)
+automates Plex collections, metadata, and overlay art as a scheduled batch job (05:00 daily by
+default), connecting to Plex, TMDb, Radarr, Sonarr, and Trakt; Quickstart
+(`kometateam/quickstart:latest`, port 7171) is the official Kometa-Team wizard for building its
+`config.yml` interactively. Both were stopped, then removed entirely, during the brief v11.7.0
+Jellyfin era - `kometa-team/kometa`'s own `config-schema.json` has no `jellyfin`/`emby`
 top-level connection property, only `plex` (several blog-post sources, e.g. jellywatch.app,
 claiming otherwise are wrong/outdated; real Jellyfin support is an open, unimplemented feature
-request at features.jellyfin.org/posts/2899) - so both were stopped first, then removed
-entirely at explicit follow-up request the same session: compose service blocks deleted,
-`config/kometa` (901MB) and `config/quickstart` (469MB) deleted from disk. **No automated
-Plex/Jellyfin collections, overlays, or metadata-enrichment tool of any kind currently runs in
-this stack.**
+request at features.jellyfin.org/posts/2899), so there was no way to keep either running against
+Jellyfin. Both compose service blocks came back once Plex returned, but neither `config/kometa`
+nor `config/quickstart` has been repopulated (no container has started since, so Docker never
+created the bind-mount directories) - the real Trakt/GitHub/OMDb/MDBList credentials that used
+to live in `config/kometa/config.yml` were promoted to standalone `.env` secrets (`OMDB_KEY`,
+`MDBLIST_KEY`) before the original removal and were never restored to Kometa's own config, so
+starting it again would need real reconfiguration, not just `docker compose up kometa`. **No
+automated Plex collections, overlays, or metadata-enrichment tool of any kind currently runs in
+this stack**, even though Kometa (unlike during the Jellyfin era) is compatible with the
+current media server again.
 
 **Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) and **NeutArr**
 (`iampuid0/neutarr:1.9.1`, port 9705) automate what Control Panel's "unstick" and
@@ -757,44 +796,32 @@ WATCHTOWER_NOTIFICATION_URL: ${DISCORD_WATCHTOWER_SHOUTRRR_URL}
 
 Digest-pinned images (Seerr, Unpackerr) and exact-version-tag-pinned ones
 (Watchtower itself) are not auto-updated: a digest or exact tag is
-immutable, so Watchtower never finds anything new. Plex used to be in this excluded group too
-(a manually-bumped version tag, deliberately kept off the train); Jellyfin, which replaced it
-in v11.7.0, does **not** carry that exception forward - `lscr.io/linuxserver/jellyfin:latest`
-is a mutable channel tag, so Watchtower auto-updates it same as any other channel-tag image
-unless that's deliberately changed. See [Image pinning policy](#image-pinning-policy).
+immutable, so Watchtower never finds anything new. **Plex is in this excluded group** - a
+manually-bumped version tag, deliberately kept off the train, so PMS version changes on a live
+library are applied by hand. This carried through the brief v11.7.0 Jellyfin detour and back:
+Jellyfin's `lscr.io/linuxserver/jellyfin:latest` was a mutable channel tag that did *not* carry
+the exception forward (Watchtower auto-updated it like any other channel-tag image), but that's
+moot now that Plex, not Jellyfin, is the media server again. See
+[Image pinning policy](#image-pinning-policy).
 
-## Monitoring extras: Jellystat
+## Monitoring extras: Tautulli
 
-**Tautulli was removed entirely** (`ghcr.io/hotio/tautulli:release`, formerly port 8182: Plex
-watch-history/stats dashboard). **Plex was removed entirely in v11.7.0** (see
-[Jellyfin](#jellyfin) and [History](#history)) - Tautulli is Plex-only, so it was initially
-left orphaned pointed at a media server that no longer existed, then fully removed on
-follow-up request the same session: compose block, `config/tautulli/` (263MB, no credentials
-of note, deleted with no backup), and its `control-panel/app.py` container-listing entry all
-gone. Its two `/api/tautulli/*` routes (history, stats) were left as documented dead code
-(unlike the former `/api/plex/*` routes, which have since been fully reworked against
-Jellyfin's API, see [History](#history) `[11.7.0]`) - they already 503 gracefully once
-`config/tautulli/config.ini` no longer exists, and Jellystat already covers the same role.
+**Tautulli** (`ghcr.io/hotio/tautulli:release`, port 8182 → 8181 internally) is Plex's
+watch-history/stats dashboard - and, like Kometa, is currently **present but dormant**: a real
+compose service block and pulled image exist, but no container is running or even stopped.
+Its two `/api/tautulli/*` Control Panel routes (`history`, `stats`) exist in code and 503
+gracefully once `config/tautulli/config.ini` doesn't exist, rather than erroring.
 
-**Jellystat** (`cyfershepard/jellystat:latest`, port 8087, plus its own Postgres,
-`jellystat-db` on `postgres:18.1`) was added the same version as Tautulli's Jellyfin-
-equivalent - Tautulli has no Jellyfin support at all. This reintroduces a Postgres dependency
-to the stack for the first time since `zilean-postgres` was removed in v11.0.0 (see
-[The debrid pipeline: removed](#the-debrid-pipeline-removed)); **`jellystat-db` currently has
-zero backup coverage** - it has no logical `pg_dump` step of its own yet, and restic's
-raw-datadir exclusion doesn't cover a live Postgres datadir safely. A known, outstanding gap,
-not yet fixed - see [Backups](#backups). Both containers are now up and healthy, after fixing
-two first-start bugs (see [History](#history) `[11.7.0]`): `postgres:18+` crash-looped against
-the usual `./config/jellystat-db:/var/lib/postgresql/data` mount convention ("PostgreSQL data
-in an old, unsupported location" - 18+ manages its own version-specific subdirectory under a
-single `/var/lib/postgresql` mount), fixed by mounting `/var/lib/postgresql` directly instead;
-`jellystat`'s own healthcheck (`curl -sf http://localhost:3000/`) failed every time because the
-image has no `curl`, only `wget` - fixed by switching the test to
-`wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1`. Jellystat's own first-run setup
-is **complete** - confirmed directly via `jellystat-db`'s `app_config` table (real
-`JF_HOST`/`JF_API_KEY`, admin user matching Jellyfin's real user ID, sync tasks scheduled) and
-a populated `jf_library_items` table (7,799 rows synced), not just assumed from the containers
-being up.
+During the brief v11.7.0 Jellyfin era, Tautulli was removed entirely (Plex-only, nothing left
+to monitor once Plex was gone) and replaced by **Jellystat** (`cyfershepard/jellystat:latest`,
+plus its own Postgres, `jellystat-db` on `postgres:18.1`) as the Jellyfin-equivalent -
+Tautulli has no Jellyfin support at all. Both Jellystat and `jellystat-db` were themselves
+removed entirely when Jellyfin was reverted back to Plex; there is no Postgres instance
+running in this stack now, and Tautulli's compose block came back in their place, dormant
+rather than reconfigured and started. Two first-start bugs were fixed for Jellystat/
+`jellystat-db` during their short life (`postgres:18+`'s new datadir-mount convention;
+`jellystat`'s missing `curl`), both moot now that neither container exists - see
+[History](#history) if a similar Postgres-backed monitoring app is ever added again.
 
 Glances and Dozzle were removed in v10.9.9 (neither had a config volume, so no data was
 involved). Glances powered Control Panel's Overview "Host CPU/memory/disk/uptime" tiles via
@@ -855,15 +882,14 @@ curl -X POST -H "X-API-KEY: $BAZARR_API_KEY" http://localhost:6767/api/system/se
 Bazarr's own API key lives in `config/bazarr/config/config.yaml` under `auth.apikey`,
 auto-generated on first boot - there's no env var for it.
 
-**Reconfigured for Jellyfin in v11.7.0**, through the same undocumented endpoint above: real
-field names verified against Bazarr's own live `GET /api/system/settings` response first
-(rather than trusting the Bazarr wiki's paraphrased docs) -
-`general.use_jellyfin=true`, `jellyfin.url=http://jellyfin:8096`,
-`jellyfin.apikey`, movie/series libraries mapped by name and Jellyfin's real library IDs
-(`jellyfin.movie_library`, `jellyfin.movie_library_ids`, `jellyfin.series_library`,
-`jellyfin.series_library_ids`), `jellyfin.refresh_method`,
-`jellyfin.update_movie_library`/`update_series_library=true`. `general.use_plex` set to
-`false` in the same pass - Plex is gone.
+**Repointed at Plex again after the Jellyfin revert**, via the same undocumented endpoint
+above: `general.use_plex=true`/`use_jellyfin=false`, library name/id mapping updated to the
+current fresh Plex install's real library IDs. This was simpler than the original Plex-to-
+Jellyfin reconfiguration (`general.use_jellyfin=true`, `jellyfin.url`/`jellyfin.apikey`,
+library IDs, `jellyfin.refresh_method` - all now moot) because Bazarr had already
+auto-detected the newly-claimed Plex server through the account's own stored OAuth grant,
+independent of the deleted `config/plex/` directory (Bazarr's OAuth token lives in its own DB,
+not Plex's).
 
 **Provider selection**: only providers that need zero account/API key/passkey are enabled (39
 of Bazarr's ~65 bundled providers - the full list and exclusion reasoning is in the v11.3.0
@@ -902,21 +928,24 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/status` | GET | Running/health state for every container in the compose project |
 | `/api/containers` | GET | Full grid: state, health, image, live CPU/mem per container |
 | `/api/api-hit-counts` | GET | Live per-app outbound API call counter (see below) |
-| `/api/jellyfin/scan` \| `/optimize-db` | POST | Jellyfin maintenance actions - no `empty-trash`/`clean-bundles` equivalent exists, dropped entirely (see below) |
-| `/api/jellyfin/libraries` | GET | Library names/keys, read live from Jellyfin |
-| `/api/jellyfin/deep-analysis` | POST | Chapter images + trickplay + Intro Skipper detection + audio normalization, every library at once |
-| `/api/jellyfin/task/{task}` | POST | Fires one named Jellyfin scheduled task (see below for the full mapping) |
-| `/api/jellyfin/updates` | GET | Running Jellyfin version (update-checking itself is Watchtower's job for this image, see below) |
-| `/api/jellyfin/duplicates` | GET | Movie libraries only; flags items whose combined file size looks like redundant duplicate releases |
-| `/api/jellyfin/tmdb-missing` | GET | Every movie/show across every library with no TMDb link (see `scripts/audit-tmdb-links.py`) |
-| `/api/jellyfin/sessions` | GET | Who's watching what right now, direct play vs transcode |
-| `/api/jellyfin/recently-added` | GET | Most recently added items across Jellyfin's movie/show libraries |
+| `/api/kometa/run` | POST | Runs Kometa on demand via `docker exec` - 503s with "Kometa container not found" while it stays dormant (see [Media server: Plex](#media-server-plex)) |
+| `/api/plex/scan` \| `/optimize-db` \| `/empty-trash` \| `/clean-bundles` | POST | Plex library maintenance actions |
+| `/api/plex/libraries` | GET | Library names/keys, read live from Plex |
+| `/api/plex/analyze` | POST | Queue deep media analysis, one library or all |
+| `/api/plex/butler/{task}` | POST | Fires any one Plex Butler task on demand |
+| `/api/plex/updates` | GET | Checks for a Plex update (report only, doesn't apply it - Plex is excluded from Watchtower's train, see [Image pinning policy](#image-pinning-policy)) |
+| `/api/plex/duplicates` | GET | Movie libraries only; flags items whose combined file size looks like redundant duplicate releases |
+| `/api/plex/tmdb-missing` | GET | Every movie/show across every library with no TMDb link |
+| `/api/plex/sessions` | GET | Who's watching what right now, direct play vs transcode |
+| `/api/plex/recently-added` | GET | Most recently added items across Plex's movie/show libraries |
 | `/api/posters/libraries` | GET | Movie/show libraries only, for the poster sync picker (see below) |
 | `/api/posters/sync` | POST | `{"library": "...", "dry_run": bool}` → starts a poster sync, one job at a time |
 | `/api/posters/sync/stream` | GET | SSE progress feed for the running (or just-finished) poster sync |
 | `/api/container/{name}/logs/stream` | GET | SSE live-follow of a container's own `docker logs`, any container in the project |
-| `/api/nzbdav/queue` \| `/history` | GET | NzbDAV's current queue / recent history |
-| `/api/nzbdav/set-connections` | POST | `{"max_connections": N}` → sets every configured Usenet provider's max connections |
+| `/api/altmount/queue` \| `/history` | GET | AltMount's current queue / recent history |
+| `/api/altmount/stats` | GET | Queued/history counts in one call |
+| `/api/altmount/delete-failures` | POST | Bulk-clears failed history entries |
+| `/api/tautulli/history` \| `/stats` | GET | Watch history / stats - 503s gracefully while Tautulli stays dormant |
 | `/api/arr/{app}/rss-sync` \| `/search-missing` | POST | Per-app RSS sync / missing-search |
 | `/api/arr/{app}/unstick` | POST | Removes + blocklists + re-searches every `warning`/`error` queue item |
 | `/api/arr/{app}/unstick-importing` | POST | Diagnoses a download wedged in `importing` state (dead-article/missing-path check via `docker exec`), clears or blocklists, re-searches |
@@ -926,32 +955,27 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/container/{name}/start` \| `/stop` \| `/restart` | POST | Individual container control, validated against the live compose project |
 | `/api/stack/restart-all` | POST | Restarts everything except itself, mount providers first (see below) |
 
-**`/api/kometa/run` was deleted outright when Kometa was removed entirely in v11.7.0** (its
-`KometaRunRequest` Pydantic model went with it) - unlike the old `/api/plex/*` routes, there
-was no missing-env-var 503 fallback for it to degrade into, since none was ever built; calling
-this endpoint now 404s, it simply no longer exists.
-
-**All 14 former `/api/plex/*` routes were reworked against Jellyfin's real API, same overall
-migration effort** (see [History](#history) `[11.7.0]` for the full route-by-route mapping and
-what changed under the hood - `jellyfin_headers()`'s `X-Emby-Token` header, task-triggering by
-looking up a task's real Id via its Key rather than guessing an endpoint shape, Jellyfin's lack
-of a per-library analyze scope forcing `/api/plex/analyze` and the old
-`/api/plex/butler/deep-media-analysis` to consolidate into one `/api/jellyfin/deep-analysis`
-call, etc). Two Plex-only concepts had no Jellyfin equivalent at all and were dropped entirely
-rather than approximated: `empty-trash` (no per-library trash concept in Jellyfin) and
-`clean-bundles` (no per-item "bundle" directory scheme). The poster-sync routes
-(`/api/posters/*`) were reworked the same way - TMDb matching now keys off Jellyfin's
-`ProviderIds` instead of Plex's Guid array, and the actual image write is
-`POST /Items/{id}/Images/Primary` with raw bytes instead of Plex's URL-fetch endpoint - both
-verified live via a real dry-run against the Movies library, not just read for syntax.
+**During the brief v11.7.0 Jellyfin era, all 14 `/api/plex/*` routes were reworked against
+Jellyfin's real API** (`jellyfin_headers()`'s `X-Emby-Token` header, task-triggering by
+looking up a task's real Id via its Key, the old `/api/plex/analyze` and
+`/api/plex/butler/deep-media-analysis` consolidated into one `/api/jellyfin/deep-analysis`
+call, etc.), and `/api/kometa/run` was deleted outright (its `KometaRunRequest` Pydantic model
+went with it). **All of that was reverted back to `/api/plex/*` and `/api/kometa/run` when
+Jellyfin was reverted to Plex** the same day - see [History](#history) for both route-rework
+passes. The poster-sync routes (`/api/posters/*`) went through the same rework-then-revert
+cycle: TMDb matching keys off Plex's Guid array again (it briefly used Jellyfin's
+`ProviderIds`), and the image write is Plex's URL-fetch endpoint again (it briefly used
+`POST /Items/{id}/Images/Primary` with raw bytes).
 
 ### Live API hit counter
 
-Container cards for apps the panel talks to over HTTP (Radarr, Sonarr, Jellyfin, NzbDAV) show a
+Container cards for apps the panel talks to over HTTP (Radarr, Sonarr, Plex, AltMount) show a
 running count of outbound calls since the panel last started. Cosmetic only: in-memory
-`Counter`, resets on restart, no persistence, no per-endpoint breakdown. The old `Plex` label
-was replaced with `Jellyfin` as part of the same route rework above (see [Jellyfin](#jellyfin))
-- it counts real outbound Jellyfin API calls now, not stuck at zero.
+`Counter`, resets on restart, no persistence, no per-endpoint breakdown. The `Plex` label
+briefly became `Jellyfin` during the v11.7.0 detour and reverted back along with everything
+else (see [Media server: Plex](#media-server-plex)); `AltMount` replaced the old `NzbDAV` label
+entirely once AltMount took over Usenet acquisition (see
+[The Usenet pipeline: AltMount](#the-usenet-pipeline-altmount)).
 
 ```python
 # control-panel/app.py - wraps httpx.request itself rather than touching
@@ -981,11 +1005,6 @@ Two implementation notes:
 
 ### Poster sync: TMDb posters over Plex's own
 
-**Currently non-functional as of v11.7.0** - this feature reads/writes Plex's own Guid and
-poster-upload API directly, and `PLEX_URL`/`PLEX_TOKEN` no longer exist in `.env` since Plex
-was replaced by Jellyfin (see [Jellyfin](#jellyfin)). Not yet reworked against Jellyfin's
-equivalent API. Description below is of the Plex-era implementation, kept for reference.
-
 Replaces a movie/show's Plex poster with TMDb's top-voted one, matched via the item's own
 `tmdb://` Guid (falling back to TMDb's `/find` endpoint against a `tvdb://`/`imdb://` Guid for
 items still on an older agent match). ThePosterDB was considered and ruled out - its
@@ -1002,15 +1021,10 @@ uploading anything.
 
 ### Whole-stack restart: mount-order aware
 
-**Reworked as of v11.7.0**: `MOUNT_DEPENDENTS` now reads `{"radarr", "sonarr", "jellyfin",
-"unpackerr", "cleanuparr"}` - `plex` replaced with `jellyfin`, confirmed correct now that
-Jellyfin's own missing `/mnt/nzbdav` mount (see [Jellyfin](#jellyfin)) has been found and
-fixed, making it a real FUSE-mount dependent like the rest of this set.
-
 ```python
 # control-panel/app.py
-MOUNT_PREREQS = {"nzbdav"}
-MOUNT_PROVIDERS = {"nzbdav-rclone"}
+MOUNT_PREREQS: set[str] = set()
+MOUNT_PROVIDERS = {"altmount"}
 MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}
 
 def worker():
@@ -1026,26 +1040,23 @@ def worker():
 curl -X POST http://192.168.4.105:8420/api/stack/restart-all
 ```
 
-This exists because a direct subpath bind of `/mnt/nzbdav` (`rslave`) does not reliably
-survive the FUSE process underneath it being recreated: restarting a dependent before its
-mount provider is healthy reproduces that bug. Confirmed live 2026-07-18 during the
-torrent/debrid removal - recreating `nzbdav-rclone` and its five dependents in the same batch
-(rather than sequenced through this exact logic) left every dependent unable to start at all
-(`transport endpoint is not connected`) until `nzbdav-rclone` was restarted alone first and
-the stale host-level mount was cleared with `sudo umount -l /mnt/nzbdav`. `MOUNT_DEPENDENTS`
-grew from just `{"radarr"}` to its current five-service set the same day, once Sonarr, Plex,
-Unpackerr, and Cleanuparr all switched from a blanket `/mnt` bind to the same narrow
-`/mnt/nzbdav` subpath bind Radarr already used (see [Architecture](#architecture)) - the same
-fragility now applies to all five, not just Radarr.
+`MOUNT_PREREQS` is empty because AltMount owns its own internal rclone/FUSE mount directly -
+unlike the old NzbDAV/`nzbdav-rclone` pair, there's no separate sidecar container to restart
+and wait on first before the mount provider itself comes up.
 
-`nzbdav-rclone` needs its own prereq wave, not just a spot in `MOUNT_PROVIDERS`. It owns the
-`/mnt/nzbdav` FUSE mount, but its rclone remote talks to `nzbdav`'s API
-(`depends_on: nzbdav: condition: service_healthy` in compose), and this hand-rolled restart
-loop does not read the compose dependency graph. Originally `nzbdav-rclone` was not in
-`MOUNT_PROVIDERS` at all; during a full stack outage, `/mnt/nzbdav` was left stale at the
-host level (`Transport endpoint is not connected`, dead backing process in the host mount
-table), and recovery required `sudo umount -l /mnt/nzbdav` on the host. `MOUNT_PREREQS`
-restarts `nzbdav` first and waits for healthy before the `MOUNT_PROVIDERS` wave starts.
+This exists because a direct subpath bind of a FUSE mountpoint (`/mnt/altmount:/mnt/altmount:
+rslave`) does not reliably survive the FUSE process underneath it being recreated: restarting
+a dependent before its mount provider is healthy reproduces that bug - confirmed live more
+than once for this exact mount-owner-plus-five-dependents shape, both for the old
+`nzbdav-rclone` and again for `altmount` itself (see [History](#history) for both incidents).
+`MOUNT_DEPENDENTS` has stayed at the same five services (`radarr`, `sonarr`, `plex`,
+`unpackerr`, `cleanuparr`) through the NzbDAV→AltMount cutover and the Plex→Jellyfin→Plex
+round trip - only the mount *provider* name changed each time, not which containers depend on
+it. **Never recreate the mount provider outside this endpoint** (e.g. a direct
+`docker compose up -d --force-recreate altmount`) without also manually restarting all five
+dependents afterward - confirmed live: doing exactly that once left `plex`, `unpackerr`, and
+`cleanuparr` all holding stale FUSE references because only `radarr`/`sonarr` were remembered
+by hand.
 
 ### Security: CSRF/Origin-Host validation, not auth
 
@@ -1071,13 +1082,11 @@ start/stop/restart/exec endpoints.
 A terminal interface to Control Panel's API, tracked in `~/.dotfiles`
 (`.config/fish/functions/`), built on one private helper:
 
-**Every `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` command has been reworked or removed
-as of v11.7.0** (see [History](#history) `[11.7.0]`) - every Plex maintenance command has a
-`stack-jellyfin-*` equivalent against the routes in [Control Panel](#control-panel) above;
-commands backing a dropped Plex-only concept (empty-trash, Plex-watchlist/RSS import, and
-every individual Butler-task wrapper with no real Jellyfin task behind it) were deleted
-outright rather than left dead; `stack-kometa-run` and both `stack-tautulli-*` commands were
-deleted (both apps removed entirely, no Jellyfin-side equivalent for either).
+**Every `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` command was briefly reworked to a
+`stack-jellyfin-*` equivalent during the v11.7.0 Jellyfin era, then reworked back** once
+Jellyfin was reverted to Plex the same day - see [History](#history) for both passes.
+`stack-nzbdav-*` was similarly replaced outright by `stack-altmount-*` on 2026-07-23, when
+AltMount replaced NzbDAV entirely (no revert this time - NzbDAV isn't coming back).
 
 ```fish
 # ~/.dotfiles/.config/fish/functions/__stack_api.fish
@@ -1093,11 +1102,10 @@ stack-status                                    # live health of every container
 stack-arr radarr rss-sync                       # radarr/sonarr; or search-missing / unstick / unstick-importing
 stack-arr-import-candidates sonarr              # list files ready to manually import
 stack-arr-import sonarr 0                       # import candidate #0 from the list above
-stack-jellyfin scan                             # or optimize-db
-stack-jellyfin-libraries                        # list Jellyfin library names
-stack-nzbdav-queue                              # current Usenet download queue
-stack-nzbdav-history 20                         # recent history, default limit 20
-stack-nzbdav-set-connections 50                 # set the Usenet provider's max connections
+stack-plex scan                                 # or optimize-db
+stack-plex-libraries                            # list Plex library names
+stack-altmount-queue                            # current Usenet download queue
+stack-altmount-history 20                       # recent history, default limit 20
 stack-container restart radarr                  # or stop / start
 stack-restart-all -y                            # skip the interactive confirm prompt
 ```
@@ -1284,14 +1292,15 @@ through `scripts/notify-discord.sh` (no-ops silently if unconfigured):
   (`discord://<token>@<id>` format, a separate URL from the plain webhook the others use).
 - **Container health**: `scripts/check-container-health.sh`, every 5 minutes, diffs the
   unhealthy/restarting container set against its last poll and only posts on a change.
-- ~~**Plex additions**: `scripts/plex-webhook-listener.py`~~ **Removed entirely in v11.7.0**
-  along with Plex itself: the listener script, its `stack-plex-webhook.service` systemd unit
-  (was live/enabled), and `PLEX_WEBHOOK_PORT` from `.env`/`.env.example`. No Jellyfin-webhook
-  equivalent has been built - this is a gap, not yet addressed.
-- ~~**Plex removals**: `scripts/plex-library-report.py`~~ **Removed entirely in v11.7.0**
-  along with Plex itself: the report script and its `stack-plex-report.service` +
-  `stack-plex-report.timer` systemd units (both were live/enabled). Same gap as above - no
-  Jellyfin equivalent exists yet.
+- **Plex additions**: `scripts/plex-webhook-listener.py`, `PLEX_WEBHOOK_PORT` in
+  `.env.example`. Both were deleted entirely during the brief v11.7.0 Jellyfin era (no
+  Jellyfin-webhook equivalent was ever built) and came back to the repo along with Plex's
+  return - the script and its `stack-plex-webhook.service` unit exist on disk again, but the
+  unit is **not currently linked/enabled** (confirmed via `systemctl --user is-enabled`).
+  Relink it if this alerting path is wanted again.
+- **Plex removals**: `scripts/plex-library-report.py`, same story - script and its
+  `stack-plex-report.service`/`stack-plex-report.timer` units exist on disk again, neither
+  currently linked/enabled.
 - **`*arr` backups**: one embed per day covering the native-backup trigger above.
 - **Grab/import/upgrade/health events from the three `*arr` apps**: each app's own native
   **Discord** notification connection, pointed at the same `DISCORD_WEBHOOK_URL`. Events:
@@ -1315,18 +1324,17 @@ Every image is pinned, using whichever approach does not change what is running:
 - **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the hotio images (Prowlarr,
   Radarr, Sonarr, Tautulli). hotio's model is rolling channels identified by git-hash, not
   semver, so a channel tag is the closest available pin.
-- **Version tags** (`nickfedor/watchtower:1.19.0`, `ghcr.io/nullable-eth/labelarr:v1.4.0`)
-  where the upstream tags real releases and the running image matches.
-- **Digest pins** (`@sha256:...`) for Seerr and Unpackerr. In each case the
-  running `:latest` build is ahead of the newest tagged release, so any tag would be a
-  downgrade.
-- ~~**Version tag, manually bumped, off Watchtower's train** for Plex
-  (`plexinc/pms-docker:1.43.2.10687-563d026ea`); PMS version changes on a live library are
-  applied manually.~~ **Plex was removed entirely in v11.7.0**, replaced by Jellyfin
-  (`lscr.io/linuxserver/jellyfin:latest`) - a mutable channel tag, not a version pin, so this
-  exception does not carry forward. Jellyfin is auto-updated by Watchtower like any other
-  channel-tag image unless that's deliberately changed later. This stack currently has no
-  service using the "manually-bumped version tag, off Watchtower's train" pattern at all.
+- **Version tags** (`nickfedor/watchtower:1.19.0`, `iampuid0/neutarr:1.9.1`,
+  `ghcr.io/cleanuparr/cleanuparr:2.9.16`) where the upstream tags real releases and the running
+  image matches.
+- **Digest pins** (`@sha256:...`) for Seerr, Unpackerr, and Kometa. In each case the
+  running `:latest`/newest-tagged build is ahead of (or, for Kometa, simply not matched by) a
+  usable version tag, so a tag would either downgrade or drift forward unexpectedly.
+- **Version tag, manually bumped, off Watchtower's train** for Plex
+  (`plexinc/pms-docker:1.43.3.10828-00f62d37d`) - PMS version changes on a live library are
+  applied manually. This exception briefly moved to Jellyfin during the v11.7.0 detour (a
+  mutable `:latest` channel tag that did *not* carry the exclusion forward) and came back to
+  Plex on the reversion, unchanged from before.
 Watchtower auto-updates only the channel-tag-pinned images (posting to Discord first).
 Digest-pinned and exact-version-tag-pinned images stay frozen until someone re-checks
 upstream and bumps the pin in `docker-compose.yml`. Check which category an image is in
@@ -1340,11 +1348,13 @@ otherwise:
 
 | Service | mem_limit | cpus | Basis |
 |---|---|---|---|
-| `jellyfin` | 3GB | 6 | Replaced `plex` in v11.7.0 (Plex ran `6GB`/`12`, sized from library-scan CPU spikes); Jellyfin starts at half that ceiling by deliberate choice, not yet tuned against real observed usage the way every other row here is |
-| `nzbdav` | 2GB | - | WebDAV streaming has real per-connection buffering cost, bumped from 1g after a live repair/import batch sat at 62% mid-run |
+| `plex` | 3GB | 12 | `cpus` sized from a real library-scan CPU spike (100% with zero playback sessions - hardware transcode covers play/decode, not scan/analysis); `mem_limit` from an observed 231MB/6GiB (3.76%) baseline, not yet stress-tested against a heavy scan |
+| `altmount` | 4GB | 4 | Bumped 1g → 2g → 4g after the 2g ceiling hit 99.87% during the bulk re-link job - per-archive memory cost scales with part count, and this library has several 50-70GB+ UHD remux releases |
 | `neutarr` | 1GB | 2 | Raised from 512m 2026-07-18 - was getting OOM-killed roughly every 30 minutes at that ceiling despite a modest ~145MB steady state, invisible on any dashboard since `restart: unless-stopped` masked it |
-| `jellystat-db` | 512MB | 1 | New in v11.7.0, no observed baseline yet - both containers are up and healthy but not yet under real playback load |
-| `jellystat` | 512MB | 1 | Same as above |
+
+**Jellyfin/Jellystat/`jellystat-db` briefly had their own rows during the v11.7.0 detour** (3GB/
+6 cpus for Jellyfin, 512MB/1 cpu each for the Jellystat pair) - all three moot now that they
+were removed entirely on the same-day reversion back to Plex.
 
 Torrent/debrid's own six services (`decypharr`, `decypharr-alldebrid`, `zurg`,
 `rclone-alldebrid`, `zilean`, `zilean-postgres`) plus `byparr` carried roughly 12.5GB of
@@ -1376,7 +1386,7 @@ Every web UI publishes its port directly on the host with no login gate:
   auth; it closes a specific cross-origin-POST gap. It is the one piece kept from the
   reverted network-security effort.
 - `config/<app>/` generally holds plaintext credentials wherever an app stores its own config
-  (e.g. `config/nzbdav/db.sqlite`'s `ConfigItems` table holds the Usenet provider's real
+  (e.g. `config/altmount/config.yaml` holds the Usenet provider's real
   username/password). Relevant if this host is shared or backed up somewhere less trusted.
 
 A full Traefik + Authelia + CrowdSec stack (TOTP 2FA, CrowdSec bans) was built, verified
@@ -1449,20 +1459,16 @@ AUTO_GENERATE_KEYS: set[str] = set()  # empty since the torrent/debrid removal
 ```
 
 `LIDARR_API_KEY` was dropped from `POST_BOOT_KEYS` (and from `.env`/`.env.example`) in
-v10.9.9 with Lidarr, and `WHISPARR_API_KEY` the same way in v10.12.0 with Whisparr.
-**`scripts/setup_wizard.py` was not updated for the v11.7.0 Plex-to-Jellyfin migration** -
-`POST_BOOT_KEYS` still literally contains `PLEX_TOKEN`, a key that no longer exists anywhere
-in `.env.example` (removed along with `PLEX_URL`/`PLEX_WEBHOOK_PORT`, replaced by
-`JELLYFIN_URL`/`JELLYFIN_API_KEY`). Since the wizard builds its form by parsing
-`.env.example`'s own `KEY=default` lines, a `POST_BOOT_KEYS` entry with no matching field is
-inert, not broken - it just never renders. Conversely `JELLYFIN_API_KEY` (which really is a
-post-boot-only field - Jellyfin's own Dashboard > Advanced > API Keys page needs the setup
-wizard already completed, see `.env.example`'s own comment) is **not** in `POST_BOOT_KEYS` at
-all, so it renders in the normal section instead of the highlighted one - a real, unaddressed
-inconsistency, not yet fixed. Two fields currently do get collected as post-boot-only
-correctly: each `*arr` app's own generated API key. These render in a highlighted "Fill in
-after first boot" section and default to `changeme`; re-running `--setup` loads the real
-`.env` as defaults, so a second pass only means entering what is new.
+v10.9.9 with Lidarr, and `WHISPARR_API_KEY` the same way in v10.12.0 with Whisparr. During the
+brief v11.7.0 Jellyfin era, `PLEX_TOKEN` was swapped out for `JELLYFIN_URL`/`JELLYFIN_API_KEY`
+here - `JELLYFIN_API_KEY` was never actually added to `POST_BOOT_KEYS` at the time, a real
+inconsistency that went unfixed for the migration's one-day lifespan. All three fields are moot
+now: the reversion back to Plex restored `PLEX_TOKEN` to `POST_BOOT_KEYS` correctly (shown
+above), so this is back to being accurate rather than stale. Three fields currently get
+collected as post-boot-only correctly: `RADARR_API_KEY`, `SONARR_API_KEY`, and `PLEX_TOKEN`.
+These render in a highlighted "Fill in after first boot" section and default to `changeme`;
+re-running `--setup` loads the real `.env` as defaults, so a second pass only means entering
+what is new.
 
 ## Known gaps and limitations
 
@@ -1509,45 +1515,45 @@ after first boot" section and default to `changeme`; re-running `--setup` loads 
   (`DELETE .../moviefile/bulk`, `.../episodefile/bulk`), then the now-orphaned symlinks removed
   from disk by hand since the bulk endpoints don't touch the filesystem themselves. Both apps'
   existing missing-content search picked the resulting gaps up automatically with no manual
-  search trigger needed. The TV library still carried a dead `/mnt/zurg/shows` Location in
-  Plex's own DB (see [Jellyfin](#jellyfin) `### Historical: Plex, removed v11.7.0`),
-  deliberately not cleaned up via the API since doing so risked Plex offering to delete the
-  underlying metadata/watch history - moot now that Plex (and `config/plex/` along with it)
-  was removed entirely in v11.7.0.
+  search trigger needed. The TV library still carried a dead `/mnt/zurg/shows` Location in the
+  **pre-migration** Plex instance's own DB (see
+  [Media server: Plex](#media-server-plex) `### Historical: the pre-migration Plex install,
+  removed v11.7.0`), deliberately not cleaned up via the API since doing so risked Plex offering
+  to delete the underlying metadata/watch history - moot now that that instance's `config/plex/`
+  was deleted entirely during the Jellyfin migration; the current, fresh Plex install has no
+  such stale Location to begin with.
 - **`media/youtube` is an inert leftover** from a removed Pinchflat integration; nothing
   reads or writes it.
-- **The v11.7.0 Plex-to-Jellyfin migration's gap list is now fully closed** (each item
-  documented in place, collected here for visibility). Fixed same-day: Jellyfin's missing
-  `/mnt/nzbdav` mount; `control-panel/app.py`'s `MOUNT_DEPENDENTS` set (now `jellyfin`, not
-  `plex`); `scripts/setup_wizard.py`'s `POST_BOOT_KEYS`/`REQUIRED_KEYS`; stale
-  `config/plex/...` restic excludes. Fixed in the same overall effort, slightly later:
-  `control-panel/app.py`'s all 14 former `/api/plex/*` routes reworked to real Jellyfin
-  endpoints (see [Control Panel](#control-panel) and [History](#history) `[11.7.0]` for the
-  full route-by-route mapping) - none are dead references anymore; every
-  `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` fish function (tracked in `~/.dotfiles`)
-  reworked to a `stack-jellyfin-*` equivalent or removed outright if no Jellyfin equivalent
-  exists; `jellystat-db` now has real logical-backup coverage via a `pg_dump` step in
-  `scripts/backup-config.sh`, verified live; Seerr repointed at Jellyfin and poster sync
-  reworked against Jellyfin's `ProviderIds`/image-upload API, both verified live; real
-  hardware transcoding confirmed working via an actual VAAPI `ffmpeg` process, not just
-  configured. **Genuinely still open, no Jellyfin-side equivalent built**: no webhook/report
-  equivalent exists for the two Plex alerting scripts deleted with Plex (see
-  [Alerting](#alerting-discord)) - this is the one piece of the original Plex tooling with no
-  Jellyfin-side replacement at all yet.
+- **The v11.7.0 Plex-to-Jellyfin migration and its same-day reversion are both fully closed**
+  (each item documented in place; collected here for visibility). Everything the migration
+  touched was mirrored back on the reversion: `control-panel/app.py`'s `MOUNT_DEPENDENTS` set
+  (back to `plex`, not `jellyfin`) and all 14 `/api/plex/*` routes (see
+  [Control Panel](#control-panel) and [History](#history) for both route-rework passes);
+  `scripts/setup_wizard.py`'s `POST_BOOT_KEYS` (back to `PLEX_TOKEN`); every
+  `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` fish function; Seerr repointed back at
+  Plex (a real "Sign in with Plex" step, not automatic - see [History](#history)); real VAAPI
+  hardware transcoding reconfirmed working on the fresh Plex install. **Genuinely still open**:
+  no webhook/report equivalent was ever rebuilt for the two Plex alerting scripts that came back
+  to disk (`scripts/plex-webhook-listener.py`, `scripts/plex-library-report.py`) - both exist
+  again but their systemd units are not currently linked/enabled, see
+  [Alerting](#alerting-discord).
 - **A still-unexplained mass Radarr/Sonarr library-loss event** occurred once early on (1,605
   movies deleted in a 0.1-second burst with no matching API call logged; ~90 Sonarr series
   briefly added then removed with no deletion log line). Root cause was never identified.
   Both apps' native Recycle Bin is now enabled as a blast-radius mitigation, not a fix
   (`/data/movies/.recyclebin`, `/data/shows/.recyclebin`, 7-day cleanup). **A likely Plex-side
-  symptom of this same event was found 2026-07-22**, while auditing Plex's library before
-  decommissioning it for Jellyfin (see [Jellyfin](#jellyfin) `### Historical: Plex, removed
-  v11.7.0`): Plex's Movies library had only 59-63 items indexed against ~10,004 real files on
-  disk, traced to a single 2026-07-13 `Plex Media Scanner.log` event removing 661 of 794
-  tracked items in one pass with `autoEmptyTrash` confirmed on. This closes the loop on what
-  was learned - real files vanished from disk, Plex's next scan found the broken symlinks and
-  silently trashed the library items - but not the underlying uncertainty: the original
-  Radarr/Sonarr-side file loss still has no confirmed cause, only this newly-found symptom of
-  it. Since Plex is now removed entirely, this can never be root-caused further.
+  symptom of this same event was found 2026-07-22**, while auditing the pre-migration Plex
+  instance's library before decommissioning it for Jellyfin (see
+  [Media server: Plex](#media-server-plex) `### Historical: the pre-migration Plex install,
+  removed v11.7.0`): that instance's Movies library had only 59-63 items indexed against
+  ~10,004 real files on disk, traced to a single 2026-07-13 `Plex Media Scanner.log` event
+  removing 661 of 794 tracked items in one pass with `autoEmptyTrash` confirmed on. This closes
+  the loop on what was learned - real files vanished from disk, Plex's next scan found the
+  broken symlinks and silently trashed the library items - but not the underlying uncertainty:
+  the original Radarr/Sonarr-side file loss still has no confirmed cause, only this newly-found
+  symptom of it. Since that Plex instance's own database was deleted with no archive during the
+  Jellyfin migration, this can never be root-caused further, even though Plex itself is running
+  again now as a different, fresh install.
 
 ## History
 
