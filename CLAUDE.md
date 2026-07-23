@@ -202,6 +202,14 @@ docker compose up -d --force-recreate control-panel
 docker compose up -d
 docker compose --profile extras up -d
 
+# MANDATORY before recreating/restarting/stopping altmount for ANY reason (config change,
+# mem_limit tweak, unrelated debugging - the reason does not matter, see CLAUDE.md's
+# 2026-07-23 repeat-incident entry). /tmp/.altmount-queue is NOT a persistent volume, so any
+# recreate wipes queued NZBs and each resulting failure silently unmonitors + permanently
+# blocklists the affected Radarr/Sonarr item. Confirm pending/processing is 0 first, or drain
+# the queue before touching the container.
+sqlite3 config/altmount/altmount.db "SELECT status, COUNT(*) FROM import_queue GROUP BY status;"
+
 # Unit tests (added 2026-07-22) — control-panel/app.py's pure logic (helpers, CSRF
 # middleware, bucketing/ETA math) plus scripts/*.py's pure logic, all with docker.sock,
 # httpx, and urllib network calls mocked out; no real stack/daemon needed. Now part of
@@ -834,6 +842,33 @@ away for 8+ hours with instructions to log non-critical issues and only interrup
   (or wherever `altmount-uploads`/`.altmount-queue` land) to a persistent volume, or never
   restart the container while anything is queued.** This wasn't fixed in place — see below for
   why it became moot.
+- **This exact mistake happened again, 2026-07-23, for a reason that looked too minor to
+  warrant checking first — that's the actual lesson, not the mem_limit change itself.**
+  `docker compose up -d altmount` was run to apply a `mem_limit: 4g` → `6g` bump (a config-only
+  change, seemingly unrelated to the queue) without checking `import_queue` for pending rows
+  first. `/tmp/.altmount-queue` still isn't a persistent volume (confirmed again via `docker
+  inspect altmount --format '{{range .Mounts}}...'` — no `/tmp` entry), so the recreate wiped
+  237 queued NZBs the same way as the incident above. AltMount then burned through the dead
+  rows for ~4 minutes before being caught and stopped, and each failure triggered Radarr/
+  Sonarr's `unmonitor + blocklist without re-search` — 37 Sonarr episodes (mostly *Game
+  Changer*, *Um Actually*, *Make Some Noise*) and 3 Radarr movies got silently unmonitored and
+  permanently blocklisted for a release that would otherwise have just needed a normal retry.
+  Recovered live: stopped `altmount` immediately on noticing, dropped the remaining 234 dead
+  `import_queue` rows at the user's explicit call (container stopped, DB backed up first, same
+  WAL-safety practice as every other live-DB edit in this file) rather than trying to repair
+  them, restarted `altmount` + the five mount-dependent containers per the FUSE cascade rule,
+  then cleared all 40 blocklist entries (`DELETE /api/v3/blocklist/bulk` on both apps) and
+  re-monitored all 40 affected items (`PUT /api/v3/episode/monitor` bulk on Sonarr, per-movie
+  `PUT /api/v3/movie/{id}` on Radarr) so a regrab would actually find something instead of
+  silently skipping a blocklisted release. **Hard rule, no exceptions**: before running
+  `docker compose up -d altmount`, `--force-recreate altmount`, `docker restart altmount`, or
+  `docker stop`/`docker kill altmount` for *any* reason — a memory limit tweak, a config
+  one-liner, an unrelated debugging step, anything — first run
+  `sqlite3 config/altmount/altmount.db "SELECT status, COUNT(*) FROM import_queue GROUP BY
+  status;"` (container can stay up for a read-only `SELECT`) and confirm `pending`/`processing`
+  is 0, or drain/wait it out first. The reason for the recreate does not matter and is not a
+  factor in whether this check is needed — "it's just a memory bump" is exactly the reasoning
+  that caused this to happen twice.
 - **User's response on return: abandon the old library entirely rather than repair the
   re-link.** Explicit instructions, executed in this order:
   1. AltMount's queue backlog (39,168 rows) killed directly via
