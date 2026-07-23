@@ -65,6 +65,11 @@ services:
       # mounts did not support having files written into them (confirmed:
       # symlink/hardlink/copy all failed there with I/O errors).
       - ./media/movies:/data/movies
+      # AltMount's SYMLINK import_dir - same host filesystem as ./media/movies
+      # above (both under ./media, confirmed via df), so copyUsingHardlinks
+      # produces another symlink here instead of a real byte copy. Enforces
+      # "no real media on disk" - see CLAUDE.md's 2026-07-23 entry.
+      - ./media/altmount-import:/mnt/altmount-import
     ports:
       - "7878:7878"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -89,6 +94,8 @@ services:
       - ./config/sonarr:/config
       - /mnt/altmount:/mnt/altmount:rslave
       - ./media/shows:/data/shows
+      # AltMount's SYMLINK import_dir - see radarr's matching mount comment above.
+      - ./media/altmount-import:/mnt/altmount-import
     ports:
       - "8989:8989"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -137,6 +144,10 @@ services:
     volumes:
       - ./config/altmount:/config
       - /mnt:/mnt:rshared
+      # SYMLINK import_dir - regular disk, same filesystem as Radarr/Sonarr's
+      # root folders, so their hardlink-based import produces another
+      # symlink instead of a real copy. See radarr/sonarr's matching mount.
+      - ./media/altmount-import:/mnt/altmount-import
     devices:
       - /dev/fuse:/dev/fuse:rwm
     cap_add:

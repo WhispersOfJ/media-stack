@@ -2483,11 +2483,16 @@ def container_logs_stream(name: str, tail: int = 100):
     the streaming counterpart to /api/arr/{app}/logs' one-shot tail, used
     for live feedback while a mutating action (restart, search, etc)
     against that same container is in flight. Works for any container in
-    this compose project, not just the arr apps the older route covers."""
+    this compose project, not just the arr apps the older route covers.
+
+    timestamps=True prefixes every line with Docker's own RFC3339Nano
+    record time (the moment the container wrote it, not the moment this
+    request read it) - the client splits it back off to render a real
+    per-line clock instead of a client-side receipt-time guess."""
     c = find_project_container(name, reject_self=False)
 
     def generate():
-        for line in c.logs(stream=True, follow=True, tail=tail):
+        for line in c.logs(stream=True, follow=True, tail=tail, timestamps=True):
             text = line.decode(errors="replace").rstrip("\n")
             for part in text.splitlines() or [""]:
                 yield f"data: {part}\n\n"
@@ -2954,7 +2959,7 @@ def arr_logs(app_name: str, lines: int = 100):
         fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_LOG_CONTAINERS))}", status_code=400)
     try:
         c = docker_client.containers.get(app_name)
-        raw = c.logs(tail=min(lines, 1000)).decode(errors="replace")
+        raw = c.logs(tail=min(lines, 1000), timestamps=True).decode(errors="replace")
         return ok(f"Last {lines} line(s) from {app_name}.", log=raw)
     except docker.errors.NotFound:
         fail(f"Container '{app_name}' not found.")
@@ -2977,6 +2982,20 @@ def version():
     total = len(containers)
     return ok(f"README declares {declared}. {running}/{total} containers currently running.",
               version=declared, running=running, total=total)
+
+
+@app.get("/api/docs/readme")
+def docs_readme():
+    """Raw text of this stack's own README.md - this repo has no public
+    downstream mirror (see CLAUDE.md), so there's no external URL to link
+    to for the stack's own documentation the way there is for each
+    third-party app's docs. Served as plain markdown text; the client
+    renders it directly rather than pulling in a markdown-parsing
+    dependency for one panel."""
+    if not os.path.isfile(HOST_README):
+        fail("README.md not mounted at /host-README.md.")
+    with open(HOST_README) as f:
+        return ok("README.md", text=f.read())
 
 
 # ---------------------------------------------------------------------

@@ -4,216 +4,172 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Control Panel — The Stack</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2314181f'/%3E%3Ccircle cx='8' cy='8' r='4.5' fill='%232f6fed'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%231b2530'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%231f6f6b'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 
-<aside id="sidebar">
-  <div class="sidebar-brand">
-    <span class="sidebar-brand-mark" aria-hidden="true"></span>
-    <div>
-      <h1>Control Panel</h1>
-      <p class="sidebar-brand-sub">The Stack</p>
+<header id="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div class="brand-text">
+      <span class="brand-title">Control Panel</span>
+      <span class="brand-sub">The Stack</span>
     </div>
   </div>
-
-  <nav class="sidebar-nav" id="sidebar-nav" aria-label="Sections">
-    <button class="sidebar-nav-item active" type="button" data-page="overview">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-      Overview
-    </button>
-    <button class="sidebar-nav-item" type="button" data-page="arr">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      Arr fleet
-    </button>
-    <button class="sidebar-nav-item" type="button" data-page="containers">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M6 7V5a2 2 0 012-2h8a2 2 0 012 2v2"/></svg>
-      Containers
-    </button>
-    <button class="sidebar-nav-item" type="button" data-page="maintenance">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
-      Maintenance
-    </button>
-    <button class="sidebar-nav-item" type="button" data-page="console">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-      Console
-    </button>
-    <button class="sidebar-nav-item" type="button" data-page="access">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-      Access
-    </button>
-  </nav>
-
-  <div id="sidebar-status">
-    <div class="sidebar-section-label">Containers</div>
-    <ul id="sidebar-status-list"></ul>
-  </div>
-
-  <div class="sidebar-foot">
+  <button class="palette-hint" id="palette-open" type="button">
+    <span class="kbd">Ctrl</span><span class="kbd">K</span>
+    <span>Run a command…</span>
+  </button>
+  <div class="hud">
     <span class="dot" id="hud-conn-dot"></span>
     <span id="hud-conn-label">connecting…</span>
-  </div>
-</aside>
-
-<header class="topbar">
-  <div class="topbar-inner">
-    <div>
-      <h2 class="topbar-title" id="page-title">Overview</h2>
-      <p class="topbar-title-sub" id="page-subtitle">System vitals and rapid actions</p>
-    </div>
-    <div class="hud-readouts">
-      <span id="clock" class="clock" aria-live="off"></span>
-      <span class="hud-sep">·</span>
-      <span id="uptime"></span>
-    </div>
+    <span class="hud-sep">·</span>
+    <span id="clock" aria-live="off"></span>
+    <span class="hud-sep">·</span>
+    <span id="uptime"></span>
   </div>
 </header>
 
-<main>
+<div id="workspace">
 
-  <section class="page-section" id="page-overview" aria-labelledby="h-overview">
+  <div id="col-main">
 
-    <div class="group" aria-labelledby="h-vitals">
-      <h2 id="h-vitals">System vitals</h2>
-      <div class="overview-grid" id="overview-grid">
-        <div class="stat-tile" id="stat-containers">
-          <div class="stat-label">Containers</div>
-          <div class="stat-value" id="stat-containers-value">—</div>
-          <div class="stat-sub" id="stat-containers-sub"></div>
+    <section class="rail" id="rail-overview" aria-labelledby="h-overview">
+      <h2 id="h-overview">Overview</h2>
+      <div class="vitals-row">
+        <div class="vital">
+          <span class="vital-label">Containers</span>
+          <span class="vital-value" id="stat-containers-value">—</span>
+          <span class="vital-sub" id="stat-containers-sub"></span>
         </div>
-        <div class="stat-tile stat-tile-wide" id="stat-plex">
-          <div class="stat-label">Plex version</div>
-          <div class="stat-value" id="stat-plex-value">—</div>
-          <div class="stat-sub" id="stat-plex-sub"></div>
-          <button class="btn-ghost stat-tile-btn" id="plex-check-updates" type="button">Check for updates</button>
+        <div class="vital vital-wide">
+          <span class="vital-label">Plex</span>
+          <span class="vital-value" id="stat-plex-value">—</span>
+          <span class="vital-sub" id="stat-plex-sub"></span>
+          <button class="btn-ghost vital-btn" id="plex-check-updates" type="button">Check for updates</button>
         </div>
       </div>
-    </div>
+      <div class="rule-list" id="primary-actions"></div>
+    </section>
 
-    <div class="group" aria-labelledby="h-primary">
-      <h2 id="h-primary">Rapid actions</h2>
-      <div class="grid primary-grid" id="primary-grid"></div>
-    </div>
+    <section class="rail" id="rail-fleet" aria-labelledby="h-fleet">
+      <h2 id="h-fleet">Fleet <span class="rail-hint">grouped by subsystem — live from Docker, click a row to tail it</span></h2>
+      <div id="fleet-groups"></div>
 
-  </section>
+      <h3 class="rail-sub">Radarr / Sonarr — actions</h3>
+      <div id="arr-fleet"></div>
+    </section>
 
-  <section class="page-section" id="page-arr" hidden aria-labelledby="h-arr">
-    <div class="group">
-      <h2 id="h-arr">Fleet-wide</h2>
-      <p class="group-note">Commands that span every acquisition app at once — Radarr, Sonarr, and Prowlarr where relevant.</p>
-      <div class="arr-toolbar" id="arr-fleet-toolbar"></div>
-      <div class="arr-toolbar-panel result-scroll" id="arr-fleet-panel" hidden></div>
-    </div>
-
-    <div class="group">
-      <h2>Per-app</h2>
-      <p class="group-note">Every Radarr/Sonarr action this panel knows how to run, in one place — no separate console needed.</p>
-      <div class="arr-fleet" id="arr-fleet"></div>
-    </div>
-  </section>
-
-  <section class="page-section" id="page-containers" hidden aria-labelledby="h-containers">
-    <div class="group">
-      <h2 id="h-containers">Every container</h2>
-      <p class="group-note">Discovered live from Docker — state, health, image, and live CPU/memory, with start/stop/restart per container. Refreshes automatically.</p>
-      <div class="container-grid" id="container-grid"></div>
-    </div>
-  </section>
-
-  <section class="page-section" id="page-maintenance" hidden aria-labelledby="h-maintenance">
-    <div class="group">
-      <h2 id="h-posters">Poster sync</h2>
-      <p class="group-note">Replaces each item's Plex poster with the top-voted TMDb poster for it — movies and TV shows, one library at a time. Items TMDb has no match or no poster for are skipped, not failed.</p>
-      <form class="poster-sync-form" id="poster-sync-form">
-        <label>Library
-          <select id="poster-sync-library"><option value="">Loading libraries…</option></select>
-        </label>
-        <label class="poster-sync-check">
-          <input type="checkbox" id="poster-sync-dry-run">
-          Dry run (report only, no changes)
-        </label>
-        <button class="btn-primary" type="submit">Sync posters</button>
-        <span class="hint" id="poster-sync-summary"></span>
-      </form>
-      <pre id="poster-log"></pre>
-    </div>
-
-    <div class="group" aria-labelledby="h-danger">
-      <h2 id="h-danger">Failsafe</h2>
-      <div class="card danger-card">
-        <div class="card-title">Restart entire stack</div>
-        <div class="card-desc">Restarts every container in this compose project except this panel itself. Brief outage across the whole stack while everything comes back up.</div>
-        <button class="btn-danger" id="restart-all-btn" type="button">Restart everything</button>
-        <div class="status-line" id="status-restart-all">—</div>
+    <section class="rail two-lane" id="rail-host" aria-labelledby="h-host">
+      <h2 id="h-host">Host</h2>
+      <div class="lane-grid">
+        <div class="lane">
+          <h3 class="lane-title">Vitals <span class="lane-tag">read-only</span></h3>
+          <div class="rule-list" id="host-vitals"></div>
+        </div>
+        <div class="lane lane-actions">
+          <h3 class="lane-title">Fleet-wide actions</h3>
+          <div class="rule-list" id="host-actions"></div>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="page-section" id="page-console" hidden aria-labelledby="h-console">
-    <div class="group">
-      <h2 id="h-console">Operator console</h2>
-      <p class="group-note">Every stack-* operation, in one place — searchable command manifest, parameter forms, armed confirmation on destructive ops, and a live log feed.</p>
-      <div class="console-shell">
-        <section id="screen-list" class="console-panel">
-          <div class="console-prompt">
-            <span class="caret">&gt;</span>
-            <input id="console-filter" type="text" placeholder="search operations..." aria-label="Search operations" autocomplete="off">
-          </div>
-          <p class="console-hint" id="console-status">loading manifest…</p>
-          <ul id="command-list"></ul>
-        </section>
+    <section class="rail" id="rail-reference" aria-labelledby="h-reference">
+      <h2 id="h-reference">Reference</h2>
 
-        <section id="screen-args" class="console-panel" hidden>
-          <button class="console-back" data-back="list">&larr; Abort</button>
-          <h3 class="console-title" id="args-title"></h3>
-          <p class="console-desc" id="args-desc"></p>
-          <form id="args-form"></form>
-        </section>
-
-        <section id="screen-confirm" class="console-panel console-alert" hidden>
-          <button class="console-back" data-back="args">&larr; Abort</button>
-          <p class="confirm-warning">⚠ destructive operation — cannot be undone from here</p>
-          <p class="confirm-text-line" id="confirm-text"></p>
-          <p class="confirm-hint" id="confirm-hint">type the command name below to authorize execution</p>
-          <input id="confirm-input" type="text" aria-label="Command name to confirm" aria-describedby="confirm-hint" autocomplete="off" spellcheck="false">
-          <div class="console-row">
-            <button id="confirm-yes" class="btn-danger" disabled type="button">Execute</button>
-            <button id="confirm-no" class="btn-ghost" type="button">Cancel</button>
-          </div>
-        </section>
-
-        <section id="screen-run" class="console-panel" hidden>
-          <button class="console-back" data-back="list">&larr; New operation</button>
-          <h3 class="console-title" id="run-title"></h3>
-          <div id="run-status"></div>
-          <div id="log-pane" hidden>
-            <h3>Live feed <span id="log-container-name" class="hud-sep"></span></h3>
-            <pre id="log-lines"></pre>
-          </div>
-          <pre id="result-pane"></pre>
-        </section>
-      </div>
-    </div>
-  </section>
-
-  <section class="page-section" id="page-access" hidden aria-labelledby="h-quicklinks">
-    <div class="group">
-      <h2 id="h-quicklinks">Access</h2>
-      <p class="group-note">Every service's own web UI, one click away.</p>
+      <h3 class="rail-sub">Open a service</h3>
       <div class="quicklinks" id="quicklinks"></div>
-    </div>
-  </section>
 
-</main>
+      <h3 class="rail-sub">Documentation</h3>
+      <div class="rule-list" id="doc-links"></div>
+      <div class="readme-panel" id="readme-panel" hidden>
+        <div class="readme-panel-head">
+          <span>This stack's README.md</span>
+          <button class="btn-ghost" id="readme-close" type="button">Close</button>
+        </div>
+        <pre id="readme-body"></pre>
+      </div>
 
-<footer class="log-panel">
-  <div class="log-head">
-    <span class="log-title">Activity log</span>
-    <span class="log-hint">LAN-only · no auth, matching the rest of the stack</span>
+      <h3 class="rail-sub">Claude Code skills <span class="rail-hint">reference only — these run in Claude Code, not in this app</span></h3>
+      <div class="rule-list" id="skills-list"></div>
+    </section>
+
   </div>
-  <div class="log-body" id="log-body"></div>
-</footer>
+
+  <aside id="col-log" aria-labelledby="h-log">
+    <div class="log-head">
+      <h2 id="h-log">Log console</h2>
+      <select id="log-source" aria-label="Log source"><option value="">Select a source…</option></select>
+      <button class="btn-icon" id="log-clear" type="button" title="Clear">✕</button>
+    </div>
+    <pre id="log-lines"><span class="log-empty">Select a container above, or run a command from the palette — its log will stream here.</span></pre>
+    <div class="activity-head">Recent activity</div>
+    <div class="activity-body" id="log-body"></div>
+  </aside>
+
+</div>
+
+<div id="palette-overlay" hidden>
+  <div id="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+
+    <section id="screen-list" class="palette-screen">
+      <div class="palette-prompt">
+        <span class="caret">&gt;</span>
+        <input id="console-filter" type="text" placeholder="search operations..." aria-label="Search operations" autocomplete="off">
+        <button class="btn-ghost palette-close" data-close type="button">Esc</button>
+      </div>
+      <p class="palette-hint-line" id="console-status">loading manifest…</p>
+      <ul id="command-list"></ul>
+    </section>
+
+    <section id="screen-args" class="palette-screen" hidden>
+      <button class="palette-back" data-back="list">&larr; Abort</button>
+      <h3 class="palette-title" id="args-title"></h3>
+      <p class="palette-desc" id="args-desc"></p>
+      <form id="args-form"></form>
+    </section>
+
+    <section id="screen-confirm" class="palette-screen palette-alert" hidden>
+      <button class="palette-back" data-back="args">&larr; Abort</button>
+      <p class="confirm-warning">destructive operation — cannot be undone from here</p>
+      <p class="confirm-text-line" id="confirm-text"></p>
+      <p class="confirm-hint" id="confirm-hint">type the command name below to authorize execution</p>
+      <input id="confirm-input" type="text" aria-label="Command name to confirm" aria-describedby="confirm-hint" autocomplete="off" spellcheck="false">
+      <div class="palette-row">
+        <button id="confirm-yes" class="btn-danger" disabled type="button">Execute</button>
+        <button id="confirm-no" class="btn-ghost" type="button">Cancel</button>
+      </div>
+    </section>
+
+    <section id="screen-run" class="palette-screen" hidden>
+      <button class="palette-back" data-back="list">&larr; New operation</button>
+      <h3 class="palette-title" id="run-title"></h3>
+      <div id="run-status"></div>
+      <pre id="result-pane"></pre>
+    </section>
+
+  </div>
+</div>
+
+<div class="poster-dock" id="poster-dock" hidden>
+  <div class="poster-dock-head">
+    <span>Poster sync</span>
+    <button class="btn-ghost" id="poster-dock-close" type="button">Close</button>
+  </div>
+  <form class="poster-sync-form" id="poster-sync-form">
+    <label>Library
+      <select id="poster-sync-library"><option value="">Loading libraries…</option></select>
+    </label>
+    <label class="poster-sync-check">
+      <input type="checkbox" id="poster-sync-dry-run">
+      Dry run
+    </label>
+    <button class="btn-primary" type="submit">Sync</button>
+    <span class="hint" id="poster-sync-summary"></span>
+  </form>
+  <pre id="poster-log"></pre>
+</div>
 
 <script src="/app.js"></script>
 </body>

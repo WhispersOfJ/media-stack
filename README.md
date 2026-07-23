@@ -1,14 +1,25 @@
 # The Stack
 
-Current version: **v11.7.0**
+Current version: **v11.8.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
-via Usenet - streamed, not downloaded - and serves the result through a containerized
-**Jellyfin** (`lscr.io/linuxserver/jellyfin:latest`), which replaced Plex entirely in v11.7.0
-(see [History](#history)). Torrent/debrid support was removed entirely in v11.0.0 (see
-[History](#history)). 16 services, one compose file, every image pinned and healthchecked. Two
-operator surfaces: a custom dashboard (Control Panel) and a custom CLI (`stack-*` fish
-functions).
+via Usenet through **AltMount** - streamed via a FUSE mount, not downloaded to local disk - and
+serves the result through **Plex**. Jellyfin briefly replaced Plex in v11.7.0 and was fully
+reverted back to Plex the same day after repeated unresolved library-scan hangs; NzbDAV (the
+Usenet client v11.7.0 and earlier versions of this doc refer to) was itself replaced by AltMount
+the following day for an unrelated, unfixed connection-leak bug. Torrent/debrid support was
+removed entirely in v11.0.0 (see [History](#history)). One compose file, every image pinned and
+healthchecked. Two operator surfaces: a custom dashboard (Control Panel, redesigned entirely in
+v11.8.0 - no boxed/card layout, no tabs, a permanently pinned live log console) and a custom CLI
+(`stack-*` fish functions).
+
+**Known gap in this document as of v11.8.0**: the `## Jellyfin`, `## The Usenet pipeline:
+NzbDAV`, and `## Monitoring extras: Jellystat` sections below, plus the `### Historical: Plex,
+removed v11.7.0` subsection, were never updated for the Jellyfin-to-Plex reversion or the
+NzbDAV-to-AltMount replacement - they still describe the brief v11.7.0 state as if it were
+current. Real current state (Plex, AltMount, no Jellystat) is accurately documented in
+`CLAUDE.md`; treat this file's subsystem sections on those three topics as stale pending a
+dedicated rewrite pass, not as a source of truth, until that pass happens.
 
 This is the only document in this repo besides raw config files. It merges the former
 `README.md`, `TECHNICAL.md`, and `CHANGELOG.md`, organized by subsystem. A condensed
@@ -1201,6 +1212,13 @@ history but was deleted outright from GitHub as of 2026-07-21, for privatization
 `AGENTS.md`. There is currently no downstream repo to keep in sync.
 
 ## Backups
+
+**As of v11.8.0, this stack has zero backup coverage of any kind, deliberately** - both the
+local (`~/backups/stack-restic-repo`) and offsite (`BACKUP_REMOTE_REPOSITORY`) restic
+repositories were deleted at explicit user request while a new backup policy is decided, and
+all three timers below were stopped and unlinked (not deleted - the unit files under
+`systemd/` are untouched, so relinking is a one-line fix once a new policy is chosen). The rest
+of this section describes the system as designed/previously running, not its current state.
 
 `./config` holds every app's settings, database, and plaintext API keys. None of it is in
 git, and it is not reproducible by re-running `docker compose up` or re-pulling images.
@@ -2508,3 +2526,23 @@ removed; `jellystat-db` given real logical-backup coverage; real VAAPI hardware 
 confirmed working via an actual `ffmpeg` process, not just configured. See
 [Known gaps and limitations](#known-gaps-and-limitations) for the one genuinely remaining
 item (no Jellyfin-side equivalent for the two deleted Plex alerting scripts).
+
+**v11.8.0**: Jellyfin reverted back to Plex the same day it replaced it (recurring library-scan
+hangs, root-caused to an unfixed NzbDAV connection-leak bug), and NzbDAV itself was replaced by
+AltMount the following day for the same underlying bug. AltMount was later found to be writing
+real files to local disk instead of symlinks (`import_strategy: NONE` + `copyUsingHardlinks:
+false`); switched to `import_strategy: SYMLINK` with a new shared, same-filesystem `import_dir`
+so Radarr's/Sonarr's hardlink-based import produces a real symlink again, `copyUsingHardlinks`
+flipped back to `true`. 318.7GB of real files and ~34,809 broken symlinks (dead references to
+the removed NzbDAV mount) were deleted from `media/movies`/`media/shows`; the small number of
+still-tracked items were re-searched and re-imported, verified live as genuine symlinks that
+actually stream. Control Panel was redesigned entirely: no boxed/card layout, no tabs, a
+permanently pinned live log console fed by real Docker-side timestamps, a command palette
+replacing the old dedicated console page, and a Reference panel linking every third-party app's
+real upstream docs (each verified against the actual pinned image, not guessed). Seerr's
+`mediaServerType` and admin user were found still pointed at Jellyfin post-revert and fixed;
+Bazarr's SignalR connections to Radarr/Sonarr were found silently dead for hours after an
+unrelated container recreation and fixed with a restart. Every backup (local restic, offsite
+restic, and ad-hoc session snapshots) was deleted at explicit user request pending a new backup
+policy; the three backup systemd timers were stopped and unlinked, not deleted. See `CLAUDE.md`
+for the full incident-by-incident detail - this entry is a summary.
