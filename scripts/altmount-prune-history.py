@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-"""Deletes every "Failed" entry from nzbdav's SABnzbd-compatible history.
+"""Deletes every "Failed" entry from AltMount's SABnzbd-compatible history.
 
-nzbdav rejects re-grabbing an NZB whose release name matches a prior Failed
-history row with "Duplicate nzb: the download folder for this nzb already
-exists" - even when nothing exists on disk for it (confirmed live 2026-07-19:
-9 Radarr titles stuck in a permanent retry-fails-with-duplicate loop, no
-completed-symlinks folder present for any of them). A Failed row has no
-surviving output (storage is null/never wrote real content), so it serves no
-purpose once logged except this blocking side effect - safe to delete
-unconditionally, regardless of age.
+Same rationale this stack's now-removed NzbDAV prune script had: a Failed
+history row has no surviving output but can still block re-grabbing a
+matching release name, so there's no reason to keep one once logged - safe
+to delete unconditionally, regardless of age.
 
-Run every few hours by systemd/stack-nzbdav-prune-history.{service,timer}.
+Run every few hours by systemd/stack-altmount-prune-history.{service,timer}.
 """
 import json
 import sys
@@ -21,7 +17,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 STACK_DIR = Path(__file__).resolve().parent.parent
-NZBDAV_URL = "http://localhost:3001"
+# AltMount's SABnzbd-compatible API lives under /sabnzbd (Fiber's
+# prefix-matching app.Use, not a literal /api/sabnzbd path).
+ALTMOUNT_URL = "http://localhost:8081/sabnzbd"
 
 
 def env_get(key):
@@ -34,19 +32,16 @@ def env_get(key):
     return None
 
 
-NZBDAV_API_KEY = env_get("NZBDAV_API_KEY")
+ALTMOUNT_API_KEY = env_get("ALTMOUNT_API_KEY")
 
-# nzbdav's history/delete endpoint takes exactly one GUID per call - no
-# comma-separated batch form despite otherwise mirroring SABnzbd's API
-# (confirmed live 2026-07-19: passing two ids errored "Guid should contain
-# 32 digits..."). History can run in the tens of thousands of entries on
-# this stack, so deletes are fanned out across threads rather than done
-# serially - these are same-host HTTP calls, not a remote/rate-limited API.
+# Deletes fan out across threads rather than running serially - these are
+# same-host HTTP calls, not a remote/rate-limited API. History can run in
+# the tens of thousands of entries on this stack.
 WORKERS = 20
 
 
 def api_get(params, timeout=30):
-    url = f"{NZBDAV_URL}/api?{urllib.parse.urlencode(params)}"
+    url = f"{ALTMOUNT_URL}?{urllib.parse.urlencode(params)}"
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return json.load(r)
 
@@ -58,7 +53,7 @@ def delete_one(slot):
             "mode": "history",
             "name": "delete",
             "value": nzo_id,
-            "apikey": NZBDAV_API_KEY,
+            "apikey": ALTMOUNT_API_KEY,
             "output": "json",
         })
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
@@ -69,16 +64,14 @@ def delete_one(slot):
 
 
 def main():
-    if not NZBDAV_API_KEY or NZBDAV_API_KEY == "changeme":
-        print("NZBDAV_API_KEY not configured in .env", file=sys.stderr)
+    if not ALTMOUNT_API_KEY or ALTMOUNT_API_KEY == "changeme":
+        print("ALTMOUNT_API_KEY not configured in .env", file=sys.stderr)
         return 1
 
-    # Full history on this stack runs 35k+ entries - serializing that on
-    # nzbdav's side is slow, confirmed live to exceed a 30s timeout.
     history = api_get({
         "mode": "history",
         "limit": 0,
-        "apikey": NZBDAV_API_KEY,
+        "apikey": ALTMOUNT_API_KEY,
         "output": "json",
     }, timeout=180)
     slots = history.get("history", {}).get("slots", [])

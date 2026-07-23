@@ -18,11 +18,12 @@ from pathlib import Path
 # Known FUSE-mount-owning services -> containers that bind-mount their output and
 # must be restarted afterward or they'll keep serving a stale mount handle.
 # Update this when the compose topology changes; it cannot be inferred from
-# docker-compose.yml alone. nzbdav-rclone is the only mount owner left as of
-# v11.0.0 (torrent/debrid removal took zurg/rclone-alldebrid with it) - matches
-# control-panel/app.py's own MOUNT_PROVIDERS/MOUNT_DEPENDENTS sets exactly.
+# docker-compose.yml alone. altmount is the only mount owner left as of
+# 2026-07-23 (replaced NzbDAV/nzbdav-rclone entirely - see CLAUDE.md's
+# History) - matches control-panel/app.py's own MOUNT_PROVIDERS/
+# MOUNT_DEPENDENTS sets exactly.
 CASCADE_MAP = {
-    "nzbdav-rclone": ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"],
+    "altmount": ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"],
 }
 
 
