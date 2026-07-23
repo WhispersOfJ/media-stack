@@ -26,13 +26,12 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 # Can't be known before the corresponding app has booted once and
-# generated its own key - see module docstring. JELLYFIN_API_KEY fits the
-# same shape: it only exists after Jellyfin's own setup wizard has run and
-# a key is generated under Dashboard -> API Keys, not just a running
-# container - left unset it silently breaks every Control Panel Jellyfin
-# action (Plex used to be here before it was removed entirely).
+# generated its own key - see module docstring. PLEX_TOKEN fits the same
+# shape: reading it (Settings -> a library item -> Get Info -> View XML)
+# needs a running Plex with at least one library item, not just a running
+# container - left unset it silently breaks every Control Panel Plex action.
 POST_BOOT_KEYS = {
-    "RADARR_API_KEY", "SONARR_API_KEY", "JELLYFIN_API_KEY",
+    "RADARR_API_KEY", "SONARR_API_KEY", "PLEX_TOKEN",
 }
 
 # Self-issued secrets with no external source - safe to generate for the
@@ -45,7 +44,7 @@ AUTO_GENERATE_KEYS: set[str] = set()
 # Only these actually block `docker compose up` from working at all;
 # everything else can legitimately stay "changeme" for now (optional
 # Discord webhooks) or be filled in later (the post-boot arr keys).
-REQUIRED_KEYS = {"PUID", "PGID", "TZ", "HOST_IP", "JELLYFIN_URL"}
+REQUIRED_KEYS = {"PUID", "PGID", "TZ", "HOST_IP", "PLEX_URL"}
 
 # Rendered as plain text inputs; everything else is password-masked.
 PLAIN_TEXT_KEYS = REQUIRED_KEYS

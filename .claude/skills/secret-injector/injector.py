@@ -23,7 +23,7 @@ KEY_PATTERNS: dict[str, tuple[str, str]] = {
     "RADARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
     "SONARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
     "PROWLARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
-    "NZBDAV_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
+    "ALTMOUNT_API_KEY": (r"^[A-Za-z0-9]{32}$", "32-char mixed-case alphanumeric"),
 }
 
 

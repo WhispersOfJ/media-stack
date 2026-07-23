@@ -111,39 +111,39 @@ def test_bucket_arr_item_stalled_no_progress(cp_app):
     assert bucket == "stalled"
 
 
-def test_bucket_nzbdav_item_importing(cp_app):
+def test_bucket_altmount_item_importing(cp_app):
     s = {"nzo_id": "a", "filename": "Foo", "mb": 100, "mbleft": 0, "status": "Downloading"}
-    bucket, item = cp_app._bucket_nzbdav_item(s, {})
+    bucket, item = cp_app._bucket_altmount_item(s, {})
     assert bucket == "importing"
 
 
-def test_bucket_nzbdav_item_queued(cp_app):
+def test_bucket_altmount_item_queued(cp_app):
     s = {"nzo_id": "a", "filename": "Foo", "mb": 100, "mbleft": 50, "status": "Queued"}
-    bucket, item = cp_app._bucket_nzbdav_item(s, {})
+    bucket, item = cp_app._bucket_altmount_item(s, {})
     assert bucket == "queued"
 
 
-def test_bucket_nzbdav_item_downloading(cp_app):
+def test_bucket_altmount_item_downloading(cp_app):
     s = {"nzo_id": "a", "filename": "Foo", "mb": 100, "mbleft": 40, "status": "Downloading"}
-    bucket, item = cp_app._bucket_nzbdav_item(s, {"a": 60.0})
+    bucket, item = cp_app._bucket_altmount_item(s, {"a": 60.0})
     assert bucket == "downloading"
     assert "eta" in item
 
 
-def test_bucket_jellyfin_task_downloading(cp_app):
-    t = {"Id": "t1", "Name": "Scan Media Library", "CurrentProgressPercentage": 60}
-    bucket, item = cp_app._bucket_jellyfin_task(t, {"t1": 30})
+def test_bucket_plex_activity_downloading(cp_app):
+    a = {"uuid": "t1", "title": "Scanning TV Shows", "progress": 60}
+    bucket, item = cp_app._bucket_plex_activity(a, {"t1": 30})
     assert bucket == "downloading"
     assert item["progress"] == "60%"
 
 
-def test_bucket_jellyfin_task_stalled(cp_app):
-    t = {"Id": "t1", "Name": "Scan Media Library", "CurrentProgressPercentage": 30}
-    bucket, item = cp_app._bucket_jellyfin_task(t, {"t1": 30})
+def test_bucket_plex_activity_stalled(cp_app):
+    a = {"uuid": "t1", "title": "Scanning TV Shows", "progress": 30}
+    bucket, item = cp_app._bucket_plex_activity(a, {"t1": 30})
     assert bucket == "stalled"
 
 
-def test_bucket_jellyfin_task_uses_key_when_no_name(cp_app):
-    t = {"Id": "t1", "Key": "RefreshLibrary", "CurrentProgressPercentage": 10}
-    bucket, item = cp_app._bucket_jellyfin_task(t, {})
-    assert item["title"] == "RefreshLibrary"
+def test_bucket_plex_activity_includes_subtitle(cp_app):
+    a = {"uuid": "t1", "title": "Scanning TV Shows", "subtitle": "Some Series", "progress": 10}
+    bucket, item = cp_app._bucket_plex_activity(a, {})
+    assert item["title"] == "Scanning TV Shows: Some Series"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect and manage download-client queues (nzbdav, or any other
+"""Inspect and manage download-client queues (altmount, or any other
 SABnzbd/qBittorrent-API-compatible client added to CLIENTS below) for the
 media-stack.
 
@@ -14,37 +14,32 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import collections
 import json
 import os
-import re
-import subprocess
 import sys
 import urllib.error
 import urllib.request
 
-# nzbdav is the only download client this stack runs as of v11.0.0 (torrent/
-# debrid removal took decypharr with it) - other SABnzbd/qBittorrent-API
-# clients can still be added here if a future stack change brings one back.
-# Port is the container-internal one (3000, mapped to host 3001) - override
-# via NZBDAV_URL for anything reached differently.
+# AltMount is the only download client this stack runs as of 2026-07-23,
+# replacing NzbDAV entirely (unmerged connection-leak bug, see CLAUDE.md's
+# History) - other SABnzbd/qBittorrent-API clients can still be added here
+# if a future stack change brings one back. "path" is the base path each
+# client's SABnzbd-compatible API is actually mounted under - a real
+# vanilla SABnzbd install expects /api directly; AltMount's Fiber router
+# mounts it under /sabnzbd instead (app.Use("/sabnzbd", ...), prefix-
+# matching, confirmed via its own source). Host port is AltMount's
+# published one (8081, mapped from container 8080) - override via
+# ALTMOUNT_URL for anything reached differently.
 CLIENTS = {
-    "nzbdav": {"port": 3000, "kind": "sabnzbd"},
+    "altmount": {"port": 8081, "path": "/sabnzbd", "kind": "sabnzbd"},
 }
 
-# nzbdav-rclone's FUSE mount surfaces a permanently unrecoverable Usenet
-# file (missing articles, no par2 recovery blocks available) as an
-# endlessly repeating "vfs cache ... 404 Not Found" error against the same
-# internal .ids/<uuid> path, every ~10-20s, forever - not a transient
-# blip. Confirmed live 2026-07-16 diagnosing "The Escapees (1981)": the
-# root cause sat in nzbdav's own container logs ("missing articles",
-# "Error executing nntp BODY command"), not in nzbdav-rclone's. This
-# command only diagnoses and reports - it never deletes anything. Fixing
-# a confirmed-broken file means removing that specific *arr app's file
-# record, a real destructive action against library state that needs its
-# own explicit, per-instance confirmation - not something to fold into an
-# automated flag here.
-_ID_RE = re.compile(r"\.ids/[0-9a-f]/[0-9a-f]/[0-9a-f]/[0-9a-f]/[0-9a-f]/([0-9a-f-]{36})")
+# NzbDAV/nzbdav-rclone's stuck-file diagnostic (matched a repeating
+# ".ids/<uuid> 404 Not Found" log pattern specific to that FUSE mount) had
+# no confirmed AltMount equivalent as of the 2026-07-23 cutover - AltMount
+# is a single container with its own internal mount/logging shape, not
+# verified to log missing-article failures the same way. Removed rather
+# than guessed; see cmd_diagnose_stuck_file below.
 
 
 class Client:
@@ -59,6 +54,7 @@ class Client:
         ).rstrip("/")
         self.api_key = os.environ.get(f"{env_prefix}_API_KEY", "")
         self.kind = meta["kind"]
+        self.path = meta.get("path", "/api")
 
     def _get(self, path: str, params: dict | None = None) -> object:
         params = dict(params or {})
@@ -78,21 +74,21 @@ class Client:
 
     def queue(self) -> list[dict]:
         if self.kind == "sabnzbd":
-            data = self._get("/api", {"mode": "queue", "output": "json"})
+            data = self._get(self.path, {"mode": "queue", "output": "json"})
             return (data or {}).get("queue", {}).get("slots", [])
         data = self._get("/api/v1/queue")
         return data if isinstance(data, list) else (data or {}).get("items", [])
 
     def failed(self) -> list[dict]:
         if self.kind == "sabnzbd":
-            data = self._get("/api", {"mode": "history", "output": "json", "failed_only": 1})
+            data = self._get(self.path, {"mode": "history", "output": "json", "failed_only": 1})
             return (data or {}).get("history", {}).get("slots", [])
         items = self.queue()
         return [i for i in items if str(i.get("status", "")).lower() in ("failed", "error")]
 
     def retry(self, item_id: str) -> None:
         if self.kind == "sabnzbd":
-            self._get("/api", {"mode": "retry", "value": item_id, "output": "json"})
+            self._get(self.path, {"mode": "retry", "value": item_id, "output": "json"})
         else:
             self._get(f"/api/v1/queue/{item_id}/retry")
 
@@ -103,7 +99,7 @@ class Client:
             if not item_id:
                 continue
             if self.kind == "sabnzbd":
-                self._get("/api", {"mode": "queue", "name": "delete", "value": item_id, "output": "json"})
+                self._get(self.path, {"mode": "queue", "name": "delete", "value": item_id, "output": "json"})
             else:
                 self._get(f"/api/v1/queue/{item_id}/delete")
             count += 1
@@ -169,66 +165,18 @@ def cmd_reachability() -> None:
             print(f"{name}: DOWN ({e})")
 
 
-def _docker_logs(container: str, since: str) -> str:
-    try:
-        result = subprocess.run(
-            ["docker", "logs", "--since", since, container],
-            capture_output=True, text=True, timeout=30,
-        )
-    except (subprocess.SubprocessError, FileNotFoundError) as e:
-        raise RuntimeError(f"couldn't read logs for {container}: {e}") from e
-    return result.stdout + result.stderr
-
-
-def _resolve_symlink(media_root: str, stuck_id: str) -> str | None:
-    try:
-        result = subprocess.run(
-            ["find", media_root, "-type", "l", "-lname", f"*{stuck_id}*"],
-            capture_output=True, text=True, timeout=60,
-        )
-    except (subprocess.SubprocessError, FileNotFoundError):
-        return None
-    hit = result.stdout.strip().splitlines()
-    return hit[0] if hit else None
-
-
 def cmd_diagnose_stuck_file(since: str, media_root: str) -> None:
-    """Read-only. Finds the *arr library entry behind a file
-    nzbdav-rclone can't stop retrying, and prints what to check - never
-    deletes anything itself."""
-    rclone_log = _docker_logs("nzbdav-rclone", since)
-    counts: dict[str, int] = collections.Counter(m.group(1) for m in _ID_RE.finditer(rclone_log))
-    if not counts:
-        print(f"No repeating .ids/<uuid> 404 errors found in nzbdav-rclone's logs (last {since}).")
-        return
-
-    print(f"Repeating stuck ids in nzbdav-rclone's logs (last {since}):")
-    for stuck_id, count in counts.most_common():
-        print(f"  {count:>5}x  {stuck_id}")
-
-    top_id, top_count = counts.most_common(1)[0]
-    print(f"\nMost frequent: {top_id} ({top_count} errors) - investigating.")
-
-    nzbdav_log = _docker_logs("nzbdav", since)
-    nntp_lines = [
-        line for line in nzbdav_log.splitlines()
-        if "missing articles" in line.lower() or "nntp" in line.lower()
-    ]
-    if nntp_lines:
-        print("\nnzbdav's own logs show NNTP/article problems in this window (root cause is")
-        print("usually here, not in nzbdav-rclone - the provider doesn't have the data):")
-        for line in nntp_lines[-5:]:
-            print(f"  {line}")
-
-    symlink = _resolve_symlink(media_root, top_id)
-    if not symlink:
-        print(f"\nCouldn't resolve {top_id} to a symlink under {media_root} - it may already")
-        print("have been removed, or media_root needs adjusting for this stack.")
-        return
-    print(f"\nResolves to: {symlink}")
-    print("Check this against Radarr/Sonarr's own API (GET /api/v3/movie or /series, look for")
-    print("a movieFile/episodeFile path matching the above) to find the exact entry, then")
-    print("confirm with the user before deleting anything - this command only diagnoses.")
+    """Read-only. Was built around NzbDAV/nzbdav-rclone's specific
+    ".ids/<uuid> 404 Not Found" log pattern (see module comment) - NzbDAV
+    was removed entirely 2026-07-23 and this diagnostic has no confirmed
+    AltMount equivalent yet, so it refuses to run rather than silently
+    search logs that likely don't match this pattern at all."""
+    print("diagnose-stuck-file has no confirmed AltMount equivalent yet - it was built")
+    print("around NzbDAV/nzbdav-rclone's specific log format, and NzbDAV was removed")
+    print("entirely 2026-07-23 (see CLAUDE.md's History). Check AltMount's own logs")
+    print("(docker logs altmount) directly for now, or port this diagnostic once")
+    print("AltMount's actual missing-article/failed-mount log format is confirmed.")
+    _ = (since, media_root)  # unused until a real AltMount log pattern is confirmed
 
 
 def main() -> int:

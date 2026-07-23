@@ -467,14 +467,318 @@ section, and there's no substitute for it for that class of change.
   was confirmed safe. Filed as
   [nzbdav-dev/nzbdav PR #478](https://github.com/nzbdav-dev/nzbdav/pull/478) (fork:
   `WhispersOfJ/nzbdav`, branch `fix/connection-leak-and-circuit-breaker-storm`). **Not merged
-  upstream yet as of this writing** — `docker-compose.yml` still pins `nzbdav/nzbdav:latest`
-  (the stock, unpatched image), not the local patched build, since redeploying an unmerged
-  fork build permanently isn't appropriate for this repo's normal image-pinning policy.
-  Auth still failed against the real account even with both fixes applied, live-tested
-  2026-07-22 — most likely the account itself is genuinely rate-limited/degraded from this
-  session's heavy testing (a separate, external, time-based condition), not a remaining code
-  bug. Re-test once PR #478 is merged into a real release, or once enough time has passed for
-  the account to recover on its own.
+  upstream yet as of this writing** — `docker-compose.yml` originally kept `nzbdav/nzbdav:latest`
+  (the stock, unpatched image) pinned rather than the local patched build, since redeploying an
+  unmerged fork build permanently isn't appropriate for this repo's normal image-pinning policy.
+  Auth failed against the real account even with both fixes applied on an earlier test the same
+  day — most likely the account itself was genuinely rate-limited/degraded from that session's
+  heavy testing (a separate, external, time-based condition), not a remaining code bug.
+  **Later the same day, the account recovered and the local patched build (`nzbdav-local-fix:pr478`)
+  was deployed as a temporary, deliberate exception to the pinning policy** — see the entry below
+  for why (recurring hangs during a Movies library scan) and the entry further below for AltMount,
+  which superseded this fix entirely once evaluated. Re-check whether PR #478 has merged into a
+  real release before assuming this local build is still the right call.
+  **Confirmed recurring against Jellyfin directly, 2026-07-22** (separate from the Radarr/
+  Sonarr/NeutArr mitigation above, which doesn't cover Jellyfin): a full Movies library scan
+  (`RefreshLibrary` scheduled task) hung silently at a fixed progress percentage with zero new
+  log lines and near-idle CPU — no exception thrown, since the .NET thread was just parked
+  waiting on a blocked FUSE syscall, not faulted. Diagnosed by bypassing Jellyfin entirely: a
+  plain `timeout 8 docker exec jellyfin find /mnt/nzbdav/completed-symlinks -maxdepth 3 -type f`
+  hit the full 8s timeout with zero output — the mount itself was unresponsive, matching this
+  section's own prior note that a raw `dd` read through the same mount had hung identically
+  once before. **Recovery confirmed working**: cancel the stuck task first
+  (`DELETE /ScheduledTasks/Running/{id}`), then restart strictly in mount-dependency order —
+  `docker compose restart nzbdav` (clears leaked NNTP connections) → `docker compose restart
+  nzbdav-rclone` (recreates the FUSE mount) → `docker compose restart jellyfin` (Jellyfin holds
+  a stale mount reference after `nzbdav-rclone` restarts, same as every other dependent
+  documented above) — verifying the same `find` test returns instantly after each restart
+  before moving to the next, rather than assuming any single restart alone fixed it. A fresh
+  `RefreshLibrary` trigger afterward proceeded normally. This is the same underlying bug as the
+  NzbDAV connection leak above (PR #478, unmerged), just a second, previously-undocumented
+  failure mode of it (a hung file read during a library scan, not just a rejected new
+  connection) — no new root cause, just a new confirmed symptom.
+  **The restart-chain fix above is not durable — confirmed live the same session**: the retried
+  scan stalled again roughly 7 minutes after the restart, this time with the FUSE mount itself
+  still responsive (`find` returned instantly) but `docker logs nzbdav` showing repeated
+  `System.InvalidOperationException: Response Content-Length mismatch: too few bytes written`
+  (e.g. 73830400 of 134217728 bytes) every 15-60 seconds — partial WebDAV reads dying mid-stream,
+  consistent with the same NNTP-connection-leak root cause, not a new bug. This matches this
+  section's own existing warning that restarting `nzbdav` "only buys a small window before the
+  leak catches back up." **Deliberately left cancelled and unfinished, at the user's explicit
+  choice**, rather than cycling the restart chain again expecting a different outcome — a full
+  Movies library re-scan should be re-attempted only after PR #478 merges upstream into a real
+  release. Don't reflexively re-run the restart-chain recovery above more than once per session
+  without flagging this to the user first; it is a temporary reprieve, not a fix.
+- **Jellyfin's own `Library/VirtualFolders` `RefreshProgress` field lags badly behind the real
+  scan progress and cannot be trusted on its own.** During the hang above, `VirtualFolders`
+  reported the Movies library frozen at `RefreshProgress: 5` the entire time, while the
+  authoritative source — `GET /ScheduledTasks/{id}`'s own `CurrentProgressPercentage` — showed
+  it actually climbing (24% → 35% before the hang). Use the `ScheduledTasks` endpoint, not
+  `VirtualFolders`, to judge whether a scan is really moving. This also fully explains a report
+  that looked like data loss but wasn't: the Jellyfin web UI's Movies library page showed a
+  stale low total (2,739) while `/Items/Counts` and a `ParentId`-scoped query both independently
+  confirmed the real count (9,867) twice — the UI page was reading a live, still-climbing
+  in-progress count from an active (later found hung) scan, not a final total. No data was
+  ever missing; ruled out first by checking `DisplayPreferences` (no stored filter) and the
+  user's own `Policy` (`MaxParentalRating: None`, `EnableAllFolders: True`, no restrictions)
+  before finding the real cause above.
+- **Jellystat's own `Full Jellyfin Sync` task can get stuck in `Running` state in the
+  `jf_logging` table forever, with no code path that ever marks it `Failed`.** Root cause,
+  confirmed 2026-07-22: Jellystat holds a long-lived HTTP/WebSocket connection to Jellyfin for
+  the duration of a sync; if Jellyfin's own container restarts mid-sync, that connection drops
+  with `ECONNRESET` (confirmed via `docker logs jellystat`), and Jellystat's sync code has no
+  handler for that disconnect that updates the task's own DB row — it just silently stops
+  making progress while the row still reads `Running`, indistinguishable from a real stall
+  without checking hard evidence (no new log lines for 5+ minutes, `jf_library_episodes` count
+  frozen). **Fix applied**: directly `UPDATE jf_logging SET "Result"='Failed' WHERE "Id"=...`
+  for the stuck row (container was not stopped first here since this is an `UPDATE` on a
+  clearly-abandoned row, not a live-write conflict risk like the Cleanuparr/Lidarr-class edits
+  elsewhere in this file), then `docker compose restart jellystat` — necessary because
+  Jellystat's in-memory `TaskManager` singleton (confirmed via its own source,
+  `backend/routes/sync.js`'s `addTask`) independently tracks whether a sync is "already
+  running," so fixing only the DB row would still have blocked a fresh `/sync/beginSync` call
+  after this container never crashed (`RestartCount: 0` at the time). **Don't re-run a fresh
+  Full Sync in parallel with a Jellyfin library scan** — the two contending for the same
+  Jellyfin API is the likely trigger for the original disconnect; wait for one to finish before
+  starting the other.
+- **`/sync/beginSync` and `/sync/beginPartialSync` (Jellystat's manual-trigger routes) require a
+  JWT in `Authorization: Bearer <token>`, verified against `JWT_SECRET`** (the same
+  `JELLYSTAT_JWT_SECRET` this stack generated into `.env` during the Plex-to-Jellyfin
+  migration) — confirmed by reading `backend/server.js`'s `authenticate()` middleware directly.
+  A valid token can be minted without knowing the real `APP_USER`/`APP_PASSWORD` hash (which
+  this session didn't have) by signing `{user: {id: 1, username: "<any>"}}` with that same
+  secret — easiest done from inside the container itself, where `JWT_SECRET` is already a live
+  env var:
+  `docker exec jellystat sh -c "cd backend && node -e \"const jwt=require('jsonwebtoken'); console.log(jwt.sign({user:{id:1,username:'bear'}}, process.env.JWT_SECRET))\""`.
+  Confirmed working against a real `/sync/beginSync` call.
+
+## Jellyfin reverted back to Plex, 2026-07-22 (same day as the migration)
+
+**Jellyfin was removed entirely, same day it replaced Plex**, after repeated, unresolved
+library-scan hangs (see the NzbDAV connection-leak entries above) made it unusable for a full
+scan. The user explicitly chose full reversion over continuing to debug Jellyfin, accepting
+that Jellyfin's own watch history/config was lost with no archive (same treatment Plex's
+config got during the original migration).
+
+- **Removed entirely**: `jellyfin`, `jellystat`, `jellystat-db` compose blocks; `config/jellyfin/`,
+  `config/jellystat/`, `config/jellystat-db/`, `config/jellystat-db-dump/`, `config/jellystat-backup/`
+  (jellystat-db's `18/docker` subdirectory needed `sudo rm` — Postgres-internal-owned files);
+  `JELLYFIN_URL`/`JELLYFIN_API_KEY`/`JELLYSTAT_*` from `.env`/`.env.example`; the `jellystat-db`
+  `pg_dump` step and its restic exclude from `scripts/backup-config.sh`; `scripts/setup_wizard.py`'s
+  `JELLYFIN_API_KEY`/`JELLYFIN_URL` references reverted to `PLEX_TOKEN`/`PLEX_URL`.
+- **Recovery method — read this before ever reverting a migration in this repo again**: git
+  history in both `media-stack` (commit `7f9cd27`, the original Plex→Jellyfin migration) and
+  the `~/.dotfiles` bare repo (commit `b406324`, the fish-function rework) still had the exact
+  pre-migration `docker-compose.yml` Plex/Kometa/Quickstart/Tautulli blocks, `.env.example`
+  scaffolding, and `control-panel/app.py`'s original 14 `/api/plex/*` route implementations —
+  recovered via `git show <commit>~1:<path>` rather than hand-rewriting any of it. This is
+  drastically faster and more accurate than reconstructing from memory, but **never a blind
+  `git checkout`** — real improvements landed in these files after the original removal (the
+  jellystat-db backup step, OMDb/MDBList promoted to real `.env` secrets) that had to be
+  preserved, not reverted alongside the Plex-specific code.
+  **One real mistake made during this recovery, worth remembering**: a loop restoring ~33 fish
+  functions used `$DOTFILES show ... > file 2>&1` where `$DOTFILES` was a string variable used
+  as a command — invalid in this environment's shell, and the `2>&1` silently wrote the
+  resulting error text *into* every target file, overwriting all of them with garbage before
+  the mistake was noticed via a `fish -n` syntax check. Recovered immediately by re-running the
+  same git-show loop correctly (literal `git --git-dir=... --work-tree=...` command, stderr to
+  a separate file). If a bulk multi-file git-recovery loop ever silently "succeeds" but every
+  file looks identical/wrong afterward, suspect this exact class of redirect bug first.
+  **`stack-nzbdav-restart.fish` specifically was never committed to the dotfiles repo at all**
+  (confirmed via `git ls-files`) — its content had to be recovered from the one commit that
+  last touched it on disk (`b406324`) directly, not a parent-commit diff, since git had no
+  earlier version to fall back to.
+- **Fresh Plex install, not a restore**: `config/plex/` (34GB) was deleted with no archive back
+  during the original migration, so this is a brand-new server — claimed via a live
+  `plex.tv/claim` token (valid ~4 minutes, `PLEX_CLAIM` env var added temporarily to the
+  compose block and `.env`, then removed immediately after — confirmed via
+  `PlexOnlineToken`/`PlexOnlineMail` appearing in `Preferences.xml`, readable only via `sudo`
+  since Plex's own files are owned by `PLEX_UID=955`). Libraries created via
+  `POST /library/sections` — **this endpoint expects every parameter in the URL query string,
+  not the POST body**, confirmed by reading the real error in `Plex Media Server.log` ("Missing
+  required query parameter name") after a body-encoded attempt 400'd with no useful message.
+  Language codes are locale-specific (`en-US`, not `en` — confirmed via `/system/agents`'s own
+  per-agent `<Language>` list, not guessed). VAAPI hardware transcode device path needs the
+  exact raw enum string from `/:/prefs`'s `HardwareDevicePath` `enumValues` (URL-encoded colons
+  included, e.g. `1002%3a1681%3a1002%3a0124@0000%3ae5%3a00.0`) — passing the human-decoded
+  version silently no-ops. The recovered pre-migration compose block already had the
+  `/mnt/nzbdav:/mnt/nzbdav:rslave` mount and correct `network_mode: host`/VAAPI setup baked in
+  from the original migration's own fix — but its `volumes:` list only had a placeholder
+  `./media:/home/bear/Stack/media` mount, predating this stack's current `./media/movies:/data/movies`
+  /`./media/shows:/data/shows` convention; updated to match Jellyfin's exact mount shape rather
+  than reusing the stale placeholder.
+- **Bazarr repointed to Plex automatically** — it had already auto-detected the newly-claimed
+  Plex server (`server_name: RAWRZ`, real machine ID) via the account's own stored OAuth grant,
+  independent of the deleted `config/plex/` directory (Bazarr's OAuth token lives in its own
+  DB). Only needed `settings-general-use_plex=true`/`use_jellyfin=false` plus real library
+  name/id mapping via the usual form-encoded `/api/system/settings` endpoint.
+- **Seerr could NOT be auto-repointed** — its admin user (`id=1`, from the earlier Jellyfin-era
+  fix) had an empty `plexToken`/`plexId` (it was a Jellyfin-local login, `userType=3`), and
+  Seerr's own `/api/v1/settings/plex` route requires the admin user's *own* live Plex OAuth
+  token to test the connection — not fabricable, unlike an API-key-based integration. Left
+  pending a real "Sign in with Plex" from the user in the browser; once that happens, the same
+  reconciliation this stack already did once (promote to admin, reassign existing
+  `media_request` rows via `requestedById`/`modifiedById`) will need repeating.
+- **The NzbDAV connection-leak bug hit Plex within minutes of the fresh library scan starting**
+  (confirmed live: a random file read through `/mnt/nzbdav` inside the `plex` container timed
+  out identically to Jellyfin's earlier hangs) — this is the same account-wide bug, not
+  something specific to either media server. Directly motivated evaluating AltMount below.
+
+## AltMount evaluated as NzbDAV's replacement, 2026-07-22
+
+**javi11/altmount** (`ghcr.io/javi11/altmount`) was researched as a candidate replacement for
+NzbDAV's unfixed connection-leak bug (PR #478, see above) — chosen over
+`AusAgentSmith-org/nzbdav-rs` (a from-scratch Rust rewrite of NzbDAV itself, architecturally
+immune to the same bug class, but only 22 GitHub stars and stale since 2026-05-25) for being
+actively developed (295 stars, a real release 3 days before this evaluation) with no reported
+issues matching NzbDAV's connection-leak symptom.
+
+- **Deployed standalone first, under its own `altmount-eval` compose profile** — not wired to
+  Radarr/Sonarr or `/mnt/nzbdav` initially, so it never touches the working stack until proven.
+  Own internal rclone/FUSE mount (unlike NzbDAV, no separate `-rclone` sidecar container needed)
+  — same `/dev/fuse`/`SYS_ADMIN`/`apparmor:unconfined` requirements as `nzbdav-rclone`, but on
+  one container. Deliberately did **not** mount `/var/run/docker.sock` (README's example
+  compose includes it for an "auto-update" feature) — unnecessary privilege for an evaluation
+  deployment.
+- **Two real first-boot bugs found and fixed, neither obvious from the docs**:
+  1. `rclone.path: ''` (the documented default, meant to fall back to the config directory) does
+     **not** actually resolve to the config directory in this version — confirmed by reading
+     `internal/rclone`'s actual error (`mkdir rclone: permission denied`, a *relative* path, not
+     `/config/rclone`) rather than trusting the config-sample comment. Fixed by setting
+     `rclone.path: '/config'` explicitly.
+  2. A separate, undocumented-in-the-sample top-level `mount_type` field (`none`/`rclone`/`fuse`/
+     `rclone_external`) **overrides** `rclone.mount_enabled` entirely — confirmed by reading
+     `internal/config/manager.go`'s validation logic, which forcibly sets
+     `RClone.MountEnabled = false` whenever `mount_type` is unset, regardless of the nested
+     `rclone.mount_enabled: true` setting. `config.sample.yaml` (as cloned this session) doesn't
+     mention this field at all. Fixed by adding `mount_type: 'rclone'` alongside `mount_path`.
+  Also needed `sudo chown 1000:1000` on both `config/altmount` (host bind mount) and a
+  pre-created `/mnt/altmount` (host `/mnt` itself is root-owned, same as `/mnt/nzbdav`'s parent).
+- **Real end-to-end streaming confirmed, not just "container is healthy"**: registered a real
+  admin user via `POST /api/auth/register` (first-run only; needs `password` ≥12 chars,
+  `username` ≥3 chars), logged in via `POST /api/auth/login` to get a session (the `Set-Cookie`
+  is domain-scoped to whatever host the request was made against — `COOKIE_DOMAIN` env var — a
+  cookie obtained via `localhost` will not authenticate a request made via the real host IP, or
+  vice versa). `POST /api/providers/test` gave a real, live auth handshake against the
+  Thundernews account (28ms). To prove genuine article-body retrieval (not just auth), a
+  minimal single-segment NZB was hand-built from a **real message-id already present in
+  NzbDAV's own blob store** (`config/nzbdav/blobs/<id[:2]>/<id[2:4]>/<id>` — confirmed this
+  store retains the full original NZB XML, including real message-ids, for every release ever
+  imported) and submitted via AltMount's SABnzbd-compatible `/sabnzbd?mode=addfile` endpoint.
+  Result: exactly 768,000 bytes retrieved, matching the segment's real declared size precisely
+  — genuine proof of working article fetch. (A first attempt using a PAR2-only file correctly
+  failed pre-network with "NZB file contains only PAR2 files"; a second attempt using one
+  segment of a 341-segment RAR correctly failed post-fetch with "unexpected EOF" — both are
+  correct validation behavior given the deliberately incomplete test input, not bugs.)
+- **Radarr/Sonarr's download client repointed to AltMount for future grabs** (`host: altmount`,
+  `port: 8080`, `urlBase: sabnzbd` — Fiber's `app.Use("/sabnzbd", ...)` is prefix-matching, so
+  Radarr/Sonarr's hardcoded `.../{urlBase}/api` request path still lands on the right handler).
+  **A real category-name mismatch found and fixed**: AltMount's own `sabnzbd.categories` config
+  only had `movies`/`tv` (guessed, reasonable-looking names) but Radarr/Sonarr's own
+  `movieCategory`/`tvCategory` fields are actually `radarr`/`sonarr` (their real configured
+  values, confirmed via each app's own `/api/v3/downloadclient` response, not assumed) —
+  AltMount rejected the connection test with "Category does not exist" until the config's
+  category names were changed to match exactly.
+- **NzbDAV's blob store represents the scale of what a full "replace NzbDAV" migration actually
+  means**: 103,523 `DavItems` rows / ~42,885 unique `NzbNames` — i.e. the *existing* library was
+  built from roughly that many already-imported releases, every one of them symlinked into
+  NzbDAV's own `/mnt/nzbdav/.ids/...` path scheme, which AltMount does not reproduce. "Full
+  cutover" (the user's explicit choice) requires bulk-extracting every real NZB from this blob
+  store and re-submitting each to AltMount so it can build its own mount structure — a genuinely
+  long-running (hours, not minutes) bulk operation, not a quick command.
+
+## Bulk re-link run, memory incident, and full NzbDAV removal, 2026-07-22/23
+
+The evaluation above led directly to a same-session full cutover, executed while the user was
+away for 8+ hours with instructions to log non-critical issues and only interrupt for real ones.
+
+- **Bulk re-link executed via `scripts/altmount-bulk-relink.sh`** (resumable — tracks attempted
+  blob ids in `scripts/.altmount-relink-progress.log`, skips already-processed ones on a rerun).
+  Extracted 38,972 unique NZBs (12,285 Radarr + 26,687 Sonarr, explicitly excluding 3,170
+  Whisparr/adult-content blobs — that library was deleted by policy years earlier, re-importing
+  it would have silently undone that removal) from NzbDAV's own blob store
+  (`config/nzbdav/blobs/<id[:2]>/<id[2:4]>/<id>`, confirmed to retain the full original NZB XML
+  including real message-ids for every release ever imported) and submitted each via AltMount's
+  SABnzbd-compatible `/sabnzbd?mode=addfile` endpoint. Completed 38,972/38,972 with 38,929 real
+  successes.
+- **Real incident during the run, handled without waking the user**: AltMount's memory hit
+  99.87% of a 2GiB limit, confirmed live via `docker logs` to coincide with two huge multi-part
+  RAR archives (56GB/508 parts, 73GB/134 parts) being analyzed concurrently — per-archive memory
+  cost scales with part count, and this library has several 50-70GB+ UHD remux releases. Fixed
+  by raising `mem_limit` to 4g and reducing `import.max_processor_workers` 2→1 (serializes
+  large-archive analysis so two can't compound again). Also fixed a broken healthcheck the same
+  session (`/api/health` requires an authenticated session with no unauthenticated route in this
+  version — switched to a plain port-liveness check).
+- **A second, more serious bug found on the user's return, not caught by the bulk-relink
+  script's own progress tracking**: AltMount stages an uploaded NZB in `/tmp/altmount-uploads`
+  before moving it to the persistent `config/altmount/.nzbs/<category>/` store — and `/tmp`
+  inside the container was never mounted to a volume. The mid-run `--force-recreate` restart
+  (done to apply the memory/worker fix above) wiped every NZB still sitting in that ephemeral
+  path, which was nearly the entire ~28,460-item backlog still queued behind a single worker at
+  the time. Confirmed with second-precision certainty: the last successful import completed at
+  01:54:55 UTC, ten seconds before the restart at 01:55:05. Real consequence: of the 1,748 items
+  AltMount had actually finished processing (not just accepted via the submission script — a
+  distinct metric this file's own earlier entry didn't separate clearly enough), only 748
+  succeeded and 1,000 failed, all with the identical `"raw NZB file is missing and no store was
+  found ... to regenerate it"` error. **Lesson for any future AltMount deployment: mount `/tmp`
+  (or wherever `altmount-uploads`/`.altmount-queue` land) to a persistent volume, or never
+  restart the container while anything is queued.** This wasn't fixed in place — see below for
+  why it became moot.
+- **User's response on return: abandon the old library entirely rather than repair the
+  re-link.** Explicit instructions, executed in this order:
+  1. AltMount's queue backlog (39,168 rows) killed directly via
+     `DELETE FROM import_queue` in `config/altmount/altmount.db` (container stopped first,
+     WAL-safety, same practice as every other live-DB edit in this file) rather than the
+     one-nzo-id-per-call SABnzbd delete endpoint, which has no bulk form.
+  2. **Radarr's and Sonarr's databases fully wiped** (confirmed scope via explicit
+     clarification: "only API key/download client/indexer config survives" — everything else,
+     including quality profiles and root folders, was expected gone). Full `config/radarr`/
+     `config/sonarr` backed up first to `~/backups/pre-wipe-<timestamp>/`. `radarr.db`/
+     `sonarr.db` (+ `-wal`/`-shm`) deleted outright and let the app recreate a fresh schema on
+     restart, rather than hand-editing tables — safer given foreign-key relationships an
+     unfamiliar schema could break. `config.xml` (real API key) was never touched. Download
+     client re-added via API (**stripping the leftover `id` field before POST** — Radarr/Sonarr
+     reject creating a new row with an explicit existing id, "Can't insert model with existing
+     ID 1"). Indexers were **not** successfully hand-recreated via API (400s — these are
+     Prowlarr-owned definitions, not meant to be manually reconstructed); instead, re-saving
+     Prowlarr's own Application entry with `?forceSync=true` on `PUT /api/v1/applications/{id}`
+     triggered a real, immediate sync that recreated all 3 indexers on both apps correctly.
+     Quality profiles came back automatically (Radarr/Sonarr create defaults on any fresh DB
+     init); root folders (`/data/movies`, `/data/shows`) had to be re-added manually via
+     `POST /api/v3/rootfolder`.
+  3. **NzbDAV removed entirely** — `nzbdav`/`nzbdav-rclone` compose blocks deleted; `/mnt/nzbdav`
+     unmounted on the host (`sudo umount -l`) and every remaining `/mnt/nzbdav` bind mount
+     (Plex, Radarr, Sonarr, Unpackerr, Cleanuparr) repointed to `/mnt/altmount`; `config/nzbdav`
+     (51GB) and `config/nzbdav-rclone` deleted; `NZBDAV_*` `.env`/`.env.example` vars renamed to
+     `ALTMOUNT_*` where the same real credentials still apply (the Thundernews provider
+     host/user/password, now consumed by AltMount's `config.yaml` instead); `control-panel/app.py`
+     reworked (`nzbdav_api()`→`altmount_api()`, `/api/nzbdav/*`→`/api/altmount/*`, `CONTAINER_LABELS`,
+     `MOUNT_PREREQS`/`MOUNT_PROVIDERS` simplified to reflect AltMount owning its own mount
+     directly with no separate rclone sidecar) — `set-connections`/`unstick` routes were **not**
+     ported, both were workarounds for NzbDAV-specific bugs (its non-REST settings API; its
+     history-query-hang-causing-Sonarr-unavailable chain) that don't apply to AltMount, dropped
+     outright rather than guessed-and-carried-forward; `scripts/nzbdav-prune-history.py` →
+     `scripts/altmount-prune-history.py` (same logic, real endpoint path difference:
+     `/sabnzbd` not `/api`), its systemd timer/service swapped the same way (old symlinks in
+     `~/.config/systemd/user/` were live and enabled — disabling/removing/relinking done in
+     one pass, not left dangling); the `.claude/skills/` project skills
+     (`secret-injector`, `usenet-orchestrator`, `docker-compose-manager`) also referenced NzbDAV
+     and were updated — `usenet-orchestrator`'s `diagnose-stuck-file` command was **not** ported
+     (built around NzbDAV/nzbdav-rclone's specific `.ids/<uuid>` log pattern, no confirmed
+     AltMount equivalent exists yet) and now refuses to run rather than search logs that likely
+     don't match; every `stack-nzbdav-*` fish function reworked to `stack-altmount-*` or deleted
+     outright (`set-connections`/`unstick` had no port target, matching the backend routes).
+  4. **Plex's own library was left holding ~9,867 movies/424 shows worth of now-permanently-broken
+     symlinks** (Plex's own DB was never wiped, only Radarr/Sonarr's) — flagged to the user as a
+     real, non-obvious consequence of steps 2-3 rather than silently left broken. The user chose
+     to mass-delete Plex's library manually rather than have it done programmatically.
+- **Not yet done as of this writing**: AltMount is not wired into Radarr/Sonarr's actual
+  post-download import pipeline beyond the download-client connection — `import_strategy: NONE`
+  means AltMount does a direct import (not NzbDAV's symlink model), so whether Radarr/Sonarr's
+  hardlink/copy-based import step actually works against a FUSE-mounted virtual filesystem the
+  way it worked against `/mnt/nzbdav` has not been verified end-to-end (real grab → real
+  import → real Plex playback). Treat this as unverified, not assumed-working, until a real
+  download completes the full pipeline.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
