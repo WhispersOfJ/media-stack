@@ -1,8 +1,9 @@
 /* Control Panel front end — no build step, no dependencies.
-   One page, several sidebar-switched sections: Overview, Arr fleet,
-   Containers, Maintenance, Console (search-any-of-N-commands runner),
-   and Access (quicklinks). All share this one file, the same log panel,
-   and the same sidebar container-status list. */
+   One continuous split-pane workspace: a scrollable left column of
+   rule-divided rails (Overview, Fleet, Host, Reference) and a
+   permanently pinned right-hand log console. There is no page-hiding
+   navigation and no card/box layout — the only overlay is the command
+   palette (Ctrl/Cmd+K), which is transient by design. */
 
 const ICONS = {
   bolt: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
@@ -10,106 +11,38 @@ const ICONS = {
   trash: '<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>',
   database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0018 0V5"/><path d="M3 12a9 3 0 0018 0"/>',
   broom: '<path d="M9.59 4.59A2 2 0 1111 8H2"/><path d="M12.59 11.59A2 2 0 1114 15H2"/><path d="M17.73 7.73A2.5 2.5 0 1119.5 12H2"/>',
+  stop: '<rect x="6" y="6" width="12" height="12"/>',
+  start: '<polygon points="6 3 20 12 6 21 6 3"/>',
   restart: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>',
+  tail: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
 };
 
 function svg(name) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ""}</svg>`;
 }
 
-const PRIMARY_ACTIONS = [
-  {
-    id: "kometa-run",
-    title: "Run Kometa now",
-    desc: "Trigger an immediate collections, metadata, and overlays pass, bypassing the 05:00 schedule.",
-    endpoint: "/api/kometa/run",
-    icon: "bolt",
-    extraHtml: `
-      <div class="lib-picker">
-        <span class="lib-hint">Libraries — none checked runs all</span>
-        <div class="lib-options" id="kometa-lib-options">Loading libraries…</div>
-      </div>
-    `,
-  },
-  {
-    id: "plex-scan",
-    title: "Scan for new files",
-    desc: "Refresh every Plex library section to pick up files that landed since the last scan.",
-    endpoint: "/api/plex/scan",
-    icon: "search",
-  },
-  {
-    id: "plex-empty-trash",
-    title: "Empty trash",
-    desc: "Permanently remove items already deleted from disk, across every Plex library.",
-    endpoint: "/api/plex/empty-trash",
-    icon: "trash",
-  },
-  {
-    id: "plex-optimize-db",
-    title: "Optimize database",
-    desc: "Run Plex's own database optimization task — clears bloat after large library changes.",
-    endpoint: "/api/plex/optimize-db",
-    icon: "database",
-  },
-  {
-    id: "plex-clean-bundles",
-    title: "Clean old bundles",
-    desc: "Remove metadata bundles Plex no longer needs, freeing disk space.",
-    endpoint: "/api/plex/clean-bundles",
-    icon: "broom",
-  },
-];
-
-const ARR_APPS = [
-  { id: "radarr", label: "Radarr", port: 7878, queue: true },
-  { id: "sonarr", label: "Sonarr", port: 8989, queue: true },
-];
-
-/* Every service's own web UI. Port list mirrors the "Bringing the stack
-   up" table in README.md; `id` matches the container name so status dots
-   can reuse /api/status's data. Torrent/debrid-era entries (Zilean,
-   Decypharr x2, Zurg, Byparr) were removed with those services in
-   v11.0.0 — nothing left in this stack still listens on those ports. */
-const QUICK_LINKS = [
-  { id: "plex", label: "Plex", port: 32400, path: "/web" },
-  { id: "prowlarr", label: "Prowlarr", port: 9696 },
-  { id: "radarr", label: "Radarr", port: 7878 },
-  { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "nzbdav", label: "NzbDAV", port: 3001 },
-  { id: "seerr", label: "Seerr", port: 5055 },
-  { id: "tautulli", label: "Tautulli", port: 8182 },
-  { id: "bazarr", label: "Bazarr", port: 6767 },
-  { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
-  { id: "neutarr", label: "NeutArr", port: 9705 },
-];
-
-function buildQuickLinks() {
-  const container = document.getElementById("quicklinks");
-  container.innerHTML = QUICK_LINKS.map((svc) => {
-    const url = `${location.protocol}//${location.hostname}:${svc.port}${svc.path || ""}`;
-    return `<a class="quicklink" href="${url}" target="_blank" rel="noopener"><span class="dot unknown" id="qdot-${svc.id}"></span>${escapeHtml(svc.label)}</a>`;
-  }).join("");
-}
-
-const MAX_LOG_LINES = 100;
-
-function logLine(kind, text) {
-  const body = document.getElementById("log-body");
-  const t = new Date().toLocaleTimeString([], { hour12: false });
-  const glyph = kind === "ok" ? "✓" : kind === "err" ? "✕" : "›";
-  const el = document.createElement("div");
-  el.className = `log-line ${kind}`;
-  el.innerHTML = `<span class="t">${t}</span> <span class="g">${glyph}</span> ${escapeHtml(text)}`;
-  body.appendChild(el);
-  while (body.children.length > MAX_LOG_LINES) body.removeChild(body.firstChild);
-  body.scrollTop = body.scrollHeight;
-}
-
 function escapeHtml(s) {
   const div = document.createElement("div");
   div.textContent = s ?? "";
   return div.innerHTML;
+}
+
+/* Docker's own timestamps=True prefixes each log line with its real
+   RFC3339Nano write time (server-side, not this browser's receipt
+   time) - reformat it to a compact local clock instead of stripping it.
+   Lines with no such prefix (anything not sourced from a docker.logs()
+   call) pass through unchanged. */
+const LOG_TS_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s(.*)$/;
+
+function formatLogLine(line) {
+  const m = LOG_TS_RE.exec(line);
+  if (!m) return line;
+  const t = new Date(m[1]).toLocaleTimeString([], { hour12: false });
+  return `[${t}] ${m[2]}`;
+}
+
+function formatLogText(raw) {
+  return raw.split("\n").map(formatLogLine).join("\n");
 }
 
 async function postAction(url, body) {
@@ -122,9 +55,7 @@ async function postAction(url, body) {
   let data = null;
   try {
     data = await res.json();
-  } catch (_) {
-    /* no body */
-  }
+  } catch (_) { /* no body */ }
   if (!res.ok) {
     const msg = data?.detail?.message || data?.message || `Request failed (${res.status})`;
     throw new Error(msg);
@@ -138,112 +69,66 @@ function setStatusLine(el, state, text) {
   el.classList.add(`state-${state}`);
 }
 
-/* ---------- Sidebar navigation: swap page-sections, no routing lib ---------- */
-const PAGE_META = {
-  overview: { title: "Overview", sub: "System vitals and rapid actions" },
-  arr: { title: "Arr fleet", sub: "Radarr and Sonarr — every command, one click away" },
-  containers: { title: "Containers", sub: "Every container in this compose project, live from Docker" },
-  maintenance: { title: "Maintenance", sub: "Poster sync and whole-stack restart" },
-  console: { title: "Operator console", sub: "Search-any-command runner for the full stack-* manifest" },
-  access: { title: "Access", sub: "Every service's own web UI" },
-};
+/* =====================================================================
+   Activity strip — compact recent-action log, pinned under the log
+   console. Purely client-side, resets on reload.
+   ===================================================================== */
+const MAX_ACTIVITY_LINES = 80;
 
-function showPage(name) {
-  if (!PAGE_META[name]) name = "overview";
-  document.querySelectorAll(".page-section").forEach((el) => {
-    el.hidden = el.id !== `page-${name}`;
-  });
-  document.querySelectorAll(".sidebar-nav-item").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.page === name);
-  });
-  document.getElementById("page-title").textContent = PAGE_META[name].title;
-  document.getElementById("page-subtitle").textContent = PAGE_META[name].sub;
-  if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
-}
-
-function wireSidebarNav() {
-  document.querySelectorAll(".sidebar-nav-item[data-page]").forEach((btn) => {
-    btn.addEventListener("click", () => showPage(btn.dataset.page));
-  });
-  window.addEventListener("hashchange", () => showPage((location.hash || "").slice(1)));
-  showPage((location.hash || "").slice(1) || "overview");
-}
-
-/* ---------- Primary action cards ---------- */
-function buildPrimaryGrid() {
-  const grid = document.getElementById("primary-grid");
-  for (const action of PRIMARY_ACTIONS) {
-    const card = document.createElement("div");
-    card.className = "card";
-    card.innerHTML = `
-      <div class="card-icon">${svg(action.icon)}</div>
-      <div class="card-title">${action.title}</div>
-      <div class="card-desc">${action.desc}</div>
-      ${action.extraHtml || ""}
-      <button class="btn-primary" type="button">Run</button>
-      <div class="status-line" id="status-${action.id}">—</div>
-    `;
-    const btn = card.querySelector("button");
-    const status = card.querySelector(".status-line");
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      setStatusLine(status, "pending", "Running…");
-      logLine("pending", `${action.title} — requested`);
-      try {
-        const body = action.id === "kometa-run" ? { libraries: selectedKometaLibraries() } : undefined;
-        const data = await postAction(action.endpoint, body);
-        setStatusLine(status, "success", data.message);
-        logLine("ok", `${action.title} — ${data.message}`);
-      } catch (e) {
-        setStatusLine(status, "error", e.message);
-        logLine("err", `${action.title} — ${e.message}`);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-    grid.appendChild(card);
-  }
-  loadKometaLibraries();
-}
-
-function selectedKometaLibraries() {
-  const boxes = document.querySelectorAll("#kometa-lib-options input[type=checkbox]:checked");
-  return Array.from(boxes).map((b) => b.value);
-}
-
-async function loadKometaLibraries() {
-  const el = document.getElementById("kometa-lib-options");
-  if (!el) return;
-  try {
-    const res = await fetch("/api/plex/libraries");
-    const libs = await res.json();
-    if (!Array.isArray(libs) || libs.length === 0) {
-      el.textContent = "No libraries found.";
-      return;
-    }
-    el.innerHTML = libs
-      .map(
-        (lib) => `
-        <label class="lib-check">
-          <input type="checkbox" value="${escapeHtml(lib.title)}">
-          ${escapeHtml(lib.title)}
-        </label>`
-      )
-      .join("");
-  } catch (e) {
-    el.textContent = "Couldn't load libraries — will run all.";
-  }
+function logLine(kind, text) {
+  const body = document.getElementById("log-body");
+  const t = new Date().toLocaleTimeString([], { hour12: false });
+  const glyph = kind === "ok" ? "✓" : kind === "err" ? "✕" : "›";
+  const el = document.createElement("div");
+  el.className = `activity-line ${kind}`;
+  el.innerHTML = `<span class="t">${t}</span> <span class="g">${glyph}</span> ${escapeHtml(text)}`;
+  body.appendChild(el);
+  while (body.children.length > MAX_ACTIVITY_LINES) body.removeChild(body.firstChild);
+  body.scrollTop = body.scrollHeight;
 }
 
 /* =====================================================================
-   Generic inline result rendering — used by every arr-card view button,
-   the fleet-wide toolbar, and (indirectly) the manual-import panel.
-   Turns whatever shape a stack-* GET returns (raw array, or the {ok,
-   message, ...extra} shape ok() wraps everything else in) into real
-   tables/definition-lists instead of a JSON dump, recursing one level
-   into nested dicts (e.g. queue-status's {queues: {radarr: {...}}}) so
-   the common two-deep API shapes in this file render as real tables
-   too, not one big stringified blob.
+   Pinned log console (right column) — the one place any container's
+   logs stream to, whether picked manually from the source select or
+   opened automatically because a palette command targets a container.
+   ===================================================================== */
+let activeLogSource = null;
+let activeLogName = null;
+
+function selectLogSource(name) {
+  const lines = document.getElementById("log-lines");
+  const select = document.getElementById("log-source");
+  if (activeLogSource) {
+    activeLogSource.close();
+    activeLogSource = null;
+  }
+  activeLogName = name || null;
+  if (select && select.value !== (name || "")) select.value = name || "";
+  if (!name) {
+    lines.innerHTML = '<span class="log-empty">Select a container above, or run a command from the palette — its log will stream here.</span>';
+    return;
+  }
+  lines.textContent = "";
+  activeLogSource = new EventSource(`/api/container/${encodeURIComponent(name)}/logs/stream`);
+  activeLogSource.onmessage = (ev) => {
+    lines.textContent += formatLogLine(ev.data) + "\n";
+    lines.scrollTop = lines.scrollHeight;
+  };
+  activeLogSource.onerror = () => {
+    lines.textContent += "\n[stream disconnected]\n";
+  };
+}
+
+function wireLogConsole() {
+  document.getElementById("log-source").addEventListener("change", (e) => selectLogSource(e.target.value || null));
+  document.getElementById("log-clear").addEventListener("click", () => {
+    document.getElementById("log-lines").textContent = "";
+  });
+}
+
+/* =====================================================================
+   Generic inline result rendering — turns whatever shape a GET/POST
+   returns into real tables/definition-lists instead of a JSON dump.
    ===================================================================== */
 const TABLE_COLUMN_PRIORITY = ["title", "name", "series", "episode", "label", "status", "message"];
 
@@ -341,7 +226,7 @@ function renderValue(el, key, value, depth) {
     resultSubhead(el, key);
     const pre = document.createElement("pre");
     pre.className = "log-block";
-    pre.textContent = value;
+    pre.textContent = formatLogText(value);
     el.appendChild(pre);
     return true;
   }
@@ -383,11 +268,7 @@ async function fetchAndRender(el, method, url, body) {
   const raw = await res.text();
   let parsed = null;
   if (raw) {
-    try {
-      parsed = JSON.parse(raw);
-    } catch (_) {
-      parsed = null;
-    }
+    try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
   }
   if (!res.ok) {
     const msg = (parsed && (parsed.detail?.message || parsed.message)) || raw || `Request failed (${res.status})`;
@@ -399,7 +280,237 @@ async function fetchAndRender(el, method, url, body) {
   return payload;
 }
 
-/* ---------- Arr fleet: fleet-wide toolbar ---------- */
+/* =====================================================================
+   Overview rail: rapid actions
+   ===================================================================== */
+const PRIMARY_ACTIONS = [
+  { id: "plex-scan", title: "Scan for new files", desc: "Refresh every Plex library section.", endpoint: "/api/plex/scan", icon: "search" },
+  { id: "plex-empty-trash", title: "Empty trash", desc: "Permanently remove already-deleted items across every library.", endpoint: "/api/plex/empty-trash", icon: "trash" },
+  { id: "plex-optimize-db", title: "Optimize database", desc: "Clears bloat after large library changes.", endpoint: "/api/plex/optimize-db", icon: "database" },
+  { id: "plex-clean-bundles", title: "Clean old bundles", desc: "Remove metadata bundles Plex no longer needs.", endpoint: "/api/plex/clean-bundles", icon: "broom" },
+];
+
+function buildPrimaryActions() {
+  const wrap = document.getElementById("primary-actions");
+  for (const action of PRIMARY_ACTIONS) {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+    row.innerHTML = `
+      <div class="rule-main">
+        <span class="rule-title">${escapeHtml(action.title)}</span>
+        <span class="rule-desc">${escapeHtml(action.desc)}</span>
+      </div>
+      <div class="rule-actions">
+        <button class="btn-primary" type="button">Run</button>
+      </div>
+      <div class="rule-status" id="status-${action.id}">—</div>
+    `;
+    wrap.appendChild(row);
+    const btn = row.querySelector("button");
+    const status = row.querySelector(".rule-status");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      setStatusLine(status, "pending", "Running…");
+      logLine("pending", `${action.title} — requested`);
+      try {
+        const data = await postAction(action.endpoint);
+        setStatusLine(status, "success", data.message);
+        logLine("ok", `${action.title} — ${data.message}`);
+      } catch (e) {
+        setStatusLine(status, "error", e.message);
+        logLine("err", `${action.title} — ${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+}
+
+/* =====================================================================
+   Fleet rail: every container, live from Docker, grouped by subsystem
+   (Source selection — option B). Never a hardcoded allow-list: a
+   service missing from FLEET_GROUPS just falls into "Other" rather
+   than being hidden, matching app.py's own CONTAINER_LABELS staleness
+   tolerance. Clicking a row (not its action buttons) makes it the
+   active log-console source.
+   ===================================================================== */
+const FLEET_GROUPS = {
+  prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
+  altmount: "Usenet", seerr: "Requests", plex: "Media server",
+  tautulli: "Monitoring", bazarr: "Subtitles",
+  kometa: "Metadata/overlays", quickstart: "Metadata/overlays", "kometa-quickstart": "Metadata/overlays",
+  unpackerr: "Post-processing", watchtower: "Auto-updates",
+  cleanuparr: "Queue cleanup", neutarr: "Queue cleanup",
+  "control-panel": "Dashboard",
+};
+const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Monitoring", "Subtitles", "Queue cleanup", "Post-processing", "Auto-updates", "Metadata/overlays", "Dashboard", "Other"];
+const collapsedGroups = new Set(JSON.parse(localStorage.getItem("fleetCollapsed") || "[]"));
+
+function fmtPercent(v) { return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`; }
+function fmtMb(v) {
+  if (v === null || v === undefined) return "—";
+  return v >= 1024 ? `${(v / 1024).toFixed(2)} GB` : `${v.toFixed(0)} MB`;
+}
+
+function fleetRowHtml(c) {
+  const stateClass = c.state === "running" ? (c.health === "unhealthy" ? "down" : c.health === "starting" ? "unknown" : "up") : c.state === "exited" || c.state === "created" ? "down" : "unknown";
+  const healthLabel = c.state !== "running" ? c.state : c.health ? c.health : "running";
+  const cpuPct = c.cpu_percent === null || c.cpu_percent === undefined ? 0 : Math.min(c.cpu_percent, 100);
+  const memPct = c.mem_percent === null || c.mem_percent === undefined ? 0 : Math.min(c.mem_percent, 100);
+  const cpuCls = cpuPct >= 90 ? "bad" : cpuPct >= 70 ? "warn" : "";
+  const memCls = memPct >= 90 ? "bad" : memPct >= 70 ? "warn" : "";
+  return `
+    <div class="rule-row fleet-row" data-name="${escapeHtml(c.name)}" data-state="${escapeHtml(c.state)}">
+      <div class="rule-main">
+        <span class="fleet-row-name"><span class="dot ${stateClass}"></span>${escapeHtml(c.label)}${c.note ? `<span class="fleet-row-sub">${escapeHtml(c.note)}</span>` : ""}</span>
+        <span class="fleet-row-image" title="${escapeHtml(c.image)}">${escapeHtml(c.image)}</span>
+      </div>
+      <span class="fleet-row-health">${escapeHtml(healthLabel)}</span>
+      <span class="fleet-metric">CPU <span class="fleet-bar"><span class="fleet-bar-fill ${cpuCls}" style="width:${cpuPct}%"></span></span> ${fmtPercent(c.cpu_percent)}</span>
+      <span class="fleet-metric">MEM <span class="fleet-bar"><span class="fleet-bar-fill ${memCls}" style="width:${memPct}%"></span></span> ${fmtMb(c.mem_used_mb)}</span>
+      <div class="rule-actions">
+        <button class="btn-icon" type="button" data-act="tail" title="Tail logs" aria-label="Tail logs for ${escapeHtml(c.label)}">${svg("tail")}</button>
+        <button class="btn-icon" type="button" data-act="start" title="Start" aria-label="Start ${escapeHtml(c.label)}" ${c.state === "running" ? "disabled" : ""}>${svg("start")}</button>
+        <button class="btn-icon" type="button" data-act="stop" title="Stop" aria-label="Stop ${escapeHtml(c.label)}" ${c.is_self || c.state !== "running" ? "disabled" : ""}>${svg("stop")}</button>
+        <button class="btn-icon" type="button" data-act="restart" title="Restart" aria-label="Restart ${escapeHtml(c.label)}" ${c.is_self ? "disabled" : ""}>${svg("restart")}</button>
+      </div>
+    </div>`;
+}
+
+function wireFleetRow(row, c) {
+  const tailBtn = row.querySelector('[data-act="tail"]');
+  const startBtn = row.querySelector('[data-act="start"]');
+  const stopBtn = row.querySelector('[data-act="stop"]');
+  const restartBtn = row.querySelector('[data-act="restart"]');
+
+  tailBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    selectLogSource(c.name);
+    document.querySelectorAll(".fleet-row.selected").forEach((r) => r.classList.remove("selected"));
+    row.classList.add("selected");
+  });
+
+  const fire = async (btn, action, label) => {
+    btn.disabled = true;
+    btn.classList.add("spinning");
+    logLine("pending", `${c.label} — ${label} requested`);
+    try {
+      const data = await postAction(`/api/container/${c.name}/${action}`);
+      logLine("ok", `${c.label} — ${data.message}`);
+    } catch (e) {
+      logLine("err", `${c.label} — ${e.message}`);
+    } finally {
+      btn.classList.remove("spinning");
+      refreshFleet();
+    }
+  };
+  if (!startBtn.disabled) startBtn.addEventListener("click", (e) => { e.stopPropagation(); fire(startBtn, "start", "start"); });
+  if (!restartBtn.disabled) restartBtn.addEventListener("click", (e) => { e.stopPropagation(); fire(restartBtn, "restart", "restart"); });
+  if (!stopBtn.disabled) armIconButton(stopBtn, "stop", () => fire(stopBtn, "stop", "stop"), (e) => e.stopPropagation());
+}
+
+let fleetBuilt = false;
+let previousHitCounts = {};
+
+async function fetchHitCounts() {
+  try {
+    const res = await fetch("/api/api-hit-counts");
+    if (!res.ok) return null;
+    const { counts } = await res.json();
+    previousHitCounts = counts;
+    return counts;
+  } catch (e) {
+    return null;
+  }
+}
+
+function populateLogSourceSelect(data) {
+  const select = document.getElementById("log-source");
+  const prevValue = select.value;
+  const byGroup = {};
+  for (const c of data) {
+    const group = FLEET_GROUPS[c.name] || "Other";
+    (byGroup[group] = byGroup[group] || []).push(c);
+  }
+  let html = '<option value="">Select a source…</option>';
+  for (const group of GROUP_ORDER) {
+    if (!byGroup[group]) continue;
+    html += `<optgroup label="${escapeHtml(group)}">`;
+    for (const c of byGroup[group].sort((a, b) => a.label.localeCompare(b.label))) {
+      html += `<option value="${escapeHtml(c.name)}">${escapeHtml(c.label)}</option>`;
+    }
+    html += `</optgroup>`;
+  }
+  select.innerHTML = html;
+  select.value = prevValue;
+}
+
+async function refreshFleet() {
+  const wrap = document.getElementById("fleet-groups");
+  let data;
+  try {
+    const res = await fetch("/api/containers");
+    data = await res.json();
+    if (!res.ok) throw new Error("Could not load containers");
+  } catch (e) {
+    if (!fleetBuilt) wrap.innerHTML = `<div class="hint error">Could not load containers.</div>`;
+    return;
+  }
+
+  const up = data.filter((c) => c.state === "running" && (c.health === "healthy" || !c.health)).length;
+  const containersValue = document.getElementById("stat-containers-value");
+  const containersSub = document.getElementById("stat-containers-sub");
+  if (containersValue) containersValue.textContent = `${up} / ${data.length}`;
+  if (containersSub) containersSub.textContent = up === data.length ? "all healthy" : `${data.length - up} need attention`;
+
+  const hits = await fetchHitCounts();
+  const byGroup = {};
+  for (const c of data) {
+    const group = FLEET_GROUPS[c.name] || "Other";
+    (byGroup[group] = byGroup[group] || []).push(c);
+  }
+
+  wrap.innerHTML = "";
+  for (const group of GROUP_ORDER) {
+    const items = byGroup[group];
+    if (!items) continue;
+    items.sort((a, b) => a.label.localeCompare(b.label));
+    const groupEl = document.createElement("div");
+    groupEl.className = "fleet-group" + (collapsedGroups.has(group) ? " collapsed" : "");
+    const downCount = items.filter((c) => !(c.state === "running" && (c.health === "healthy" || !c.health))).length;
+    groupEl.innerHTML = `
+      <div class="fleet-group-head" data-group="${escapeHtml(group)}">
+        <span class="chev">▾</span>${escapeHtml(group)}
+        <span class="fleet-group-count">${items.length} container${items.length === 1 ? "" : "s"}${downCount ? ` · ${downCount} need attention` : ""}</span>
+      </div>
+      <div class="rule-list">${items.map(fleetRowHtml).join("")}</div>
+    `;
+    wrap.appendChild(groupEl);
+    groupEl.querySelector(".fleet-group-head").addEventListener("click", () => {
+      groupEl.classList.toggle("collapsed");
+      if (groupEl.classList.contains("collapsed")) collapsedGroups.add(group);
+      else collapsedGroups.delete(group);
+      localStorage.setItem("fleetCollapsed", JSON.stringify([...collapsedGroups]));
+    });
+    groupEl.querySelectorAll(".fleet-row").forEach((row) => {
+      const c = items.find((x) => x.name === row.dataset.name);
+      if (c.name === activeLogName) row.classList.add("selected");
+      wireFleetRow(row, c);
+    });
+  }
+  fleetBuilt = true;
+  populateLogSourceSelect(data);
+  renderStatusDots(data);
+}
+
+/* =====================================================================
+   Arr fleet detail — Radarr/Sonarr actions, unchanged behavior, just
+   restyled without the card class.
+   ===================================================================== */
+const ARR_APPS = [
+  { id: "radarr", label: "Radarr", port: 7878 },
+  { id: "sonarr", label: "Sonarr", port: 8989 },
+];
 const ARR_FLEET_ACTIONS = [
   { id: "queue-status", label: "Queue status", path: "/api/queue-status" },
   { id: "queue-errors", label: "Queue errors", path: "/api/arr/queue-errors" },
@@ -407,34 +518,6 @@ const ARR_FLEET_ACTIONS = [
   { id: "backlog-status", label: "Backlog ETA", path: "/api/backlog-status" },
   { id: "prowlarr-indexers", label: "Prowlarr indexers", path: "/api/prowlarr/indexers" },
 ];
-
-function buildArrFleetToolbar() {
-  const bar = document.getElementById("arr-fleet-toolbar");
-  const panel = document.getElementById("arr-fleet-panel");
-  if (!bar || !panel) return;
-  bar.innerHTML = ARR_FLEET_ACTIONS.map((a) => `<button class="btn-ghost" data-fleet="${a.id}" type="button">${a.label}</button>`).join("");
-  bar.querySelectorAll("[data-fleet]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const wasOpen = btn.classList.contains("active") && !panel.hidden;
-      bar.querySelectorAll("[data-fleet]").forEach((b) => b.classList.remove("active"));
-      if (wasOpen) {
-        panel.hidden = true;
-        return;
-      }
-      btn.classList.add("active");
-      const action = ARR_FLEET_ACTIONS.find((a) => a.id === btn.dataset.fleet);
-      logLine("pending", `${action.label} — requested`);
-      try {
-        await fetchAndRender(panel, "GET", action.path);
-        logLine("ok", `${action.label} — loaded`);
-      } catch (e) {
-        logLine("err", `${action.label} — ${e.message}`);
-      }
-    });
-  });
-}
-
-/* ---------- Arr fleet: per-app cards ---------- */
 const ARR_VIEWS = [
   { id: "backlog", label: "Backlog", path: (id) => `/api/arr/${id}/command-backlog` },
   { id: "missing-aired", label: "Missing aired", path: (id) => `/api/arr/${id}/missing-aired` },
@@ -447,17 +530,43 @@ const ARR_VIEWS = [
 function buildArrFleet() {
   const wrap = document.getElementById("arr-fleet");
   if (!wrap) return;
+
+  const toolbarRow = document.createElement("div");
+  toolbarRow.className = "arr-actions-row";
+  toolbarRow.innerHTML = `<span class="arr-actions-row-label">Fleet-wide</span>` + ARR_FLEET_ACTIONS.map((a) => `<button class="btn-ghost" data-fleet="${a.id}" type="button">${a.label}</button>`).join("");
+  const toolbarPanel = document.createElement("div");
+  toolbarPanel.className = "arr-panel";
+  toolbarPanel.hidden = true;
+  wrap.appendChild(toolbarRow);
+  wrap.appendChild(toolbarPanel);
+  toolbarRow.querySelectorAll("[data-fleet]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const wasOpen = btn.classList.contains("active") && !toolbarPanel.hidden;
+      toolbarRow.querySelectorAll("[data-fleet]").forEach((b) => b.classList.remove("active"));
+      if (wasOpen) { toolbarPanel.hidden = true; return; }
+      btn.classList.add("active");
+      const action = ARR_FLEET_ACTIONS.find((a) => a.id === btn.dataset.fleet);
+      logLine("pending", `${action.label} — requested`);
+      try {
+        await fetchAndRender(toolbarPanel, "GET", action.path);
+        logLine("ok", `${action.label} — loaded`);
+      } catch (e) {
+        logLine("err", `${action.label} — ${e.message}`);
+      }
+    });
+  });
+
   for (const app of ARR_APPS) {
     const openUrl = `${location.protocol}//${location.hostname}:${app.port}`;
-    const card = document.createElement("div");
-    card.className = "arr-card";
-    card.innerHTML = `
-      <div class="arr-card-head">
-        <div class="arr-card-name"><span class="dot unknown" id="arr-dot-${app.id}"></span>${app.label}</div>
-        <a class="arr-card-link" href="${openUrl}" target="_blank" rel="noopener">open UI ↗</a>
-        <div class="arr-card-status" id="arr-status-${app.id}">—</div>
+    const block = document.createElement("div");
+    block.className = "arr-block";
+    block.innerHTML = `
+      <div class="arr-head">
+        <div class="arr-name"><span class="dot unknown" id="arr-dot-${app.id}"></span>${app.label}</div>
+        <a class="arr-link" href="${openUrl}" target="_blank" rel="noopener">open UI ↗</a>
+        <div class="arr-status" id="arr-status-${app.id}">—</div>
       </div>
-      <form class="arr-card-search" data-app="${app.id}">
+      <form class="arr-search" data-app="${app.id}">
         <input type="search" placeholder="Search ${app.label}…" aria-label="Search ${app.label}" required>
         <button class="btn-ghost" type="submit">Search</button>
       </form>
@@ -465,26 +574,26 @@ function buildArrFleet() {
         <span class="arr-actions-row-label">Run</span>
         <button class="btn-primary" data-action="rss-sync" type="button">RSS sync</button>
         <button class="btn-primary" data-action="search-missing" type="button">Search missing</button>
-        ${app.queue ? `<button class="btn-ghost" data-unstick type="button">Unstick</button>` : ""}
-        ${app.queue ? `<button class="btn-ghost" data-unstick-importing type="button">Unstick importing</button>` : ""}
+        <button class="btn-ghost" data-unstick type="button">Unstick</button>
+        <button class="btn-ghost" data-unstick-importing type="button">Unstick importing</button>
       </div>
       <div class="arr-actions-row">
         <span class="arr-actions-row-label">View</span>
         ${ARR_VIEWS.map((v) => `<button class="btn-ghost" data-view="${v.id}" type="button">${v.label}</button>`).join("")}
-        ${app.queue ? `<button class="btn-ghost" data-view="manual-import" type="button">Manual import</button>` : ""}
+        <button class="btn-ghost" data-view="manual-import" type="button">Manual import</button>
       </div>
-      <div class="arr-card-panel result-scroll" id="arr-panel-${app.id}" hidden></div>
+      <div class="arr-panel" id="arr-panel-${app.id}" hidden></div>
     `;
-    wrap.appendChild(card);
+    wrap.appendChild(block);
 
-    const status = card.querySelector(".arr-card-status");
-    const panel = card.querySelector(`#arr-panel-${app.id}`);
+    const status = block.querySelector(".arr-status");
+    const panel = block.querySelector(`#arr-panel-${app.id}`);
 
-    card.querySelectorAll("[data-action]").forEach((btn) => {
+    block.querySelectorAll("[data-action]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const action = btn.dataset.action;
         const label = action === "rss-sync" ? "RSS sync" : "Search missing";
-        card.querySelectorAll("[data-action]").forEach((b) => (b.disabled = true));
+        block.querySelectorAll("[data-action]").forEach((b) => (b.disabled = true));
         setStatusLine(status, "pending", `${label}…`);
         logLine("pending", `${app.label} ${label} — requested`);
         try {
@@ -495,15 +604,15 @@ function buildArrFleet() {
           setStatusLine(status, "error", e.message);
           logLine("err", `${app.label} ${label} — ${e.message}`);
         } finally {
-          card.querySelectorAll("[data-action]").forEach((b) => (b.disabled = false));
+          block.querySelectorAll("[data-action]").forEach((b) => (b.disabled = false));
         }
       });
     });
 
-    setupUnstick(app, card, status);
-    if (app.queue) setupUnstickImporting(app, card, status);
+    setupUnstick(app, block, status);
+    setupUnstickImporting(app, block, status);
 
-    const searchForm = card.querySelector(".arr-card-search");
+    const searchForm = block.querySelector(".arr-search");
     searchForm.addEventListener("submit", (e) => {
       e.preventDefault();
       const input = searchForm.querySelector("input");
@@ -514,14 +623,11 @@ function buildArrFleet() {
       input.value = "";
     });
 
-    card.querySelectorAll("[data-view]").forEach((btn) => {
+    block.querySelectorAll("[data-view]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const wasOpen = btn.classList.contains("active") && !panel.hidden;
-        card.querySelectorAll("[data-view]").forEach((b) => b.classList.remove("active"));
-        if (wasOpen) {
-          panel.hidden = true;
-          return;
-        }
+        block.querySelectorAll("[data-view]").forEach((b) => b.classList.remove("active"));
+        if (wasOpen) { panel.hidden = true; return; }
         btn.classList.add("active");
         if (btn.dataset.view === "manual-import") {
           await loadManualImportCandidates(app, panel);
@@ -540,9 +646,8 @@ function buildArrFleet() {
   }
 }
 
-/* ---------- Unstick: sweep every stuck (warning/error) queue item ---------- */
-function setupUnstick(app, card, status) {
-  const btn = card.querySelector("[data-unstick]");
+function setupUnstick(app, block, status) {
+  const btn = block.querySelector("[data-unstick]");
   if (!btn) return;
   armButton(btn, "Unstick", "Confirm — removes + blocklists", async () => {
     btn.disabled = true;
@@ -561,9 +666,8 @@ function setupUnstick(app, card, status) {
   });
 }
 
-/* ---------- Unstick importing: force-verify + clear items stuck mid-import ---------- */
-function setupUnstickImporting(app, card, status) {
-  const btn = card.querySelector("[data-unstick-importing]");
+function setupUnstickImporting(app, block, status) {
+  const btn = block.querySelector("[data-unstick-importing]");
   if (!btn) return;
   armButton(btn, "Unstick importing", "Confirm — verifies + clears", async () => {
     btn.disabled = true;
@@ -582,7 +686,6 @@ function setupUnstickImporting(app, card, status) {
   });
 }
 
-/* ---------- Manual import panel ---------- */
 async function loadManualImportCandidates(app, panel) {
   panel.hidden = false;
   panel.innerHTML = `<div class="hint">Scanning stuck downloads for importable files…</div>`;
@@ -612,17 +715,14 @@ function renderManualImportCandidates(app, panel, items) {
         ? `<span class="result-rejections" title="${escapeHtml(item.rejections.join("; "))}">⚠ ${item.rejections.length} rejection${item.rejections.length === 1 ? "" : "s"}</span>`
         : "";
       return `
-        <div class="result-row">
+        <div class="result-row-item">
           <div class="result-row-main">
             <span class="result-title">${escapeHtml(match || item.name || "Unknown")}</span>
             ${rejections}
             <span class="result-meta">${escapeHtml(meta)}</span>
           </div>
-          <div class="result-row-actions">
-            <code title="${escapeHtml(item.relative_path || "")}">${escapeHtml(item.relative_path || "")}</code>
-            <button class="btn-ghost import-run" type="button" data-idx="${i}">Import</button>
-          </div>
-          <div class="status-line result-row-status" id="import-status-${app.id}-${i}">—</div>
+          <button class="btn-ghost import-run" type="button" data-idx="${i}">Import</button>
+          <div class="rule-status" id="import-status-${app.id}-${i}">—</div>
         </div>`;
     })
     .join("");
@@ -647,159 +747,11 @@ function renderManualImportCandidates(app, panel, items) {
   });
 }
 
-/* ---------- Container grid: full state/health/image/CPU/mem + controls,
-   discovered live from Docker via /api/containers rather than a fixed
-   list, so a service added to compose shows up here with no code change. */
-function fmtPercent(v) {
-  return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`;
-}
-
-function fmtMb(v) {
-  if (v === null || v === undefined) return "—";
-  return v >= 1024 ? `${(v / 1024).toFixed(2)} GB` : `${v.toFixed(0)} MB`;
-}
-
-function containerCardHtml(c, hits) {
-  const stateClass = c.state === "running" ? (c.health === "unhealthy" ? "down" : c.health === "starting" ? "unknown" : "up") : c.state === "exited" || c.state === "created" ? "down" : "unknown";
-  const healthLabel = c.state !== "running" ? c.state : c.health ? c.health : "running";
-  const cpuPct = c.cpu_percent === null || c.cpu_percent === undefined ? null : Math.min(c.cpu_percent, 100);
-  const memPct = c.mem_percent === null || c.mem_percent === undefined ? null : Math.min(c.mem_percent, 100);
-  const hit = hits && hits.counts[c.label];
-  const hitRow = hit === undefined ? "" : `
-        <div class="metric api-hits-metric${hits.justTicked.has(c.label) ? " api-hits-tick" : ""}" title="API calls made to ${escapeHtml(c.label)} since this panel started">
-          <span class="metric-label">API</span>
-          <span class="api-hits-dot"></span>
-          <span class="metric-value api-hits-value">${hit.toLocaleString()}</span>
-        </div>`;
-  return `
-    <div class="container-card" data-name="${escapeHtml(c.name)}" data-state="${escapeHtml(c.state)}">
-      <div class="container-card-head">
-        <span class="dot ${stateClass}"></span>
-        <span class="container-name">${escapeHtml(c.label)}${c.note ? `<span class="chip-sub">${escapeHtml(c.note)}</span>` : ""}</span>
-        <span class="container-health">${escapeHtml(healthLabel)}</span>
-      </div>
-      <div class="container-image" title="${escapeHtml(c.image)}">${escapeHtml(c.image)}</div>
-      <div class="container-metrics">
-        <div class="metric">
-          <span class="metric-label">CPU</span>
-          <div class="stat-bar small"><div class="stat-bar-fill" style="width:${cpuPct ?? 0}%"></div></div>
-          <span class="metric-value">${fmtPercent(c.cpu_percent)}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">MEM</span>
-          <div class="stat-bar small"><div class="stat-bar-fill" style="width:${memPct ?? 0}%"></div></div>
-          <span class="metric-value">${fmtMb(c.mem_used_mb)}</span>
-        </div>${hitRow}
-      </div>
-      <div class="container-actions">
-        <button class="btn-icon" type="button" data-act="start" title="Start" aria-label="Start ${escapeHtml(c.label)}" ${c.state === "running" ? "disabled" : ""}>${svg("start")}</button>
-        <button class="btn-icon" type="button" data-act="stop" title="Stop" aria-label="Stop ${escapeHtml(c.label)}" ${c.is_self || c.state !== "running" ? "disabled" : ""}>${svg("stop")}</button>
-        <button class="btn-icon" type="button" data-act="restart" title="Restart" aria-label="Restart ${escapeHtml(c.label)}" ${c.is_self ? "disabled" : ""}>${svg("restart")}</button>
-      </div>
-    </div>`;
-}
-
-const STOP_ICON = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
-const START_ICON = '<polygon points="6 3 20 12 6 21 6 3"/>';
-ICONS.stop = STOP_ICON;
-ICONS.start = START_ICON;
-
-function wireContainerCard(card, c) {
-  const startBtn = card.querySelector('[data-act="start"]');
-  const stopBtn = card.querySelector('[data-act="stop"]');
-  const restartBtn = card.querySelector('[data-act="restart"]');
-
-  const fire = async (btn, action, label) => {
-    btn.disabled = true;
-    btn.classList.add("spinning");
-    logLine("pending", `${c.label} — ${label} requested`);
-    try {
-      const data = await postAction(`/api/container/${c.name}/${action}`);
-      logLine("ok", `${c.label} — ${data.message}`);
-    } catch (e) {
-      logLine("err", `${c.label} — ${e.message}`);
-    } finally {
-      btn.classList.remove("spinning");
-      refreshContainerGrid();
-    }
-  };
-
-  if (!startBtn.disabled) startBtn.addEventListener("click", () => fire(startBtn, "start", "start"));
-  if (!restartBtn.disabled) restartBtn.addEventListener("click", () => fire(restartBtn, "restart", "restart"));
-  if (!stopBtn.disabled) armIconButton(stopBtn, "stop", () => fire(stopBtn, "stop", "stop"));
-}
-
-let containerGridBuilt = false;
-let previousHitCounts = {};
-
-async function fetchHitCounts() {
-  try {
-    const res = await fetch("/api/api-hit-counts");
-    if (!res.ok) return null;
-    const { counts } = await res.json();
-    const justTicked = new Set(
-      Object.keys(counts).filter((label) => counts[label] > (previousHitCounts[label] || 0))
-    );
-    previousHitCounts = counts;
-    return { counts, justTicked };
-  } catch (e) {
-    return null;
-  }
-}
-
-async function refreshContainerGrid() {
-  const grid = document.getElementById("container-grid");
-  let data;
-  try {
-    const res = await fetch("/api/containers");
-    data = await res.json();
-    if (!res.ok) throw new Error("Could not load containers");
-  } catch (e) {
-    if (!containerGridBuilt) grid.innerHTML = `<div class="hint error">Could not load containers.</div>`;
-    return;
-  }
-  const hits = await fetchHitCounts();
-  const up = data.filter((c) => c.state === "running" && (c.health === "healthy" || !c.health)).length;
-  const containersValue = document.getElementById("stat-containers-value");
-  const containersSub = document.getElementById("stat-containers-sub");
-  if (containersValue) containersValue.textContent = `${up} / ${data.length}`;
-  if (containersSub) containersSub.textContent = up === data.length ? "all healthy" : `${data.length - up} need attention`;
-
-  grid.innerHTML = data.map((c) => containerCardHtml(c, hits)).join("");
-  grid.querySelectorAll(".container-card").forEach((card) => {
-    const c = data.find((x) => x.name === card.dataset.name);
-    wireContainerCard(card, c);
-  });
-  containerGridBuilt = true;
-
-  renderSidebarStatus(data);
-}
-
-/* ---------- Sidebar status list: every container, always visible,
-   fed off the same /api/containers poll the grid already does. ---------- */
-function renderSidebarStatus(data) {
-  const list = document.getElementById("sidebar-status-list");
-  if (!list) return;
-  const sorted = [...data].sort((a, b) => a.label.localeCompare(b.label));
-  list.innerHTML = sorted
-    .map((c) => {
-      const cls = c.state !== "running" ? "down" : c.health === "unhealthy" ? "down" : c.health === "starting" ? "unknown" : "up";
-      return `<li><span class="dot ${cls}"></span><span class="name" title="${escapeHtml(c.label)}">${escapeHtml(c.label)}</span></li>`;
-    })
-    .join("");
-}
-
 /* ---------- Arm/confirm guard for real, one-shot side effects ---------- */
 function armButton(btn, idleLabel, armedLabel, onConfirm) {
   let armed = false;
   let disarmTimer = null;
-
-  const disarm = () => {
-    armed = false;
-    btn.textContent = idleLabel;
-    btn.classList.remove("armed");
-  };
-
+  const disarm = () => { armed = false; btn.textContent = idleLabel; btn.classList.remove("armed"); };
   btn.textContent = idleLabel;
   btn.addEventListener("click", async () => {
     if (!armed) {
@@ -815,7 +767,7 @@ function armButton(btn, idleLabel, armedLabel, onConfirm) {
   });
 }
 
-function armIconButton(btn, iconName, onConfirm) {
+function armIconButton(btn, iconName, onConfirm, stopHandler) {
   let armed = false;
   let disarmTimer = null;
   btn.innerHTML = svg(iconName);
@@ -827,7 +779,8 @@ function armIconButton(btn, iconName, onConfirm) {
   };
   btn.dataset.idleTitle = btn.title;
   btn.dataset.idleLabel = btn.getAttribute("aria-label") || btn.title;
-  btn.addEventListener("click", async () => {
+  btn.addEventListener("click", async (e) => {
+    if (stopHandler) stopHandler(e);
     if (!armed) {
       armed = true;
       btn.classList.add("armed");
@@ -842,6 +795,270 @@ function armIconButton(btn, iconName, onConfirm) {
   });
 }
 
+/* =====================================================================
+   Host rail — two lanes. Vitals are read-only checks this container can
+   genuinely answer from its own mounts (docker.sock, /host-config,
+   /mnt, /host-backups). Package updates / reboot-needed / mem-pressure
+   / zombie-check are deliberately NOT here: this container has no
+   pacman, no pid:host, and no real host /proc — building those as live
+   tiles would show container-scoped or fake data as if it were the
+   host's. They stay terminal-only; see the Reference rail below.
+   ===================================================================== */
+const HOST_VITALS = [
+  { id: "mount-health", label: "Mount health", desc: "Every known FUSE mountpoint under /mnt, checked for a clean listing.", path: "/api/mount-health" },
+  { id: "oom-check", label: "OOM kills", desc: "Containers Docker has ever recorded an OOM-kill flag for.", path: "/api/oom-check" },
+  { id: "resource-check", label: "Resource limits", desc: "Containers missing an explicit mem_limit or cpus.", path: "/api/resource-check" },
+  { id: "disk-usage", label: "Config disk usage", desc: "Per-app config/ directory size, largest first.", path: "/api/disk-usage" },
+  { id: "backup-verify", label: "Backup verify", desc: "Latest restic snapshot age and repo integrity summary.", path: "/api/backup-verify" },
+];
+
+function buildHostVitals() {
+  const wrap = document.getElementById("host-vitals");
+  for (const v of HOST_VITALS) {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+    row.innerHTML = `
+      <div class="rule-main">
+        <span class="rule-title">${escapeHtml(v.label)}</span>
+        <span class="rule-desc">${escapeHtml(v.desc)}</span>
+      </div>
+      <div class="rule-actions"><button class="btn-ghost" type="button">Check</button></div>
+      <div class="rule-result" hidden></div>
+    `;
+    wrap.appendChild(row);
+    const btn = row.querySelector("button");
+    const result = row.querySelector(".rule-result");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      logLine("pending", `${v.label} — requested`);
+      try {
+        await fetchAndRender(result, "GET", v.path);
+        logLine("ok", `${v.label} — loaded`);
+      } catch (e) {
+        logLine("err", `${v.label} — ${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+}
+
+function buildHostActions() {
+  const wrap = document.getElementById("host-actions");
+
+  const restartRow = document.createElement("div");
+  restartRow.className = "rule-row";
+  restartRow.innerHTML = `
+    <div class="rule-main">
+      <span class="rule-title">Restart entire stack</span>
+      <span class="rule-desc">Restarts every container except this panel, mount-order aware. Brief outage stack-wide.</span>
+    </div>
+    <div class="rule-actions"><button class="btn-danger" type="button">Restart everything</button></div>
+    <div class="rule-status" id="status-restart-all">—</div>
+  `;
+  wrap.appendChild(restartRow);
+  const restartBtn = restartRow.querySelector("button");
+  const restartStatus = restartRow.querySelector(".rule-status");
+  armButton(restartBtn, "Restart everything", "Click again to confirm", async () => {
+    restartBtn.disabled = true;
+    setStatusLine(restartStatus, "pending", "Restarting…");
+    logLine("pending", "Restart entire stack — requested");
+    try {
+      const data = await postAction("/api/stack/restart-all");
+      setStatusLine(restartStatus, "success", data.message);
+      logLine("ok", `Restart entire stack — ${data.message}`);
+      refreshStatus();
+    } catch (e) {
+      setStatusLine(restartStatus, "error", e.message);
+      logLine("err", `Restart entire stack — ${e.message}`);
+    } finally {
+      restartBtn.disabled = false;
+    }
+  });
+
+  const posterRow = document.createElement("div");
+  posterRow.className = "rule-row";
+  posterRow.innerHTML = `
+    <div class="rule-main">
+      <span class="rule-title">Poster sync</span>
+      <span class="rule-desc">Replace posters with the top-voted TMDb match, one library at a time.</span>
+    </div>
+    <div class="rule-actions"><button class="btn-ghost" type="button">Open</button></div>
+  `;
+  wrap.appendChild(posterRow);
+  posterRow.querySelector("button").addEventListener("click", () => {
+    document.getElementById("poster-dock").hidden = false;
+  });
+
+  const integrityRow = document.createElement("div");
+  integrityRow.className = "rule-row";
+  integrityRow.innerHTML = `
+    <div class="rule-main">
+      <span class="rule-title">Backup integrity check</span>
+      <span class="rule-desc">Runs restic's own data-verification pass against the repo — can take a while on a large repo.</span>
+    </div>
+    <div class="rule-actions"><button class="btn-ghost" type="button">Run check</button></div>
+    <div class="rule-status" id="status-backup-integrity">—</div>
+  `;
+  wrap.appendChild(integrityRow);
+  const integrityBtn = integrityRow.querySelector("button");
+  const integrityStatus = integrityRow.querySelector(".rule-status");
+  armButton(integrityBtn, "Run check", "Click again to confirm", async () => {
+    integrityBtn.disabled = true;
+    setStatusLine(integrityStatus, "pending", "Running…");
+    logLine("pending", "Backup integrity check — requested");
+    try {
+      const data = await postAction("/api/backup-integrity-check");
+      setStatusLine(integrityStatus, "success", data.message);
+      logLine("ok", `Backup integrity check — ${data.message}`);
+    } catch (e) {
+      setStatusLine(integrityStatus, "error", e.message);
+      logLine("err", `Backup integrity check — ${e.message}`);
+    } finally {
+      integrityBtn.disabled = false;
+    }
+  });
+}
+
+function buildPosterDock() {
+  document.getElementById("poster-dock-close").addEventListener("click", () => {
+    document.getElementById("poster-dock").hidden = true;
+    closePosterStream();
+  });
+  buildPosterSync();
+}
+
+/* =====================================================================
+   Reference rail — open-a-service quicklinks, documentation (this
+   stack's own README + each third-party app's real upstream docs, all
+   verified against docker-compose.yml's actual images before being
+   hardcoded here), and a read-only list of the Claude Code skills this
+   project uses (dev-time only — this app has no mechanism to invoke
+   them, so they're informational, not interactive).
+   ===================================================================== */
+const QUICK_LINKS = [
+  { id: "plex", label: "Plex", port: 32400, path: "/web" },
+  { id: "prowlarr", label: "Prowlarr", port: 9696 },
+  { id: "radarr", label: "Radarr", port: 7878 },
+  { id: "sonarr", label: "Sonarr", port: 8989 },
+  { id: "altmount", label: "AltMount", port: 8081 },
+  { id: "seerr", label: "Seerr", port: 5055 },
+  { id: "bazarr", label: "Bazarr", port: 6767 },
+  { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
+  { id: "neutarr", label: "NeutArr", port: 9705 },
+];
+
+function buildQuickLinks() {
+  const container = document.getElementById("quicklinks");
+  container.innerHTML = QUICK_LINKS.map((svc) => {
+    const url = `${location.protocol}//${location.hostname}:${svc.port}${svc.path || ""}`;
+    return `<a class="quicklink" href="${url}" target="_blank" rel="noopener"><span class="dot unknown" id="qdot-${svc.id}"></span>${escapeHtml(svc.label)}</a>`;
+  }).join("");
+}
+
+/* Each URL below was verified to resolve (github.com/<org>/<repo> or the
+   project's own docs domain) against docker-compose.yml's real pinned
+   image before being hardcoded — not guessed from the app's common name.
+   `installed: false` means the compose service block and image both
+   still exist, but no container is currently created for it (confirmed
+   via `docker compose ps -a` showing nothing for that service) — kept
+   here as documentation, not presented as a live/running app. */
+const DOC_LINKS = [
+  { app: "Radarr", desc: "movie root-folder/quality-profile management", urls: [["Wiki", "https://wiki.servarr.com/radarr"], ["Source", "https://github.com/Radarr/Radarr"]] },
+  { app: "Sonarr", desc: "TV root-folder/quality-profile management", urls: [["Wiki", "https://wiki.servarr.com/sonarr"], ["Source", "https://github.com/Sonarr/Sonarr"]] },
+  { app: "Prowlarr", desc: "indexer manager, syncs to Radarr/Sonarr", urls: [["Wiki", "https://wiki.servarr.com/prowlarr"], ["Source", "https://github.com/Prowlarr/Prowlarr"]] },
+  { app: "AltMount", desc: "Usenet WebDAV mount + SABnzbd-compatible API", urls: [["Source", "https://github.com/javi11/altmount"]] },
+  { app: "Seerr", desc: "media request/discovery front-end", urls: [["Source", "https://github.com/seerr-team/seerr"]] },
+  { app: "Plex", desc: "media server", urls: [["Support", "https://support.plex.tv"]] },
+  { app: "Tautulli", desc: "Plex monitoring/stats", urls: [["Source", "https://github.com/Tautulli/Tautulli"]], installed: false },
+  { app: "Bazarr", desc: "subtitle management for Radarr/Sonarr", urls: [["Source", "https://github.com/morpheus65535/bazarr"]] },
+  { app: "Cleanuparr", desc: "queue strikes/malware-block/stalled cleanup", urls: [["Source", "https://github.com/Cleanuparr/Cleanuparr"]] },
+  { app: "NeutArr", desc: "missing/upgrade hunting (Huntarr-lineage fork)", urls: [["Source", "https://github.com/I-am-PUID-0/NeutArr"]] },
+  { app: "Unpackerr", desc: "RAR extraction for Radarr/Sonarr downloads", urls: [["Source", "https://github.com/Unpackerr/unpackerr"]] },
+  { app: "Watchtower", desc: "container auto-update (maintained fork)", urls: [["Source", "https://github.com/nicholas-fedor/watchtower"]] },
+  { app: "Kometa", desc: "collections/overlays/metadata (Plex-only — no Jellyfin support)", urls: [["Source", "https://github.com/Kometa-Team/Kometa"]], installed: false },
+];
+
+function buildDocLinks() {
+  const wrap = document.getElementById("doc-links");
+
+  const readmeRow = document.createElement("div");
+  readmeRow.className = "rule-row";
+  readmeRow.innerHTML = `
+    <div class="rule-main">
+      <span class="rule-title">This stack's own README.md</span>
+      <span class="rule-desc">No public downstream mirror exists for this repo — read directly off disk instead of linking out.</span>
+    </div>
+    <div class="rule-actions"><button class="btn-ghost" type="button" id="readme-open">Open</button></div>
+  `;
+  wrap.appendChild(readmeRow);
+  document.getElementById("readme-open").addEventListener("click", async () => {
+    const panel = document.getElementById("readme-panel");
+    const body = document.getElementById("readme-body");
+    panel.hidden = false;
+    body.textContent = "Loading…";
+    try {
+      const res = await fetch("/api/docs/readme");
+      const data = await res.json();
+      body.textContent = res.ok ? data.text : (data?.detail?.message || "Could not load README.md");
+    } catch (e) {
+      body.textContent = e.message;
+    }
+  });
+  document.getElementById("readme-close").addEventListener("click", () => {
+    document.getElementById("readme-panel").hidden = true;
+  });
+
+  for (const doc of DOC_LINKS) {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+    const notInstalled = doc.installed === false
+      ? `<span class="not-installed-tag" title="Compose service block and image both exist, but no container is currently created for it">not installed</span>`
+      : "";
+    row.innerHTML = `
+      <div class="rule-main">
+        <span class="rule-title">${escapeHtml(doc.app)}${notInstalled}</span>
+        <span class="rule-desc">${escapeHtml(doc.desc)}</span>
+      </div>
+      <div class="rule-actions">${doc.urls.map(([label, url]) => `<a class="doc-link-ext" href="${url}" target="_blank" rel="noopener">${escapeHtml(label)} ↗</a>`).join("")}</div>
+    `;
+    wrap.appendChild(row);
+  }
+}
+
+/* Dev-time Claude Code skills this project uses — run inside Claude
+   Code sessions, not inside this FastAPI app. Kept as a separate,
+   read-only reference list rather than merged into the operator
+   console above, since this app has no mechanism to invoke them. */
+const CLAUDE_SKILLS = [
+  { name: "docker-compose-manager", desc: "Start/stop/restart/inspect containers, mount-order aware." },
+  { name: "health-monitor", desc: "Container health + HTTP-endpoint reachability sweep across the stack." },
+  { name: "media-path-validator", desc: "Validate library/download paths are mounted and hardlink-capable." },
+  { name: "request-manager-integrator", desc: "Wire Seerr to Radarr/Sonarr and verify the connection is live." },
+  { name: "secret-injector", desc: "Generate/validate .env, rotate API keys, scan for leaked secrets." },
+  { name: "arr-config-sync", desc: "Backup/restore/diff config across Radarr, Sonarr, Prowlarr." },
+  { name: "trash-guides-applier", desc: "Apply TRaSH Guides quality profiles and custom formats." },
+  { name: "usenet-orchestrator", desc: "Inspect/manage the Usenet download queue and health." },
+  { name: "stack-cli-arr-fleet", desc: "Radarr/Sonarr queue, import, missing/cutoff, Bazarr subtitle ops." },
+  { name: "stack-cli-discovery-import", desc: "Letterboxd/MDBList/Trakt/TMDb list imports and rating lookups." },
+  { name: "stack-cli-infra-ops", desc: "Container control, backup verify/integrity, disk usage checks." },
+  { name: "stack-cli-plex-kometa", desc: "Plex library/Butler tasks, Kometa runs, Tautulli stats." },
+  { name: "stack-cli-system-maintenance", desc: "Host package updates, reboot/disk/SMART/journal checks (terminal-only — see the Host rail's note above)." },
+  { name: "stack-cli-usenet-queue", desc: "AltMount/Cleanuparr/NeutArr/Prowlarr status and queue ops." },
+];
+
+function buildSkillsList() {
+  const wrap = document.getElementById("skills-list");
+  wrap.innerHTML = CLAUDE_SKILLS.map((s) => `
+    <div class="rule-row">
+      <div class="rule-main">
+        <span class="skill-name">${escapeHtml(s.name)}</span>
+        <span class="rule-desc">${escapeHtml(s.desc)}</span>
+      </div>
+    </div>`).join("");
+}
+
+/* ---------- Plex update check ---------- */
 function buildPlexUpdateCheck() {
   const btn = document.getElementById("plex-check-updates");
   const val = document.getElementById("stat-plex-value");
@@ -867,30 +1084,7 @@ function buildPlexUpdateCheck() {
   check();
 }
 
-/* ---------- Danger zone: restart everything ---------- */
-function buildDangerZone() {
-  const btn = document.getElementById("restart-all-btn");
-  const status = document.getElementById("status-restart-all");
-
-  armButton(btn, "Restart everything", "Click again to confirm", async () => {
-    btn.disabled = true;
-    setStatusLine(status, "pending", "Restarting…");
-    logLine("pending", "Restart entire stack — requested");
-    try {
-      const data = await postAction("/api/stack/restart-all");
-      setStatusLine(status, "success", data.message);
-      logLine("ok", `Restart entire stack — ${data.message}`);
-      refreshStatus();
-    } catch (e) {
-      setStatusLine(status, "error", e.message);
-      logLine("err", `Restart entire stack — ${e.message}`);
-    } finally {
-      btn.disabled = false;
-    }
-  });
-}
-
-/* ---------- Status dots + sidebar connection state ---------- */
+/* ---------- Status dots (topbar conn + arr dots + quicklink dots) ---------- */
 function setHudConn(up) {
   const dot = document.getElementById("hud-conn-dot");
   const label = document.getElementById("hud-conn-label");
@@ -900,46 +1094,32 @@ function setHudConn(up) {
   label.textContent = up ? "connected" : "disconnected";
 }
 
+function renderStatusDots(data) {
+  for (const c of data) {
+    const isUp = c.state === "running" && (c.health === "healthy" || !c.health);
+    const isStarting = c.state === "running" && c.health === "starting";
+    const stateClass = isUp ? "up" : isStarting ? "unknown" : "down";
+    const dot = document.getElementById(`arr-dot-${c.name}`);
+    if (dot) { dot.classList.remove("up", "down", "unknown"); dot.classList.add(stateClass); }
+    const qdot = document.getElementById(`qdot-${c.name}`);
+    if (qdot) { qdot.classList.remove("up", "down", "unknown"); qdot.classList.add(stateClass); }
+  }
+}
+
 async function refreshStatus() {
-  let data;
   try {
-    const res = await fetch("/api/status");
-    data = await res.json();
+    await fetch("/api/status");
     setHudConn(true);
   } catch (_) {
     setHudConn(false);
-    return;
-  }
-  for (const [name, info] of Object.entries(data)) {
-    const isUp = info.state === "running" && (info.health === "healthy" || info.health == null);
-    const isStarting = info.state === "running" && info.health === "starting";
-    const stateClass = isUp ? "up" : isStarting ? "unknown" : "down";
-
-    const dot = document.getElementById(`arr-dot-${name}`);
-    if (dot) {
-      dot.classList.remove("up", "down", "unknown");
-      dot.classList.add(stateClass);
-    }
-    const qdot = document.getElementById(`qdot-${name}`);
-    if (qdot) {
-      qdot.classList.remove("up", "down", "unknown");
-      qdot.classList.add(stateClass);
-    }
   }
 }
 
 /* ---------- Clock + session uptime ---------- */
 const sessionStart = Date.now();
-
 function tickClock() {
   const el = document.getElementById("clock");
-  el.textContent = new Date().toLocaleString([], {
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  el.textContent = new Date().toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
   const h = String(Math.floor(elapsed / 3600)).padStart(2, "0");
   const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
@@ -949,14 +1129,13 @@ function tickClock() {
 }
 
 /* =====================================================================
-   Operator console — same list -> args -> confirm -> run screen flow,
-   same command manifest (static/commands.json), every request goes
-   same-origin straight to this app's own API. The Arr fleet page above
-   covers the day-to-day Radarr/Sonarr actions with one click each; this
-   is the full stack-* manifest for everything else (backups, disk
-   usage, image checks, and the long tail).
+   Command palette — Interaction model option C: the "doing" half of
+   the split (viewing state is the panels above; triggering an action
+   goes through here, reachable by fuzzy search regardless of where you
+   are). Same list -> args -> confirm -> run flow as before, same
+   manifest (static/commands.json); a running command's log now streams
+   into the persistent right-column console instead of its own pane.
    ===================================================================== */
-
 const consoleScreens = {
   list: document.getElementById("screen-list"),
   args: document.getElementById("screen-args"),
@@ -965,25 +1144,45 @@ const consoleScreens = {
 };
 
 let commandRegistry = [];
-let activeLogSource = null;
+
+function openPalette() {
+  document.getElementById("palette-overlay").hidden = false;
+  showConsoleScreen("list");
+  const input = document.getElementById("console-filter");
+  input.value = "";
+  renderCommandList("");
+  setTimeout(() => input.focus(), 30);
+}
+
+function closePalette() {
+  document.getElementById("palette-overlay").hidden = true;
+}
 
 function showConsoleScreen(name) {
   for (const [key, el] of Object.entries(consoleScreens)) {
     if (el) el.hidden = key !== name;
   }
-  if (name !== "run") closeLogStream();
 }
 
-function closeLogStream() {
-  if (activeLogSource) {
-    activeLogSource.close();
-    activeLogSource = null;
-  }
+function wirePalette() {
+  document.getElementById("palette-open").addEventListener("click", openPalette);
+  document.querySelectorAll("[data-close]").forEach((btn) => btn.addEventListener("click", closePalette));
+  document.getElementById("palette-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "palette-overlay") closePalette();
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      const overlay = document.getElementById("palette-overlay");
+      overlay.hidden ? openPalette() : closePalette();
+    } else if (e.key === "Escape" && !document.getElementById("palette-overlay").hidden) {
+      closePalette();
+    }
+  });
+  document.querySelectorAll("[data-back]").forEach((btn) => {
+    btn.addEventListener("click", () => showConsoleScreen(btn.dataset.back));
+  });
 }
-
-document.querySelectorAll("[data-back]").forEach((btn) => {
-  btn.addEventListener("click", () => showConsoleScreen(btn.dataset.back));
-});
 
 async function loadCommandRegistry() {
   const statusLine = document.getElementById("console-status");
@@ -1044,7 +1243,6 @@ if (consoleFilterInput) {
 function openCommand(cmd) {
   document.getElementById("args-title").textContent = cmd.Name;
   document.getElementById("args-desc").textContent = cmd.Description;
-
   const form = document.getElementById("args-form");
   form.innerHTML = "";
 
@@ -1052,7 +1250,6 @@ function openCommand(cmd) {
     const label = document.createElement("label");
     const optionalTag = arg.Optional ? " (optional)" : "";
     label.innerHTML = `<span class="label-text">${escapeHtml(arg.Name)}${optionalTag}</span>`;
-
     let input;
     if (arg.Choices && arg.Choices.length > 0) {
       input = document.createElement("select");
@@ -1088,11 +1285,8 @@ function openCommand(cmd) {
   form.onsubmit = (e) => {
     e.preventDefault();
     const values = Array.from(form.querySelectorAll("[data-arg-name]")).map((el) => el.value);
-    if (cmd.Confirm) {
-      showConsoleConfirm(cmd, values);
-    } else {
-      runRegistryCommand(cmd, values);
-    }
+    if (cmd.Confirm) showConsoleConfirm(cmd, values);
+    else runRegistryCommand(cmd, values);
   };
 
   showConsoleScreen("args");
@@ -1105,9 +1299,7 @@ function showConsoleConfirm(cmd, values) {
   input.value = "";
   input.placeholder = cmd.Name;
   yes.disabled = true;
-  input.oninput = () => {
-    yes.disabled = input.value.trim() !== cmd.Name;
-  };
+  input.oninput = () => { yes.disabled = input.value.trim() !== cmd.Name; };
   yes.onclick = () => runRegistryCommand(cmd, values);
   document.getElementById("confirm-no").onclick = () => showConsoleScreen("args");
   showConsoleScreen("confirm");
@@ -1123,8 +1315,6 @@ function resolveLogContainer(cmd, values) {
   return v ? v : null;
 }
 
-/* ---- request builder: JS port of stack-web's commands.rs Prepare() +
-   exec.rs, targeting this app's own same-origin API directly ---- */
 function pathEscape(s) {
   let out = "";
   for (const ch of unescape(encodeURIComponent(s))) {
@@ -1205,34 +1395,22 @@ async function callApi(method, path, body) {
 
 function parseApiResult(raw, status) {
   if (!raw) return { ok: status === 200, message: `(empty response, HTTP ${status})`, data: null, rawList: null };
-
   let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (_) {
-    return { ok: false, message: raw, data: null, rawList: null };
-  }
-
+  try { parsed = JSON.parse(raw); } catch (_) { return { ok: false, message: raw, data: null, rawList: null }; }
   if (Array.isArray(parsed)) return { ok: status === 200, message: "", data: null, rawList: parsed };
-
   let data = parsed;
   if (data && typeof data.detail === "object" && data.detail !== null) data = data.detail;
-
   if (data && typeof data.message === "string") {
     const ok = typeof data.ok === "boolean" ? data.ok : status === 200;
     return { ok, message: data.message, data, rawList: null };
   }
-
   return { ok: status === 200, message: "", data, rawList: null };
 }
 
-/* manual-import-by-index mirrors stack-arr-import.fish: re-fetch the
-   candidate list fresh, then POST the file object at the chosen index. */
 async function runManualImportByIndex(cmd, values) {
   const app = values[0] || "";
   const idx = parseInt((values[1] || "").trim(), 10);
   if (Number.isNaN(idx)) throw new Error(`index must be a number, got ${JSON.stringify(values[1])}`);
-
   const listPath = cmd.PathTemplate.replace("{1}", pathEscape(app));
   const listRes = await callApi("GET", listPath, null);
   if (!listRes.rawList) throw new Error("expected a JSON array response");
@@ -1247,14 +1425,6 @@ async function runLogLevelsReset(values) {
   return callApi("GET", "/api/log-levels", null);
 }
 
-/* Letterboxd's grid-scrape endpoints all take one JSON field (`url`), but
-   two of the manifest entries collect it differently: filmography splits
-   it into role+slug that need joining into a URL, and popular takes no
-   arg at all (always the same base films page) - neither fits the
-   generic {ArgName -> BodyFields.Key} mapping every other command uses,
-   so (like manual-import-by-index and log-levels-reset above) these get
-   their own small BodyMode handler instead of stretching that mapping to
-   cover a shape it wasn't built for. */
 async function runLetterboxdFilmography(cmd, values) {
   const role = (values[0] || "").trim();
   const slug = (values[1] || "").trim();
@@ -1268,11 +1438,6 @@ async function runLetterboxdPopular(cmd) {
   return callApi(cmd.Method, prepared.path, JSON.stringify({ url: "https://letterboxd.com/films/" }));
 }
 
-/* Generic /api/arr/{app}/import-list/add caller - covers every
-   implementation (PlexRssImport, PlexImport, RadarrListImport,
-   CustomImport, TMDbCompanyImport, TMDbKeywordImport, TraktListImport)
-   through one manifest shape (cmd.BodyFields.{Implementation,Name|NameArg,
-   Fields,SearchArg}) instead of a dedicated handler per implementation. */
 async function runImportListAdd(cmd, values) {
   const spec = cmd.BodyFields;
   const path = prepareCommand(cmd, values).path;
@@ -1307,23 +1472,8 @@ async function runRegistryCommand(cmd, values) {
   document.getElementById("result-pane").textContent = "";
   logLine("pending", `${cmd.Name} — requested`);
 
-  const logPane = document.getElementById("log-pane");
-  const logLines = document.getElementById("log-lines");
-  logLines.textContent = "";
   const container = resolveLogContainer(cmd, values);
-
-  closeLogStream();
-  if (container) {
-    logPane.hidden = false;
-    document.getElementById("log-container-name").textContent = `(${container})`;
-    activeLogSource = new EventSource(`/api/container/${encodeURIComponent(container)}/logs/stream`);
-    activeLogSource.onmessage = (ev) => {
-      logLines.textContent += ev.data + "\n";
-      logLines.scrollTop = logLines.scrollHeight;
-    };
-  } else {
-    logPane.hidden = true;
-  }
+  if (container) selectLogSource(container);
 
   try {
     const result = await execCommand(cmd, values);
@@ -1337,20 +1487,16 @@ async function runRegistryCommand(cmd, values) {
     document.getElementById("result-pane").textContent = String(e.message || e);
     logLine("err", `${cmd.Name} — ${e.message || e}`);
   }
-
-  if (activeLogSource) setTimeout(closeLogStream, 2000);
 }
 
 function renderConsoleResult(result) {
   const lines = [];
   if (result.message) lines.push(result.message);
-
   if (result.rawList) {
     if (!result.message && result.rawList.length === 0) return "(empty list)";
     for (const item of result.rawList) lines.push("  " + summarizeConsoleItem(item));
     return lines.join("\n");
   }
-
   const data = result.data || {};
   for (const key of Object.keys(data).sort()) {
     if (key === "message" || key === "ok") continue;
@@ -1391,10 +1537,7 @@ function summarizeConsoleItem(item) {
     const parts = [];
     const used = new Set();
     for (const key of priority) {
-      if (key in item) {
-        parts.push(String(item[key]));
-        used.add(key);
-      }
+      if (key in item) { parts.push(String(item[key])); used.add(key); }
     }
     for (const key of Object.keys(item).sort()) {
       if (used.has(key)) continue;
@@ -1497,19 +1640,22 @@ function buildPosterSync() {
 }
 
 /* ---------- Boot ---------- */
-wireSidebarNav();
+wireLogConsole();
 buildQuickLinks();
-buildPrimaryGrid();
-buildArrFleetToolbar();
+buildPrimaryActions();
 buildArrFleet();
-buildPosterSync();
-buildDangerZone();
+buildHostVitals();
+buildHostActions();
+buildPosterDock();
+buildDocLinks();
+buildSkillsList();
 buildPlexUpdateCheck();
+wirePalette();
 loadCommandRegistry();
 tickClock();
 setInterval(tickClock, 1000);
 refreshStatus();
 setInterval(refreshStatus, 20000);
-refreshContainerGrid();
-setInterval(refreshContainerGrid, 15000);
+refreshFleet();
+setInterval(refreshFleet, 15000);
 logLine("ok", "Control panel ready.");

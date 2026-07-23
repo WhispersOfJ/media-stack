@@ -12,40 +12,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Docker Compose media-acquisition-and-serving stack (18 services, one `docker-compose.yml`):
-indexes content via Prowlarr, requests via Seerr, organizes via two `*arr`-family apps
-(Radarr/Sonarr — Lidarr was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below;
-Bindery, the ebook `*arr`, was retired in v10.9.8 along with its reader Calibre-Web; no ebook app
-currently in the stack), fetches via Usenet (NzbDAV) exclusively, and serves via a containerized
-**Jellyfin** (`lscr.io/linuxserver/jellyfin:latest`). **Plex was removed entirely 2026-07-22,
-replaced by Jellyfin** — see the Historical incidents section below for the full migration.
-Jellyfin runs the same two libraries Plex's final config did (Movies `/data/movies`, Shows
-`/data/shows`) with the same VAAPI hardware-transcode device (`/dev/dri/renderD128`) carried
-over, and no longer needs Plex's `network_mode: host` exception — Jellyfin runs on the same
-`stacknet` bridge as every other service, so that exception no longer exists anywhere in this
-stack. Jellystat (plus its own `jellystat-db` Postgres — this stack's first Postgres dependency
-since `zilean-postgres` was removed in v11.0.0) replaces Tautulli's role for Jellyfin —
-Tautulli itself was removed entirely (Plex-only, nothing left to monitor). **Kometa and
-its Quickstart companion were removed entirely** (no automated collections/overlays/metadata
-tool currently runs in this stack) after confirming Kometa cannot talk to Jellyfin at all —
-its own JSON config schema has no `jellyfin`/`emby` top-level property, only `plex` (several
-blog-post sources claiming otherwise are wrong/outdated). **Torrent and debrid support
-(Decypharr, Zurg, rclone-alldebrid, Zilean, zilean-postgres, Byparr) was removed entirely in
-v11.0.0, by explicit request** — every future acquisition goes through NzbDAV, no exceptions
-(see the landmines/History sections below for the full removal, including a real consequence
-found mid-execution: those apps never downloaded real bytes, only symlinked into a live FUSE
-mount streamed from the debrid provider, so removing them immediately broke playback for the
-~3.65% of the library that was debrid-sourced, not just future acquisitions). Usenet had
-already been the preferred protocol since a v10.14.1 policy change (a deliberate reversal of
-the stack's original debrid-first design) before this final removal. There is no adult content
-library in this stack anymore: Plex's own Adult library was removed in v10.9.9 (confirmed live
-via `/library/sections`, back when Plex still served this role), and Whisparr (which managed
-the underlying files/root folder) plus Stash (which cataloged it) were both removed in
-v10.12.0, along with the files themselves. There is no anime library in this stack either as of
-v10.19.0 (also removed by explicit request, not a dead-app cleanup — see the landmines section
-below), and no self-hosted DebridMediaManager as of v10.20.0 (same reasoning, same section).
-`control-panel/` is the one custom-built component (a FastAPI dashboard); everything else is
-off-the-shelf images wired together in `docker-compose.yml`.
+A Docker Compose media-acquisition-and-serving stack, one `docker-compose.yml`: indexes content
+via Prowlarr, requests via Seerr, organizes via two `*arr`-family apps (Radarr/Sonarr — Lidarr
+was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below; Bindery, the ebook `*arr`,
+was retired in v10.9.8 along with its reader Calibre-Web; no ebook app currently in the stack),
+fetches via Usenet exclusively through **AltMount**, and serves via **Plex** (real, current
+state as of 2026-07-23 — confirmed live via `docker compose ps`, `/library/sections`, and
+`docker-compose.yml` itself, not assumed from older narrative in this file). Jellyfin briefly
+replaced Plex on 2026-07-22 and was fully reverted back to Plex the same day after repeated
+unresolved library-scan hangs; Jellyfin/Jellystat/jellystat-db were removed entirely in that
+reversion (see the dedicated History entry below) — there is no Jellyfin anywhere in this stack.
+NzbDAV (Usenet client) was removed entirely 2026-07-23 and replaced by AltMount, for the same
+reason (an unfixed upstream connection-leak bug) — see the landmines section for the full
+incident and PR references. **Tautulli, Kometa, and Kometa's Quickstart companion still have
+real compose service blocks and pulled images in this stack** (confirmed via `docker-compose.yml`
+and `docker images`) **but no running or even stopped container exists for any of the three**
+(confirmed via `docker compose ps -a` showing nothing for them) — treat them as present-but-
+dormant, not "removed," despite older entries in this file's own History/landmines sections
+claiming they were deleted; that narrative was never true or went stale, corrected 2026-07-23.
+**Torrent and debrid support (Decypharr, Zurg, rclone-alldebrid, Zilean, zilean-postgres,
+Byparr) was removed entirely in v11.0.0, by explicit request** — every acquisition goes through
+Usenet, no exceptions (see the landmines/History sections below for the full removal, including
+a real consequence found mid-execution: those apps never downloaded real bytes, only symlinked
+into a live FUSE mount streamed from the debrid provider, so removing them immediately broke
+playback for the ~3.65% of the library that was debrid-sourced, not just future acquisitions).
+Usenet had already been the preferred protocol since a v10.14.1 policy change (a deliberate
+reversal of the stack's original debrid-first design) before this final removal. There is no
+adult content library in this stack anymore: Plex's own Adult library was removed in v10.9.9,
+and Whisparr (which managed the underlying files/root folder) plus Stash (which cataloged it)
+were both removed in v10.12.0, along with the files themselves. There is no anime library in
+this stack either as of v10.19.0 (also removed by explicit request, not a dead-app cleanup —
+see the landmines section below), and no self-hosted DebridMediaManager as of v10.20.0 (same
+reasoning, same section). **As of 2026-07-23, every root folder is enforced back to 100%
+symlinks with zero real media files on local disk** — AltMount's `import.import_strategy` is
+`SYMLINK` (not `NONE`) and both Radarr's and Sonarr's `copyUsingHardlinks` is `true`; see the
+dedicated History entry below for why this had regressed and how it was fixed and verified live
+(a real symlink into `/mnt/altmount` that actually streams, not just a config value).
+`control-panel/` is the one custom-built component (a FastAPI dashboard, redesigned entirely
+2026-07-23 — no boxes/tabs, a permanently pinned log console, see the dedicated entry below);
+everything else is off-the-shelf images wired together in `docker-compose.yml`.
+
+**This stack currently has zero backup coverage, deliberately, as of 2026-07-23** — both the
+local and offsite restic repositories were deleted at the user's explicit request while a new
+backup policy is being decided, and the three backup systemd timers were stopped and unlinked
+(not deleted — their source units still exist under `systemd/` and can be relinked anytime).
+Do not assume `scripts/backup-config.sh` or its timer are running; verify with
+`systemctl --user list-timers` before relying on either.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
 to be README/TECHNICAL/CHANGELOG into one document, organized by subsystem, ~1,900 lines with a
@@ -431,8 +443,16 @@ scratch. Full incident narrative is in the History section below; this is the ch
   `/data/movies`/`/data/shows` on regular disk. This doesn't surface as an obvious error in
   every version — check this setting first, don't wait for a clear failure message.
   → Fix: `PUT /api/v3/config/mediamanagement/1` with `copyUsingHardlinks: false` on both apps.
-  Already set correctly as of this writing — if imports mysteriously stop working again after
-  any config/media-management change, check this didn't get toggled back.
+  **Superseded 2026-07-23**: this stack no longer imports from a cross-filesystem FUSE source
+  at all — AltMount's `import.import_strategy` was switched to `SYMLINK` with `import_dir`
+  bind-mounted from `./media/altmount-import`, on the *same* filesystem as `/data/movies`/
+  `/data/shows` (confirmed via `df`), so `copyUsingHardlinks` was flipped back to `true` on
+  both apps and verified live: a real import produces a genuine symlink into `/mnt/altmount`
+  (`lrwxrwxrwx`, readable, streams real bytes) with zero bytes copied to local disk, not a
+  real file. If this setting is ever `false` again without a new cross-filesystem source
+  being introduced, something regressed — the reasoning above (hardlinks can't cross a
+  filesystem boundary) is still correct, it just no longer applies to this stack's current
+  download-client source.
 - **Reserved-shell-variable gotcha, hit multiple times this session and worth remembering
   generally**: this environment's default shell treats `status` as a read-only variable
   (mirrors `$?`, zsh-style) — using it as an ordinary variable name in a Bash-tool script
@@ -841,16 +861,215 @@ away for 8+ hours with instructions to log non-critical issues and only interrup
      symlinks** (Plex's own DB was never wiped, only Radarr/Sonarr's) — flagged to the user as a
      real, non-obvious consequence of steps 2-3 rather than silently left broken. The user chose
      to mass-delete Plex's library manually rather than have it done programmatically.
-- **Not yet done as of this writing**: AltMount is not wired into Radarr/Sonarr's actual
-  post-download import pipeline beyond the download-client connection — `import_strategy: NONE`
-  means AltMount does a direct import (not NzbDAV's symlink model), so whether Radarr/Sonarr's
-  hardlink/copy-based import step actually works against a FUSE-mounted virtual filesystem the
-  way it worked against `/mnt/nzbdav` has not been verified end-to-end (real grab → real
-  import → real Plex playback). Treat this as unverified, not assumed-working, until a real
-  download completes the full pipeline.
+- **Resolved 2026-07-23, see the dedicated entry below**: this bullet used to say AltMount's
+  `import_strategy: NONE` direct-import pipeline was unverified end-to-end. It was verified,
+  found to be silently writing real files to local disk instead of symlinks (`import_strategy:
+  NONE` + `copyUsingHardlinks: false` together mean every import is a real byte copy), and
+  fixed by switching to `import_strategy: SYMLINK`. See "Local media eliminated, AltMount
+  switched to SYMLINK import strategy, 2026-07-23" below for the full incident.
+
+## Local media eliminated, AltMount switched to SYMLINK import strategy, 2026-07-23
+
+A routine disk-usage question ("how full is my root disk") surfaced a real architecture
+regression: **318.7GB across 150 real (non-symlink) files** were sitting under
+`media/movies`/`media/shows`, contradicting this file's own long-standing "root folders are
+100% symlinks" invariant. Root cause: AltMount's `import.import_strategy` was `NONE` (a direct
+copy/hardlink import, unlike NzbDAV's old symlink-into-FUSE-mount model), combined with
+Radarr's/Sonarr's `copyUsingHardlinks: false` (a deliberate earlier fix for when the download-
+client source was the cross-filesystem `/mnt/altmount` FUSE mount, see the landmine above) —
+together these guaranteed every import since the AltMount cutover wrote a real byte-for-byte
+copy to local disk. The other ~34,809 items in the library turned out to be symlinks, but
+**every single one sampled was broken**, pointing at `/mnt/nzbdav/.ids/...` — dead since NzbDAV
+was removed entirely. The real, working library was 100% those 150 real files; the pre-cutover
+library was 100% non-functional.
+
+**Fix, at the user's explicit direction ("I want no media on the disk, make the config match
+that")**:
+1. Added a new host directory, `./media/altmount-import`, confirmed via `df` to be on the
+   *same filesystem* as `./media/movies`/`./media/shows` (both under `/`, `nvme0n1p2`) — bind-
+   mounted identically as `/mnt/altmount-import` into `altmount`, `radarr`, and `sonarr`
+   (`docker-compose.yml`).
+2. AltMount's `config.yaml`: `import.import_strategy` → `SYMLINK`, `import.import_dir` →
+   `/mnt/altmount-import`. AltMount now creates a symlink there pointing into `/mnt/altmount`
+   (the real FUSE-streamed content) instead of writing bytes.
+3. Radarr's and Sonarr's `copyUsingHardlinks` flipped back to `true` via
+   `PUT /api/v3/config/mediamanagement/1` on both — now safe because the symlink source and
+   the root folder share a filesystem, so a "hardlink" of a symlink just creates another
+   symlink, never a real copy. See the landmine above for the historical reasoning this
+   supersedes.
+4. Recreated `altmount` first (mount-cascade ordering, see the existing landmine on this),
+   confirmed healthy, then `radarr`/`sonarr` — all three confirmed to see the new shared mount
+   correctly before touching anything else.
+5. **All 318.7GB of real files and all ~34,809 broken symlinks were deleted** (`find
+   media/movies -mindepth 1 -delete`, same for `media/shows`) — root disk went from 92% to 20%
+   used. Radarr/Sonarr's own `RescanMovie`/`RescanSeries` commands **refused to update anything**
+   (`"Movie's root folder (/data/movies) is empty. Rescan will not update movies as a failsafe"`,
+   HTTP 409 on `DELETE /api/v3/moviefile/{id}` too) — a deliberate app-level protection against
+   mistaking a disconnected mount for real deletion, and neither app exposes an API override for
+   it. Worked around the same way this file already documents for other app-level DB blocks:
+   stopped each container, directly edited `radarr.db`/`sonarr.db` (`UPDATE Movies SET
+   MovieFileId = 0`, `DELETE FROM MovieFiles`; same pattern for `Episodes`/`EpisodeFiles`),
+   backed up both DBs first, restarted.
+6. `MissingMoviesSearch`/`SeriesSearch` triggered for the 3 tracked movies and the 2 series that
+   actually had files (WWE: Unreal, The West Wing) — **narrower scope was a deliberate user
+   choice**, not a default: rebuilding the entire former ~35,000-item library was explicitly
+   ruled out as a separate option (tens of thousands of real grabs over hours/days) versus just
+   proving the new pipeline on what's currently tracked.
+7. **Verified live, not just configured**: the first completed import (The Dark Knight) landed
+   as a real `lrwxrwxrwx` symlink into `/mnt/altmount/movies/...` — confirmed via `stat` from
+   both the host and inside the `radarr` container, and confirmed it actually streams (`head -c
+   1024` returned real bytes through the symlink, not a dangling-link error).
+- **A real, separate download-client-side incident surfaced during this same reimport**: Sonarr
+  had **Law & Order: Special Victims Unit** (594 episodes across 28 seasons, monitored, 0 files)
+  independently backfilling its entire catalog through AltMount's single-worker queue at the
+  same time, ballooning it to 544GB / 100+ items and delaying the actual reimport target items
+  behind it. Not a bug — a real, legitimate (if enormous) missing-episode search running
+  concurrently with unrelated work. Fixed by unmonitoring the series in Sonarr (stops *future*
+  searches only) and separately clearing its ~120 already-queued AltMount items. **Found a real
+  AltMount API bug doing this**: `mode=queue&name=delete` only accepts one `value` (a single
+  `nzo_id`) per call despite normal SABnzbd convention supporting a comma-separated list — passing
+  a joined list silently deletes nothing beyond whatever the string coincidentally parses as, and
+  the endpoint **always returns `{"status": true}` regardless of whether anything was actually
+  deleted** (confirmed by reading `internal/api/sabnzbd_handlers.go`'s
+  `handleSABnzbdQueueDelete` directly — the final fallback literally always returns success).
+  Worked around by looping one DELETE call per `nzo_id`; verified against the real queue
+  afterward rather than trusting the reported status.
+- **A second real mount-cascade recurrence, same session**: recreating `altmount` for the
+  `SYMLINK` config change (step 4 above) was done via a direct `docker compose up -d
+  --force-recreate altmount` rather than Control Panel's own `restart-all` endpoint, which
+  already encodes the correct `MOUNT_DEPENDENTS` ordering — `radarr`/`sonarr` were manually
+  restarted afterward, but **`plex`, `unpackerr`, and `cleanuparr` were forgotten**, all three
+  confirmed holding stale FUSE references (`Transport endpoint is not connected` / `Socket not
+  connected`) when checked later. Fixed by restarting all three; confirmed Plex could stream a
+  real symlinked file afterward. Lesson reinforced, not new: manually recreating a mount owner
+  outside `restart-all` means manually remembering *every* entry in `MOUNT_DEPENDENTS`, not
+  just the ones actively being worked on.
+- **Plex's library section paths reconfirmed correct** during the same check: `Movies` → real
+  path `/data/movies`, `Shows` → real path `/data/shows` (via `/library/sections`), matching
+  Radarr's/Sonarr's root folders exactly, and Plex's own compose block does mount
+  `/mnt/altmount:/mnt/altmount:rslave` — the Stash/Jellyfin-class "root folder consumer missing
+  the FUSE mount" bug this file already documents does not apply to Plex's current config.
+
+## Control Panel redesigned entirely: no boxes, no tabs, permanent log console, 2026-07-23
+
+Full rebuild of `control-panel/static/{index.html,style.css,app.js}` plus one new backend route
+(`GET /api/docs/readme`), at the user's explicit request to remove the box/card and sidebar-tab
+paradigm entirely. A plan artifact with three labeled options per category (log console, source
+selection, PC operations, navigation, visual system, interaction model) was produced and
+approved before any code changed — see that artifact for the full option/tradeoff writeup this
+summarizes.
+
+- **Navigation**: the old sidebar-button + hidden-`<section>` pattern (functionally a tab strip
+  despite not looking like one) is gone entirely, replaced by a fixed two-column split-pane
+  workspace — a scrollable left column of rule-divided rails (Overview, Fleet, Host, Reference)
+  and a permanently pinned right-hand log console. There is no "page" concept and no
+  `showPage()`/`wireSidebarNav()` left in `app.js`.
+- **Log console**: single-focus, always-visible in the right column, fed either by a
+  grouped-by-subsystem source `<select>` or automatically when a palette command targets a
+  container (`resolveLogContainer` → `selectLogSource`). `/api/container/{name}/logs/stream`
+  now requests `timestamps=True` from the Docker SDK and the client reformats Docker's own
+  RFC3339Nano prefix into a compact local clock (`formatLogLine`/`formatLogText` in `app.js`) —
+  real per-line record time, not client receipt time. Applied to both the pinned console and
+  the arr apps' one-shot log view (`/api/arr/{app}/logs`, also now `timestamps=True`).
+- **Fleet**: every container from `/api/containers` grouped by subsystem (a static, display-only
+  map mirroring `CONTAINER_LABELS`' own non-gating precedent — an unmapped service just falls
+  into "Other", never hidden), collapsible per group (state persisted in `localStorage`).
+  Clicking a row's tail-log icon sets it as the active log source.
+- **Host**: two lanes, deliberately separated by risk class — a read-only "Vitals" lane wired
+  to routes that are genuinely host-backed given this container's actual mounts
+  (`mount-health`, `oom-check`, `resource-check`, `disk-usage`, `backup-verify`), and a
+  "Fleet-wide actions" lane for destructive/long-running ops (`restart-all`, poster sync,
+  backup-integrity-check). **Real host package-update/reboot-needed/mem-pressure/zombie-check
+  checks were deliberately NOT built as live panels** — confirmed this container has no
+  `pacman`, no `pid: host`, and no real host `/proc` (its own `/proc/pressure` reflects the
+  container's own cgroup, not the host), so building those as live tiles would present fake or
+  container-scoped data as if it were the host's. They're listed in Reference as terminal-only
+  fish commands instead.
+- **Reference**: quicklinks (Tautulli dropped — see the "still present but not installed" entry
+  above), a "Documentation" group linking each of the 13 third-party apps' real upstream docs
+  (every URL verified against `docker-compose.yml`'s actual pinned image via `gh repo view`/
+  `gh search repos` before being hardcoded — not guessed from the app's common name; notably
+  Seerr's real org is `seerr-team`, Watchtower's real maintained fork is `nicholas-fedor`,
+  NeutArr's real repo is `I-am-PUID-0/NeutArr`, none of which match an obvious guess), plus
+  this stack's own README.md served locally via the new `/api/docs/readme` route since **this
+  repo has no public downstream mirror to link to** (see the `AGENTS.md` note elsewhere in this
+  file). A separate, explicitly read-only list of the 14 Claude Code skills this project uses
+  is shown too, clearly labeled as dev-time-only (this app has no mechanism to invoke them).
+  Tautulli and Kometa's doc-link rows carry a "not installed" badge (`installed: false` in
+  `DOC_LINKS`) rather than being removed outright, matching the "present but dormant" correction
+  above.
+- **Visual system**: cool slate + one steel-teal accent (`#1f6f6b` light / `#4fb3ad` dark), IBM
+  Plex Sans/Mono, zero border-radius anywhere, hairline 1px borders instead of shadows/cards.
+  Muted red kept for status semantics only (errors/destructive), per explicit user direction —
+  not a decorative color.
+- **Interaction model**: panels for passively viewing state, a command palette (`Ctrl/Cmd+K`,
+  overlay not a page) for triggering any of the 146 `commands.json` operations — same
+  fuzzy-match/confirm-arm engine as before, just rendered as a transient overlay instead of a
+  dedicated "Console" page, and a running command's log now streams into the persistent
+  right-column console instead of its own embedded pane.
+- **Kometa's "Run Kometa now" rapid action was removed from Overview**, along with its now-
+  unused library-picker helpers — it would always fail (`Kometa container not found`) given
+  Kometa has no running container, matching the "present but dormant" correction above.
+- **No headless browser was available to screenshot this in this environment** (no system
+  Chrome; Playwright's installer refuses to install on CachyOS, only Ubuntu/Debian are
+  supported) — verified instead via a full static cross-check (every `getElementById`/
+  `querySelector` target in `app.js` confirmed to exist in `index.html`, no stale references to
+  deleted classes), live endpoint checks, and the user's own live browser session confirming it
+  visually (their own traffic was visible in `docker logs control-panel` polling the new
+  endpoints throughout).
+
+## Seerr and Bazarr reconnection fixes, 2026-07-23
+
+Two separate real leftovers found from the Jellyfin-to-Plex reversion, neither caught at the
+time:
+
+- **Seerr's `mediaServerType` was still `2` (JELLYFIN)** even after Plex came back — confirmed
+  via `seerr-team/seerr`'s own compiled `dist/constants/server.js` (`PLEX = 1, JELLYFIN = 2,
+  EMBY = 3, NOT_CONFIGURED = 4`, not guessed). Its Plex library entries were present with the
+  right real IDs but `enabled: false`. Fixed: `main.mediaServerType` → `1`, both Plex libraries
+  re-enabled via `GET /api/v1/settings/plex/library?enable=1,2&sync=true` (the real endpoint,
+  found by reading `internal`... rather, `dist/routes/settings/index.js` directly — the
+  library-enable state isn't settable through the documented `POST /settings/plex` body, which
+  rejects `libraries` as read-only), then a real full scan triggered and confirmed complete in
+  logs (`Plex Scan: Full Scan Complete`).
+- **The "bear" Seerr user account was still Jellyfin-linked** (`userType: 3`, real
+  `jellyfinUsername`, no `plexId`/`plexToken`) despite `permissions: 2` (admin) already being
+  correct. Fixed using the account's own real, already-valid Plex token (`.env`'s `PLEX_TOKEN`)
+  against `plex.tv/api/v2/user` to get the genuine linked identity (`TheDaddyBear`, id
+  `277265765`, real email) rather than fabricating one — `userType` → `1`, `plexId`/
+  `plexUsername`/`plexToken` populated for real, Jellyfin fields cleared. DB stopped/backed-up/
+  edited/restarted, same practice as every other live-DB edit in this file.
+- **Seerr's request history (144 `media_request` rows, cascaded 1,208 `season_request` rows)
+  and its entire local media cache (19,021 `media` rows, cascaded 2,871 `season` rows) were
+  both cleared at explicit user request**, in two separate passes (`DELETE FROM media_request`
+  then, later, `DELETE FROM media` — both with `PRAGMA foreign_keys = ON` so the cascades
+  actually fired, container stopped/backed-up first each time). Verified the media cache
+  rebuilds cleanly from a fresh `/settings/plex/sync` trigger afterward — landed at 4 real
+  titles, not the stale 19,021, confirming the rebuild reflects only what's actually in Plex.
+- **Bazarr's SignalR connections to Radarr and Sonarr were silently dead for 4+ hours** —
+  Radarr/Sonarr had both been recreated (unrelated mount-fix work earlier the same day) but
+  Bazarr's own container hadn't restarted since the previous day, so its long-lived SignalR
+  feeds never noticed the peer restart and never logged a reconnect attempt (unlike earlier
+  drop/reconnect cycles the same day, which *did* self-heal). Config (API keys, Plex OAuth
+  link) was already entirely correct — this was purely a stale-connection issue. Fixed with a
+  plain `docker compose restart bazarr`; confirmed both SignalR feeds reconnected cleanly with
+  zero errors afterward, and `/api/system/status` reported live real versions from both apps.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
+- **Every backup this stack had was deleted 2026-07-23, at the user's explicit request, while a
+  new backup policy is being decided — this stack currently has zero backup coverage of any
+  kind.** Deleted: the local restic repo (`~/backups/stack-restic-repo`, 83GB), the offsite
+  restic repo (`/home/bear/Dropbox/stack-restic-repo-offsite`, 83GB, riding on Dropbox sync),
+  and every ad-hoc pre-change snapshot made during that session's own work (including a real
+  Radarr/Sonarr config backup made hours earlier during a DB wipe — required `sudo` to delete,
+  since it was captured root-owned). The three backup systemd timers (`stack-backup.timer`,
+  `stack-arr-backup.timer`, `stack-claude-backup.timer`) were stopped and unlinked, not deleted —
+  their `.service` unit definitions and the real source files under `systemd/` in this repo are
+  untouched, so re-enabling later is just `systemctl --user link systemd/stack-*.timer &&
+  systemctl --user enable --now stack-*.timer` once a new policy is chosen, not a rebuild.
+  Everything below this bullet describes the backup system as it existed before this deletion -
+  read it as design/history, not as "this is currently running."
 - **No Postgres-backed service ran in this stack from v11.0.0 (when `zilean-postgres` was
   removed with the rest of the debrid layer, along with `scripts/backup-config.sh`'s
   logical-`pg_dump` step for it) until 2026-07-22, when `jellystat-db` (`postgres:18.1`)
