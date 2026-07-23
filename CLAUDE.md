@@ -1426,21 +1426,27 @@ time:
   `README.md`.** This compounds the single-file bind-mount staleness issue already noted above —
   reformatting that line in README *or* editing README without a `--force-recreate` on
   `control-panel` can both silently break version reporting.
-- **`claude-review` CI (`.github/workflows/claude-code-review.yml`) has been failing on every
-  real (non-Dependabot) PR since at least 2026-07-15 — root cause confirmed 2026-07-23: `401
-  Invalid bearer token`, i.e. the `CLAUDE_CODE_OAUTH_TOKEN` repo secret itself
-  (`gh secret list` shows it was last set 2026-07-09) is expired/invalid, not a permissions or
-  prompt problem.** Confirmed by temporarily adding `show_full_output: true` to the workflow
+- **`claude-review` CI (`.github/workflows/claude-code-review.yml`) failed on every real
+  (non-Dependabot) PR from at least 2026-07-15 through 2026-07-23 — fixed same day.** Root
+  cause: `401 Invalid bearer token` — the `CLAUDE_CODE_OAUTH_TOKEN` repo secret itself was
+  expired/invalid (`gh secret list` showed it last set 2026-07-09), not a permissions or
+  prompt problem. Confirmed by temporarily adding `show_full_output: true` to the workflow
   (past the SDK's default output redaction) and running it via a genuine trigger PR — a
   workflow-file change on the *same* PR gets skipped outright by GitHub's own "must match
   default branch" validation, so seeing the real error needed the flag merged to `main` first,
-  then a separate, unrelated PR to trigger a real run. Flag has been reverted after use. **Fix
-  requires regenerating `CLAUDE_CODE_OAUTH_TOKEN`** via Claude Code's own GitHub-app install
-  flow (`/install-github-app` from a local `claude` session, or the equivalent from
-  claude.ai/code's GitHub integration settings) — this needs the user's own account
-  authorization, not something fixable by editing files in this repo. No branch protection is
-  configured on this repo, so this has never blocked a merge — treat it as a known-broken CI
-  signal, not a merge gate, until the token is refreshed.
+  then a separate PR to trigger a real run; flag reverted after use. **Fixed by running
+  `/install-github-app` from a local `claude` session**, which re-authorized against the
+  user's own Claude account and rewrote `CLAUDE_CODE_OAUTH_TOKEN` (`gh secret list` timestamp
+  moved to the moment the command completed) — this step needs the account owner's own OAuth
+  authorization, it isn't fixable by editing files in this repo. **Verified working, not just
+  configured**: an empty-commit throwaway PR (#28, closed after use, no branch left behind)
+  completed a real `claude-review` run post-refresh (~1 minute runtime, matching a genuine
+  Claude Code SDK invocation, not the ~15s instant-skip pattern the validation-guard produces)
+  with no `is_error`. One retry was needed — the very first post-refresh attempt still hit the
+  same "must match default branch" skip, apparently a brief propagation lag right after the
+  workflow file's own most recent change landed on `main`; a second empty-commit push a minute
+  later ran for real. No branch protection is configured on this repo, so none of this ever
+  blocked a merge — it was a broken CI signal, now a working one.
 
 ## Deliberate architecture decisions with non-obvious reasons
 
