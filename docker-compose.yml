@@ -165,14 +165,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    # Bumped 1g -> 2g -> 4g: the 2g ceiling hit 99.87% (2GiB/2GiB) during the
-    # bulk-relink job, confirmed live via docker logs to coincide with RAR
+    # Bumped 1g -> 2g -> 4g -> 6g: the 2g ceiling hit 99.87% (2GiB/2GiB) during
+    # the bulk-relink job, confirmed live via docker logs to coincide with RAR
     # analysis of two large multi-part archives close together (56GB/508
     # parts and 73GB/134 parts) - per-archive memory cost scales with part
     # count/size, and this library has several 50-70GB+ UHD remux releases.
-    # 4g gives real headroom against the worst-case archives actually seen
-    # in this run, not a guessed number.
-    mem_limit: 4g
+    # 4g still ran at 86% (3.45GiB/4GiB) with ~322MiB already swapped out
+    # during ordinary single-worker queue processing (2026-07-23, real
+    # docker stats/cgroup swap.current reading, not a guess) - the highest
+    # swap usage of any container in the stack by a wide margin. 6g gives
+    # real headroom above the worst-case archives actually seen without
+    # requiring max_processor_workers to stay at 1 forever (see the
+    # 2026-07-23 CLAUDE.md entry on why workers were left at 1 - re-evaluate
+    # raising that back to 2 now that there's more ceiling to work with, but
+    # only after confirming live, not from this comment alone).
+    mem_limit: 6g
     mem_reservation: 128m
     cpus: 4
 
