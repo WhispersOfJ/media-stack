@@ -37,6 +37,17 @@ PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
 # app.Use, not a literal /api/sabnzbd path).
 ALTMOUNT_URL = "http://altmount:8080/sabnzbd"
 ALTMOUNT_API_KEY = os.environ.get("ALTMOUNT_API_KEY")
+# Sportarr (sports PVR, wrestling library only - added 2026-07-23). Its real
+# API is a flat /api/... scheme (not Radarr/Sonarr's /api/v3/...), and its
+# only /api/v3/... routes are a narrow Sonarr-compat shim built for Decypharr
+# (POST /api/v3/command only actually implements "ManualImport" - any other
+# command name silently no-ops with a fake status:"completed"). So Sportarr
+# is NOT added to ARR_APPS/QUEUE_ARR_APPS - that generic machinery assumes a
+# real Servarr-shaped command/queue/wanted API underneath, which would
+# silently fake success here. Dedicated /api/sportarr/* routes below call
+# its real native endpoints instead.
+SPORTARR_URL = "http://sportarr:1867"
+SPORTARR_API_KEY = os.environ.get("SPORTARR_API_KEY")
 HOST_IP = os.environ.get("HOST_IP")
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 TAUTULLI_URL = "http://tautulli:8181"
@@ -156,6 +167,7 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 CONTAINER_LABELS = {
     "radarr": ("Radarr", None),
     "sonarr": ("Sonarr", None),
+    "sportarr": ("Sportarr", "sports PVR (Sonarr-based) - wrestling library only"),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
     "altmount": ("AltMount", "Usenet, WebDAV + SABnzbd-compatible API"),
@@ -945,6 +957,114 @@ def altmount_history(limit: int = 20):
         "fail_message": s.get("fail_message") or None,
         "path": s.get("storage"),
     } for s in slots]
+
+
+# ---------------------------------------------------------------------
+# Sportarr - sports PVR (Sonarr-based), wrestling library only, added
+# 2026-07-23. Real API is flat /api/... (not /api/v3/...) - see the
+# SPORTARR_URL/SPORTARR_API_KEY comment above for why this isn't folded
+# into the generic ARR_APPS/QUEUE_ARR_APPS machinery.
+# ---------------------------------------------------------------------
+def sportarr_api(method: str, path: str, timeout: int = 15, **kwargs) -> dict:
+    if not SPORTARR_API_KEY:
+        fail("Sportarr isn't configured (SPORTARR_API_KEY not set)", status_code=503)
+    try:
+        r = httpx.request(
+            method,
+            f"{SPORTARR_URL}{path}",
+            headers={"X-Api-Key": SPORTARR_API_KEY},
+            timeout=timeout,
+            **kwargs,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Sportarr {method} {path} failed: {e}")
+    return r.json() if r.content else {}
+
+
+@app.get("/api/sportarr/queue")
+def sportarr_queue():
+    items = sportarr_api("GET", "/api/queue")
+    return [{
+        "id": i.get("id"),
+        "title": (i.get("event") or {}).get("title") or i.get("title"),
+        "league": None,  # event payload has leagueId only, not the name
+        "status": i.get("status"),
+        "progress": i.get("progress"),
+        "size": human_size(i.get("size")),
+        "time_remaining": i.get("timeRemaining"),
+        "error_message": i.get("errorMessage"),
+    } for i in items]
+
+
+@app.get("/api/sportarr/missing")
+def sportarr_missing(page: int = 1, page_size: int = 50):
+    data = sportarr_api("GET", "/api/wanted/missing", params={"page": page, "pageSize": page_size})
+    events = data.get("events", [])
+    return {
+        "total": data.get("totalRecords", 0),
+        "page": data.get("page", page),
+        "page_size": data.get("pageSize", page_size),
+        "events": [{
+            "id": e.get("id"),
+            "title": e.get("title"),
+            "league": (e.get("league") or {}).get("name"),
+            "event_date": e.get("eventDate"),
+        } for e in events],
+    }
+
+
+@app.post("/api/sportarr/search-missing")
+def sportarr_search_missing():
+    result = sportarr_api("POST", "/api/wanted/missing/search-all")
+    return ok(
+        f"Queued {result.get('queued', 0)} missing event search(es).",
+        queued=result.get("queued", 0),
+        skipped_already_queued=result.get("skippedAlreadyQueued", 0),
+        skipped_unsearchable=result.get("skippedUnsearchable", 0),
+    )
+
+
+@app.post("/api/sportarr/rss-sync")
+def sportarr_rss_sync():
+    """Sportarr's real RSS-sync-equivalent scheduled task, not the fake
+    Sonarr-compat POST /api/v3/command shim (which only implements
+    "ManualImport" and silently no-ops on any other command name)."""
+    sportarr_api("POST", "/api/task/scheduled/rss-sync/trigger")
+    return ok("RSS sync triggered.")
+
+
+@app.get("/api/sportarr/scheduled-tasks")
+def sportarr_scheduled_tasks():
+    tasks = sportarr_api("GET", "/api/task/scheduled")
+    return [{
+        "id": t.get("id"),
+        "name": t.get("name"),
+        "description": t.get("description"),
+        "interval": t.get("interval"),
+        "triggerable": t.get("triggerable"),
+    } for t in tasks]
+
+
+@app.post("/api/sportarr/scheduled-tasks/{task_id}/trigger")
+def sportarr_trigger_task(task_id: str):
+    sportarr_api("POST", f"/api/task/scheduled/{task_id}/trigger")
+    return ok(f"Triggered task '{task_id}'.")
+
+
+@app.get("/api/sportarr/leagues")
+def sportarr_leagues():
+    leagues = sportarr_api("GET", "/api/leagues")
+    return [{
+        "id": league.get("id"),
+        "name": league.get("name"),
+        "sport": league.get("sport"),
+        "monitored": league.get("monitored"),
+        "event_count": league.get("eventCount"),
+        "monitored_event_count": league.get("monitoredEventCount"),
+        "file_count": league.get("fileCount"),
+        "root_folder_id": league.get("rootFolderId"),
+    } for league in leagues]
 
 
 # ---------------------------------------------------------------------
@@ -2516,7 +2636,7 @@ def container_logs_stream(name: str, tail: int = 100):
 # report healthy, then restart the dependents last.
 MOUNT_PREREQS: set[str] = set()
 MOUNT_PROVIDERS = {"altmount"}
-MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}
+MOUNT_DEPENDENTS = {"radarr", "sonarr", "sportarr", "plex", "unpackerr", "cleanuparr"}
 
 
 def wait_for_healthy(container, timeout=60):
@@ -2948,7 +3068,7 @@ def neutarr_status():
     return ok(f"{len(apps)} app config file(s) found in config/neutarr.", apps=apps)
 
 
-ARR_LOG_CONTAINERS = {"radarr", "sonarr", "prowlarr"}
+ARR_LOG_CONTAINERS = {"radarr", "sonarr", "sportarr", "prowlarr"}
 
 
 @app.get("/api/arr/{app_name}/logs")
