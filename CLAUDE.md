@@ -373,6 +373,75 @@ section, and there's no substitute for it for that class of change.
 
 ## Known current landmines (not historical — still true as of last audit)
 
+### Quick diagnosis: AltMount/Plex/Radarr/Sonarr symptoms from 2026-07-23
+
+Fast symptom → cause → fix reference for the failure classes hit during the NzbDAV→AltMount
+cutover, so a future session recognizes these immediately instead of re-deriving them from
+scratch. Full incident narrative is in the History section below; this is the cheat-sheet.
+
+- **Symptom: `ls`/any read on `/mnt/altmount` (or a bind-mounted subpath of it) returns
+  `Input/output error`, `Socket not connected`, or `transport endpoint is not connected`,
+  on the host or in ANY container that mounts it (Plex, Radarr, Sonarr, Unpackerr,
+  Cleanuparr).**
+  → Cause: the mount owner (`altmount`) was restarted/recreated and every dependent still
+  holds a stale reference to the old mount instance — this is the exact same FUSE-mount-cascade
+  class this file already documents for the old `nzbdav-rclone`, just with `altmount` as the
+  sole owner now.
+  → Fix: **never** `sudo umount` the mount yourself to "clear" it — if propagation is
+  `rshared`, this tears down the real live mount too (confirmed live, made things worse this
+  session). Instead: confirm `altmount` itself is healthy and its own `docker logs altmount`
+  shows `"Successfully mounted WebDAV via RC"` recently, then `docker compose restart` (or
+  `up -d --force-recreate`) the five dependents — `radarr sonarr plex unpackerr cleanuparr` —
+  in one batch. Verify with `docker exec <name> sh -c "ls /mnt/altmount"` on each afterward,
+  don't assume it worked.
+- **Symptom: the above happens even right after `altmount` itself was *just* restarted, and
+  `docker logs altmount` shows repeating `ERROR : IO error: couldn't list files: 401
+  Unauthorized` in `/config/rclone.log` (or via `docker exec altmount cat /config/rclone.log`).**
+  → Cause: this is the real upstream bug (javi11/altmount#691, fixed in our fork's PR #792,
+  not yet merged) — `createConfig()` writes the WebDAV password into rclone's config
+  unobscured, rclone then tries to de-obscure the plaintext into garbage credentials. Confirm
+  by checking `docker-compose.yml`'s `altmount` service still says `image:
+  altmount-local-fix:obscure-pass` — if it's back to `ghcr.io/javi11/altmount:latest`, someone
+  (Watchtower?) reverted it, or this is a fresh deploy that skipped the local build.
+  → Fix: rebuild the patched image (`docker build -f docker/Dockerfile -t
+  altmount-local-fix:obscure-pass <cloned-fork-dir>` — the fork is `WhispersOfJ/altmount`,
+  branch `fix/internal-mount-obscure-password`) and redeploy. Check whether PR #792 merged
+  upstream first — if so, switch back to the stock tagged image instead of maintaining the
+  fork build.
+- **Symptom: a Radarr/Sonarr download sits at `status: completed` /
+  `trackedDownloadState: importing` (or `importPending`/`importBlocked`) forever, no error, and
+  `GET /api/v3/command` shows a `ProcessMonitoredDownloads` entry permanently stuck at
+  `"status": "started"` (never reaches `completed`), blocking every other command from even
+  starting (they sit at `"status": "queued"` indefinitely).**
+  → Cause: a genuinely wedged background command inside Radarr/Sonarr itself — confirmed live
+  this session, distinct from a single wedged download. Control-panel's own
+  `/api/arr/{app}/unstick-importing` endpoint (see `arr_unstick_importing()` in `app.py`) only
+  clears the *queue item*, not this stuck *command* — running it alone is not sufficient here,
+  confirmed by it reporting a clean "wedged/cleared" result while the underlying command stayed
+  stuck and the next grab hung identically.
+  → Fix: restart the affected app's container outright (`docker compose restart radarr` or
+  `sonarr`) — this was the only thing that actually cleared it. Check
+  `GET /api/v3/command` again afterward to confirm no stuck entries remain before assuming the
+  pipeline is healthy.
+- **Symptom: a new download client that streams via a separate FUSE/WebDAV mount (a different
+  filesystem than the real root folder) fails imports silently, or Radarr/Sonarr logs show
+  nothing useful at all about why import never happens.**
+  → Cause: `copyUsingHardlinks: true` (the default) — hardlinks cannot cross a filesystem
+  boundary, and a FUSE-mounted download client's storage is never the same filesystem as
+  `/data/movies`/`/data/shows` on regular disk. This doesn't surface as an obvious error in
+  every version — check this setting first, don't wait for a clear failure message.
+  → Fix: `PUT /api/v3/config/mediamanagement/1` with `copyUsingHardlinks: false` on both apps.
+  Already set correctly as of this writing — if imports mysteriously stop working again after
+  any config/media-management change, check this didn't get toggled back.
+- **Reserved-shell-variable gotcha, hit multiple times this session and worth remembering
+  generally**: this environment's default shell treats `status` as a read-only variable
+  (mirrors `$?`, zsh-style) — using it as an ordinary variable name in a Bash-tool script
+  fails with `read-only variable: status` and can silently corrupt output if combined with
+  `2>&1` redirection into a file (confirmed live: an entire bulk git-recovery loop overwrote
+  33 files with error text this way before being caught by a `fish -n` syntax check). Avoid
+  `status` as a variable name in ad-hoc scripts; use something like `task_status`/`dl_status`
+  instead.
+
 - ~~Radarr's and Sonarr's "Quality Definitions" are one flat, instance-wide list each, not
   scoped per quality profile~~ **Moot as of v11.2.0**: both apps were consolidated down to a
   single "ANY" quality profile each (all other profiles deleted, everything reassigned - see
