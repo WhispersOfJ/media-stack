@@ -105,6 +105,40 @@ services:
     mem_reservation: 256m
     cpus: 2
 
+  # Sports PVR (Sonarr-based) - added 2026-07-23, used exclusively for
+  # wrestling (WWE/AEW). Root folder is its own library, separate from
+  # Radarr/Sonarr's movies/shows - Plex library is named "Wrestling" to
+  # match. Bazarr has no multi-instance support for a second Sonarr-type
+  # connection (confirmed by reading its live config schema - exactly one
+  # `sonarr:` block, already used by the real Sonarr), so subtitles for
+  # this library are a known, accepted gap, not an oversight.
+  sportarr:
+    <<: *common
+    image: sportarr/sportarr:latest
+    container_name: sportarr
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:1867/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/sportarr:/config
+      - /mnt/altmount:/mnt/altmount:rslave
+      - ./media/wrestling:/data
+      # AltMount's SYMLINK import_dir - see radarr/sonarr's matching mount comment above.
+      - ./media/altmount-import:/mnt/altmount-import
+    ports:
+      - "1867:1867"
+    # No live baseline yet (brand new service) - sized in line with
+    # Radarr/Sonarr's own observed footprint, since Sportarr is built on
+    # the same Sonarr codebase. Revisit with `docker stats` once it's run
+    # for a while, per this stack's own mem_limit-audit policy.
+    mem_limit: 1g
+    mem_reservation: 128m
+    cpus: 2
+
 
 
   # ---------------------------------------------------------------------
@@ -266,6 +300,10 @@ services:
       - ./config/plex-transcode:/transcode
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
+      # Sportarr's library, added 2026-07-23 - a third, separate root folder,
+      # since sports releases use a different naming/episode scheme than
+      # the real Shows library.
+      - ./media/wrestling:/data/wrestling
       # Root folders were 100% symlinks into NzbDAV's own WebDAV filesystem
       # (e.g. /mnt/nzbdav/.ids/...) before it was removed entirely 2026-07-23
       # (see CLAUDE.md's History) - every one of those old symlinks is now
@@ -382,6 +420,9 @@ services:
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
+      # Sportarr (sports PVR, wrestling library only, added 2026-07-23) -
+      # dedicated /api/sportarr/* routes, not the generic ARR_APPS machinery.
+      SPORTARR_API_KEY: ${SPORTARR_API_KEY}
       # NzbDAV removed entirely 2026-07-23 (see CLAUDE.md's History) -
       # AltMount's SABnzbd-compatible API key replaces it.
       ALTMOUNT_API_KEY: ${ALTMOUNT_API_KEY}
