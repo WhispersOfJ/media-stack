@@ -493,9 +493,30 @@ scratch. Full incident narrative is in the History section below; this is the ch
   qBittorrent-API emulation never implemented `POST /api/v2/app/setPreferences`, confirmed
   live: 404 even with valid login/cookie). Moot now that Decypharr is removed entirely
   (v11.0.0) — whether Blacklist Sync works against NzbDAV's SABnzbd-compatible API is
-  untested, not confirmed either way. Cleanuparr's separate Content Blocker / Malware Blocker
-  feature (applies the same blacklist directly to Sonarr/Radarr, no download-client
-  involvement) is unaffected either way and stays enabled.
+  untested, not confirmed either way.
+- **Cleanuparr's Content Blocker / MalwareBlocker feature can never work in this stack — not a
+  config gap, a structural limitation, confirmed 2026-07-23.** `grep -a` across the actual
+  Cleanuparr 2.9.16 binary (`/app/Cleanuparr` inside the container) for download-client-type
+  strings turns up only `qBittorrent`/`Deluge`/`rTorrent`/`Transmission`/`uTorrent` — no
+  `SABnzbd`/`NZBGet` string exists anywhere in the build. MalwareBlocker requires a row in
+  Cleanuparr's own `download_clients` table (a *direct* Cleanuparr-to-client connection,
+  separate from the `arr_instances` table QueueCleaner uses) to do its blacklist deletion at
+  the client level, and there is no client type it could ever register for a 100%-Usenet
+  stack. `download_clients` had been empty since at least 2026-07-20 (confirmed via its own
+  logs going back that far, i.e. this predates the AltMount cutover — it was already broken
+  under NzbDAV too, just never noticed), and every hourly run logged `[MalwareBlocker] No
+  download clients configured` the entire time with zero protective effect. **Disabled
+  outright** (`content_blocker_configs.enabled` → `0` in `config/cleanuparr/cleanuparr.db`,
+  container stopped/backed-up/edited/restarted, same WAL-safety practice as every other live-DB
+  edit in this file; verified via the restart log no longer listing a ContentBlocker job
+  trigger). **QueueCleaner is unaffected and confirmed still working correctly against
+  AltMount** — it operates purely through the `arr_instances`/Sonarr-Radarr queue API (strikes,
+  failed-import removal, stall detection), never touches the `download_clients` table, and its
+  strike/removal logic was observed firing correctly live on AltMount-sourced downloads the same
+  day. A stack-wide audit the same session found no other non-Usenet-friendly feature enabled
+  anywhere else (Cleanuparr's own seeding-rule tables and Download Cleaner are empty/disabled;
+  Prowlarr/Radarr/Sonarr indexers and download clients are 100% Usenet; Unpackerr has no
+  torrent-client env vars) — this was the only live one.
 - **Cleanuparr's own filesystem mount tracks whatever path the download client's API reports
   for each queue item** — originally added to fix QueueCleaner/MalwareBlocker crashing with
   `System.InvalidOperationException: Sequence contains no elements` against Decypharr's

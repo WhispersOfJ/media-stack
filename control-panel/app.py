@@ -10,7 +10,6 @@ matches every other service in this stack (see README.md's "Security"
 section).
 """
 import concurrent.futures
-import json
 import os
 import queue
 import re
