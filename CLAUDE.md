@@ -1447,6 +1447,18 @@ time:
   workflow file's own most recent change landed on `main`; a second empty-commit push a minute
   later ran for real. No branch protection is configured on this repo, so none of this ever
   blocked a merge — it was a broken CI signal, now a working one.
+- **`/install-github-app` doesn't just refresh `CLAUDE_CODE_OAUTH_TOKEN` — it also silently
+  overwrites both `.github/workflows/claude-code-review.yml` and `claude.yml` with its own
+  current upstream template, auto-committing and auto-merging the diff (PR #27, same session
+  as the token refresh above) without asking.** Confirmed real, not hypothetical: that sync
+  deleted the Dependabot-skip guard (`if: github.actor != 'dependabot[bot]'` plus
+  `allowed_bots: 'dependabot[bot]'`) from `claude-code-review.yml` — the exact fix already in
+  place for a previously-documented, real bug (GitHub withholds repo secrets from
+  Dependabot-triggered `pull_request` runs, so this job fails every time without the skip) —
+  and downgraded `actions/checkout@v7` → `v4` in both files. Both restored by hand the same
+  session. **Any future run of `/install-github-app` needs its resulting diff reviewed before
+  trusting it**, not just the secret's refreshed timestamp — it will silently re-strip this
+  guard again if the upstream template hasn't changed to include an equivalent by then.
 
 ## Deliberate architecture decisions with non-obvious reasons
 
