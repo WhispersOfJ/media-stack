@@ -1427,13 +1427,20 @@ time:
   reformatting that line in README *or* editing README without a `--force-recreate` on
   `control-panel` can both silently break version reporting.
 - **`claude-review` CI (`.github/workflows/claude-code-review.yml`) has been failing on every
-  real (non-Dependabot) PR since at least 2026-07-15, `is_error:true` at $0 cost within one
-  turn — under investigation 2026-07-23.** `show_full_output: true` was temporarily added to
-  the workflow to see the real error past the SDK's default output redaction (a workflow-file
-  change on a PR gets skipped by GitHub's own "must match default branch" validation, so this
-  needs a separate throwaway trigger PR after merging the flag itself). No branch protection is
+  real (non-Dependabot) PR since at least 2026-07-15 — root cause confirmed 2026-07-23: `401
+  Invalid bearer token`, i.e. the `CLAUDE_CODE_OAUTH_TOKEN` repo secret itself
+  (`gh secret list` shows it was last set 2026-07-09) is expired/invalid, not a permissions or
+  prompt problem.** Confirmed by temporarily adding `show_full_output: true` to the workflow
+  (past the SDK's default output redaction) and running it via a genuine trigger PR — a
+  workflow-file change on the *same* PR gets skipped outright by GitHub's own "must match
+  default branch" validation, so seeing the real error needed the flag merged to `main` first,
+  then a separate, unrelated PR to trigger a real run. Flag has been reverted after use. **Fix
+  requires regenerating `CLAUDE_CODE_OAUTH_TOKEN`** via Claude Code's own GitHub-app install
+  flow (`/install-github-app` from a local `claude` session, or the equivalent from
+  claude.ai/code's GitHub integration settings) — this needs the user's own account
+  authorization, not something fixable by editing files in this repo. No branch protection is
   configured on this repo, so this has never blocked a merge — treat it as a known-broken CI
-  signal, not a merge gate, until this is resolved.
+  signal, not a merge gate, until the token is refreshed.
 
 ## Deliberate architecture decisions with non-obvious reasons
 
