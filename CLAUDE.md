@@ -1426,6 +1426,21 @@ time:
   `README.md`.** This compounds the single-file bind-mount staleness issue already noted above —
   reformatting that line in README *or* editing README without a `--force-recreate` on
   `control-panel` can both silently break version reporting.
+- **`claude-review` CI (`.github/workflows/claude-code-review.yml`) has been failing on every
+  real (non-Dependabot) PR since at least 2026-07-15 — root cause confirmed 2026-07-23: `401
+  Invalid bearer token`, i.e. the `CLAUDE_CODE_OAUTH_TOKEN` repo secret itself
+  (`gh secret list` shows it was last set 2026-07-09) is expired/invalid, not a permissions or
+  prompt problem.** Confirmed by temporarily adding `show_full_output: true` to the workflow
+  (past the SDK's default output redaction) and running it via a genuine trigger PR — a
+  workflow-file change on the *same* PR gets skipped outright by GitHub's own "must match
+  default branch" validation, so seeing the real error needed the flag merged to `main` first,
+  then a separate, unrelated PR to trigger a real run. Flag has been reverted after use. **Fix
+  requires regenerating `CLAUDE_CODE_OAUTH_TOKEN`** via Claude Code's own GitHub-app install
+  flow (`/install-github-app` from a local `claude` session, or the equivalent from
+  claude.ai/code's GitHub integration settings) — this needs the user's own account
+  authorization, not something fixable by editing files in this repo. No branch protection is
+  configured on this repo, so this has never blocked a merge — treat it as a known-broken CI
+  signal, not a merge gate, until the token is refreshed.
 
 ## Deliberate architecture decisions with non-obvious reasons
 
