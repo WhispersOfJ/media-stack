@@ -1426,6 +1426,14 @@ time:
   `README.md`.** This compounds the single-file bind-mount staleness issue already noted above —
   reformatting that line in README *or* editing README without a `--force-recreate` on
   `control-panel` can both silently break version reporting.
+- **`claude-review` CI (`.github/workflows/claude-code-review.yml`) has been failing on every
+  real (non-Dependabot) PR since at least 2026-07-15, `is_error:true` at $0 cost within one
+  turn — under investigation 2026-07-23.** `show_full_output: true` was temporarily added to
+  the workflow to see the real error past the SDK's default output redaction (a workflow-file
+  change on a PR gets skipped by GitHub's own "must match default branch" validation, so this
+  needs a separate throwaway trigger PR after merging the flag itself). No branch protection is
+  configured on this repo, so this has never blocked a merge — treat it as a known-broken CI
+  signal, not a merge gate, until this is resolved.
 
 ## Deliberate architecture decisions with non-obvious reasons
 
