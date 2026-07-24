@@ -497,13 +497,13 @@ services:
     cpus: 1
 
   # ---------------------------------------------------------------------
-  # Queue cleanup/missing-content automation. Automates what Control
-  # Panel's own "unstick" and "search missing" buttons already do by hand -
-  # roles deliberately split between the two apps below: Cleanuparr owns
-  # strikes/malware-blocking/stalled-cleanup, NeutArr owns "hunt missing"
-  # exclusively (Cleanuparr's own built-in missing-search should be left
-  # disabled once NeutArr is configured, so the two don't redundantly
-  # search the same libraries against the same indexers - see README).
+  # Queue cleanup automation. Automates what Control Panel's own "unstick"
+  # button already does by hand - strikes/malware-blocking/stalled-cleanup.
+  # NeutArr (missing-content hunting) was removed entirely 2026-07-24, by
+  # explicit request, after its hunting flood repeatedly caused runaway
+  # blocklist_search loops in BearMount and a Plex SQLite lock-contention
+  # stall from the resulting import burst (see CLAUDE.md's History) - no
+  # automated missing-content hunting runs in this stack anymore.
   # ---------------------------------------------------------------------
   cleanuparr:
     <<: *common
@@ -529,40 +529,5 @@ services:
     ports:
       - "11011:11011"
     mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-
-  # Hardened Huntarr-lineage fork (Huntarr itself was abandoned after the
-  # original author suppressed reports of an unauthenticated auth-bypass
-  # that leaked every connected *arr app's API keys in cleartext - never
-  # add Huntarr proper). NeutArr traces through elfhosted/newtarr's fork of
-  # the last clean Huntarr release (v6.6.3), with the auth system fully
-  # rebuilt and the original security findings addressed.
-  neutarr:
-    <<: *common
-    image: iampuid0/neutarr:1.9.1
-    container_name: neutarr
-    profiles: [extras]
-    networks: [stacknet]
-    # No curl (or wget) in this image - confirmed live, the curl-based
-    # healthcheck every other app in this file uses just failed with
-    # "curl: not found" despite the app itself serving fine (a real 200 on
-    # manual check). Uses the venv's own python3 instead, which is present.
-    healthcheck:
-      test: ["CMD-SHELL", "/venv/bin/python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9705/', timeout=5)\" || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/neutarr:/config
-    ports:
-      - "9705:9705"
-    # Was 512m - confirmed via docker stats/OOMKilled that NeutArr gets
-    # killed roughly every 30 minutes at that ceiling despite a modest
-    # ~145MB steady-state reading, invisible on any dashboard since
-    # restart: unless-stopped just quietly restarts it. Raised with real
-    # headroom rather than tightened.
-    mem_limit: 1g
     mem_reservation: 64m
     cpus: 2

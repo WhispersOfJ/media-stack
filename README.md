@@ -31,7 +31,7 @@ chronological [History](#history) section is at the end.
 - [Media server: Plex](#media-server-plex)
 - [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
-- [Automation extras: Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-cleanuparr-neutarr-unpackerr-watchtower)
+- [Automation extras: Cleanuparr, Unpackerr, Watchtower](#automation-extras-cleanuparr-unpackerr-watchtower)
 - [Bazarr: subtitle management](#bazarr-subtitle-management)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
@@ -50,7 +50,7 @@ chronological [History](#history) section is at the end.
 A Usenet-only media stack: an indexer layer (Prowlarr), a request front-end (Seerr), two
 `*arr` apps (Radarr, Sonarr; Lidarr was removed in v10.9.9 and Whisparr in v10.12.0, see
 [History](#history)), Usenet acquisition that streams rather than downloads (**AltMount**),
-and **Plex** for serving, plus automation extras (Cleanuparr, NeutArr, Unpackerr, Watchtower,
+and **Plex** for serving, plus automation extras (Cleanuparr, Unpackerr, Watchtower,
 Bazarr). Ebooks briefly had a dedicated app (Bindery) plus a reader (Calibre-Web); both were
 retired in v10.9.8 with no replacement (see
 [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)). Adult content
@@ -96,7 +96,7 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 docker compose up -d
 
 # 4. Everything else (Bazarr, Control Panel, Unpackerr, Watchtower,
-#    Cleanuparr, NeutArr, ...)
+#    Cleanuparr, ...)
 docker compose --profile extras up -d
 ```
 
@@ -212,7 +212,6 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 10 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
 | 11 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
 | 12 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 13 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
 
 **Jellyfin briefly replaced Plex in v11.7.0 and was fully reverted back to Plex the same day**
 (see [History](#history) for the migration and the reversion) - `jellyfin`, `jellystat`, and
@@ -715,33 +714,25 @@ curl -s -H "X-Api-Key: $RADARR_API_KEY" \
   jq '.customFormats, .customFormatScore'
 ```
 
-## Automation extras: Cleanuparr, NeutArr, Unpackerr, Watchtower
+## Automation extras: Cleanuparr, Unpackerr, Watchtower
 
 **Kometa and its Quickstart companion were removed entirely in v11.9.0** (see
 [History](#history) `[11.9.0]`) - no automated Plex collections, overlays, or
 metadata-enrichment tool of any kind runs in this stack now.
 
-**Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) and **NeutArr**
-(`iampuid0/neutarr:1.9.1`, port 9705) automate what Control Panel's "unstick" and
-"search missing" actions do by hand. Roles are split: Cleanuparr owns strikes (3-strike
-failed-import detection), an hourly-checked community malware blocklist, and
-stalled-download cleanup; NeutArr owns missing-content/quality-upgrade hunting. Cleanuparr's
-built-in proactive search stays disabled so the two do not hunt the same libraries
-redundantly. NeutArr is wired to Sonarr and Radarr, each instance's URL/API key set in
-`config/neutarr/{sonarr,radarr}.json` (a host bind mount at `/config`; NeutArr's own
-"Apps" settings page writes the same files). `readarr.json` is present but
-`"enabled": false`, a leftover from before the Bindery swap; `lidarr.json` was deleted with
-Lidarr in v10.9.9. `eros.json` (Whisparr's real slot) had its real credentials deleted when
-Whisparr was removed in v10.12.0, same as `lidarr.json` — but unlike `lidarr.json`, NeutArr
-regenerates both `eros.json` and the pre-existing orphaned `whisparr.json` on every restart
-with blank credentials, the same inert-placeholder pattern already documented below for the
-original orphaned file. Deleting them again is cosmetic; they can never actually connect.
+**NeutArr was removed entirely 2026-07-24** (see [History](#history)), by explicit
+request, after its missing-content hunting repeatedly built up large grab backlogs that,
+once processed, caused two separate cascading failures: a self-sustaining
+blocklist-then-research loop in BearMount's own queue cleanup, and a Plex SQLite
+lock-contention stall from the resulting import burst. There is no automated
+missing-content/quality-upgrade hunting of any kind in this stack now - only Cleanuparr's
+strike/malware/stalled-download cleanup remains.
 
-> **NeutArr, not Huntarr.** NeutArr is a fork tracing through `elfhosted/newtarr`'s fork of
-> Huntarr v6.6.3, the last release before Huntarr's maintainer suppressed reports of an
-> unauthenticated auth-bypass that leaked every connected `*arr` app's API keys in cleartext,
-> then took the repo private and banned users raising the issue. Do not add Huntarr proper to
-> this stack.
+**Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) automates what Control
+Panel's "unstick" action does by hand: strikes (3-strike failed-import detection), an
+hourly-checked community malware blocklist, and stalled-download cleanup. Its own built-in
+proactive search stays disabled, since there is no longer a second hunting tool to
+coordinate with.
 
 Notes on wiring found and fixed live: a service can be connected at the compose level and
 still not registered inside the app it talks to. Cleanuparr's `arr_instances` table once had
@@ -1117,7 +1108,6 @@ stack-perms-check                               # config files unreadable by gro
 stack-backup-verify                             # latest snapshot age, local + off-site repos
 stack-backup-restore-test                       # actually restores one file, confirms restores work
 stack-cleanuparr-instances                      # which *arr apps Cleanuparr actually has connected
-stack-neutarr-status                            # per-app enabled state from NeutArr's own config
 stack-arr-logs radarr 200                       # tail a container's log directly
 stack-plex-empty-trash "TV Shows"               # scoped to one library, or every library if none given
 stack-plex-analyze "TV Shows"                   # queue deep media analysis, scoped to one library or all
@@ -1305,7 +1295,7 @@ Every image is pinned, using whichever approach does not change what is running:
 - **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the hotio images (Prowlarr,
   Radarr, Sonarr, Bazarr). hotio's model is rolling channels identified by git-hash, not
   semver, so a channel tag is the closest available pin.
-- **Version tags** (`nickfedor/watchtower:1.19.0`, `iampuid0/neutarr:1.9.1`,
+- **Version tags** (`nickfedor/watchtower:1.19.0`,
   `ghcr.io/cleanuparr/cleanuparr:2.9.16`) where the upstream tags real releases and the running
   image matches.
 - **Digest pins** (`@sha256:...`) for Seerr and Unpackerr. In each case the running
@@ -1331,7 +1321,6 @@ otherwise:
 |---|---|---|---|
 | `plex` | 3GB | 12 | `cpus` sized from a real library-scan CPU spike (100% with zero playback sessions - hardware transcode covers play/decode, not scan/analysis); `mem_limit` from an observed 231MB/6GiB (3.76%) baseline, not yet stress-tested against a heavy scan |
 | `altmount` | 4GB | 4 | Bumped 1g → 2g → 4g after the 2g ceiling hit 99.87% during the bulk re-link job - per-archive memory cost scales with part count, and this library has several 50-70GB+ UHD remux releases |
-| `neutarr` | 1GB | 2 | Raised from 512m 2026-07-18 - was getting OOM-killed roughly every 30 minutes at that ceiling despite a modest ~145MB steady state, invisible on any dashboard since `restart: unless-stopped` masked it |
 
 **Jellyfin/Jellystat/`jellystat-db` briefly had their own rows during the v11.7.0 detour** (3GB/
 6 cpus for Jellyfin, 512MB/1 cpu each for the Jellystat pair) - all three moot now that they
@@ -2563,3 +2552,28 @@ as "used to live in Kometa's config.yml") simplified to drop that now-doubly-sta
 This is the second removal for both apps - see the `[11.7.0]`/`[11.8.0]` entries above for the
 first (Kometa/Tautulli came back dormant when Plex returned; this time neither was
 reintroduced).
+
+**v11.10.0**: NeutArr removed entirely, by explicit request, following a real incident. A
+Plex library scan repeatedly stalled at a fixed progress percentage; root-caused via
+`Plex Media Server.log` to a Plex-internal SQLite lock-contention stall (`ERROR - Waited
+over 10 seconds for a busy database; giving up`, repeating every ~10s), triggered by a
+burst of 100+ near-simultaneous episode imports flooding Plex's partial-scan webhook -
+distinct from an earlier, separate FUSE/D-state hang incident the same day. Tracing the
+import burst back further found NeutArr's missing-content hunting (running for hours
+beforehand) had built up a large grabbed-but-unimported backlog in BearMount's queue;
+once that queue resumed processing, the same flood also triggered a self-sustaining
+blocklist-then-research loop in BearMount's own queue cleanup (`queue_cleanup_rules`'s
+`blocklist_search` action re-triggers a search on every blocklist, and several shows -
+RuPaul's Drag Race, Snapped, Pawn Stars, Modern Marvels - kept finding equally bad
+releases from the same indexers, sustaining the loop for hours). Recovered by unmonitoring
+the two most-affected series and clearing all blocklist entries on both Radarr and Sonarr
+(fixing a broken cleanup script mid-recovery: a bash loop's nested-quoting bug meant it
+never actually authenticated against Sonarr's API, looping harmlessly forever - replaced
+with a plain Python script). NeutArr's container, image, and `config/neutarr/` were deleted;
+`docker-compose.yml`'s service block removed; `control-panel/app.py`'s `/api/neutarr/status`
+route and its `CONTAINER_LABELS` entry deleted outright; `control-panel/static/app.js`'s
+`FLEET_GROUPS`/`DOC_LINKS` entries and `commands.json`'s `stack-neutarr-status` command
+removed; the `stack-cli-usenet-queue` skill updated to drop NeutArr entirely. Cleanuparr's
+own strike/malware/stalled-download cleanup is unaffected and remains the only queue
+automation in this stack - there is no automated missing-content/quality-upgrade hunting
+of any kind now.

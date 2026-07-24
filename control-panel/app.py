@@ -87,7 +87,7 @@ def _omdb_key() -> str | None:
 def _mdblist_key() -> str | None:
     return os.environ.get("MDBLIST_KEY") or None
 # Read-only host mounts added specifically for the stack-* diagnostic
-# endpoints below (resource-check through neutarr-hunt) - see
+# endpoints below (resource-check through backup-integrity-check) - see
 # docker-compose.yml's control-panel volumes for what backs each of these.
 HOST_CONFIG_DIR = "/host-config"
 HOST_MNT_DIR = "/mnt"
@@ -144,7 +144,6 @@ CONTAINER_LABELS = {
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
-    "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
     "recyclarr": ("Recyclarr", "TRaSH Guides custom-format/quality-profile sync, Radarr/Sonarr only"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
@@ -3342,32 +3341,6 @@ def recyclarr_status():
     lines = c.logs(tail=30).decode("utf-8", errors="replace").splitlines()
     relevant = [line for line in lines if line.strip()][-15:]
     return ok(f"Last {len(relevant)} log line(s) from recyclarr.", lines=relevant)
-
-
-@app.get("/api/neutarr/status")
-def neutarr_status():
-    """Per-app enabled/disabled state straight from NeutArr's own JSON
-    config files - the same place the orphaned whisparr.json (blank
-    creds, enabled:true, never actually read) was found."""
-    neutarr_dir = os.path.join(HOST_CONFIG_DIR, "neutarr")
-    if not os.path.isdir(neutarr_dir):
-        fail(f"{neutarr_dir} not present.")
-    apps = {}
-    for fname in os.listdir(neutarr_dir):
-        if not fname.endswith(".json") or fname in ("general.json", "swaparr.json", "users.json"):
-            continue
-        try:
-            with open(os.path.join(neutarr_dir, fname)) as f:
-                import json as _json
-                cfg = _json.load(f)
-            instances = cfg.get("instances", [])
-            apps[fname[:-5]] = {
-                "enabled": any(i.get("enabled") for i in instances),
-                "has_credentials": any(i.get("api_url") and i.get("api_key") for i in instances),
-            }
-        except Exception as e:
-            apps[fname[:-5]] = {"error": str(e)}
-    return ok(f"{len(apps)} app config file(s) found in config/neutarr.", apps=apps)
 
 
 ARR_LOG_CONTAINERS = {"radarr", "sonarr", "prowlarr"}

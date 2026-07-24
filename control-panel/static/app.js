@@ -340,7 +340,7 @@ const FLEET_GROUPS = {
   bearmount: "Usenet", seerr: "Requests", plex: "Media server",
   bazarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
-  cleanuparr: "Queue cleanup", neutarr: "Queue cleanup",
+  cleanuparr: "Queue cleanup",
   "control-panel": "Dashboard",
 };
 const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Post-processing", "Auto-updates", "Dashboard", "Other"];
@@ -945,7 +945,6 @@ const QUICK_LINKS = [
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "bazarr", label: "Bazarr", port: 6767 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
-  { id: "neutarr", label: "NeutArr", port: 9705 },
 ];
 
 function buildQuickLinks() {
@@ -968,7 +967,6 @@ const DOC_LINKS = [
   { app: "Plex", desc: "media server", urls: [["Support", "https://support.plex.tv"]] },
   { app: "Bazarr", desc: "subtitle management for Radarr/Sonarr", urls: [["Source", "https://github.com/morpheus65535/bazarr"]] },
   { app: "Cleanuparr", desc: "queue strikes/malware-block/stalled cleanup", urls: [["Source", "https://github.com/Cleanuparr/Cleanuparr"]] },
-  { app: "NeutArr", desc: "missing/upgrade hunting (Huntarr-lineage fork)", urls: [["Source", "https://github.com/I-am-PUID-0/NeutArr"]] },
   { app: "Unpackerr", desc: "RAR extraction for Radarr/Sonarr downloads", urls: [["Source", "https://github.com/Unpackerr/unpackerr"]] },
   { app: "Watchtower", desc: "container auto-update (maintained fork)", urls: [["Source", "https://github.com/nicholas-fedor/watchtower"]] },
   { app: "Recyclarr", desc: "syncs TRaSH Guides quality profiles/custom formats to Radarr/Sonarr", urls: [["Source", "https://github.com/recyclarr/recyclarr"]] },
@@ -1036,7 +1034,7 @@ const CLAUDE_SKILLS = [
   { name: "stack-cli-infra-ops", desc: "Container control, backup verify/integrity, disk usage checks." },
   { name: "stack-cli-plex-kometa", desc: "Plex library/Butler tasks, duplicates, TMDb-link audit." },
   { name: "stack-cli-system-maintenance", desc: "Host package updates, reboot/disk/SMART/journal checks (terminal-only — see the Host rail's note above)." },
-  { name: "stack-cli-usenet-queue", desc: "BearMount/Cleanuparr/NeutArr/Prowlarr status and queue ops." },
+  { name: "stack-cli-usenet-queue", desc: "BearMount/Cleanuparr/Prowlarr status and queue ops." },
 ];
 
 function buildSkillsList() {
