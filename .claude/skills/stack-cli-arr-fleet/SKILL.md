@@ -45,7 +45,7 @@ None of these commands take a `--host` flag or read a `STACK_HOST_IP` environmen
 | `stack-recently-added` | `<radarr\|sonarr> [limit]` (default 10) | What was added *to management* most recently, with file/episode counts - spot-checks whether a fresh add has actually been searched yet. Distinct from `stack-plex-recently-added` (see the `stack-cli-plex-kometa` skill), which shows what's actually visible in Plex. |
 | `stack-arr-logs` | `<radarr\|sonarr\|prowlarr> [lines]` (default 100) | Tails that app's container log directly. |
 | `stack-command-queue-summary` | none | Backlog across radarr+sonarr+prowlarr at once - the aggregate view of what `stack-arr-backlog` shows one app at a time. |
-| `stack-queue-status` | none | Every download queue (radarr, sonarr, nzbdav, plex activities) with a live-measured speed and ETA. Takes ~4s: it samples twice, since each app's own progress/timeleft reporting is unreliable in this stack. |
+| `stack-queue-status` | none | Every download queue (radarr, sonarr, bearmount, plex activities) with a live-measured speed and ETA. Takes ~4s: it samples twice, since each app's own progress/timeleft reporting is unreliable in this stack. |
 | `stack-backlog-status` | none | Every app's wanted/missing count with a throughput-projected ETA, based on recent import rate - a fundamentally different measurement from `stack-queue-status` (nothing here is mid-transfer, there's no size to drain). |
 
 **Bazarr (subtitles):** Bazarr watches Radarr/Sonarr's libraries and fetches subtitles for anything missing them - it has no library of its own.

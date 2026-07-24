@@ -1,18 +1,17 @@
 ---
 name: docker-compose-manager
-description: Manage the media-stack docker compose services safely — start, stop, restart, and inspect containers. Use whenever the user asks to restart a service, bring the stack up/down, check container status, tail logs, or recover from a container crash. Understands the stack's FUSE-mount dependency chain (nzbdav-rclone → radarr/sonarr/plex/unpackerr/cleanuparr) so it restarts dependents in the correct order instead of leaving them pointed at a stale mount. Trigger phrases: "restart <service>", "bring the stack up/down", "is <container> healthy", "recreate <service>", "docker compose logs for X", "the mount looks stale".
+description: Manage the media-stack docker compose services safely — start, stop, restart, and inspect containers. Use whenever the user asks to restart a service, bring the stack up/down, check container status, tail logs, or recover from a container crash. Understands the stack's FUSE-mount dependency chain (bearmount → radarr/sonarr/plex/unpackerr/cleanuparr) so it restarts dependents in the correct order instead of leaving them pointed at a stale mount. Trigger phrases: "restart <service>", "bring the stack up/down", "is <container> healthy", "recreate <service>", "docker compose logs for X", "the mount looks stale".
 ---
 
 # Docker Compose Manager
 
 Wraps `docker compose` for this stack with one critical safety behavior baked in:
-**mount-owning containers cascade.** `nzbdav-rclone` is the only FUSE-mount-owning
-container left as of v11.0.0 (torrent/debrid removal took `zurg`/`rclone-alldebrid` with
-it) — restart it without also restarting every container that bind-mounts its output
-(`radarr`, `sonarr`, `plex`, `unpackerr`, `cleanuparr`) and those dependents keep serving
-a stale/broken mount handle until *they* are restarted too — a recurring failure class in
-this stack, confirmed live again during the v11.0.0 removal itself. Always use
-`handler.py` rather than raw `docker compose restart` for `nzbdav-rclone`.
+**mount-owning containers cascade.** `bearmount` is the only FUSE-mount-owning
+container in this stack — restart it without also restarting every container that
+bind-mounts its output (`radarr`, `sonarr`, `plex`, `unpackerr`, `cleanuparr`) and those
+dependents keep serving a stale/broken mount handle until *they* are restarted too — a
+recurring failure class in this stack, confirmed live multiple times. Always use
+`handler.py` rather than raw `docker compose restart` for `bearmount`.
 
 ## When to use this skill
 
@@ -30,11 +29,11 @@ this stack, confirmed live again during the v11.0.0 removal itself. Always use
 python3 handler.py status                       # docker compose ps, all services
 python3 handler.py status radarr                 # status of one service
 python3 handler.py restart radarr                # restart one non-mount-owning service
-python3 handler.py restart nzbdav-rclone         # restart it AND its cascade dependents, in order
+python3 handler.py restart bearmount             # restart it AND its cascade dependents, in order
 python3 handler.py up                            # docker compose up -d (whole stack)
 python3 handler.py down                          # docker compose down (whole stack) — asks for confirmation
 python3 handler.py recreate control-panel         # force-recreate a single container (config/mount changed)
-python3 handler.py logs nzbdav --tail 200
+python3 handler.py logs bearmount --tail 200
 python3 handler.py cascade-map                   # print the known mount-owner -> dependent graph
 ```
 

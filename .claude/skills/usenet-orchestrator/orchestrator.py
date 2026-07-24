@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect and manage download-client queues (altmount, or any other
+"""Inspect and manage download-client queues (bearmount, or any other
 SABnzbd/qBittorrent-API-compatible client added to CLIENTS below) for the
 media-stack.
 
@@ -20,26 +20,27 @@ import sys
 import urllib.error
 import urllib.request
 
-# AltMount is the only download client this stack runs as of 2026-07-23,
-# replacing NzbDAV entirely (unmerged connection-leak bug, see CLAUDE.md's
-# History) - other SABnzbd/qBittorrent-API clients can still be added here
-# if a future stack change brings one back. "path" is the base path each
-# client's SABnzbd-compatible API is actually mounted under - a real
-# vanilla SABnzbd install expects /api directly; AltMount's Fiber router
-# mounts it under /sabnzbd instead (app.Use("/sabnzbd", ...), prefix-
-# matching, confirmed via its own source). Host port is AltMount's
-# published one (8081, mapped from container 8080) - override via
-# ALTMOUNT_URL for anything reached differently.
+# BearMount is the only download client this stack runs (rebrand/fork of
+# AltMount, itself the NzbDAV replacement - see CLAUDE.md's History) - other
+# SABnzbd/qBittorrent-API clients can still be added here if a future stack
+# change brings one back. "path" is the base path each client's
+# SABnzbd-compatible API is actually mounted under - a real vanilla SABnzbd
+# install expects /api directly; BearMount's Fiber router mounts it under
+# /sabnzbd instead (app.Use("/sabnzbd", ...), prefix-matching, carried over
+# from AltMount's own source, confirmed live). Host port is BearMount's
+# published one (8082, mapped from container 8080) - override via
+# BEARMOUNT_URL for anything reached differently.
 CLIENTS = {
-    "altmount": {"port": 8081, "path": "/sabnzbd", "kind": "sabnzbd"},
+    "bearmount": {"port": 8082, "path": "/sabnzbd", "kind": "sabnzbd"},
 }
 
 # NzbDAV/nzbdav-rclone's stuck-file diagnostic (matched a repeating
 # ".ids/<uuid> 404 Not Found" log pattern specific to that FUSE mount) had
-# no confirmed AltMount equivalent as of the 2026-07-23 cutover - AltMount
-# is a single container with its own internal mount/logging shape, not
-# verified to log missing-article failures the same way. Removed rather
-# than guessed; see cmd_diagnose_stuck_file below.
+# no confirmed AltMount/BearMount equivalent as of the 2026-07-23 AltMount
+# cutover, and none has been confirmed since the 2026-07-24 BearMount
+# rebrand either - both are a single container with their own internal
+# mount/logging shape, not verified to log missing-article failures the
+# same way. Removed rather than guessed; see cmd_diagnose_stuck_file below.
 
 
 class Client:
@@ -169,14 +170,14 @@ def cmd_diagnose_stuck_file(since: str, media_root: str) -> None:
     """Read-only. Was built around NzbDAV/nzbdav-rclone's specific
     ".ids/<uuid> 404 Not Found" log pattern (see module comment) - NzbDAV
     was removed entirely 2026-07-23 and this diagnostic has no confirmed
-    AltMount equivalent yet, so it refuses to run rather than silently
+    BearMount equivalent, so it refuses to run rather than silently
     search logs that likely don't match this pattern at all."""
-    print("diagnose-stuck-file has no confirmed AltMount equivalent yet - it was built")
+    print("diagnose-stuck-file has no confirmed BearMount equivalent - it was built")
     print("around NzbDAV/nzbdav-rclone's specific log format, and NzbDAV was removed")
-    print("entirely 2026-07-23 (see CLAUDE.md's History). Check AltMount's own logs")
-    print("(docker logs altmount) directly for now, or port this diagnostic once")
-    print("AltMount's actual missing-article/failed-mount log format is confirmed.")
-    _ = (since, media_root)  # unused until a real AltMount log pattern is confirmed
+    print("entirely 2026-07-23 (see CLAUDE.md's History). Check BearMount's own logs")
+    print("(docker logs bearmount) directly for now, or port this diagnostic once")
+    print("BearMount's actual missing-article/failed-mount log format is confirmed.")
+    _ = (since, media_root)  # unused until a real BearMount log pattern is confirmed
 
 
 def main() -> int:

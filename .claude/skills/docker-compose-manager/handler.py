@@ -18,12 +18,12 @@ from pathlib import Path
 # Known FUSE-mount-owning services -> containers that bind-mount their output and
 # must be restarted afterward or they'll keep serving a stale mount handle.
 # Update this when the compose topology changes; it cannot be inferred from
-# docker-compose.yml alone. altmount is the only mount owner left as of
-# 2026-07-23 (replaced NzbDAV/nzbdav-rclone entirely - see CLAUDE.md's
+# docker-compose.yml alone. bearmount is the only mount owner left (rebrand/fork
+# of AltMount, itself the NzbDAV/nzbdav-rclone replacement - see CLAUDE.md's
 # History) - matches control-panel/app.py's own MOUNT_PROVIDERS/
 # MOUNT_DEPENDENTS sets exactly.
 CASCADE_MAP = {
-    "altmount": ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"],
+    "bearmount": ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"],
 }
 
 

@@ -36,12 +36,12 @@ unresolved library-scan hangs; Jellyfin/Jellystat/jellystat-db were removed enti
 reversion (see the dedicated History entry below) — there is no Jellyfin anywhere in this stack.
 NzbDAV (Usenet client) was removed entirely 2026-07-23 and replaced by AltMount, for the same
 reason (an unfixed upstream connection-leak bug) — see the landmines section for the full
-incident and PR references. **Tautulli, Kometa, and Kometa's Quickstart companion still have
-real compose service blocks and pulled images in this stack** (confirmed via `docker-compose.yml`
-and `docker images`) **but no running or even stopped container exists for any of the three**
-(confirmed via `docker compose ps -a` showing nothing for them) — treat them as present-but-
-dormant, not "removed," despite older entries in this file's own History/landmines sections
-claiming they were deleted; that narrative was never true or went stale, corrected 2026-07-23.
+incident and PR references. **Tautulli, Kometa, and Kometa's Quickstart companion are fully
+removed, corrected 2026-07-24** — `docker-compose.yml` has zero references to any of the
+three (confirmed via `grep`), reversing a 2026-07-23 correction in this same file that claimed
+they were "present-but-dormant" with live compose blocks/images; that "present-but-dormant"
+claim was itself stale by the time it was checked again. Treat their removal (compose blocks,
+`config/tautulli/`, `config/kometa/`, `config/quickstart/`) as complete and final.
 **Torrent and debrid support (Decypharr, Zurg, rclone-alldebrid, Zilean, zilean-postgres,
 Byparr) was removed entirely in v11.0.0, by explicit request** — every acquisition goes through
 Usenet, no exceptions (see the landmines/History sections below for the full removal, including
@@ -458,6 +458,15 @@ section, and there's no substitute for it for that class of change.
   API key Prowlarr uses to connect with the literal mask string, breaking the connection.
   Always re-fetch the real key from the target app's own `config.xml` and overwrite the masked
   field before PUTting a round-tripped Applications entry back.
+- **`config/bearmount/config.yaml`'s `import.max_processor_workers` is deliberately pinned at
+  `1`, not the default `2`** — see the AltMount memory incident above (99.87% of a 2GiB limit
+  hit when two large multi-part RAR archives were analyzed concurrently, since per-archive
+  memory cost scales with part count and this library has several 50-70GB+ UHD remux releases).
+  **If this is ever bumped back to 2+ for testing (a new processor, a throughput experiment,
+  anything)**, treat it as reintroducing that exact risk, not a routine tuning change: watch
+  `docker stats bearmount` live while a large multi-part archive is queued, and don't leave it
+  at 2+ unattended unless `mem_limit` (currently 6g) has real headroom confirmed for two
+  concurrent large-archive analyses, not just one. Revert to `1` if not actively testing.
 - **A new poster-sync API key (`control-panel/app.py`) needs adding in two places, not one** —
   `.env` alone is not enough; it also needs an explicit line in `docker-compose.yml`'s
   `control-panel` `environment:` block (matching the existing `TMDB_KEY`/`FANART_KEY` lines),
@@ -556,6 +565,16 @@ scratch. Full incident narrative is in the History section below; this is the ch
   33 files with error text this way before being caught by a `fish -n` syntax check). Avoid
   `status` as a variable name in ad-hoc scripts; use something like `task_status`/`dl_status`
   instead.
+- **Multi-line bash `for...do...done` loops silently break when run via the Bash tool** — the
+  default shell here is fish, which doesn't understand that syntax; the failure isn't always a
+  clean error (confirmed live: a loop meant to iterate ~187 ids instead ran once against an
+  unexpanded/mangled string, e.g. all ids concatenated into one bad request). Wrap any
+  multi-line bash-style loop in `bash -c '...'` explicitly rather than trusting it to run as
+  typed.
+- **Radarr's `DELETE /api/v3/queue/bulk` works; Sonarr's real endpoint 404s** (confirmed live,
+  same Sonarr version this stack runs) — don't assume a bulk-queue-delete endpoint is shared
+  Servarr-family API just because Radarr has it. Fall back to looping individual
+  `DELETE /api/v3/queue/{id}?removeFromClient=true&blocklist=false` calls for Sonarr.
 
 - ~~Radarr's and Sonarr's "Quality Definitions" are one flat, instance-wide list each, not
   scoped per quality profile~~ **Moot as of v11.2.0**: both apps were consolidated down to a
@@ -1143,9 +1162,12 @@ summarizes.
   repo has no public downstream mirror to link to** (see the `AGENTS.md` note elsewhere in this
   file). A separate, explicitly read-only list of the 14 Claude Code skills this project uses
   is shown too, clearly labeled as dev-time-only (this app has no mechanism to invoke them).
-  Tautulli and Kometa's doc-link rows carry a "not installed" badge (`installed: false` in
-  `DOC_LINKS`) rather than being removed outright, matching the "present but dormant" correction
-  above.
+  **Correction, 2026-07-24**: this bullet used to claim Tautulli and Kometa's doc-link rows
+  carried a "not installed" badge (`installed: false` in `DOC_LINKS`) — never true; `DOC_LINKS`
+  never had entries for either app at any point. The `installed: false` UI branch, its
+  `not-installed-tag` CSS class, and this now-incorrect comment were all removed outright as
+  dead code with zero live callers (see the tautulli/kometa/quickstart removal correction near
+  the top of this file).
 - **Visual system**: cool slate + one steel-teal accent (`#1f6f6b` light / `#4fb3ad` dark), IBM
   Plex Sans/Mono, zero border-radius anywhere, hairline 1px borders instead of shadows/cards.
   Muted red kept for status semantics only (errors/destructive), per explicit user direction —
