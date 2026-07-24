@@ -115,19 +115,14 @@ ARR_APPS = {
         "label": "Sonarr",
         "import_events": ("downloadFolderImported",),
     },
-    # Readarr itself was replaced by Bindery in v10.7.0 (upstream Readarr's
-    # sole metadata source died permanently, see docker-compose.yml's
-    # comment on the bindery service) - no entry here since Bindery's API
-    # is a clean-room design, not Servarr-shaped, so none of this generic
-    # arr_queue/arr_command/history-rate-calc machinery applies to it.
+    # No Readarr/Bindery entry: Bindery (Readarr's v10.7.0 replacement) was
+    # itself retired entirely in v10.9.8, along with its reader Calibre-Web -
+    # no ebook app of any kind is in this stack anymore.
 }
 
-# These four have a real download queue (NzbDAV wired to each as of the
-# debrid/torrent removal) - Unstick/manual-import work identically on all
-# of them, same reasoning 7.0.0 used when this was just Radarr/Sonarr.
-# Bindery (Readarr's v10.7.0 replacement) isn't listed - its API is a
-# clean-room design, not Servarr-shaped, so this generic queue machinery
-# doesn't apply.
+# Radarr and Sonarr both have a real download queue (BearMount wired to
+# each as the sole download client) - Unstick/manual-import work identically
+# on both.
 QUEUE_ARR_APPS = ("radarr", "sonarr")
 
 # Display-only labels/notes for the container grid - NOT an allow-list.
@@ -2537,7 +2532,7 @@ def _bucket_plex_activity(a: dict, prev_progress: dict[str, int]) -> tuple[str, 
 
 @app.get("/api/queue-status")
 def queue_status():
-    """Every *arr app's download queue plus NzbDAV's and Plex's own
+    """Every *arr app's download queue plus BearMount's and Plex's own
     background activities (library scans, media analysis, etc), bucketed
     into downloading/stalled/queued/importing with a real speed/progress
     and ETA for anything actually observed to be draining - see the

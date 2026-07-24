@@ -332,7 +332,7 @@ services:
     cpus: 2
 
   # Single dashboard for this stack: live container status/control, host
-  # stats, Zilean hash count, one-click ops actions, and a Quick Links panel
+  # stats, one-click ops actions, and a Quick Links panel
   # to every service's own web UI. That last part is what let Heimdall and
   # Homepage (both simple link launchers/widget dashboards, never this
   # stack's ops tool) be removed entirely rather than kept alongside it -

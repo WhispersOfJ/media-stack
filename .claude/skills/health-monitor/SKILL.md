@@ -1,6 +1,6 @@
 ---
 name: health-monitor
-description: Check container-level and HTTP-endpoint health across the whole media-stack in one pass — Docker healthcheck status plus a reachability probe for each web-facing service (Arr apps, Plex, Seerr, Tautulli, control-panel, etc.). Use for a general "is everything okay" sweep, after a host reboot, after a docker compose up, or when triaging a user report of "the stack seems broken" before diving into any single service. Trigger phrases: "is everything healthy", "check the stack", "what's down", "post-reboot check", "give me a health report".
+description: Check container-level and HTTP-endpoint health across the whole media-stack in one pass — Docker healthcheck status plus a reachability probe for each web-facing service (Arr apps, Plex, Seerr, control-panel, etc.). Use for a general "is everything okay" sweep, after a host reboot, after a docker compose up, or when triaging a user report of "the stack seems broken" before diving into any single service. Trigger phrases: "is everything healthy", "check the stack", "what's down", "post-reboot check", "give me a health report".
 ---
 
 # Health Monitor

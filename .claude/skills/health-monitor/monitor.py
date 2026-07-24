@@ -24,7 +24,6 @@ HTTP_SERVICES = {
     "sonarr": (8989, "/ping"),
     "prowlarr": (9696, "/ping"),
     "seerr": (5055, "/api/v1/status"),
-    "tautulli": (8182, "/status"),
     "control-panel": (8420, "/healthz"),
     "plex": (32400, "/identity"),
 }

@@ -336,6 +336,7 @@ function buildPrimaryActions() {
    ===================================================================== */
 const FLEET_GROUPS = {
   prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
+  recyclarr: "Arr apps",
   bearmount: "Usenet", seerr: "Requests", plex: "Media server",
   bazarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
@@ -957,11 +958,7 @@ function buildQuickLinks() {
 
 /* Each URL below was verified to resolve (github.com/<org>/<repo> or the
    project's own docs domain) against docker-compose.yml's real pinned
-   image before being hardcoded — not guessed from the app's common name.
-   `installed: false` means the compose service block and image both
-   still exist, but no container is currently created for it (confirmed
-   via `docker compose ps -a` showing nothing for that service) — kept
-   here as documentation, not presented as a live/running app. */
+   image before being hardcoded — not guessed from the app's common name. */
 const DOC_LINKS = [
   { app: "Radarr", desc: "movie root-folder/quality-profile management", urls: [["Wiki", "https://wiki.servarr.com/radarr"], ["Source", "https://github.com/Radarr/Radarr"]] },
   { app: "Sonarr", desc: "TV root-folder/quality-profile management", urls: [["Wiki", "https://wiki.servarr.com/sonarr"], ["Source", "https://github.com/Sonarr/Sonarr"]] },
@@ -974,6 +971,7 @@ const DOC_LINKS = [
   { app: "NeutArr", desc: "missing/upgrade hunting (Huntarr-lineage fork)", urls: [["Source", "https://github.com/I-am-PUID-0/NeutArr"]] },
   { app: "Unpackerr", desc: "RAR extraction for Radarr/Sonarr downloads", urls: [["Source", "https://github.com/Unpackerr/unpackerr"]] },
   { app: "Watchtower", desc: "container auto-update (maintained fork)", urls: [["Source", "https://github.com/nicholas-fedor/watchtower"]] },
+  { app: "Recyclarr", desc: "syncs TRaSH Guides quality profiles/custom formats to Radarr/Sonarr", urls: [["Source", "https://github.com/recyclarr/recyclarr"]] },
 ];
 
 function buildDocLinks() {
@@ -1009,12 +1007,9 @@ function buildDocLinks() {
   for (const doc of DOC_LINKS) {
     const row = document.createElement("div");
     row.className = "rule-row";
-    const notInstalled = doc.installed === false
-      ? `<span class="not-installed-tag" title="Compose service block and image both exist, but no container is currently created for it">not installed</span>`
-      : "";
     row.innerHTML = `
       <div class="rule-main">
-        <span class="rule-title">${escapeHtml(doc.app)}${notInstalled}</span>
+        <span class="rule-title">${escapeHtml(doc.app)}</span>
         <span class="rule-desc">${escapeHtml(doc.desc)}</span>
       </div>
       <div class="rule-actions">${doc.urls.map(([label, url]) => `<a class="doc-link-ext" href="${url}" target="_blank" rel="noopener">${escapeHtml(label)} ↗</a>`).join("")}</div>

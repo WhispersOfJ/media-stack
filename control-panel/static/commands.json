@@ -801,10 +801,10 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-nzbdav-delete-failures",
-    "Description": "Delete all Failed entries from NzbDAV history",
+    "Name": "stack-bearmount-delete-failures",
+    "Description": "Delete all Failed entries from BearMount history",
     "Method": "POST",
-    "PathTemplate": "/api/nzbdav/delete-failures",
+    "PathTemplate": "/api/bearmount/delete-failures",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -813,10 +813,10 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-nzbdav-history",
-    "Description": "Show NzbDAV's recent download history (completed/failed)",
+    "Name": "stack-bearmount-history",
+    "Description": "Show BearMount's recent download history (completed/failed)",
     "Method": "GET",
-    "PathTemplate": "/api/nzbdav/history",
+    "PathTemplate": "/api/bearmount/history",
     "Query": [
       {
         "Key": "limit",
@@ -839,10 +839,10 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-nzbdav-queue",
-    "Description": "Show NzbDAV's current Usenet download queue",
+    "Name": "stack-bearmount-queue",
+    "Description": "Show BearMount's current Usenet download queue",
     "Method": "GET",
-    "PathTemplate": "/api/nzbdav/queue",
+    "PathTemplate": "/api/bearmount/queue",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -851,36 +851,10 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-nzbdav-set-connections",
-    "Description": "Set NzbDAV's Usenet provider max connections",
-    "Method": "POST",
-    "PathTemplate": "/api/nzbdav/set-connections",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "max-connections",
-        "Choices": null,
-        "Optional": false,
-        "Default": "",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "json",
-    "BodyFields": [
-      {
-        "Key": "max_connections",
-        "ArgName": "max-connections",
-        "Array": false
-      }
-    ],
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-nzbdav-stats",
-    "Description": "Show aggregate NzbDAV queue/history stats",
+    "Name": "stack-bearmount-stats",
+    "Description": "Show aggregate BearMount queue/history stats",
     "Method": "GET",
-    "PathTemplate": "/api/nzbdav/stats",
+    "PathTemplate": "/api/bearmount/stats",
     "Query": null,
     "Args": null,
     "Confirm": false,
