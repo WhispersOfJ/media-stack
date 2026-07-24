@@ -98,5 +98,5 @@ def enable_recycle_bin():
 
 
 @pytest.fixture(scope="module")
-def altmount_prune_history():
-    return _import_script("altmount-prune-history")
+def bearmount_prune_history():
+    return _import_script("bearmount-prune-history")

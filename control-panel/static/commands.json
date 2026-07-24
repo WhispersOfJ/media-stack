@@ -538,32 +538,6 @@
     "LogContainer": "{1}"
   },
   {
-    "Name": "stack-kometa-run",
-    "Description": "Run Kometa now, optionally scoped to specific Plex libraries",
-    "Method": "POST",
-    "PathTemplate": "/api/kometa/run",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "library",
-        "Choices": null,
-        "Optional": true,
-        "Default": "",
-        "Rest": true
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "json",
-    "BodyFields": [
-      {
-        "Key": "libraries",
-        "ArgName": "library",
-        "Array": true
-      }
-    ],
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-letterboxd-radarr",
     "Description": "Add a Letterboxd film to Radarr by URL",
     "Method": "POST",
@@ -783,6 +757,18 @@
     "Description": "Check every known FUSE mountpoint resolves cleanly",
     "Method": "GET",
     "PathTemplate": "/api/mount-health",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-recyclarr-status",
+    "Description": "Show Recyclarr recent log output (last sync result)",
+    "Method": "GET",
+    "PathTemplate": "/api/recyclarr/status",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -1072,7 +1058,7 @@
   },
   {
     "Name": "stack-plex-libraries",
-    "Description": "List Plex library names (for stack-kometa-run)",
+    "Description": "List Plex library names",
     "Method": "GET",
     "PathTemplate": "/api/plex/libraries",
     "Query": null,
@@ -1485,44 +1471,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-tautulli-history",
-    "Description": "Show recent Plex watch history from Tautulli",
-    "Method": "GET",
-    "PathTemplate": "/api/tautulli/history",
-    "Query": [
-      {
-        "Key": "limit",
-        "ArgName": "limit",
-        "Literal": ""
-      }
-    ],
-    "Args": [
-      {
-        "Name": "limit",
-        "Choices": null,
-        "Optional": true,
-        "Default": "10",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-tautulli-stats",
-    "Description": "Show Tautulli 30-day watch statistics",
-    "Method": "GET",
-    "PathTemplate": "/api/tautulli/stats",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-tmdb-company-import",
     "Description": "Add a TMDB studio filmography as a Radarr import list",
     "Method": "POST",
@@ -1620,7 +1568,7 @@
   },
   {
     "Name": "stack-tmdb-missing",
-    "Description": "Flag Plex items with no TMDb match, so Kometa can't apply metadata to them",
+    "Description": "Flag Plex items with no TMDb match",
     "Method": "GET",
     "PathTemplate": "/api/plex/tmdb-missing",
     "Query": null,

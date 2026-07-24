@@ -60,16 +60,16 @@ services:
       start_period: 30s
     volumes:
       - ./config/radarr:/config
-      - /mnt/altmount:/mnt/altmount:rslave
+      - /mnt/bearmount:/mnt/bearmount:rslave
       # Genuinely writable root folder on regular disk - the old debrid FUSE
       # mounts did not support having files written into them (confirmed:
       # symlink/hardlink/copy all failed there with I/O errors).
       - ./media/movies:/data/movies
-      # AltMount's SYMLINK import_dir - same host filesystem as ./media/movies
+      # BearMount's SYMLINK import_dir - same host filesystem as ./media/movies
       # above (both under ./media, confirmed via df), so copyUsingHardlinks
       # produces another symlink here instead of a real byte copy. Enforces
       # "no real media on disk" - see CLAUDE.md's 2026-07-23 entry.
-      - ./media/altmount-import:/mnt/altmount-import
+      - ./media/bearmount-import:/mnt/bearmount-import
     ports:
       - "7878:7878"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -92,10 +92,10 @@ services:
       start_period: 30s
     volumes:
       - ./config/sonarr:/config
-      - /mnt/altmount:/mnt/altmount:rslave
+      - /mnt/bearmount:/mnt/bearmount:rslave
       - ./media/shows:/data/shows
-      # AltMount's SYMLINK import_dir - see radarr's matching mount comment above.
-      - ./media/altmount-import:/mnt/altmount-import
+      # BearMount's SYMLINK import_dir - see radarr's matching mount comment above.
+      - ./media/bearmount-import:/mnt/bearmount-import
     ports:
       - "8989:8989"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -105,83 +105,63 @@ services:
     mem_reservation: 256m
     cpus: 2
 
-  # Sports PVR (Sonarr-based) - added 2026-07-23, used exclusively for
-  # wrestling (WWE/AEW). Root folder is its own library, separate from
-  # Radarr/Sonarr's movies/shows - Plex library is named "Wrestling" to
-  # match. Bazarr has no multi-instance support for a second Sonarr-type
-  # connection (confirmed by reading its live config schema - exactly one
-  # `sonarr:` block, already used by the real Sonarr), so subtitles for
-  # this library are a known, accepted gap, not an oversight.
-  sportarr:
-    <<: *common
-    image: sportarr/sportarr:latest
-    container_name: sportarr
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:1867/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/sportarr:/config
-      - /mnt/altmount:/mnt/altmount:rslave
-      - ./media/wrestling:/data
-      # AltMount's SYMLINK import_dir - see radarr/sonarr's matching mount comment above.
-      - ./media/altmount-import:/mnt/altmount-import
-    ports:
-      - "1867:1867"
-    # No live baseline yet (brand new service) - sized in line with
-    # Radarr/Sonarr's own observed footprint, since Sportarr is built on
-    # the same Sonarr codebase. Revisit with `docker stats` once it's run
-    # for a while, per this stack's own mem_limit-audit policy.
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
-
-
-
-  # ---------------------------------------------------------------------
-  # Usenet - streaming, no local disk. Replaced NzbDAV entirely, 2026-07-23
-  # (unmerged connection-leak bug, nzbdav-dev/nzbdav#478 - see CLAUDE.md's
-  # History for the full incident). Radarr/Sonarr's download client now
-  # points here directly (SABnzbd-compatible API). Own internal rclone/FUSE
-  # mount - unlike NzbDAV, no separate sidecar container is needed.
-  # ---------------------------------------------------------------------
-  altmount:
+  # Custom Format / Quality Profile sync from TRaSH Guides, for Sonarr and
+  # Radarr. Runs as a persistent daemon on its own cron schedule rather
+  # than a one-shot job, per Recyclarr's own reference docker-compose.yml.
+  # Config lives in config/recyclarr/recyclarr.yml. Reinstalled 2026-07-23
+  # after being removed entirely in v11.2.0 (when both apps were
+  # consolidated to a single "ANY" profile) - by explicit request.
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:latest
     restart: unless-stopped
     logging: *common-logging
-    # TEMPORARY, 2026-07-23: pinned to a locally-built image with one
-    # real bug fixed - createConfig() (pkg/rclonecli/client.go) omitted
-    # the top-level "obscure": true flag on its config/create RC call, so
-    # the WebDAV password was written to rclone.conf as plaintext instead
-    # of rclone's expected obscured format. At actual mount time, rclone
-    # tried to unobscure that plaintext as if it were already-obscured
-    # ciphertext, producing wrong credentials and a permanent 401
-    # Unauthorized against AltMount's own WebDAV server - confirmed live via
-    # rclone.log ("couldn't list files: 401 Unauthorized") even though the
-    # exact same credentials worked perfectly via a direct PROPFIND/wget
-    # test. Verified the fix directly against the running RC server before
-    # patching (obscure=true as a top-level arg produces a real obscured
-    # value that authenticates correctly). Revert to
-    # ghcr.io/javi11/altmount:latest once this fix lands upstream - no
-    # issue/PR filed yet.
-    image: altmount-local-fix:obscure-pass
-    container_name: altmount
+    container_name: recyclarr
+    profiles: [extras]
+    networks: [stacknet]
+    read_only: true
+    tmpfs: [/tmp]
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      CRON_SCHEDULE: "0 6 * * *"  # once daily, 6am
+      RADARR_API_KEY: ${RADARR_API_KEY}
+      SONARR_API_KEY: ${SONARR_API_KEY}
+    volumes:
+      - ./config/recyclarr:/config
+    mem_limit: 256m
+    mem_reservation: 32m
+    cpus: 1
+
+
+
+  # ---------------------------------------------------------------------
+  # Usenet - streaming, no local disk. Replaced AltMount entirely,
+  # 2026-07-24 (full cutover to the WhispersOfJ/bearmount fork/rebrand -
+  # see CLAUDE.md's History for the full incident, including the explicit
+  # choice to accept every pre-cutover symlink breaking rather than keep
+  # altmount running read-only alongside this). AltMount itself had
+  # replaced NzbDAV entirely on 2026-07-23 for the same reason (an unmerged
+  # upstream connection-leak bug) - this is that same class of cutover
+  # happening a second time, one layer up. Radarr/Sonarr's download client
+  # points here directly (SABnzbd-compatible API). Own internal rclone/FUSE
+  # mount - no separate sidecar container needed.
+  # ---------------------------------------------------------------------
+  bearmount:
+    restart: unless-stopped
+    logging: *common-logging
+    image: ghcr.io/whispersofj/bearmount:dev
+    container_name: bearmount
     networks: [stacknet]
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
       PORT: "8080"
-      JWT_SECRET: ${ALTMOUNT_JWT_SECRET}
+      JWT_SECRET: ${BEARMOUNT_JWT_SECRET}
       COOKIE_DOMAIN: ${HOST_IP}
     volumes:
-      - ./config/altmount:/config
+      - ./config/bearmount:/config
       - /mnt:/mnt:rshared
-      # SYMLINK import_dir - regular disk, same filesystem as Radarr/Sonarr's
-      # root folders, so their hardlink-based import produces another
-      # symlink instead of a real copy. See radarr/sonarr's matching mount.
-      - ./media/altmount-import:/mnt/altmount-import
+      - ./media/bearmount-import:/mnt/bearmount-import
     devices:
       - /dev/fuse:/dev/fuse:rwm
     cap_add:
@@ -189,30 +169,13 @@ services:
     security_opt:
       - apparmor:unconfined
     ports:
-      - "8081:8080"
+      - "8082:8080"
     healthcheck:
-      # /api/health requires an authenticated session (login_required: true,
-      # no unauthenticated health route exists in this version) - checking
-      # the port is actually listening instead of hitting a gated endpoint.
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    # Bumped 1g -> 2g -> 4g -> 6g: the 2g ceiling hit 99.87% (2GiB/2GiB) during
-    # the bulk-relink job, confirmed live via docker logs to coincide with RAR
-    # analysis of two large multi-part archives close together (56GB/508
-    # parts and 73GB/134 parts) - per-archive memory cost scales with part
-    # count/size, and this library has several 50-70GB+ UHD remux releases.
-    # 4g still ran at 86% (3.45GiB/4GiB) with ~322MiB already swapped out
-    # during ordinary single-worker queue processing (2026-07-23, real
-    # docker stats/cgroup swap.current reading, not a guess) - the highest
-    # swap usage of any container in the stack by a wide margin. 6g gives
-    # real headroom above the worst-case archives actually seen without
-    # requiring max_processor_workers to stay at 1 forever (see the
-    # 2026-07-23 CLAUDE.md entry on why workers were left at 1 - re-evaluate
-    # raising that back to 2 now that there's more ceiling to work with, but
-    # only after confirming live, not from this comment alone).
     mem_limit: 6g
     mem_reservation: 128m
     cpus: 4
@@ -260,7 +223,7 @@ services:
     logging: *common-logging
     # Official image, not a LinuxServer-style fork - a PUID/PGID-forcing
     # image would recursively chown the ~33GB library to PUID/PGID on first
-    # boot (same reason the Kometa entry below avoids the LinuxServer fork).
+    # boot.
     # public channel, not Plex Pass (beta) - the official image only
     # publishes the public channel. Deliberate, not an oversight - public
     # channel on the official image is the more conservative choice for a
@@ -300,18 +263,16 @@ services:
       - ./config/plex-transcode:/transcode
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
-      # Sportarr's library, added 2026-07-23 - a third, separate root folder,
-      # since sports releases use a different naming/episode scheme than
-      # the real Shows library.
-      - ./media/wrestling:/data/wrestling
       # Root folders were 100% symlinks into NzbDAV's own WebDAV filesystem
       # (e.g. /mnt/nzbdav/.ids/...) before it was removed entirely 2026-07-23
       # (see CLAUDE.md's History) - every one of those old symlinks is now
-      # broken, since AltMount doesn't share NzbDAV's ID scheme. This mount
-      # only matters for content actually imported through AltMount from now
-      # on; the pre-existing library needs its own reconciliation, see
+      # broken, since BearMount doesn't share NzbDAV's ID scheme (and, as of
+      # the 2026-07-24 AltMount->BearMount cutover, every pre-cutover
+      # AltMount-sourced symlink is broken too, same reasoning). This mount
+      # only matters for content actually imported through BearMount from
+      # now on; the pre-existing library needs its own reconciliation, see
       # CLAUDE.md.
-      - /mnt/altmount:/mnt/altmount:rslave
+      - /mnt/bearmount:/mnt/bearmount:rslave
     devices:
       - /dev/dri/renderD128:/dev/dri/renderD128
     # video/render host GIDs - renderD128 is already world-writable
@@ -340,29 +301,6 @@ services:
   # Optional / recommended extras - start with:
   #   docker compose --profile extras up -d
   # =======================================================================
-  tautulli:
-    <<: *common
-    image: ghcr.io/hotio/tautulli:release
-    container_name: tautulli
-    profiles: [extras]
-    networks: [stacknet]
-    # Container's own web UI listens internally on Tautulli's default 8181;
-    # public port stays 8182.
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/tautulli:/config
-    # No prior ceiling - simple companion app, modest observed footprint,
-    # cheap insurance.
-    ports:
-      - "8182:8181"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
   # Subtitle management for Radarr/Sonarr - connected via API key post-boot
   # (Bazarr has no env-var wiring for this, same pattern as Maintainerr
   # below), watches both libraries for missing English subs and downloads
@@ -387,8 +325,8 @@ services:
       - ./media/shows:/data/shows
     ports:
       - "6767:6767"
-    # No prior baseline to size against (fresh reinstall) - matching
-    # Tautulli's ceiling as the nearest comparable companion-app footprint.
+    # No prior baseline to size against (fresh reinstall) - a modest
+    # companion-app footprint.
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
@@ -420,12 +358,10 @@ services:
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
-      # Sportarr (sports PVR, wrestling library only, added 2026-07-23) -
-      # dedicated /api/sportarr/* routes, not the generic ARR_APPS machinery.
-      SPORTARR_API_KEY: ${SPORTARR_API_KEY}
-      # NzbDAV removed entirely 2026-07-23 (see CLAUDE.md's History) -
-      # AltMount's SABnzbd-compatible API key replaces it.
-      ALTMOUNT_API_KEY: ${ALTMOUNT_API_KEY}
+      # NzbDAV removed entirely 2026-07-23, then AltMount removed entirely
+      # 2026-07-24 (see CLAUDE.md's History) - BearMount's SABnzbd-compatible
+      # API key replaces it.
+      BEARMOUNT_API_KEY: ${BEARMOUNT_API_KEY}
       # Prowlarr has no other integration in this stack (CONTAINER_LABELS
       # dashboard entry only) - added specifically so /api/log-levels can
       # cover all five Servarr-shaped apps, not just the four QUEUE_ARR_APPS.
@@ -437,18 +373,17 @@ services:
       # auth, just closing the cross-origin-POST hole given this panel's
       # docker.sock access.
       HOST_IP: ${HOST_IP}
-      # Poster sync only (/api/posters/sync) - this app's own TMDb key.
+      # Poster sync (/api/posters/sync, /api/posters/review) - this app's
+      # own TMDb, Fanart.tv, and TheTVDB keys.
       TMDB_KEY: ${TMDB_KEY}
-      # /api/ratings/imdb, /api/ratings/mdblist - used to be read live off
-      # Kometa's own config.yml; standalone secrets now that Kometa was
-      # removed entirely (no Jellyfin support - see CLAUDE.md's migration
-      # History).
+      FANART_KEY: ${FANART_KEY}
+      TVDB_KEY: ${TVDB_KEY}
+      # /api/ratings/imdb, /api/ratings/mdblist - standalone secrets.
       OMDB_KEY: ${OMDB_KEY}
       MDBLIST_KEY: ${MDBLIST_KEY}
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
-      # actually execs into containers (Kometa's on-demand run) and issues
-      # restarts, not just reads status. Runs as root in-container (no
+      # issues restarts, not just reads status. Runs as root in-container (no
       # PUID/PGID) since root is what the socket needs; no other privilege
       # escalation beyond that. No auth - LAN-only, matches every other
       # service in this stack (see README.md's Security section); the
@@ -475,93 +410,17 @@ services:
       # config hasn't changed). If /api/version ever looks stale again,
       # recreate this container before assuming the endpoint logic broke.
       - ./README.md:/host-README.md:ro
+      # Writable, unlike everything else above - just the poster-sync
+      # cooldown state file (/data/poster-sync-state.json, last-applied
+      # timestamp per Plex ratingKey) so the 48h-per-movie gate survives a
+      # container restart/recreate instead of resetting every deploy.
+      - ./config/control-panel:/data
     # No prior ceiling despite having docker.sock exec/restart access - a
     # light Flask app, but cheap insurance given its elevated blast radius.
     ports:
       - "8420:8420"
     mem_limit: 512m
     mem_reservation: 64m
-    cpus: 2
-
-  # Automated Plex collections/metadata/overlays. Official image only - the
-  # LinuxServer fork resets /config ownership to PUID/PGID (or 911:911 if
-  # unset) on every start, which the official image doesn't do and most of
-  # the wiki's examples assume you're not using anyway. The stable channel is
-  # still :latest (not :nightly/:develop) - now digest-pinned since upstream's
-  # newest tagged release (v2.4.4) doesn't match what :latest actually ships,
-  # so a tag pin would silently jump forward instead of freezing what's
-  # running. Bump this digest deliberately when ready to take a newer build.
-  # No web UI of its own - runs as a scheduled batch job against Plex's API,
-  # so no port is published; see Homepage/Heimdall entries for how it's
-  # surfaced there instead.
-  kometa:
-    restart: unless-stopped
-    logging: *common-logging
-    image: kometateam/kometa@sha256:98a0df2694edea467ac8870bcecddea3ec0bc14a071721372fb9fa811a829902
-    container_name: kometa
-    profiles: [extras]
-    networks: [stacknet]
-    # No run_time is set in config/kometa/config.yml, but the image's default
-    # entrypoint (`python3 kometa.py --`) still runs a full pass immediately
-    # on every container start/restart regardless - confirmed live (a 19+
-    # hour single run since this container's last start, no cron/systemd
-    # timer/webhook trigger found anywhere). That's the only thing that ever
-    # made this "scheduled" rather than on-demand. Overriding entrypoint to
-    # idle instead: Control Panel's /api/kometa/run already runs Kometa
-    # on-demand via `docker exec ... python3 /kometa.py --run` (see
-    # control-panel/app.py's kometa_run()), which works against an idling
-    # container exactly the same as a busy one - exec doesn't care what PID 1
-    # is doing. Don't remove this override without re-adding some other guard
-    # against the auto-run-on-start behavior, or every restart/host reboot
-    # silently kicks off a full run again.
-    entrypoint: ["/tini", "-s", "--"]
-    command: ["sleep", "infinity"]
-    # Matches the command override above - confirms the idle placeholder
-    # process is alive, not kometa.py (which now only ever runs via the
-    # on-demand exec, not as the container's main process).
-    healthcheck:
-      test: ["CMD-SHELL", "grep -aq 'sleep infinity' /proc/[1-9]*/cmdline 2>/dev/null || exit 1"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/kometa:/config
-    # 642MB was observed resident during an actual run; idling on the
-    # entrypoint override above should sit well under this, but the ceiling
-    # is sized for real overlay/poster-generation runs triggered on demand,
-    # not the idle baseline.
-    mem_limit: 2g
-    mem_reservation: 256m
-    cpus: 4
-
-  # Web UI (port 7171) for building config/kometa/config.yml interactively -
-  # the official Kometa-Team Quickstart wizard, not an alternative Kometa
-  # runtime. Its own /config volume is deliberately NOT config/kometa - per
-  # Quickstart's own README, that path holds its SQLite db, generated-YAML
-  # history, and run logs, and is explicitly documented as not being the
-  # Kometa config directory. A config built here has to be copied by hand
-  # into config/kometa/config.yml; the kometa service above still owns
-  # actually running against that file (Control Panel's on-demand
-  # /api/kometa/run exec is unchanged by adding this).
-  quickstart:
-    restart: unless-stopped
-    logging: *common-logging
-    image: kometateam/quickstart:latest
-    container_name: kometa-quickstart
-    profiles: [extras]
-    networks: [stacknet]
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/quickstart:/config
-      - ./config/plex:/plex-config
-    ports:
-      - "7171:7171"
-    mem_limit: 1g
-    mem_reservation: 128m
     cpus: 2
 
   unpackerr:
@@ -597,7 +456,7 @@ services:
       # Low-impact: ebook releases are rarely RAR'd the way video/audio
       # ones are.
     volumes:
-      - /mnt/altmount:/mnt/altmount:rslave
+      - /mnt/bearmount:/mnt/bearmount:rslave
       - ./usenet:/usenet:rslave
     # No prior ceiling - extraction (unzip/unrar) can spike CPU briefly on
     # large archives, cheap insurance same as the other companion apps above.
@@ -662,9 +521,9 @@ services:
       - ./config/cleanuparr:/config
       # Cleanuparr's QueueCleaner/MalwareBlocker jobs need filesystem access
       # to whatever path the download client's own API reports as each queue
-      # item's location - AltMount's mount, since NzbDAV was removed entirely
-      # 2026-07-23 (see CLAUDE.md's History).
-      - /mnt/altmount:/mnt/altmount:rslave
+      # item's location - BearMount's mount, since AltMount was removed
+      # entirely 2026-07-24 (see CLAUDE.md's History).
+      - /mnt/bearmount:/mnt/bearmount:rslave
     # No prior observation - generous default ceiling, same reasoning as
     # every other companion app in this file.
     ports:

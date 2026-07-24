@@ -336,14 +336,13 @@ function buildPrimaryActions() {
    ===================================================================== */
 const FLEET_GROUPS = {
   prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
-  altmount: "Usenet", seerr: "Requests", plex: "Media server",
-  tautulli: "Monitoring", bazarr: "Subtitles",
-  kometa: "Metadata/overlays", quickstart: "Metadata/overlays", "kometa-quickstart": "Metadata/overlays",
+  bearmount: "Usenet", seerr: "Requests", plex: "Media server",
+  bazarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
   cleanuparr: "Queue cleanup", neutarr: "Queue cleanup",
   "control-panel": "Dashboard",
 };
-const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Monitoring", "Subtitles", "Queue cleanup", "Post-processing", "Auto-updates", "Metadata/overlays", "Dashboard", "Other"];
+const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Post-processing", "Auto-updates", "Dashboard", "Other"];
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem("fleetCollapsed") || "[]"));
 
 function fmtPercent(v) { return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`; }
@@ -941,7 +940,7 @@ const QUICK_LINKS = [
   { id: "prowlarr", label: "Prowlarr", port: 9696 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "altmount", label: "AltMount", port: 8081 },
+  { id: "bearmount", label: "BearMount", port: 8082 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "bazarr", label: "Bazarr", port: 6767 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
@@ -967,16 +966,14 @@ const DOC_LINKS = [
   { app: "Radarr", desc: "movie root-folder/quality-profile management", urls: [["Wiki", "https://wiki.servarr.com/radarr"], ["Source", "https://github.com/Radarr/Radarr"]] },
   { app: "Sonarr", desc: "TV root-folder/quality-profile management", urls: [["Wiki", "https://wiki.servarr.com/sonarr"], ["Source", "https://github.com/Sonarr/Sonarr"]] },
   { app: "Prowlarr", desc: "indexer manager, syncs to Radarr/Sonarr", urls: [["Wiki", "https://wiki.servarr.com/prowlarr"], ["Source", "https://github.com/Prowlarr/Prowlarr"]] },
-  { app: "AltMount", desc: "Usenet WebDAV mount + SABnzbd-compatible API", urls: [["Source", "https://github.com/javi11/altmount"]] },
+  { app: "BearMount", desc: "Usenet WebDAV mount + SABnzbd-compatible API (WhispersOfJ/bearmount, a rebranded fork of javi11/altmount)", urls: [["Source", "https://github.com/WhispersOfJ/bearmount"]] },
   { app: "Seerr", desc: "media request/discovery front-end", urls: [["Source", "https://github.com/seerr-team/seerr"]] },
   { app: "Plex", desc: "media server", urls: [["Support", "https://support.plex.tv"]] },
-  { app: "Tautulli", desc: "Plex monitoring/stats", urls: [["Source", "https://github.com/Tautulli/Tautulli"]], installed: false },
   { app: "Bazarr", desc: "subtitle management for Radarr/Sonarr", urls: [["Source", "https://github.com/morpheus65535/bazarr"]] },
   { app: "Cleanuparr", desc: "queue strikes/malware-block/stalled cleanup", urls: [["Source", "https://github.com/Cleanuparr/Cleanuparr"]] },
   { app: "NeutArr", desc: "missing/upgrade hunting (Huntarr-lineage fork)", urls: [["Source", "https://github.com/I-am-PUID-0/NeutArr"]] },
   { app: "Unpackerr", desc: "RAR extraction for Radarr/Sonarr downloads", urls: [["Source", "https://github.com/Unpackerr/unpackerr"]] },
   { app: "Watchtower", desc: "container auto-update (maintained fork)", urls: [["Source", "https://github.com/nicholas-fedor/watchtower"]] },
-  { app: "Kometa", desc: "collections/overlays/metadata (Plex-only — no Jellyfin support)", urls: [["Source", "https://github.com/Kometa-Team/Kometa"]], installed: false },
 ];
 
 function buildDocLinks() {
@@ -1042,9 +1039,9 @@ const CLAUDE_SKILLS = [
   { name: "stack-cli-arr-fleet", desc: "Radarr/Sonarr queue, import, missing/cutoff, Bazarr subtitle ops." },
   { name: "stack-cli-discovery-import", desc: "Letterboxd/MDBList/Trakt/TMDb list imports and rating lookups." },
   { name: "stack-cli-infra-ops", desc: "Container control, backup verify/integrity, disk usage checks." },
-  { name: "stack-cli-plex-kometa", desc: "Plex library/Butler tasks, Kometa runs, Tautulli stats." },
+  { name: "stack-cli-plex-kometa", desc: "Plex library/Butler tasks, duplicates, TMDb-link audit." },
   { name: "stack-cli-system-maintenance", desc: "Host package updates, reboot/disk/SMART/journal checks (terminal-only — see the Host rail's note above)." },
-  { name: "stack-cli-usenet-queue", desc: "AltMount/Cleanuparr/NeutArr/Prowlarr status and queue ops." },
+  { name: "stack-cli-usenet-queue", desc: "BearMount/Cleanuparr/NeutArr/Prowlarr status and queue ops." },
 ];
 
 function buildSkillsList() {
@@ -1588,39 +1585,157 @@ function closePosterStream() {
   }
 }
 
+// Items a human has clicked a candidate for during the current review
+// pass - "apply auto for the rest" skips these and uses candidate #1
+// for everything else, so a manual pick is never silently overwritten.
+const posterReviewDecided = new Set();
+
+function posterCandidateCard(itemMsg, requestedSource) {
+  const card = document.createElement("div");
+  card.className = "poster-review-card";
+  card.dataset.ratingKey = itemMsg.ratingKey;
+  const label = itemMsg.year ? `${itemMsg.title} (${itemMsg.year})` : itemMsg.title;
+
+  if (!itemMsg.candidates || itemMsg.candidates.length === 0) {
+    card.innerHTML = `<div class="poster-review-title">${escapeHtml(label)}</div>
+      <div class="poster-review-skip">no match in ${escapeHtml(requestedSource)} or its fallback — skipped</div>`;
+    return card;
+  }
+
+  const fallbackNote = itemMsg.source && itemMsg.source !== requestedSource
+    ? ` <span class="poster-review-fallback">(via ${escapeHtml(itemMsg.source)} fallback)</span>` : "";
+
+  const thumbs = itemMsg.candidates.map((c, idx) => `
+    <button type="button" class="poster-review-thumb" data-url="${escapeHtml(c.url)}" title="${escapeHtml(c.label || "")}">
+      <img src="${escapeHtml(c.url)}" loading="lazy" alt="candidate ${idx + 1}">
+      <span class="poster-review-thumb-label">${escapeHtml(c.label || `#${idx + 1}`)}</span>
+    </button>`).join("");
+
+  card.innerHTML = `<div class="poster-review-title">${escapeHtml(label)}${fallbackNote}</div>
+    <div class="poster-review-thumbs">${thumbs}</div>
+    <div class="poster-review-status"></div>`;
+
+  card.querySelectorAll(".poster-review-thumb").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const status = card.querySelector(".poster-review-status");
+      card.querySelectorAll(".poster-review-thumb").forEach((b) => b.classList.remove("poster-review-picked"));
+      btn.classList.add("poster-review-picked");
+      status.textContent = "applying…";
+      try {
+        await postAction("/api/posters/apply", { rating_key: itemMsg.ratingKey, url: btn.dataset.url });
+        posterReviewDecided.add(itemMsg.ratingKey);
+        status.textContent = "applied";
+      } catch (e) {
+        status.textContent = `failed: ${e.message}`;
+      }
+    });
+  });
+
+  return card;
+}
+
 function buildPosterSync() {
   const form = document.getElementById("poster-sync-form");
   if (!form) return;
   const summary = document.getElementById("poster-sync-summary");
   const submitBtn = form.querySelector("button[type=submit]");
+  const modeSelect = document.getElementById("poster-sync-mode");
+  const dryRunWrap = document.getElementById("poster-sync-dry-run-wrap");
+  const logPane = document.getElementById("poster-log");
+  const grid = document.getElementById("poster-review-grid");
+
+  modeSelect.addEventListener("change", () => {
+    dryRunWrap.hidden = modeSelect.value === "review";
+  });
 
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const library = document.getElementById("poster-sync-library").value;
     if (!library) return;
-    const dryRun = document.getElementById("poster-sync-dry-run").checked;
+    const source = document.getElementById("poster-sync-source").value;
+    const mode = modeSelect.value;
 
-    document.getElementById("poster-log").textContent = "";
+    logPane.textContent = "";
+    logPane.hidden = mode === "review";
+    grid.innerHTML = "";
+    grid.hidden = mode !== "review";
     summary.textContent = "";
     submitBtn.disabled = true;
     closePosterStream();
+    posterReviewDecided.clear();
 
-    try {
-      const data = await postAction("/api/posters/sync", { library, dry_run: dryRun });
-      logLine("pending", data.message);
-      summary.textContent = "running…";
+    if (mode === "auto") {
+      const dryRun = document.getElementById("poster-sync-dry-run").checked;
+      try {
+        const data = await postAction("/api/posters/sync", { library, dry_run: dryRun, source });
+        logLine("pending", data.message);
+        summary.textContent = "running…";
 
-      activePosterSource = new EventSource("/api/posters/sync/stream");
-      activePosterSource.onmessage = (evt) => {
-        posterLogLine(evt.data);
-        if (evt.data.startsWith("DONE ")) {
-          summary.textContent = evt.data.slice(5);
-          logLine("ok", `Poster sync — ${evt.data.slice(5)}`);
+        activePosterSource = new EventSource("/api/posters/sync/stream");
+        activePosterSource.onmessage = (evt) => {
+          posterLogLine(evt.data);
+          if (evt.data.startsWith("DONE ")) {
+            summary.textContent = evt.data.slice(5);
+            logLine("ok", `Poster sync — ${evt.data.slice(5)}`);
+            closePosterStream();
+            submitBtn.disabled = false;
+          } else if (evt.data.startsWith("ERROR ")) {
+            summary.textContent = evt.data.slice(6);
+            logLine("err", `Poster sync — ${evt.data.slice(6)}`);
+            closePosterStream();
+            submitBtn.disabled = false;
+          }
+        };
+        activePosterSource.onerror = () => {
           closePosterStream();
           submitBtn.disabled = false;
-        } else if (evt.data.startsWith("ERROR ")) {
-          summary.textContent = evt.data.slice(6);
-          logLine("err", `Poster sync — ${evt.data.slice(6)}`);
+        };
+      } catch (e) {
+        summary.textContent = e.message;
+        logLine("err", `Poster sync — ${e.message}`);
+        submitBtn.disabled = false;
+      }
+      return;
+    }
+
+    // Review mode: stream per-item candidates, render a picker grid.
+    // Items nobody clicks stay unapplied until "Apply auto for the rest".
+    const pending = [];
+    try {
+      const data = await postAction("/api/posters/review", { library, source });
+      logLine("pending", data.message);
+      summary.innerHTML = 'streaming candidates… <button type="button" class="btn-ghost" id="poster-apply-auto-rest">Apply auto for the rest</button>';
+      document.getElementById("poster-apply-auto-rest").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        e.target.textContent = "applying…";
+        for (const item of pending) {
+          if (posterReviewDecided.has(item.ratingKey) || !item.candidates.length) continue;
+          const card = grid.querySelector(`[data-rating-key="${item.ratingKey}"]`);
+          const status = card?.querySelector(".poster-review-status");
+          try {
+            await postAction("/api/posters/apply", { rating_key: item.ratingKey, url: item.candidates[0].url });
+            posterReviewDecided.add(item.ratingKey);
+            if (status) status.textContent = "applied (auto)";
+            card?.querySelector(".poster-review-thumb")?.classList.add("poster-review-picked");
+          } catch (err) {
+            if (status) status.textContent = `failed: ${err.message}`;
+          }
+        }
+        e.target.textContent = "Done";
+      });
+
+      activePosterSource = new EventSource("/api/posters/review/stream");
+      activePosterSource.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === "item") {
+          pending.push(msg);
+          grid.appendChild(posterCandidateCard(msg, source));
+        } else if (msg.type === "error") {
+          logLine("err", `Poster review — ${msg.message}`);
+          closePosterStream();
+          submitBtn.disabled = false;
+        } else if (msg.type === "done") {
+          logLine("ok", `Poster review — ${pending.length} item(s) loaded, pick a poster or apply auto for the rest.`);
           closePosterStream();
           submitBtn.disabled = false;
         }
@@ -1631,7 +1746,7 @@ function buildPosterSync() {
       };
     } catch (e) {
       summary.textContent = e.message;
-      logLine("err", `Poster sync — ${e.message}`);
+      logLine("err", `Poster review — ${e.message}`);
       submitBtn.disabled = false;
     }
   });

@@ -161,14 +161,30 @@
     <label>Library
       <select id="poster-sync-library"><option value="">Loading libraries…</option></select>
     </label>
-    <label class="poster-sync-check">
+    <label>Source
+      <select id="poster-sync-source">
+        <option value="tmdb">TMDb</option>
+        <option value="fanart">Fanart.tv</option>
+        <option value="tvdb">TheTVDB</option>
+        <option value="omdb">OMDb</option>
+        <option value="tvmaze">TVmaze (shows only)</option>
+      </select>
+    </label>
+    <label>Mode
+      <select id="poster-sync-mode">
+        <option value="auto">Auto (apply top match)</option>
+        <option value="review">Review (pick top 3 per item)</option>
+      </select>
+    </label>
+    <label class="poster-sync-check" id="poster-sync-dry-run-wrap">
       <input type="checkbox" id="poster-sync-dry-run">
       Dry run
     </label>
-    <button class="btn-primary" type="submit">Sync</button>
+    <button class="btn-primary" type="submit">Start</button>
     <span class="hint" id="poster-sync-summary"></span>
   </form>
   <pre id="poster-log"></pre>
+  <div class="poster-review-grid" id="poster-review-grid" hidden></div>
 </div>
 
 <script src="/app.js"></script>

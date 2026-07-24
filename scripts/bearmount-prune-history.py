@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Deletes every "Failed" entry from AltMount's SABnzbd-compatible history.
+"""Deletes every "Failed" entry from BearMount's SABnzbd-compatible history.
 
-Same rationale this stack's now-removed NzbDAV prune script had: a Failed
-history row has no surviving output but can still block re-grabbing a
-matching release name, so there's no reason to keep one once logged - safe
-to delete unconditionally, regardless of age.
+Same rationale this stack's now-removed NzbDAV prune script had (and its
+AltMount successor before BearMount replaced that too, 2026-07-24): a
+Failed history row has no surviving output but can still block re-grabbing
+a matching release name, so there's no reason to keep one once logged -
+safe to delete unconditionally, regardless of age.
 
-Run every few hours by systemd/stack-altmount-prune-history.{service,timer}.
+Run every few hours by systemd/stack-bearmount-prune-history.{service,timer}.
 """
 import json
 import sys
@@ -17,9 +18,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 STACK_DIR = Path(__file__).resolve().parent.parent
-# AltMount's SABnzbd-compatible API lives under /sabnzbd (Fiber's
+# BearMount's SABnzbd-compatible API lives under /sabnzbd (Fiber's
 # prefix-matching app.Use, not a literal /api/sabnzbd path).
-ALTMOUNT_URL = "http://localhost:8081/sabnzbd"
+BEARMOUNT_URL = "http://localhost:8082/sabnzbd"
 
 
 def env_get(key):
@@ -32,7 +33,7 @@ def env_get(key):
     return None
 
 
-ALTMOUNT_API_KEY = env_get("ALTMOUNT_API_KEY")
+BEARMOUNT_API_KEY = env_get("BEARMOUNT_API_KEY")
 
 # Deletes fan out across threads rather than running serially - these are
 # same-host HTTP calls, not a remote/rate-limited API. History can run in
@@ -41,7 +42,7 @@ WORKERS = 20
 
 
 def api_get(params, timeout=30):
-    url = f"{ALTMOUNT_URL}?{urllib.parse.urlencode(params)}"
+    url = f"{BEARMOUNT_URL}?{urllib.parse.urlencode(params)}"
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return json.load(r)
 
@@ -53,7 +54,7 @@ def delete_one(slot):
             "mode": "history",
             "name": "delete",
             "value": nzo_id,
-            "apikey": ALTMOUNT_API_KEY,
+            "apikey": BEARMOUNT_API_KEY,
             "output": "json",
         })
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
@@ -64,14 +65,14 @@ def delete_one(slot):
 
 
 def main():
-    if not ALTMOUNT_API_KEY or ALTMOUNT_API_KEY == "changeme":
-        print("ALTMOUNT_API_KEY not configured in .env", file=sys.stderr)
+    if not BEARMOUNT_API_KEY or BEARMOUNT_API_KEY == "changeme":
+        print("BEARMOUNT_API_KEY not configured in .env", file=sys.stderr)
         return 1
 
     history = api_get({
         "mode": "history",
         "limit": 0,
-        "apikey": ALTMOUNT_API_KEY,
+        "apikey": BEARMOUNT_API_KEY,
         "output": "json",
     }, timeout=180)
     slots = history.get("history", {}).get("slots", [])
