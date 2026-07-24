@@ -434,6 +434,35 @@ section, and there's no substitute for it for that class of change.
   "no such service"** even while the container itself is still running - use `docker stop
   <container_name>` / `docker rm <container_name>` directly for a container whose compose
   block is already gone.
+- **Radarr's/Sonarr's `renameMovies`/`renameEpisodes` default to `false`** — a custom naming
+  format string being set does nothing on its own; files keep their original scene-release
+  names until this is explicitly turned on. Confirmed both were `false` on a freshly-wiped
+  instance despite a full TRaSH naming format already configured.
+- **Sonarr's real per-file TMDB-id naming token is bare `{TmdbId}`, not `{Series TmdbId}`** —
+  the latter (TRaSH-Guides' own documented syntax) silently resolves to an empty string
+  (`{tmdb-}` in the real folder name) rather than erroring. Confirmed live by testing several
+  candidate tokens against a real series via `PUT /api/v3/series/editor` with `moveFiles:
+  true`. Radarr's equivalent `{TmdbId}` (no `Movie ` prefix) is correct as documented.
+- **Sonarr's/Radarr's `GET /api/v3/config/naming/examples` ignores its own query parameters**
+  — it only ever reflects the currently-*saved* naming config, regardless of what format
+  string is passed in. To test an unsaved format, save it for real and re-check, or trigger a
+  real per-item recompute (`PUT /api/v3/series/editor` with `moveFiles: true`) against a
+  series/movie that already has real IDs populated.
+- **Sonarr's command queue can flood with hundreds of `RefreshSeries` entries during a heavy
+  import burst** (peaked at 737 during the RuPaul's Drag Race backfill), starving every other
+  queued command for minutes. `DELETE /api/v3/command/{id}` cannot cancel a running batch
+  command (`409 Unable to cancel task`) — the only fix is `docker compose restart sonarr`,
+  which clears the in-memory command queue (the DB-persisted download queue itself survives).
+- **Prowlarr's Applications `GET` response always masks `apiKey` as `"********"`** — PUTting
+  that response straight back (e.g. to force a sync) silently overwrites the real Radarr/Sonarr
+  API key Prowlarr uses to connect with the literal mask string, breaking the connection.
+  Always re-fetch the real key from the target app's own `config.xml` and overwrite the masked
+  field before PUTting a round-tripped Applications entry back.
+- **A new poster-sync API key (`control-panel/app.py`) needs adding in two places, not one** —
+  `.env` alone is not enough; it also needs an explicit line in `docker-compose.yml`'s
+  `control-panel` `environment:` block (matching the existing `TMDB_KEY`/`FANART_KEY` lines),
+  or the container never sees it even after `--force-recreate`. Confirmed missing `TVDB_KEY`
+  from that passthrough list caused a working `.env` value to be invisible inside the container.
 
 ### Quick diagnosis: AltMount/Plex/Radarr/Sonarr symptoms from 2026-07-23
 
