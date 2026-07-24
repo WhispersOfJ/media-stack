@@ -189,10 +189,9 @@ Watchtower auto-updates it like any other channel-tag image unless this is delib
 changed, see Image pinning policy).
 
 **Queue cleanup / missing-content hunting** — `cleanuparr` (extras, port 11011, strikes +
-malware-block + stalled-download cleanup; its own built-in proactive search should stay
-disabled so it doesn't redundantly hunt alongside NeutArr) · `neutarr` (extras, port 9705,
-hardened Huntarr-lineage fork — missing/upgrade hunting exclusively; never add Huntarr proper,
-see its own compose comment for the auth-bypass history).
+malware-block + stalled-download cleanup). **`neutarr` was removed entirely 2026-07-24**,
+after its hunting flood caused a real cascading incident (see the landmines section) —
+there is no automated missing-content/quality-upgrade hunting of any kind in this stack now.
 
 ## Commands
 
@@ -416,6 +415,36 @@ section, and there's no substitute for it for that class of change.
 
 ## Known current landmines (not historical — still true as of last audit)
 
+- **BearMount's `config/bearmount/config.yaml` `queue_cleanup_rules` entries can have
+  `action: blocklist_search`, which blocklists a failed release AND immediately fires a new
+  search** — if an indexer keeps serving equally-bad releases for a given episode/series
+  (fake/incomplete NZBs, wrong file types), this becomes a self-sustaining loop with no
+  external trigger needed (confirmed live: RuPaul's Drag Race and Snapped looped for 4+
+  hours, 500+ blocklist entries each, long after the original hunting tool that grabbed
+  them was disabled). Symptom: Sonarr/Radarr's blocklist growing continuously with no
+  RSS sync, no NeutArr-equivalent, and no active manual search running. Fix: unmonitor the
+  affected series (stops Sonarr from acting on the retriggered search) rather than trying
+  to catch it via `docker-compose-manager`/queue-clearing, which doesn't touch this loop at
+  all since it's driven by BearMount's own queue-cleanup logic, not the download queue.
+- **A Plex scan can freeze mid-scan for a second, distinct reason from the documented
+  FUSE/D-state hang**: SQLite lock contention from an import burst. Symptom looks
+  identical (progress % frozen, eventually no scanner subprocess running) but
+  `Plex Media Server.log` shows `ERROR - Waited over 10 seconds for a busy database;
+  giving up` repeating every ~10s, not a FUSE/mount error, and `docker logs bearmount`
+  is silent for the whole window (mount itself stays fully responsive). Check for this
+  log line before assuming a stuck scan needs the FUSE-abort fix — a plain
+  `docker compose restart plex` clears it without any mount-cascade risk. Triggered by
+  100+ near-simultaneous imports (e.g. a hunting tool's backlog draining all at once)
+  flooding Plex's own SQLite writer via Radarr/Sonarr's per-import notify webhook.
+- **`~/.dotfiles` fish functions and `control-panel/static/commands.json` both drift
+  silently out of sync with `control-panel/app.py` after any rename or removal — neither
+  is caught by testing `app.py` alone.** Found live: five fish functions for apps removed
+  sessions ago (Kometa, all 6 Sportarr commands, both Tautulli commands) and five
+  `commands.json` command-palette entries still pointing at `/api/nzbdav/*` (dead since
+  the AltMount/BearMount rebrand) — all silently broken, none caught until specifically
+  audited. After renaming or removing any app's routes, grep both
+  `~/.dotfiles`'s `.config/fish/functions/*.fish` and this repo's `commands.json` for the
+  old name, don't assume `app.py` being correct means the CLI/palette are too.
 - **A new rclone-mount-owning container needs its `/mnt/<name>` host directory pre-created and
   `chown 1000:1000` before first start** - `/mnt` itself is root-owned, and the container can't
   `mkdir` under it (`permission denied`). Hit for both AltMount's and BearMount's first boot -
@@ -571,6 +600,14 @@ scratch. Full incident narrative is in the History section below; this is the ch
   unexpanded/mangled string, e.g. all ids concatenated into one bad request). Wrap any
   multi-line bash-style loop in `bash -c '...'` explicitly rather than trusting it to run as
   typed.
+- **Building a JSON body for curl inside a nested `bash -c '...'` wrapper (needed to
+  background a long-running loop) silently mangles quoting** — confirmed live twice:
+  `python3 -c "...{'ids':[...]}..."` inside `bash -c '...'` inside this tool's own shell
+  wrapping corrupted the embedded single/double quotes, so the loop never actually
+  authenticated/deleted anything and ran harmlessly forever instead of erroring loudly.
+  For any curl+JSON+loop combination, write a standalone `.py` file and run it with a
+  plain `python3 script.py` instead of inlining it — avoids the nested-quoting class of
+  bug entirely, and is easy to fix/rerun once, rather than debugging escaping live.
 - **Radarr's `DELETE /api/v3/queue/bulk` works; Sonarr's real endpoint 404s** (confirmed live,
   same Sonarr version this stack runs) — don't assume a bulk-queue-delete endpoint is shared
   Servarr-family API just because Radarr has it. Fall back to looping individual
