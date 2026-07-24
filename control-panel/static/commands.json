@@ -777,18 +777,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-neutarr-status",
-    "Description": "Per-app enabled/disabled state from NeutArr's own config",
-    "Method": "GET",
-    "PathTemplate": "/api/neutarr/status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-notify-test",
     "Description": "Send a test notification to the stack Discord webhook",
     "Method": "POST",
