@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v11.8.0**
+Current version: **v11.9.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet through **AltMount** - streamed via a FUSE mount, not downloaded to local disk - and
@@ -32,7 +32,6 @@ chronological [History](#history) section is at the end.
 - [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [Automation extras: Cleanuparr, NeutArr, Unpackerr, Watchtower](#automation-extras-cleanuparr-neutarr-unpackerr-watchtower)
-- [Monitoring extras: Tautulli](#monitoring-extras-tautulli)
 - [Bazarr: subtitle management](#bazarr-subtitle-management)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
@@ -56,20 +55,17 @@ Bazarr). Ebooks briefly had a dedicated app (Bindery) plus a reader (Calibre-Web
 retired in v10.9.8 with no replacement (see
 [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)). Adult content
 cataloging (Stash) was also removed in v10.12.0, along with Whisparr, which had managed its
-underlying library. Tautulli, Kometa, and Kometa's Quickstart companion still have real compose
-service blocks and pulled images in this stack, but no running or even stopped container exists
-for any of the three as of the last audit - treat them as present-but-dormant, not removed (see
-[History](#history)).
+underlying library. **Tautulli, Kometa, and Kometa's Quickstart companion were removed entirely
+in v11.9.0** - compose service blocks, `control-panel/app.py` routes, `commands.json` entries,
+and every dashboard reference deleted outright (see [History](#history)); there is no
+monitoring dashboard or collections/overlays automation of any kind in this stack now.
 
 **Jellyfin briefly replaced Plex in v11.7.0 and was fully reverted back to Plex the same day**,
 after repeated unresolved library-scan hangs (see [History](#history) for the full migration
 and reversion). Jellyfin, Jellystat, and jellystat-db were all removed entirely as part of that
 reversion - there is no Jellyfin anywhere in this stack, and no Jellystat/Postgres dependency
-either. Kometa never supported Jellyfin in the first place (no `jellyfin`/`emby` property in
-its own config schema, only `plex` - confirmed by reading `kometa-team/kometa`'s
-`config-schema.json` directly, contradicting several blog posts that claim otherwise); see
-[History](#history) `[11.7.0]` for how that and Tautulli's Plex-only status factored into the
-migration and its reversion.
+either. See [History](#history) `[11.7.0]` for the full migration and reversion, and
+`[11.9.0]` for Kometa and Tautulli's subsequent full removal.
 
 **Torrent and debrid (Decypharr, Zurg, rclone-alldebrid, Zilean, Byparr) were removed
 entirely** (see [History](#history)) - the stack ran debrid-first originally, flipped to
@@ -99,8 +95,8 @@ docker run --rm -p 8090:8090 -v "$(pwd)":/out ghcr.io/whispersofj/media-stack:la
 # 3. Bring the core stack up
 docker compose up -d
 
-# 4. Everything else (Tautulli, Bazarr, Kometa (dormant), Control Panel,
-#    Unpackerr, Watchtower, Cleanuparr, NeutArr, ...)
+# 4. Everything else (Bazarr, Control Panel, Unpackerr, Watchtower,
+#    Cleanuparr, NeutArr, ...)
 docker compose --profile extras up -d
 ```
 
@@ -210,34 +206,29 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 4 | `altmount` | `altmount-local-fix:obscure-pass` (temporary local build, see below) | 8081→8080 | core |
 | 5 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
 | 6 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host networking) | core |
-| 7 | `tautulli` | `ghcr.io/hotio/tautulli:release` | 8182→8181 | extras |
+| 7 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
 | 8 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
 | 9 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 10 | `kometa` | `kometateam/kometa@sha256:98a0df...` | none | extras |
-| 11 | `quickstart` (`kometa-quickstart`) | `kometateam/quickstart:latest` | 7171 | extras |
-| 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 13 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
-| 15 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
+| 10 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 11 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 12 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 13 | `neutarr` | `iampuid0/neutarr:1.9.1` | 9705 | extras |
 
 **Jellyfin briefly replaced Plex in v11.7.0 and was fully reverted back to Plex the same day**
 (see [History](#history) for the migration and the reversion) - `jellyfin`, `jellystat`, and
 `jellystat-db` were all removed entirely as part of that reversion, and there is no Jellyfin
-anywhere in this stack now. `tautulli`, `kometa`, and `quickstart` still have real compose
-service blocks and pulled images (they were never removed, despite this file's own older
-entries claiming otherwise - that narrative was stale, corrected on a later audit), **but no
-running or even stopped container currently exists for any of the three** - treat them as
-present-but-dormant, not active. `nzbdav`/`nzbdav-rclone` were removed entirely and replaced by
-`altmount` on 2026-07-23, after an unfixed upstream connection-leak bug (see
+anywhere in this stack now. **`tautulli`, `kometa`, and `quickstart` were removed entirely in
+v11.9.0** - compose blocks, config, and every Control Panel/dashboard reference deleted outright
+(see [History](#history) `[11.9.0]`); there is no monitoring dashboard or collections/overlays
+automation of any kind in this stack now. `nzbdav`/`nzbdav-rclone` were removed entirely and
+replaced by `altmount` on 2026-07-23, after an unfixed upstream connection-leak bug (see
 [History](#history)) - `altmount` owns its own internal rclone/FUSE mount directly, so there is
-no separate sidecar container the way NzbDAV needed one. Service table: 18 → 15 rows.
+no separate sidecar container the way NzbDAV needed one. Service table: 18 → 14 rows.
 
-`docker compose up -d` brings up the 6 core services; `docker compose --profile extras up
--d` adds the other 9 (of which 3 - Tautulli, Kometa, Quickstart - stay dormant unless started
-by hand, since nothing currently depends on them). Both are safe to re-run; Compose only
-recreates what is out of sync with `docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg,
-rclone-alldebrid, Zilean, zilean-postgres, Byparr - were removed entirely; see
-[History](#history).)
+`docker compose up -d` brings up the 7 core services; `docker compose --profile extras up
+-d` adds the other 7. Both are safe to re-run; Compose only recreates what is out of sync with
+`docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg, rclone-alldebrid, Zilean,
+zilean-postgres, Byparr - were removed entirely; see [History](#history).)
 
 ## The *arr apps
 
@@ -403,6 +394,25 @@ the evaluation that led to choosing AltMount over `nzbdav-rs` (a from-scratch Ru
 architecturally immune to the same bug class but far less active upstream), and the
 subsequent bulk re-link/library-abandonment that came with the cutover.
 
+**Superfork found and independently verified to actually fix both root-cause bugs, 2026-07-24**
+(moot for this stack since AltMount already replaced NzbDAV, kept here for the record and for
+anyone still running NzbDAV): a community reply on issue #477 pointed at `nzbdav/nzbdav`
+("a super-fork of related projects to the OG nzbdav-dev version"), claiming both bugs were
+already fixed there. Verified by cloning both `nzbdav-dev/nzbdav` (stale - last pushed
+2026-07-01, 1,117 stars) and `nzbdav/nzbdav` (actively maintained - pushed same-day, 55 stars)
+and reading the actual code, not trusting the claim: `nzbdav/nzbdav`'s
+`UsenetStreamingClient.CreateNewConnection` wraps the connect+auth handshake in a
+try/catch that disposes the connection on any failure (including failed auth - the exact leak
+this fork's PR #478 fixes) and adds a hard connect/auth timeout; its `ProviderCircuitBreaker`
+has a real `Interlocked.CompareExchange`-based `_halfOpenProbeInFlight` gate enforcing the
+single-probe limit the original's circuit breaker only claimed to have in a doc comment. Both
+fixes confirmed present and structurally sound, with dedicated test coverage
+(`ProviderCircuitBreakerHalfOpenTests`, `ConnectionPoolIdleTimeoutTests`) that the original
+repo has no equivalent of. The superfork is also a much larger project overall (1,089 vs 567
+files at time of comparison - many more features, not just these two fixes), so treat it as a
+different, actively-developed project to evaluate on its own merits rather than a drop-in patch
+release of the original.
+
 NzbDAV had a genuine STRM import mode too (`backend/Queue/PostProcessors/
 CreateStrmFilesPostProcessor.cs` wrote a plain `.strm` file containing a direct HTTP URL back
 to NzbDAV's own `/view/...` endpoint, bypassing the FUSE mount entirely - genuinely
@@ -512,18 +522,9 @@ plex:
   now on - see [Architecture](#architecture) for the FUSE-mount-cascade caveat this mount
   shares with Radarr/Sonarr/Unpackerr/Cleanuparr.
 
-**Kometa is Plex's only supported integration** (unlike Jellyfin, which it never supported at
-all - confirmed directly against `kometa-team/kometa`'s own `config-schema.json`: no
-`jellyfin`/`emby` top-level property, only `plex`), but **Kometa currently doesn't run** -
-its compose block and image are present (see [The full service list](#the-full-service-list))
-but no container is running or even stopped, present-but-dormant like Tautulli and Quickstart.
-**No automated Plex collections, overlays, or metadata-enrichment tool of any kind currently
-runs in this stack** as a result, even though the one tool that could do it (Kometa) is
-compatible with the current media server.
-
-**Tautulli** is Plex's watch-history/stats dashboard and is also currently dormant (same
-present-but-dormant status as Kometa) - see
-[Monitoring extras: Tautulli](#monitoring-extras-tautulli).
+**Kometa and Tautulli were removed entirely in v11.9.0** (see [History](#history)
+`[11.9.0]`) - there is no automated Plex collections/overlays/metadata tool and no
+watch-history/stats dashboard of any kind in this stack now.
 
 **Seerr is repointed at Plex** - `mediaServerType: 1`, a real "Sign in with Plex" login
 completed by the user (not fabricable via API - Seerr's own `/api/v1/settings/plex` route
@@ -716,26 +717,9 @@ curl -s -H "X-Api-Key: $RADARR_API_KEY" \
 
 ## Automation extras: Cleanuparr, NeutArr, Unpackerr, Watchtower
 
-**Kometa and its Quickstart companion are present but dormant** - real compose service blocks
-and pulled images exist (see [The full service list](#the-full-service-list)), but no
-container is running or even stopped for either. Kometa (`kometateam/kometa@sha256:98a0df...`)
-automates Plex collections, metadata, and overlay art as a scheduled batch job (05:00 daily by
-default), connecting to Plex, TMDb, Radarr, Sonarr, and Trakt; Quickstart
-(`kometateam/quickstart:latest`, port 7171) is the official Kometa-Team wizard for building its
-`config.yml` interactively. Both were stopped, then removed entirely, during the brief v11.7.0
-Jellyfin era - `kometa-team/kometa`'s own `config-schema.json` has no `jellyfin`/`emby`
-top-level connection property, only `plex` (several blog-post sources, e.g. jellywatch.app,
-claiming otherwise are wrong/outdated; real Jellyfin support is an open, unimplemented feature
-request at features.jellyfin.org/posts/2899), so there was no way to keep either running against
-Jellyfin. Both compose service blocks came back once Plex returned, but neither `config/kometa`
-nor `config/quickstart` has been repopulated (no container has started since, so Docker never
-created the bind-mount directories) - the real Trakt/GitHub/OMDb/MDBList credentials that used
-to live in `config/kometa/config.yml` were promoted to standalone `.env` secrets (`OMDB_KEY`,
-`MDBLIST_KEY`) before the original removal and were never restored to Kometa's own config, so
-starting it again would need real reconfiguration, not just `docker compose up kometa`. **No
-automated Plex collections, overlays, or metadata-enrichment tool of any kind currently runs in
-this stack**, even though Kometa (unlike during the Jellyfin era) is compatible with the
-current media server again.
+**Kometa and its Quickstart companion were removed entirely in v11.9.0** (see
+[History](#history) `[11.9.0]`) - no automated Plex collections, overlays, or
+metadata-enrichment tool of any kind runs in this stack now.
 
 **Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) and **NeutArr**
 (`iampuid0/neutarr:1.9.1`, port 9705) automate what Control Panel's "unstick" and
@@ -804,23 +788,20 @@ the exception forward (Watchtower auto-updated it like any other channel-tag ima
 moot now that Plex, not Jellyfin, is the media server again. See
 [Image pinning policy](#image-pinning-policy).
 
-## Monitoring extras: Tautulli
+## Monitoring: none currently
 
-**Tautulli** (`ghcr.io/hotio/tautulli:release`, port 8182 → 8181 internally) is Plex's
-watch-history/stats dashboard - and, like Kometa, is currently **present but dormant**: a real
-compose service block and pulled image exist, but no container is running or even stopped.
-Its two `/api/tautulli/*` Control Panel routes (`history`, `stats`) exist in code and 503
-gracefully once `config/tautulli/config.ini` doesn't exist, rather than erroring.
+**Tautulli** (Plex's watch-history/stats dashboard) was removed entirely in v11.9.0, along
+with Kometa - see [History](#history) `[11.9.0]`. There is no watch-history/stats dashboard
+of any kind in this stack now.
 
-During the brief v11.7.0 Jellyfin era, Tautulli was removed entirely (Plex-only, nothing left
-to monitor once Plex was gone) and replaced by **Jellystat** (`cyfershepard/jellystat:latest`,
-plus its own Postgres, `jellystat-db` on `postgres:18.1`) as the Jellyfin-equivalent -
-Tautulli has no Jellyfin support at all. Both Jellystat and `jellystat-db` were themselves
-removed entirely when Jellyfin was reverted back to Plex; there is no Postgres instance
-running in this stack now, and Tautulli's compose block came back in their place, dormant
-rather than reconfigured and started. Two first-start bugs were fixed for Jellystat/
-`jellystat-db` during their short life (`postgres:18+`'s new datadir-mount convention;
-`jellystat`'s missing `curl`), both moot now that neither container exists - see
+During the brief v11.7.0 Jellyfin era, Tautulli was removed entirely once before (Plex-only,
+nothing left to monitor once Plex was gone) and replaced by **Jellystat**
+(`cyfershepard/jellystat:latest`, plus its own Postgres, `jellystat-db` on `postgres:18.1`) as
+the Jellyfin-equivalent - Tautulli has no Jellyfin support at all. Both Jellystat and
+`jellystat-db` were themselves removed entirely when Jellyfin was reverted back to Plex; there
+is no Postgres instance running in this stack now. Two first-start bugs were fixed for
+Jellystat/`jellystat-db` during their short life (`postgres:18+`'s new datadir-mount
+convention; `jellystat`'s missing `curl`), both moot now that neither container exists - see
 [History](#history) if a similar Postgres-backed monitoring app is ever added again.
 
 Glances and Dozzle were removed in v10.9.9 (neither had a config volume, so no data was
@@ -928,7 +909,6 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/status` | GET | Running/health state for every container in the compose project |
 | `/api/containers` | GET | Full grid: state, health, image, live CPU/mem per container |
 | `/api/api-hit-counts` | GET | Live per-app outbound API call counter (see below) |
-| `/api/kometa/run` | POST | Runs Kometa on demand via `docker exec` - 503s with "Kometa container not found" while it stays dormant (see [Media server: Plex](#media-server-plex)) |
 | `/api/plex/scan` \| `/optimize-db` \| `/empty-trash` \| `/clean-bundles` | POST | Plex library maintenance actions |
 | `/api/plex/libraries` | GET | Library names/keys, read live from Plex |
 | `/api/plex/analyze` | POST | Queue deep media analysis, one library or all |
@@ -945,7 +925,6 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/altmount/queue` \| `/history` | GET | AltMount's current queue / recent history |
 | `/api/altmount/stats` | GET | Queued/history counts in one call |
 | `/api/altmount/delete-failures` | POST | Bulk-clears failed history entries |
-| `/api/tautulli/history` \| `/stats` | GET | Watch history / stats - 503s gracefully while Tautulli stays dormant |
 | `/api/arr/{app}/rss-sync` \| `/search-missing` | POST | Per-app RSS sync / missing-search |
 | `/api/arr/{app}/unstick` | POST | Removes + blocklists + re-searches every `warning`/`error` queue item |
 | `/api/arr/{app}/unstick-importing` | POST | Diagnoses a download wedged in `importing` state (dead-article/missing-path check via `docker exec`), clears or blocklists, re-searches |
@@ -962,7 +941,9 @@ looking up a task's real Id via its Key, the old `/api/plex/analyze` and
 call, etc.), and `/api/kometa/run` was deleted outright (its `KometaRunRequest` Pydantic model
 went with it). **All of that was reverted back to `/api/plex/*` and `/api/kometa/run` when
 Jellyfin was reverted to Plex** the same day - see [History](#history) for both route-rework
-passes. The poster-sync routes (`/api/posters/*`) went through the same rework-then-revert
+passes. `/api/kometa/run` and `/api/tautulli/*` were later removed permanently in v11.9.0 along
+with the rest of Kometa/Tautulli (see [History](#history) `[11.9.0]`) - neither endpoint exists
+anymore. The poster-sync routes (`/api/posters/*`) went through the same rework-then-revert
 cycle: TMDb matching keys off Plex's Guid array again (it briefly used Jellyfin's
 `ProviderIds`), and the image write is Plex's URL-fetch endpoint again (it briefly used
 `POST /Items/{id}/Images/Primary` with raw bytes).
@@ -1322,14 +1303,14 @@ through `scripts/notify-discord.sh` (no-ops silently if unconfigured):
 Every image is pinned, using whichever approach does not change what is running:
 
 - **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the hotio images (Prowlarr,
-  Radarr, Sonarr, Tautulli). hotio's model is rolling channels identified by git-hash, not
+  Radarr, Sonarr, Bazarr). hotio's model is rolling channels identified by git-hash, not
   semver, so a channel tag is the closest available pin.
 - **Version tags** (`nickfedor/watchtower:1.19.0`, `iampuid0/neutarr:1.9.1`,
   `ghcr.io/cleanuparr/cleanuparr:2.9.16`) where the upstream tags real releases and the running
   image matches.
-- **Digest pins** (`@sha256:...`) for Seerr, Unpackerr, and Kometa. In each case the
-  running `:latest`/newest-tagged build is ahead of (or, for Kometa, simply not matched by) a
-  usable version tag, so a tag would either downgrade or drift forward unexpectedly.
+- **Digest pins** (`@sha256:...`) for Seerr and Unpackerr. In each case the running
+  `:latest`/newest-tagged build is ahead of a usable version tag, so a tag would either
+  downgrade or drift forward unexpectedly.
 - **Version tag, manually bumped, off Watchtower's train** for Plex
   (`plexinc/pms-docker:1.43.3.10828-00f62d37d`) - PMS version changes on a live library are
   applied manually. This exception briefly moved to Jellyfin during the v11.7.0 detour (a
@@ -1394,6 +1375,16 @@ end-to-end, and reverted; the login+2FA prompt in front of every app, three extr
 and a hairpin-NAT bug that took Plex down through the proxy did not pay for themselves on a
 LAN-only deployment. The recipe is in [History](#history) if it is ever needed again (e.g.
 before any public exposure).
+
+**Two upstream `javi11/altmount` security issues filed 2026-07-23, still open/unaddressed as of
+2026-07-24** (relevant to the `bearmount` fork this stack now depends on - see
+[AltMount](#the-usenet-pipeline-altmount)):
+- [javi11/altmount#796](https://github.com/javi11/altmount/issues/796) - unauthenticated SSRF
+  via the SABnzbd ARR-credential auto-registration path.
+- [javi11/altmount#797](https://github.com/javi11/altmount/issues/797) - the `IsAdmin` flag
+  isn't enforced on any destructive/mutating route.
+Neither has a maintainer response yet. Re-check before assuming either is fixed in whatever
+`bearmount`/`altmount` image tag this stack is pinned to at the time.
 
 ## CI
 
@@ -2552,3 +2543,23 @@ unrelated container recreation and fixed with a restart. Every backup (local res
 restic, and ad-hoc session snapshots) was deleted at explicit user request pending a new backup
 policy; the three backup systemd timers were stopped and unlinked, not deleted. See `CLAUDE.md`
 for the full incident-by-incident detail - this entry is a summary.
+
+**v11.9.0**: Tautulli, Kometa, and Kometa's Quickstart companion removed entirely, by explicit
+request - previously present-but-dormant (real compose blocks and pulled images, no running or
+stopped container for any of the three), now fully deleted rather than left dormant. No
+`config/tautulli`, `config/kometa`, or `config/quickstart` existed on disk at removal time (no
+container had ever started since the last removal, so Docker never created the bind-mount
+directories - nothing to delete there). Touched: all three `docker-compose.yml` service blocks
+and every comment referencing them; `control-panel/app.py`'s `TAUTULLI_URL`, `_tautulli_key()`,
+`KometaRunRequest` model, `/api/kometa/run`, `/api/tautulli/history`, `/api/tautulli/stats`, and
+their three `CONTAINER_LABELS` entries, all deleted outright; `control-panel/static/app.js`'s
+`DOC_LINKS` rows for both (previously tagged `installed: false`), `FLEET_GROUPS` entries, and
+the `stack-cli-plex-kometa` skill's dashboard description; `control-panel/static/commands.json`'s
+`stack-kometa-run`, `stack-tautulli-history`, `stack-tautulli-stats` command entries; the
+`stack-cli-plex-kometa` project skill's frontmatter/command-reference/resources, rewritten to
+describe Plex-only coverage (Kometa/Tautulli's own fish functions live in `~/.dotfiles`, outside
+this repo, and weren't touched here). `.env.example`'s `OMDB_KEY` comment (previously described
+as "used to live in Kometa's config.yml") simplified to drop that now-doubly-stale lineage note.
+This is the second removal for both apps - see the `[11.7.0]`/`[11.8.0]` entries above for the
+first (Kometa/Tautulli came back dormant when Plex returned; this time neither was
+reintroduced).
