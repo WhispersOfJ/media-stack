@@ -1,12 +1,12 @@
 ---
 name: stack-cli-plex-kometa
-description: Exact fish CLI command reference for Plex, Kometa, and Tautulli operations against this stack's Control Panel (library scan/maintenance, Kometa runs, watch sessions/history, duplicates, TMDb-link audit, Butler tasks, watchlist/RSS import). Use whenever the user asks to run Kometa, scan Plex, check who's watching, find duplicate files, check for a Plex update, run a Butler task, generate markers, or import a Plex watchlist to Radarr/Sonarr from the terminal. Trigger phrases: "run kometa", "scan plex", "who's watching", "empty plex trash", "find duplicate movies", "check plex update", "what's missing a tmdb link", "generate intro markers", "run butler task", "refresh epg", "import plex watchlist to radarr", "deep media analysis", "tautulli stats".
+description: Exact fish CLI command reference for Plex operations against this stack's Control Panel (library scan/maintenance, watch sessions/history, duplicates, TMDb-link audit, Butler tasks, watchlist/RSS import). Use whenever the user asks to scan Plex, check who's watching, find duplicate files, check for a Plex update, run a Butler task, generate markers, or import a Plex watchlist to Radarr/Sonarr from the terminal. Trigger phrases: "scan plex", "who's watching", "empty plex trash", "find duplicate movies", "check plex update", "what's missing a tmdb link", "generate intro markers", "run butler task", "refresh epg", "import plex watchlist to radarr", "deep media analysis".
 ---
 
-# Stack CLI: Plex & Kometa
+# Stack CLI: Plex
 
 <skill_scope skill="stack-cli-plex-kometa">
-This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every Plex/Kometa/Tautulli terminal command in this stack is already known, without reading `~/.config/fish/functions/stack-plex*.fish` fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/app.py`.
+This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every Plex terminal command in this stack is already known, without reading `~/.config/fish/functions/stack-plex*.fish` fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/app.py`. Kometa and Tautulli were removed entirely from this stack - their commands (`stack-kometa-run`, `stack-tautulli-history`, `stack-tautulli-stats`) no longer exist.
 </skill_scope>
 
 ## Calling convention
@@ -24,17 +24,14 @@ Every `stack-plex-<butler-task-name>` command (`stack-plex-clean-cache-files`, `
 <command_reference>
 | Command | Args | What it does |
 |---|---|---|
-| `stack-kometa-run` | `[library ...]` (none = every library) | Triggers an immediate Kometa collections/metadata/overlays pass, bypassing its 05:00 schedule. Library names come from `stack-plex-libraries`. Kometa's container runs `sleep infinity` as PID 1 (load-bearing - see this repo's CLAUDE.md) and only ever actually runs via this on-demand exec path. |
 | `stack-plex` | `<scan\|empty-trash\|optimize-db\|clean-bundles>` | One Plex maintenance action: `scan` refreshes every library section for new files, `empty-trash` permanently removes already-deleted items, `optimize-db` runs Plex's own DB optimization, `clean-bundles` removes metadata bundles Plex no longer needs. |
-| `stack-plex-libraries` | none | Lists Plex library names - the input `stack-kometa-run` and `stack-plex-empty-trash` take. |
+| `stack-plex-libraries` | none | Lists Plex library names - the input `stack-plex-empty-trash` takes. |
 | `stack-plex-updates` | none | Checks whether Plex has a newer release on its current channel. Check only - this stack pins Plex's image deliberately and never auto-applies an update. |
 | `stack-plex-empty-trash` | `[library name ...]` (none = every library) | Empty trash scoped to one or more named libraries (case-insensitive match against the Plex title, e.g. `"TV Shows"`) instead of everything. |
 | `stack-plex-duplicates` | `[min_gb]` (default 5.0) | Flags movies whose combined file size looks like more than one real release stacked up (well beyond a single legitimate multi-version upgrade). Real incident: found ~700GB of redundant duplicate releases in one session this way. |
 | `stack-plex-sessions` | none | Who's watching what right now - user, title, direct-play vs. transcode decision, progress, per session. |
 | `stack-plex-recently-added` | `[limit]` (default 15) | What actually finished importing and became visible in Plex. Distinct from `stack-recently-added` (see the `stack-cli-arr-fleet` skill), which shows what was added *to Radarr/Sonarr's management*, not necessarily downloaded or visible yet. |
 | `stack-tmdb-missing` | none | Scans every movie/show library for items with no TMDb link (neither the new nor legacy Plex agent's Guid) and writes them to `~/missing.txt`. Overwrites on every run - a rescan tool, not an appending log. |
-| `stack-tautulli-history` | `[limit]` (default 10) | Recent Plex watch history via Tautulli - what actually got watched, as opposed to what's currently playing (`stack-plex-sessions`). |
-| `stack-tautulli-stats` | none | Tautulli's 30-day home-stats widget (most watched, most active users/platforms) - server-wide aggregate, distinct from `stack-tautulli-history`'s per-session log. |
 | `stack-plex-butler` | `<task>` | Fires any named Plex Butler task; run with no args or an unknown task to print the full accepted-task list (kept only in `control-panel/app.py`'s `PLEX_BUTLER_TASKS`, not duplicated here, so it can't drift). `optimize-db`/`clean-bundles` are NOT in this list - they're `stack-plex` subcommands instead. |
 | `stack-plex-analyze` | `[library name ...]` (none = every library) | Queues Plex's per-item deep analysis (loudness, chapter thumbs, intro/credits/ad markers, voice activity) scoped to one or more named libraries via `PUT /library/sections/{key}/analyze`. Narrower than the Butler `deep-media-analysis` task below - use this to re-analyze just the library whose settings changed. |
 | `stack-plex-deep-media-analysis` | none | Butler task `DeepMediaAnalysis` - runs full deep analysis (loudness, chapter thumbs, markers, voice activity) server-wide in one Plex-side pass. Not a fish-level composite that calls the individual `generate-*`/`loudness-analysis` commands below one by one - it's a single Butler task Plex itself bundles those into. |
@@ -79,6 +76,6 @@ Every `stack-plex-<butler-task-name>` command (`stack-plex-clean-cache-files`, `
 
 <resources>
 **Local:**
-- `~/.config/fish/functions/stack-plex*.fish`, `stack-kometa-run.fish`, `stack-tmdb-missing.fish`, `stack-tautulli*.fish` - the actual fish source these commands wrap (the `stack-plex*`/`stack-tautulli*` globs already cover every Butler-task, analysis, and import-list wrapper added above - no per-file listing needed)
+- `~/.config/fish/functions/stack-plex*.fish`, `stack-tmdb-missing.fish` - the actual fish source these commands wrap (the `stack-plex*` glob already covers every Butler-task, analysis, and import-list wrapper added above - no per-file listing needed)
 - `control-panel/app.py` in this repo - the real behavior behind every endpoint these commands call
 </resources>

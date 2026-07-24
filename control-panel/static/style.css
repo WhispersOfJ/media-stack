@@ -401,6 +401,7 @@ table.result-table td.num { text-align: right; font-family: var(--font-mono); wh
   position: fixed; right: calc(var(--log-w) + 20px); bottom: 20px; z-index: 40; width: 420px; max-width: calc(100vw - 40px);
   background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 4px 24px rgba(0,0,0,0.12);
 }
+.poster-dock:has(#poster-review-grid:not([hidden])) { width: 720px; }
 .poster-dock-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 0.82rem; }
 .poster-sync-form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; padding: 12px 14px; }
 .poster-sync-form label { display: flex; flex-direction: column; gap: 3px; font-family: var(--font-mono); font-size: 0.66rem; color: var(--ink-faint); }
@@ -411,6 +412,27 @@ table.result-table td.num { text-align: right; font-family: var(--font-mono); wh
 .poster-line-fail { color: var(--bad); }
 .poster-line-skip { color: var(--ink-faint); }
 .poster-line-info { color: var(--ink); }
+
+#poster-sync-summary { display: flex; align-items: center; gap: 8px; }
+
+.poster-review-grid {
+  margin: 0 14px 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px; max-height: 60vh; overflow-y: auto;
+}
+.poster-review-card { border: 1px solid var(--line); padding: 8px; background: var(--surface-2); }
+.poster-review-title { font-size: 0.74rem; font-weight: 600; margin-bottom: 6px; }
+.poster-review-fallback { font-weight: 400; color: var(--ink-faint); font-size: 0.66rem; }
+.poster-review-skip { font-size: 0.68rem; color: var(--ink-faint); font-family: var(--font-mono); }
+.poster-review-thumbs { display: flex; gap: 6px; }
+.poster-review-thumb {
+  flex: 1; display: flex; flex-direction: column; gap: 3px; border: 2px solid transparent; background: none;
+  padding: 2px; cursor: pointer; font-family: var(--font-mono);
+}
+.poster-review-thumb img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--surface); display: block; }
+.poster-review-thumb-label { font-size: 0.6rem; color: var(--ink-faint); text-align: center; }
+.poster-review-thumb:hover { border-color: var(--line-strong); }
+.poster-review-thumb.poster-review-picked { border-color: var(--accent, #4fb3ad); }
+.poster-review-status { margin-top: 4px; font-size: 0.66rem; font-family: var(--font-mono); color: var(--ink-faint); min-height: 1em; }
 
 @media (prefers-reduced-motion: reduce) {
   .btn-icon.spinning svg { animation: none; }

@@ -10,6 +10,7 @@ matches every other service in this stack (see README.md's "Security"
 section).
 """
 import concurrent.futures
+import json
 import os
 import queue
 import re
@@ -20,6 +21,7 @@ import threading
 import time
 from collections import Counter
 from datetime import datetime, timezone
+from typing import Literal
 from urllib.parse import urlparse
 
 import docker
@@ -32,51 +34,28 @@ from pydantic import BaseModel
 PLEX_URL = (os.environ.get("PLEX_URL") or "").rstrip("/")
 PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
 # NzbDAV removed entirely 2026-07-23 (unmerged connection-leak bug,
-# nzbdav-dev/nzbdav#478 - see CLAUDE.md's History). AltMount's own
+# nzbdav-dev/nzbdav#478 - see CLAUDE.md's History). BearMount's own
 # SABnzbd-compatible API lives under /sabnzbd (Fiber's prefix-matching
 # app.Use, not a literal /api/sabnzbd path).
-ALTMOUNT_URL = "http://altmount:8080/sabnzbd"
-ALTMOUNT_API_KEY = os.environ.get("ALTMOUNT_API_KEY")
-# Sportarr (sports PVR, wrestling library only - added 2026-07-23). Its real
-# API is a flat /api/... scheme (not Radarr/Sonarr's /api/v3/...), and its
-# only /api/v3/... routes are a narrow Sonarr-compat shim built for Decypharr
-# (POST /api/v3/command only actually implements "ManualImport" - any other
-# command name silently no-ops with a fake status:"completed"). So Sportarr
-# is NOT added to ARR_APPS/QUEUE_ARR_APPS - that generic machinery assumes a
-# real Servarr-shaped command/queue/wanted API underneath, which would
-# silently fake success here. Dedicated /api/sportarr/* routes below call
-# its real native endpoints instead.
-SPORTARR_URL = "http://sportarr:1867"
-SPORTARR_API_KEY = os.environ.get("SPORTARR_API_KEY")
+BEARMOUNT_URL = "http://bearmount:8080/sabnzbd"
+BEARMOUNT_API_KEY = os.environ.get("BEARMOUNT_API_KEY")
 HOST_IP = os.environ.get("HOST_IP")
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
-TAUTULLI_URL = "http://tautulli:8181"
 BAZARR_URL = "http://bazarr:6767"
 SEERR_URL = "http://seerr:5055"
 TMDB_KEY = os.environ.get("TMDB_KEY")
 TMDB_URL = "https://api.themoviedb.org/3"
+FANART_KEY = os.environ.get("FANART_KEY")
+FANART_URL = "https://webservice.fanart.tv/v3"
+TVDB_KEY = os.environ.get("TVDB_KEY")
+TVDB_URL = "https://api4.thetvdb.com/v4"
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
-
-
-def _tautulli_key() -> str | None:
-    """Tautulli generates its own API key on first boot and stores it in
-    config.ini - never an env var in this stack (see .env.example), so
-    this reads it live off the mounted config each call rather than
-    caching one at import time that'd go stale after a key regeneration."""
-    path = os.path.join(HOST_CONFIG_DIR, "tautulli", "config.ini")
-    if not os.path.isfile(path):
-        return None
-    with open(path) as f:
-        for line in f:
-            if line.strip().startswith("api_key"):
-                return line.split("=", 1)[1].strip()
-    return None
 
 
 def _bazarr_key() -> str | None:
     """Bazarr generates its own API key on first boot into
     config/config.yaml's auth.apikey - never an env var, same story as
-    Tautulli/Seerr above."""
+    Seerr below."""
     path = os.path.join(HOST_CONFIG_DIR, "bazarr", "config", "config.yaml")
     if not os.path.isfile(path):
         return None
@@ -88,8 +67,8 @@ def _bazarr_key() -> str | None:
 
 
 def _seerr_key() -> str | None:
-    """Same story as Tautulli - Seerr generates its own key on first setup
-    and only stores it in settings.json, never in .env."""
+    """Seerr generates its own key on first setup and only stores it in
+    settings.json, never in .env."""
     import json as _json
     path = os.path.join(HOST_CONFIG_DIR, "seerr", "settings.json")
     if not os.path.isfile(path):
@@ -102,11 +81,6 @@ def _seerr_key() -> str | None:
 
 
 def _omdb_key() -> str | None:
-    # Used to live-read off Kometa's config.yml (both keys were entered
-    # once for Kometa's own metadata lookups) - Kometa was removed entirely
-    # (no Jellyfin support, see CLAUDE.md's migration History), so these are
-    # now real standalone .env secrets instead of an orphaned read off a
-    # deleted file.
     return os.environ.get("OMDB_KEY") or None
 
 
@@ -167,19 +141,16 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 CONTAINER_LABELS = {
     "radarr": ("Radarr", None),
     "sonarr": ("Sonarr", None),
-    "sportarr": ("Sportarr", "sports PVR (Sonarr-based) - wrestling library only"),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
-    "altmount": ("AltMount", "Usenet, WebDAV + SABnzbd-compatible API"),
+    "bearmount": ("BearMount", "Usenet, WebDAV + SABnzbd-compatible API"),
     "seerr": ("Seerr", None),
-    "tautulli": ("Tautulli", None),
     "bazarr": ("Bazarr", "subtitle management - watches Radarr/Sonarr for missing subs"),
-    "kometa": ("Kometa", None),
-    "kometa-quickstart": ("Kometa Quickstart", "config.yml wizard, port 7171 - not an alternate Kometa runtime"),
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "neutarr": ("NeutArr", "hardened Huntarr-lineage fork - missing/upgrade hunting"),
+    "recyclarr": ("Recyclarr", "TRaSH Guides custom-format/quality-profile sync, Radarr/Sonarr only"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 
@@ -197,7 +168,7 @@ CONTAINER_LABELS = {
 _API_HOST_LABELS = {urlparse(cfg["url"]).hostname: cfg["label"] for cfg in ARR_APPS.values()}
 _API_HOST_LABELS.update({
     urlparse(PLEX_URL).hostname: "Plex",
-    urlparse(ALTMOUNT_URL).hostname: "AltMount",
+    urlparse(BEARMOUNT_URL).hostname: "BearMount",
 })
 # Seeded at 0 for every known app, not left empty until each app's first
 # real hit - otherwise most badges wouldn't appear at all on a fresh
@@ -248,13 +219,20 @@ async def verify_same_origin(request: Request, call_next):
     return await call_next(request)
 
 
-class KometaRunRequest(BaseModel):
-    libraries: list[str] | None = None
-
-
 class PosterSyncRequest(BaseModel):
     library: str
     dry_run: bool = False
+    source: Literal["tmdb", "fanart", "tvdb", "omdb", "tvmaze"] = "tmdb"
+
+
+class PosterReviewRequest(BaseModel):
+    library: str
+    source: Literal["tmdb", "fanart", "tvdb", "omdb", "tvmaze"] = "fanart"
+
+
+class PosterApplyRequest(BaseModel):
+    rating_key: str
+    url: str
 
 
 class LetterboxdAddRequest(BaseModel):
@@ -468,37 +446,6 @@ def api_hit_counts():
 
 
 # ---------------------------------------------------------------------
-# Kometa
-# ---------------------------------------------------------------------
-@app.post("/api/kometa/run")
-def kometa_run(payload: KometaRunRequest = KometaRunRequest()):
-    try:
-        c = docker_client.containers.get("kometa")
-    except docker.errors.NotFound:
-        fail("Kometa container not found.")
-    if c.status != "running":
-        fail(f"Kometa container is {c.status}, not running.")
-    cmd = ["python3", "/kometa.py", "--run"]
-    scope = "every library"
-    if payload.libraries:
-        # Kometa's own --run-libraries takes a pipe-separated list, not comma
-        # (confirmed live: a comma-joined multi-library value fails the whole
-        # run with "Config Error: No libraries were found in config" - a
-        # single-library run never hit this since there's no delimiter to
-        # get wrong). Was silently broken for any multi-library scoped run
-        # since this endpoint was written.
-        cmd += ["--run-libraries", "|".join(payload.libraries)]
-        scope = ", ".join(payload.libraries)
-    try:
-        # detach=True: fire the run and return immediately rather than
-        # blocking the request for however long a full Kometa pass takes.
-        c.exec_run(cmd=cmd, detach=True)
-    except Exception as e:
-        fail(f"Failed to start Kometa run: {e}")
-    return ok(f"Kometa run started ({scope}) - watch its live CPU on the Containers grid below for progress.")
-
-
-# ---------------------------------------------------------------------
 # Plex
 # ---------------------------------------------------------------------
 def plex_headers():
@@ -525,9 +472,7 @@ def plex_sections() -> list[dict]:
 
 @app.get("/api/plex/libraries")
 def plex_libraries():
-    """Library names as Plex itself knows them - Kometa's --run-libraries
-    flag needs an exact, case-sensitive match, so this is read live from
-    Plex rather than hardcoded against config/kometa/config.yml."""
+    """Library names as Plex itself knows them, read live from Plex."""
     try:
         sections = plex_sections()
     except httpx.HTTPError as e:
@@ -690,12 +635,13 @@ def plex_updates():
 
 # ---------------------------------------------------------------------
 # Poster sync - replaces a movie/show's Plex poster with the top-voted
-# TMDb poster, matched via the tmdb:// (or tvdb:///imdb:// as fallback)
-# Guid Plex's new agent already carries per item. TMDb only, not
+# poster from TMDb, Fanart.tv, or TheTVDB (three real, documented, keyed
+# APIs - source picked per sync, each falls back to the other two if it
+# has nothing for an item), matched via the tmdb:// / tvdb:// (or imdb://
+# as fallback) Guid Plex's new agent already carries per item. Not
 # ThePosterDB - TPDb's own Terms of Service (https://theposterdb.com/terms)
 # explicitly forbids automated scraping and it has no public API, so there
-# is no ToS-compliant way to pull posters from it programmatically. TMDb
-# is a real, documented, keyed API (the same TMDB_KEY Kometa already uses).
+# is no ToS-compliant way to pull posters from it programmatically.
 #
 # One job at a time, in-memory only (no persistence across a panel
 # restart) - progress streams over SSE to whichever browser tab has the
@@ -703,6 +649,43 @@ def plex_updates():
 # ---------------------------------------------------------------------
 POSTER_SYNC_LOCK = threading.Lock()
 POSTER_SYNC_STATE = {"running": False, "queue": None}
+
+# Per-item cooldown, auto mode only (run_poster_sync) - manual picks via
+# /api/posters/apply (the review picker, or a human clicking a candidate)
+# always go through immediately, this only throttles the unattended
+# 3x/day-Movies + 1x/day-Shows systemd timers from reapplying a poster to
+# the same item more than once every 48h. Persisted to /data (see
+# docker-compose.yml's control-panel volumes) as one small JSON file
+# {ratingKey: last-applied unix timestamp} so the cooldown survives a
+# container restart/recreate instead of resetting every deploy - not a
+# database, this app deliberately has none elsewhere.
+POSTER_STATE_PATH = "/data/poster-sync-state.json"
+POSTER_COOLDOWN_SECONDS = 48 * 3600
+POSTER_STATE_LOCK = threading.Lock()
+
+
+def _load_poster_state() -> dict:
+    try:
+        with open(POSTER_STATE_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_poster_state(state: dict) -> None:
+    tmp_path = f"{POSTER_STATE_PATH}.tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp_path, POSTER_STATE_PATH)
+
+
+def _poster_cooldown_remaining(state: dict, rating_key: str) -> float:
+    """Seconds left in the 48h cooldown for this item, 0 if clear."""
+    last = state.get(rating_key)
+    if last is None:
+        return 0
+    remaining = POSTER_COOLDOWN_SECONDS - (time.time() - last)
+    return max(0, remaining)
 
 
 def tmdb_get(path: str, **params) -> dict:
@@ -752,20 +735,269 @@ def tmdb_id_for_item(meta: dict, media_type: str) -> int | None:
     return None
 
 
-def tmdb_best_poster_url(tmdb_id: int, media_type: str) -> str | None:
+def tmdb_top_posters(tmdb_id: int, media_type: str, limit: int = 3) -> list[dict]:
+    """Best-first list of up to `limit` candidate posters, ranked the same
+    way tmdb_best_poster_url picks its single winner (vote_average, then
+    vote_count) - candidate #1 here is always identical to what auto mode
+    would have picked."""
     kind = "movie" if media_type == "movie" else "tv"
     try:
         data = tmdb_get(f"/{kind}/{tmdb_id}/images", include_image_language="en,null")
     except httpx.HTTPError:
-        return None
+        return []
     posters = data.get("posters") or []
-    if not posters:
+    posters.sort(key=lambda p: (p.get("vote_average") or 0, p.get("vote_count") or 0), reverse=True)
+    return [
+        {
+            "url": f"https://image.tmdb.org/t/p/original{p['file_path']}",
+            "label": f"★{p.get('vote_average') or 0:.1f} ({p.get('vote_count') or 0} votes)",
+        }
+        for p in posters[:limit]
+    ]
+
+
+def tmdb_best_poster_url(tmdb_id: int, media_type: str) -> str | None:
+    top = tmdb_top_posters(tmdb_id, media_type, limit=1)
+    return top[0]["url"] if top else None
+
+
+def fanart_ids_for_item(meta: dict) -> tuple[int | None, int | None]:
+    """(tmdb_id, tvdb_id) pulled straight from Plex's own Guid list - no
+    extra lookups needed, unlike tmdb_id_for_item's TMDb /find fallback,
+    since Fanart's own endpoints key movies by TMDb id and shows by
+    TheTVDB id directly (confirmed against fanart.tv's v3 API - movies
+    endpoint takes a TMDb/IMDb id, tv endpoint takes a TheTVDB id, not
+    interchangeable)."""
+    tmdb_id = tvdb_id = None
+    for g in meta.get("Guid", []):
+        gid = g.get("id", "")
+        if gid.startswith("tmdb://"):
+            try:
+                tmdb_id = int(gid.split("://", 1)[1])
+            except ValueError:
+                pass
+        elif gid.startswith("tvdb://"):
+            try:
+                tvdb_id = int(gid.split("://", 1)[1])
+            except ValueError:
+                pass
+    return tmdb_id, tvdb_id
+
+
+def imdb_id_for_item(meta: dict) -> str | None:
+    """IMDb id pulled straight from Plex's own Guid list, same no-extra-
+    lookups approach as fanart_ids_for_item - both OMDb and TVmaze key
+    directly off imdb://, no /find-style fallback needed."""
+    for g in meta.get("Guid", []):
+        gid = g.get("id", "")
+        if gid.startswith("imdb://"):
+            return gid.split("://", 1)[1]
+    return None
+
+
+def fanart_top_posters(media_type: str, tmdb_id: int | None, tvdb_id: int | None, limit: int = 3) -> list[dict]:
+    """Fanart.tv v3: movies keyed by TMDb id (webservice.fanart.tv/v3/movies/{tmdb_id}),
+    shows keyed by TheTVDB id (webservice.fanart.tv/v3/tv/{tvdb_id}) - confirmed
+    live against the real API (unauthenticated requests to both paths return
+    a "missing api_key" error rather than 404, proving the path shape) and
+    against Kodi's own themoviedb.org scraper source. Poster arrays are
+    "movieposter"/"tvposter", each entry carrying id/url/lang/likes (all
+    strings except id). No vote_average like TMDb - likes is the only
+    quality signal, so rank by highest-liked, preferring an untranslated
+    (lang "en" or "00") poster on a tie. Best-first list of up to `limit`
+    candidates - empty (never raises) on a missing id, 404 (title not in
+    Fanart's database - common, not an error), or any other request
+    failure, so callers always treat "no candidates" as a skip."""
+    if media_type == "movie":
+        media_id, kind, field = tmdb_id, "movies", "movieposter"
+    else:
+        media_id, kind, field = tvdb_id, "tv", "tvposter"
+    if media_id is None:
+        return []
+    try:
+        r = httpx.get(f"{FANART_URL}/{kind}/{media_id}", params={"api_key": FANART_KEY}, timeout=15)
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+        data = r.json()
+    except httpx.HTTPError:
+        return []
+    posters = data.get(field) or []
+    posters.sort(key=lambda p: (int(p.get("likes") or 0), p.get("lang") in ("en", "00")), reverse=True)
+    return [
+        {"url": p.get("url"), "label": f"♥{p.get('likes') or 0} ({p.get('lang') or '?'})"}
+        for p in posters[:limit]
+    ]
+
+
+def fanart_best_poster_url(media_type: str, tmdb_id: int | None, tvdb_id: int | None) -> str | None:
+    top = fanart_top_posters(media_type, tmdb_id, tvdb_id, limit=1)
+    return top[0]["url"] if top else None
+
+
+# TheTVDB v4 auth is a login-for-a-token flow, not a per-request api_key
+# query param like TMDb/Fanart - POST /login with the project api key
+# returns a bearer token valid 1 month (confirmed live against the real
+# key). Cached in-process and refreshed 5 minutes before expiry so normal
+# poster-sync runs (a few times/day) essentially never re-login; a fresh
+# container start just re-logs-in once on first use.
+_TVDB_TOKEN: dict = {"value": None, "expires_at": 0}
+_TVDB_TOKEN_LOCK = threading.Lock()
+
+
+def tvdb_token() -> str | None:
+    if not TVDB_KEY:
         return None
-    best = max(posters, key=lambda p: (p.get("vote_average") or 0, p.get("vote_count") or 0))
-    return f"https://image.tmdb.org/t/p/original{best['file_path']}"
+    with _TVDB_TOKEN_LOCK:
+        if _TVDB_TOKEN["value"] and time.time() < _TVDB_TOKEN["expires_at"]:
+            return _TVDB_TOKEN["value"]
+        try:
+            r = httpx.post(f"{TVDB_URL}/login", json={"apikey": TVDB_KEY}, timeout=15)
+            r.raise_for_status()
+            token = r.json()["data"]["token"]
+        except (httpx.HTTPError, KeyError):
+            return None
+        _TVDB_TOKEN["value"] = token
+        # Real tokens are valid 1 month; refreshing after 25 days leaves a
+        # comfortable margin without needing to parse the JWT's own exp.
+        _TVDB_TOKEN["expires_at"] = time.time() + 25 * 24 * 3600
+        return token
 
 
-def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
+def tvdb_top_posters(media_type: str, tvdb_id: int | None, limit: int = 3) -> list[dict]:
+    """TheTVDB v4: shows keyed by their own numeric id via a dedicated
+    GET /series/{id}/artworks?type=2 endpoint (type 2 = series poster,
+    confirmed live via /artwork/types - not guessed); movies have no
+    equivalent dedicated endpoint, their posters come bundled in
+    GET /movies/{id}/extended's own artworks array, filtered client-side to
+    type 14 = movie poster (also confirmed live). Each artwork carries a
+    "score" (community popularity, same role as Fanart's "likes" - no
+    vote_average-style rating exists here) - best-first list ranked by
+    that score. Empty (never raises) on a missing id, no login token
+    (TVDB_KEY unset), 404, or any other request failure."""
+    if tvdb_id is None:
+        return []
+    token = tvdb_token()
+    if not token:
+        return []
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        if media_type == "movie":
+            r = httpx.get(f"{TVDB_URL}/movies/{tvdb_id}/extended", headers=headers, timeout=15)
+            if r.status_code == 404:
+                return []
+            r.raise_for_status()
+            artworks = [a for a in (r.json()["data"].get("artworks") or []) if a.get("type") == 14]
+        else:
+            r = httpx.get(f"{TVDB_URL}/series/{tvdb_id}/artworks", params={"type": 2}, headers=headers, timeout=15)
+            if r.status_code == 404:
+                return []
+            r.raise_for_status()
+            artworks = r.json()["data"].get("artworks") or []
+    except (httpx.HTTPError, KeyError):
+        return []
+    artworks.sort(key=lambda a: a.get("score") or 0, reverse=True)
+    return [
+        {"url": a.get("image"), "label": f"★{a.get('score') or 0} ({a.get('language') or '?'})"}
+        for a in artworks[:limit]
+    ]
+
+
+def omdb_top_posters(imdb_id: str | None, limit: int = 3) -> list[dict]:
+    """OMDb (reuses the OMDB_KEY already configured for /api/ratings/imdb -
+    no separate key needed) returns exactly one poster per title, no
+    ranking/list endpoint like TMDb/Fanart/TVDB - so this is always a
+    single-candidate list regardless of `limit`. Empty (never raises) on a
+    missing id, no key configured, an unmatched id ("Response": "False",
+    confirmed live - not an error, just no data for that id), a "N/A"
+    poster field (a real, common OMDb value meaning no poster on file), or
+    any other request failure."""
+    key = _omdb_key()
+    if imdb_id is None or not key:
+        return []
+    try:
+        r = httpx.get("https://www.omdbapi.com/", params={"i": imdb_id, "apikey": key}, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+    except httpx.HTTPError:
+        return []
+    if data.get("Response") == "False":
+        return []
+    poster = data.get("Poster")
+    if not poster or poster == "N/A":
+        return []
+    return [{"url": poster, "label": "OMDb"}]
+
+
+def tvmaze_top_posters(media_type: str, imdb_id: str | None, limit: int = 3) -> list[dict]:
+    """TVmaze: free, no API key, shows only - confirmed live it has no
+    /lookup/movies route at all (404, "Invalid Route"), so movies always
+    return empty here regardless of id. GET /lookup/shows?imdb={id} 301s to
+    the real show record (needs a redirect-following client - confirmed
+    live the raw redirect response body is a bare "null", not the show,
+    if redirects aren't followed); like OMDb, TVmaze has no poster-ranking
+    endpoint, always a single-candidate list. Empty (never raises) on a
+    missing id, a movie media_type, no match (a real, common outcome - not
+    every show is cross-referenced by IMDb id in TVmaze's own database), or
+    any other request failure."""
+    if media_type != "show" or imdb_id is None:
+        return []
+    try:
+        r = httpx.get("https://api.tvmaze.com/lookup/shows", params={"imdb": imdb_id}, timeout=15, follow_redirects=True)
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+        data = r.json()
+    except httpx.HTTPError:
+        return []
+    if not data:
+        return []
+    image = (data.get("image") or {}).get("original")
+    if not image:
+        return []
+    return [{"url": image, "label": "TVmaze"}]
+
+
+def resolve_poster_candidates(meta: dict, media_type: str, primary_source: str, limit: int = 3) -> tuple[str | None, list[dict]]:
+    """Best-first candidates from `primary_source`, falling back through
+    the other configured sources (TMDb/Fanart/TVDB/OMDb/TVmaze, fixed
+    priority order) if the primary has nothing for this item - so a poster
+    missing from one catalog doesn't mean the item gets skipped outright
+    when another catalog would have covered it. Skips a source entirely
+    (rather than erroring) if its key is missing (OMDb) or it structurally
+    can't cover this item (TVmaze on a movie). Returns (source actually
+    used, candidates) - source is None only when every configured source
+    found nothing, so callers can tell a real all-source miss apart from a
+    normal single-source pick."""
+    fallback_order = [s for s in ("tmdb", "fanart", "tvdb", "omdb", "tvmaze") if s != primary_source]
+    for src in (primary_source, *fallback_order):
+        if src == "fanart":
+            if not FANART_KEY:
+                continue
+            tmdb_id, tvdb_id = fanart_ids_for_item(meta)
+            candidates = fanart_top_posters(media_type, tmdb_id, tvdb_id, limit=limit)
+        elif src == "tvdb":
+            if not TVDB_KEY:
+                continue
+            _, tvdb_id = fanart_ids_for_item(meta)
+            candidates = tvdb_top_posters(media_type, tvdb_id, limit=limit)
+        elif src == "omdb":
+            if not _omdb_key():
+                continue
+            candidates = omdb_top_posters(imdb_id_for_item(meta), limit=limit)
+        elif src == "tvmaze":
+            candidates = tvmaze_top_posters(media_type, imdb_id_for_item(meta), limit=limit)
+        else:
+            if not TMDB_KEY:
+                continue
+            tmdb_id = tmdb_id_for_item(meta, media_type)
+            candidates = tmdb_top_posters(tmdb_id, media_type, limit=limit) if tmdb_id is not None else []
+        if candidates:
+            return src, candidates
+    return None, []
+
+
+def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue, source: str = "tmdb"):
     try:
         sections = plex_sections()
     except httpx.HTTPError as e:
@@ -791,12 +1023,26 @@ def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
     total = len(items)
     q.put(f"INFO Scanning {total} items in '{library_title}' ({media_type}){' - dry run' if dry_run else ''}…")
 
+    with POSTER_STATE_LOCK:
+        poster_state = _load_poster_state()
+
     updated = skipped = failed = 0
     for i, item in enumerate(items, 1):
         rating_key = item["ratingKey"]
         title = item.get("title", "Unknown")
         year = item.get("year", "")
         label = f"{title} ({year})" if year else title
+
+        # Cooldown check first, before any Plex/TMDb/Fanart lookup calls -
+        # no point spending those on an item we won't touch either way.
+        # Checked even on a dry run, so a preview accurately shows what a
+        # real run would skip - just never updates the timestamp itself.
+        remaining = _poster_cooldown_remaining(poster_state, rating_key)
+        if remaining > 0:
+            hours = remaining / 3600
+            q.put(f"SKIP [{i}/{total}] {label}: cooldown ({hours:.1f}h left of 48h since last poster change)")
+            skipped += 1
+            continue
 
         # The section listing's Metadata entries don't carry Guid - only
         # the single-item metadata endpoint does (confirmed live).
@@ -809,20 +1055,16 @@ def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
             failed += 1
             continue
 
-        tmdb_id = tmdb_id_for_item(meta, media_type)
-        if tmdb_id is None:
-            q.put(f"SKIP [{i}/{total}] {label}: no TMDb match")
+        used_source, candidates = resolve_poster_candidates(meta, media_type, source, limit=1)
+        if not candidates:
+            q.put(f"SKIP [{i}/{total}] {label}: no poster in {source} or its fallback")
             skipped += 1
             continue
-
-        poster_url = tmdb_best_poster_url(tmdb_id, media_type)
-        if not poster_url:
-            q.put(f"SKIP [{i}/{total}] {label}: TMDb has no poster for it")
-            skipped += 1
-            continue
+        poster_url = candidates[0]["url"]
+        via = "" if used_source == source else f" via {used_source} fallback"
 
         if dry_run:
-            q.put(f"OK [{i}/{total}] {label}: would set poster ({poster_url})")
+            q.put(f"OK [{i}/{total}] {label}: would set poster{via} ({poster_url})")
             updated += 1
             continue
 
@@ -837,8 +1079,11 @@ def run_poster_sync(library_title: str, dry_run: bool, q: queue.Queue):
             failed += 1
             continue
 
-        q.put(f"OK [{i}/{total}] {label}: poster updated")
+        q.put(f"OK [{i}/{total}] {label}: poster updated{via}")
         updated += 1
+        with POSTER_STATE_LOCK:
+            poster_state[rating_key] = time.time()
+            _save_poster_state(poster_state)
         # TMDb's rate limit is roughly 40 req/10s; this loop already makes
         # 2-3 calls per item (metadata, images, sometimes /find), so a
         # small pause keeps it well clear of that without slowing a
@@ -862,7 +1107,18 @@ def posters_libraries():
 
 @app.post("/api/posters/sync")
 def posters_sync(payload: PosterSyncRequest):
-    if not TMDB_KEY:
+    if payload.source == "fanart":
+        if not FANART_KEY:
+            fail("Fanart isn't configured (FANART_KEY not set in .env).", status_code=503)
+    elif payload.source == "tvdb":
+        if not TVDB_KEY:
+            fail("TheTVDB isn't configured (TVDB_KEY not set in .env).", status_code=503)
+    elif payload.source == "omdb":
+        if not _omdb_key():
+            fail("OMDb isn't configured (OMDB_KEY not set in .env).", status_code=503)
+    elif payload.source == "tvmaze":
+        pass  # free, no key - a movie library will just get every item skipped
+    elif not TMDB_KEY:
         fail("TMDb isn't configured (TMDB_KEY not set in .env).", status_code=503)
     plex_headers()  # raises 503 if Plex isn't configured
 
@@ -875,13 +1131,13 @@ def posters_sync(payload: PosterSyncRequest):
 
     def worker():
         try:
-            run_poster_sync(payload.library, payload.dry_run, q)
+            run_poster_sync(payload.library, payload.dry_run, q, payload.source)
         finally:
             with POSTER_SYNC_LOCK:
                 POSTER_SYNC_STATE["running"] = False
 
     threading.Thread(target=worker, daemon=True).start()
-    return ok(f"Poster sync started for '{payload.library}'{' (dry run)' if payload.dry_run else ''}.")
+    return ok(f"Poster sync started for '{payload.library}' via {payload.source}{' (dry run)' if payload.dry_run else ''}.")
 
 
 @app.get("/api/posters/sync/stream")
@@ -909,33 +1165,180 @@ def posters_sync_stream():
 
 
 # ---------------------------------------------------------------------
-# AltMount - Usenet streaming layer (WebDAV + its own internal rclone/FUSE
+# Poster review - the manual-pick counterpart to run_poster_sync above.
+# Same per-item candidate lookup (tmdb_top_posters/fanart_top_posters),
+# but streams up to 3 ranked candidates per item instead of auto-applying
+# the top one, so the panel can render a picker. Candidate #1 in this
+# list is always identical to what auto mode (/api/posters/sync) would
+# have picked - the frontend's "apply auto for the rest" action just
+# calls /api/posters/apply with that first candidate per unreviewed item,
+# no separate auto-fallback endpoint needed.
+# ---------------------------------------------------------------------
+POSTER_REVIEW_LOCK = threading.Lock()
+POSTER_REVIEW_STATE = {"running": False, "queue": None}
+
+
+def run_poster_review(library_title: str, source: str, q: queue.Queue):
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        q.put(json.dumps({"type": "error", "message": f"Could not read Plex libraries: {e}"}))
+        return
+    section = next((s for s in sections if s["title"].lower() == library_title.lower()), None)
+    if not section or section.get("type") not in ("movie", "show"):
+        q.put(json.dumps({"type": "error", "message": f"No movie/show library found matching '{library_title}'."}))
+        return
+    media_type = section["type"]
+
+    try:
+        r = httpx.get(
+            f"{PLEX_URL}/library/sections/{section['key']}/all?X-Plex-Container-Size=100000",
+            headers=plex_headers(), timeout=60,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        q.put(json.dumps({"type": "error", "message": f"Could not list '{library_title}': {e}"}))
+        return
+
+    items = r.json()["MediaContainer"].get("Metadata", [])
+    total = len(items)
+    q.put(json.dumps({"type": "start", "total": total, "library": library_title, "source": source}))
+
+    for i, item in enumerate(items, 1):
+        rating_key = item["ratingKey"]
+        title = item.get("title", "Unknown")
+        year = item.get("year")
+
+        try:
+            meta_r = httpx.get(f"{PLEX_URL}/library/metadata/{rating_key}", headers=plex_headers(), timeout=15)
+            meta_r.raise_for_status()
+            meta = meta_r.json()["MediaContainer"]["Metadata"][0]
+        except httpx.HTTPError:
+            q.put(json.dumps({"type": "item", "i": i, "total": total, "ratingKey": rating_key,
+                               "title": title, "year": year, "candidates": []}))
+            continue
+
+        used_source, candidates = resolve_poster_candidates(meta, media_type, source, limit=3)
+
+        q.put(json.dumps({"type": "item", "i": i, "total": total, "ratingKey": rating_key,
+                           "title": title, "year": year, "candidates": candidates,
+                           "source": used_source}))
+        # Same rate-limit courtesy as run_poster_sync - this makes the same
+        # 1-2 calls per item (metadata, then one art lookup).
+        time.sleep(0.25)
+
+    q.put(json.dumps({"type": "done"}))
+
+
+@app.post("/api/posters/review")
+def posters_review(payload: PosterReviewRequest):
+    if payload.source == "fanart":
+        if not FANART_KEY:
+            fail("Fanart isn't configured (FANART_KEY not set in .env).", status_code=503)
+    elif payload.source == "tvdb":
+        if not TVDB_KEY:
+            fail("TheTVDB isn't configured (TVDB_KEY not set in .env).", status_code=503)
+    elif payload.source == "omdb":
+        if not _omdb_key():
+            fail("OMDb isn't configured (OMDB_KEY not set in .env).", status_code=503)
+    elif payload.source == "tvmaze":
+        pass  # free, no key - a movie library will just get every item skipped
+    elif not TMDB_KEY:
+        fail("TMDb isn't configured (TMDB_KEY not set in .env).", status_code=503)
+    plex_headers()  # raises 503 if Plex isn't configured
+
+    with POSTER_REVIEW_LOCK:
+        if POSTER_REVIEW_STATE["running"]:
+            fail("A poster review is already running - wait for it to finish.", status_code=409)
+        q = queue.Queue()
+        POSTER_REVIEW_STATE["running"] = True
+        POSTER_REVIEW_STATE["queue"] = q
+
+    def worker():
+        try:
+            run_poster_review(payload.library, payload.source, q)
+        finally:
+            with POSTER_REVIEW_LOCK:
+                POSTER_REVIEW_STATE["running"] = False
+
+    threading.Thread(target=worker, daemon=True).start()
+    return ok(f"Poster review started for '{payload.library}' via {payload.source}.")
+
+
+@app.get("/api/posters/review/stream")
+def posters_review_stream():
+    """SSE feed of per-item candidate JSON lines - same single-shared-queue
+    tradeoff as /api/posters/sync/stream."""
+    q = POSTER_REVIEW_STATE["queue"]
+    if q is None:
+        fail("No poster review has been started yet.", status_code=404)
+
+    def generate():
+        while True:
+            try:
+                line = q.get(timeout=1)
+            except queue.Empty:
+                if not POSTER_REVIEW_STATE["running"]:
+                    break
+                continue
+            yield f"data: {line}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.post("/api/posters/apply")
+def posters_apply(payload: PosterApplyRequest):
+    """Set a single item's poster to an exact URL - what the review
+    picker's click handler calls, whether the user picked candidate #2/#3
+    or the frontend is auto-filling candidate #1 for an unreviewed item.
+    Not gated by the 48h cooldown itself (a deliberate manual pick should
+    always go through immediately) but does record the timestamp, same as
+    an auto-mode apply - otherwise the next scheduled auto sync could
+    immediately overwrite a poster someone just picked by hand."""
+    plex_headers()
+    try:
+        r = httpx.post(
+            f"{PLEX_URL}/library/metadata/{payload.rating_key}/posters",
+            params={"url": payload.url}, headers=plex_headers(), timeout=30,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Poster upload failed: {e}")
+    with POSTER_STATE_LOCK:
+        state = _load_poster_state()
+        state[payload.rating_key] = time.time()
+        _save_poster_state(state)
+    return ok("Poster updated.")
+
+
+# ---------------------------------------------------------------------
+# BearMount - Usenet streaming layer (WebDAV + its own internal rclone/FUSE
 # mount, no local disk). Replaced NzbDAV entirely 2026-07-23 (unmerged
 # connection-leak bug, nzbdav-dev/nzbdav#478 - see CLAUDE.md's History).
 # Queue/history go through its SABnzbd-compatible API (mode=queue/history,
-# keyed by ALTMOUNT_API_KEY, issued at registration via /api/auth/register).
+# keyed by BEARMOUNT_API_KEY, issued at registration via /api/auth/register).
 # NzbDAV's own set-connections/unstick routes were both workarounds for its
 # specific connection-leak/history-hang bugs and don't apply here - dropped
 # outright rather than ported.
 # ---------------------------------------------------------------------
-def altmount_api(mode: str, timeout: int = 15, **params) -> dict:
-    if not ALTMOUNT_API_KEY:
-        fail("AltMount isn't configured (ALTMOUNT_API_KEY not set)", status_code=503)
+def bearmount_api(mode: str, timeout: int = 15, **params) -> dict:
+    if not BEARMOUNT_API_KEY:
+        fail("BearMount isn't configured (BEARMOUNT_API_KEY not set)", status_code=503)
     try:
         r = httpx.get(
-            ALTMOUNT_URL,
-            params={"mode": mode, "output": "json", "apikey": ALTMOUNT_API_KEY, **params},
+            BEARMOUNT_URL,
+            params={"mode": mode, "output": "json", "apikey": BEARMOUNT_API_KEY, **params},
             timeout=timeout,
         )
         r.raise_for_status()
     except httpx.HTTPError as e:
-        fail(f"AltMount {mode} lookup failed: {e}")
+        fail(f"BearMount {mode} lookup failed: {e}")
     return r.json()
 
 
-@app.get("/api/altmount/queue")
-def altmount_queue():
-    slots = altmount_api("queue").get("queue", {}).get("slots", [])
+@app.get("/api/bearmount/queue")
+def bearmount_queue():
+    slots = bearmount_api("queue").get("queue", {}).get("slots", [])
     return [{
         "name": s.get("filename"),
         "category": s.get("cat"),
@@ -946,9 +1349,9 @@ def altmount_queue():
     } for s in slots]
 
 
-@app.get("/api/altmount/history")
-def altmount_history(limit: int = 20):
-    slots = altmount_api("history", limit=limit).get("history", {}).get("slots", [])
+@app.get("/api/bearmount/history")
+def bearmount_history(limit: int = 20):
+    slots = bearmount_api("history", limit=limit).get("history", {}).get("slots", [])
     return [{
         "name": s.get("name"),
         "category": s.get("category"),
@@ -960,119 +1363,8 @@ def altmount_history(limit: int = 20):
 
 
 # ---------------------------------------------------------------------
-# Sportarr - sports PVR (Sonarr-based), wrestling library only, added
-# 2026-07-23. Real API is flat /api/... (not /api/v3/...) - see the
-# SPORTARR_URL/SPORTARR_API_KEY comment above for why this isn't folded
-# into the generic ARR_APPS/QUEUE_ARR_APPS machinery.
-# ---------------------------------------------------------------------
-def sportarr_api(method: str, path: str, timeout: int = 15, **kwargs) -> dict:
-    if not SPORTARR_API_KEY:
-        fail("Sportarr isn't configured (SPORTARR_API_KEY not set)", status_code=503)
-    try:
-        r = httpx.request(
-            method,
-            f"{SPORTARR_URL}{path}",
-            headers={"X-Api-Key": SPORTARR_API_KEY},
-            timeout=timeout,
-            **kwargs,
-        )
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"Sportarr {method} {path} failed: {e}")
-    return r.json() if r.content else {}
-
-
-@app.get("/api/sportarr/queue")
-def sportarr_queue():
-    items = sportarr_api("GET", "/api/queue")
-    return [{
-        "id": i.get("id"),
-        "title": (i.get("event") or {}).get("title") or i.get("title"),
-        "league": None,  # event payload has leagueId only, not the name
-        "status": i.get("status"),
-        "progress": i.get("progress"),
-        "size": human_size(i.get("size")),
-        "time_remaining": i.get("timeRemaining"),
-        "error_message": i.get("errorMessage"),
-    } for i in items]
-
-
-@app.get("/api/sportarr/missing")
-def sportarr_missing(page: int = 1, page_size: int = 50):
-    data = sportarr_api("GET", "/api/wanted/missing", params={"page": page, "pageSize": page_size})
-    events = data.get("events", [])
-    return {
-        "total": data.get("totalRecords", 0),
-        "page": data.get("page", page),
-        "page_size": data.get("pageSize", page_size),
-        "events": [{
-            "id": e.get("id"),
-            "title": e.get("title"),
-            "league": (e.get("league") or {}).get("name"),
-            "event_date": e.get("eventDate"),
-        } for e in events],
-    }
-
-
-@app.post("/api/sportarr/search-missing")
-def sportarr_search_missing():
-    result = sportarr_api("POST", "/api/wanted/missing/search-all")
-    return ok(
-        f"Queued {result.get('queued', 0)} missing event search(es).",
-        queued=result.get("queued", 0),
-        skipped_already_queued=result.get("skippedAlreadyQueued", 0),
-        skipped_unsearchable=result.get("skippedUnsearchable", 0),
-    )
-
-
-@app.post("/api/sportarr/rss-sync")
-def sportarr_rss_sync():
-    """Sportarr's real RSS-sync-equivalent scheduled task, not the fake
-    Sonarr-compat POST /api/v3/command shim (which only implements
-    "ManualImport" and silently no-ops on any other command name)."""
-    sportarr_api("POST", "/api/task/scheduled/rss-sync/trigger")
-    return ok("RSS sync triggered.")
-
-
-@app.get("/api/sportarr/scheduled-tasks")
-def sportarr_scheduled_tasks():
-    tasks = sportarr_api("GET", "/api/task/scheduled")
-    return [{
-        "id": t.get("id"),
-        "name": t.get("name"),
-        "description": t.get("description"),
-        "interval": t.get("interval"),
-        "triggerable": t.get("triggerable"),
-    } for t in tasks]
-
-
-@app.post("/api/sportarr/scheduled-tasks/{task_id}/trigger")
-def sportarr_trigger_task(task_id: str):
-    sportarr_api("POST", f"/api/task/scheduled/{task_id}/trigger")
-    return ok(f"Triggered task '{task_id}'.")
-
-
-@app.get("/api/sportarr/leagues")
-def sportarr_leagues():
-    leagues = sportarr_api("GET", "/api/leagues")
-    return [{
-        "id": league.get("id"),
-        "name": league.get("name"),
-        "sport": league.get("sport"),
-        "monitored": league.get("monitored"),
-        "event_count": league.get("eventCount"),
-        "monitored_event_count": league.get("monitoredEventCount"),
-        "file_count": league.get("fileCount"),
-        "root_folder_id": league.get("rootFolderId"),
-    } for league in leagues]
-
-
-# ---------------------------------------------------------------------
-# Ratings lookups - OMDb (IMDb) and MDBList. Both keys used to live in
-# Kometa's own config.yml (entered once for Kometa's metadata lookups) and
-# were read live off that file - Kometa was removed entirely (no Jellyfin
-# support, see CLAUDE.md's migration History), so these are now real
-# standalone OMDB_KEY/MDBLIST_KEY .env secrets instead.
+# Ratings lookups - OMDb (IMDb) and MDBList, via standalone OMDB_KEY/
+# MDBLIST_KEY .env secrets.
 # ---------------------------------------------------------------------
 @app.get("/api/ratings/imdb")
 def rating_imdb(imdb_id: str):
@@ -1857,7 +2149,7 @@ def arr_unstick(app_name: str):
 # merely-wedged slot - all just show "importing" - so this checks whether
 # outputPath exists at all, and if so reads the first few MB of a file
 # under it straight through the arr app's own container mount. A dead
-# article fails, sometimes only after ~30s (rclone/AltMount retries
+# article fails, sometimes only after ~30s (rclone/BearMount retries
 # before giving up); a wedged-but-fine file reads instantly; a
 # missing path fails the existence check immediately. Broken releases get
 # blocklisted so they aren't regrabbed; merely-wedged or missing-path ones
@@ -1898,7 +2190,7 @@ def _find_candidate_files(container, output_path: str) -> tuple[str, list[str]]:
     exists = container.exec_run(cmd=["test", "-e", output_path])
     if exists.exit_code != 0:
         return "missing", []
-    # Symlinks first - AltMount's mount may route root folders through
+    # Symlinks first - BearMount's mount may route root folders through
     # symlinks depending on import strategy; not yet fully verified either
     # way for the current config (import_strategy: NONE).
     find_result = container.exec_run(cmd=["find", output_path, "-maxdepth", "2", "-type", "l"])
@@ -2135,9 +2427,9 @@ def _arr_sizeleft_snapshot(app_name: str) -> dict[int, int]:
     return {q["id"]: q.get("sizeleft") or 0 for q in records if q.get("sizeleft")}
 
 
-def _altmount_mbleft_snapshot() -> dict[str, float]:
+def _bearmount_mbleft_snapshot() -> dict[str, float]:
     try:
-        slots = altmount_api("queue").get("queue", {}).get("slots", [])
+        slots = bearmount_api("queue").get("queue", {}).get("slots", [])
     except HTTPException:
         return {}
     return {s["nzo_id"]: float(s.get("mbleft") or 0) for s in slots if s.get("status") == "Downloading"}
@@ -2186,7 +2478,7 @@ def _bucket_arr_item(q: dict, prev_sizeleft: dict[int, int]) -> tuple[str, dict]
     return "stalled", item
 
 
-def _bucket_altmount_item(s: dict, prev_mbleft: dict[str, float]) -> tuple[str, dict]:
+def _bucket_bearmount_item(s: dict, prev_mbleft: dict[str, float]) -> tuple[str, dict]:
     title = s.get("filename") or "?"
     mb = float(s.get("mb") or 0)
     mbleft = float(s.get("mbleft") or 0)
@@ -2252,7 +2544,7 @@ def queue_status():
     module comment above for why this measures live instead of trusting
     each app's own timeleft."""
     before_arr = {app_name: _arr_sizeleft_snapshot(app_name) for app_name in QUEUE_ARR_APPS}
-    before_altmount = _altmount_mbleft_snapshot()
+    before_bearmount = _bearmount_mbleft_snapshot()
     before_plex = _plex_progress_snapshot()
     time.sleep(QUEUE_SAMPLE_SECONDS)
 
@@ -2273,15 +2565,15 @@ def queue_status():
         result[app_name] = {"label": cfg["label"], "total": len(records), **buckets}
 
     try:
-        slots = altmount_api("queue").get("queue", {}).get("slots", [])
+        slots = bearmount_api("queue").get("queue", {}).get("slots", [])
         buckets = {"downloading": [], "stalled": [], "queued": [], "importing": []}
         for s in slots:
-            bucket, item = _bucket_altmount_item(s, before_altmount)
+            bucket, item = _bucket_bearmount_item(s, before_bearmount)
             buckets[bucket].append(item)
         grand_total += len(slots)
-        result["altmount"] = {"label": "AltMount", "total": len(slots), **buckets}
+        result["bearmount"] = {"label": "BearMount", "total": len(slots), **buckets}
     except HTTPException:
-        result["altmount"] = {"label": "AltMount", "error": "unreachable"}
+        result["bearmount"] = {"label": "BearMount", "error": "unreachable"}
 
     try:
         activities = _plex_activities()
@@ -2296,7 +2588,7 @@ def queue_status():
 
     # Bazarr has no in-progress download to bucket as downloading/stalled - a
     # subtitle grab completes synchronously within one API call, there's no
-    # multi-second transfer to sample twice like the arr/altmount/plex
+    # multi-second transfer to sample twice like the arr/bearmount/plex
     # sources above. Its "wanted" list is the honest analog of a queue here: items
     # still waiting to be searched, which is exactly the "queued" bucket
     # already means for every other source.
@@ -2622,12 +2914,12 @@ def container_logs_stream(name: str, tail: int = 100):
 # ---------------------------------------------------------------------
 # Whole-stack restart
 # ---------------------------------------------------------------------
-# Every direct-subpath bind of /mnt/altmount (rslave) - Radarr, Sonarr,
+# Every direct-subpath bind of /mnt/bearmount (rslave) - Radarr, Sonarr,
 # Plex, Unpackerr, Cleanuparr - doesn't survive the FUSE process underneath
 # it being recreated; restarting the mount owner without restarting these
 # after reproduces the same stale-mount bug this stack hit repeatedly under
 # NzbDAV/nzbdav-rclone (see CLAUDE.md's History - NzbDAV was removed
-# entirely 2026-07-23, replaced by AltMount). AltMount owns its own
+# entirely 2026-07-23, replaced by BearMount). BearMount owns its own
 # internal rclone/FUSE mount directly (no separate sidecar container the
 # way nzbdav-rclone was), so there's only one tier here now - MOUNT_PREREQS
 # is empty rather than removed outright, so this stays a two-phase
@@ -2635,8 +2927,8 @@ def container_logs_stream(name: str, tail: int = 100):
 # real upstream prereq again. Restart the provider first, wait for it to
 # report healthy, then restart the dependents last.
 MOUNT_PREREQS: set[str] = set()
-MOUNT_PROVIDERS = {"altmount"}
-MOUNT_DEPENDENTS = {"radarr", "sonarr", "sportarr", "plex", "unpackerr", "cleanuparr"}
+MOUNT_PROVIDERS = {"bearmount"}
+MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}
 
 
 def wait_for_healthy(container, timeout=60):
@@ -2851,7 +3143,7 @@ def disk_usage():
     return ok(f"{len(sizes)} app config directories.", sizes=sizes)
 
 
-KNOWN_MOUNTS = ["altmount"]
+KNOWN_MOUNTS = ["bearmount"]
 
 
 @app.get("/api/mount-health")
@@ -3042,6 +3334,21 @@ def cleanuparr_instances():
               connected=sorted(connected), gaps=gaps)
 
 
+@app.get("/api/recyclarr/status")
+def recyclarr_status():
+    """Recyclarr is cron-driven with no persistent API of its own (unlike
+    every other app this file talks to), so this is the only way to see
+    its last run: its own container's last log lines, straight from
+    Docker, not a mounted log file."""
+    try:
+        c = docker_client.containers.get("recyclarr")
+    except docker.errors.NotFound:
+        fail("Container 'recyclarr' not found.")
+    lines = c.logs(tail=30).decode("utf-8", errors="replace").splitlines()
+    relevant = [line for line in lines if line.strip()][-15:]
+    return ok(f"Last {len(relevant)} log line(s) from recyclarr.", lines=relevant)
+
+
 @app.get("/api/neutarr/status")
 def neutarr_status():
     """Per-app enabled/disabled state straight from NeutArr's own JSON
@@ -3068,7 +3375,7 @@ def neutarr_status():
     return ok(f"{len(apps)} app config file(s) found in config/neutarr.", apps=apps)
 
 
-ARR_LOG_CONTAINERS = {"radarr", "sonarr", "sportarr", "prowlarr"}
+ARR_LOG_CONTAINERS = {"radarr", "sonarr", "prowlarr"}
 
 
 @app.get("/api/arr/{app_name}/logs")
@@ -3285,8 +3592,7 @@ def prowlarr_indexers():
 @app.get("/api/plex/sessions")
 def plex_sessions():
     """Who's watching what right now, direct play vs transcode - Plex's
-    own /status/sessions, not proxied through Tautulli (which only sees
-    what it's been running long enough to have logged)."""
+    own /status/sessions."""
     try:
         r = httpx.get(f"{PLEX_URL}/status/sessions", headers=plex_headers(), timeout=10)
         r.raise_for_status()
@@ -3364,26 +3670,6 @@ def cleanuparr_strikes(limit: int = 15):
     total = cur.fetchone()[0]
     con.close()
     return ok(f"{total} strike(s) total, showing {len(rows)} most recent.", items=rows, total=total)
-
-
-@app.get("/api/tautulli/history")
-def tautulli_history(limit: int = 10):
-    """Recent Plex watch history via Tautulli - what actually got watched,
-    not just what's in the library. Tautulli's own API key, read live from
-    its config.ini (see _tautulli_key() above)."""
-    key = _tautulli_key()
-    if not key:
-        fail("Could not read Tautulli's API key from config/tautulli/config.ini.", status_code=503)
-    try:
-        r = httpx.get(f"{TAUTULLI_URL}/api/v2", params={"apikey": key, "cmd": "get_history", "length": limit},
-                       timeout=15)
-        r.raise_for_status()
-        data = r.json()["response"]["data"]
-    except (httpx.HTTPError, KeyError) as e:
-        fail(f"Tautulli lookup failed: {e}")
-    items = [{"title": h.get("full_title"), "user": h.get("user"), "date": h.get("date"),
-              "percent_complete": h.get("percent_complete")} for h in data.get("data", [])]
-    return ok(f"{len(items)} recent watch(es).", items=items)
 
 
 @app.get("/api/arr/queue-errors")
@@ -3620,25 +3906,6 @@ def arr_import_list_add(app_name: str, payload: ImportListAddRequest):
     return ok(f"Import list '{payload.name}' ({payload.implementation}) added to {cfg['label']}.", id=r.json().get("id"))
 
 
-@app.get("/api/tautulli/stats")
-def tautulli_stats():
-    """Tautulli's own home-stats widget data (most watched, most active
-    users/platforms over the last 30 days) - a server-wide view, distinct
-    from stack-tautulli-history's per-session log."""
-    key = _tautulli_key()
-    if not key:
-        fail("No Tautulli API key found (config.ini not present yet - has it completed setup?).", status_code=500)
-    try:
-        r = httpx.get(f"{TAUTULLI_URL}/api/v2", params={"apikey": key, "cmd": "get_home_stats", "time_range": 30}, timeout=20)
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"Tautulli lookup failed: {e}")
-    data = r.json().get("response", {}).get("data", [])
-    items = [{"title": stat.get("stat_title"), "rows": [row.get("title") or row.get("user") or row.get("platform")
-              for row in stat.get("rows", [])[:5]]} for stat in data if stat.get("rows")]
-    return ok(f"{len(items)} stat categor{'y' if len(items) == 1 else 'ies'} from the last 30 days.", items=items)
-
-
 def _bazarr_headers():
     key = _bazarr_key()
     if not key:
@@ -3764,13 +4031,13 @@ def arr_customformat_snapshot(app_name: str):
     return ok(f"{len(cf_names)} custom format(s) across {len(snapshot)} profile(s) on {cfg['label']}.", profiles=snapshot)
 
 
-@app.get("/api/altmount/stats")
-def altmount_stats():
+@app.get("/api/bearmount/stats")
+def bearmount_stats():
     """Aggregate counts instead of the raw queue/history dumps
-    altmount_queue()/altmount_history() above already provide - queued count
+    bearmount_queue()/bearmount_history() above already provide - queued count
     and total size left, plus history success/fail counts, in one glance."""
-    queue = altmount_api("queue").get("queue", {}).get("slots", [])
-    history = altmount_api("history", limit=100).get("history", {}).get("slots", [])
+    queue = bearmount_api("queue").get("queue", {}).get("slots", [])
+    history = bearmount_api("history", limit=100).get("history", {}).get("slots", [])
     fail_count = sum(1 for h in history if (h.get("status") or "").lower() == "failed")
     mb_left = sum(float(s.get("mbleft") or 0) for s in queue)
     return ok(f"{len(queue)} queued ({mb_left:.0f}MB left), {len(history)} in recent history "
@@ -3778,14 +4045,14 @@ def altmount_stats():
               history_failed=fail_count)
 
 
-@app.post("/api/altmount/delete-failures")
-def altmount_delete_failures():
-    """Deletes every "Failed" history entry via AltMount's SABnzbd-compatible
+@app.post("/api/bearmount/delete-failures")
+def bearmount_delete_failures():
+    """Deletes every "Failed" history entry via BearMount's SABnzbd-compatible
     delete endpoint (mode=history&name=delete&value=<nzo_id>, one id per
     call, mirroring the same shape NzbDAV's equivalent route had). Deletes
     fan out across threads rather than running serially - same-host calls,
     not rate-limited."""
-    history = altmount_api("history", limit=0, timeout=180)
+    history = bearmount_api("history", limit=0, timeout=180)
     slots = history.get("history", {}).get("slots", [])
     failed = [s for s in slots if (s.get("status") or "") == "Failed"]
     if not failed:
@@ -3793,9 +4060,9 @@ def altmount_delete_failures():
 
     def delete_one(slot):
         try:
-            r = httpx.get(ALTMOUNT_URL, params={
+            r = httpx.get(BEARMOUNT_URL, params={
                 "mode": "history", "name": "delete", "value": slot["nzo_id"],
-                "apikey": ALTMOUNT_API_KEY, "output": "json",
+                "apikey": BEARMOUNT_API_KEY, "output": "json",
             }, timeout=30)
             r.raise_for_status()
             result = r.json()

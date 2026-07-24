@@ -18,7 +18,19 @@ was removed entirely in v10.9.9 and Whisparr in v10.12.0, see below; Bindery, th
 was retired in v10.9.8 along with its reader Calibre-Web; no ebook app currently in the stack),
 fetches via Usenet exclusively through **AltMount**, and serves via **Plex** (real, current
 state as of 2026-07-23 — confirmed live via `docker compose ps`, `/library/sections`, and
-`docker-compose.yml` itself, not assumed from older narrative in this file). Jellyfin briefly
+`docker-compose.yml` itself, not assumed from older narrative in this file).
+
+**CORRECTION, 2026-07-24: AltMount itself was fully removed and replaced by BearMount**
+(`ghcr.io/whispersofj/bearmount`, container name `bearmount`, mount `/mnt/bearmount`, host
+port 8082) — a full rebrand/fork of AltMount at `github.com/WhispersOfJ/bearmount`, same
+codebase lineage. Every `altmount` reference below (container name, `/mnt/altmount`, routes,
+`.env` vars, scripts) is historical narrative, not current state — read it for the reasoning,
+substitute `bearmount` for the actual name. Same cutover pattern as NzbDAV→AltMount: every
+pre-cutover symlink broke, and this time Radarr/Sonarr were also fully purged (0 movies/series
+tracked) at the user's explicit request, keeping only Import Lists so libraries repopulate
+from scratch. Don't assume the old movie/series counts or symlink targets are still valid.
+
+Jellyfin briefly
 replaced Plex on 2026-07-22 and was fully reverted back to Plex the same day after repeated
 unresolved library-scan hangs; Jellyfin/Jellystat/jellystat-db were removed entirely in that
 reversion (see the dedicated History entry below) — there is no Jellyfin anywhere in this stack.
@@ -70,7 +82,7 @@ isolation.
 for privatization. Every `stack-*` command lives only in this host's own fish functions plus
 this repo's `control-panel/app.py` — nothing to mirror anywhere.
 
-## Full service inventory (all 18, by subsystem)
+## Full service inventory (all 17, by subsystem)
 
 Not a duplicate of README's service table (image/port/profile) — this is the *relationship*
 map: what each service actually talks to, so a question about any one container can be
@@ -87,9 +99,10 @@ start-order — the only FUSE mount left in this stack as of v11.0.0).
 
 **`*arr` apps** — `radarr` (core, port 7878, movies, `/data/movies`) ·
 `sonarr` (core, port 8989, TV, `/data/shows`) — both single-quality-profile ("ANY") as of
-v11.2.0, see [History](README.md#history); Recyclarr (TRaSH Guides custom-format sync) was
-removed entirely the same version, so there is no automated custom-format management on
-either app anymore.
+v11.2.0 until 2026-07-23, when Recyclarr was reinstalled (see History) — both apps now also
+carry real TRaSH-tier profiles (Radarr: HD Bluray + WEB / Remux + WEB 2160p / Low Quality;
+Sonarr: WEB-1080p / WEB-2160p / Low Quality) alongside "Any", synced daily 6am by Recyclarr.
+Existing movies/series were deliberately left on "Any", not reassigned to a tier.
 
 **Usenet** — `nzbdav` (core, port 3001→3000, WebDAV-streamed Usenet, SABnzbd-API compatible,
 **the only download client on both Radarr and Sonarr as of v11.0.0** — was priority-1 behind
@@ -134,6 +147,11 @@ reinstalled from scratch in v11.3.0 after being removed entirely in v10.2.0, no 
 survived; wired to both apps post-boot via its own `/api/system/settings` form-encoded
 endpoint — see README's dedicated section for the gotchas in that endpoint before touching it
 again; provider list narrowed in v11.4.0 to 9 English-capable, non-anime-exclusive sources).
+
+**Sports PVR** — none. `sportarr` was added 2026-07-23 and **removed entirely 2026-07-24**,
+by explicit request, after its Plex metadata integration turned out to be structurally
+broken (see History `[Sportarr removed]` below) and the user chose full removal over
+further debugging.
 
 **Dashboard** — `control-panel` (extras, port 8420, the one custom-built component —
 `build:` from `./control-panel`, not a pulled image; talks to `docker.sock` plus every app's
@@ -202,18 +220,23 @@ docker compose up -d --force-recreate control-panel
 docker compose up -d
 docker compose --profile extras up -d
 
-# MANDATORY before recreating/restarting/stopping altmount for ANY reason (config change,
+# MANDATORY before recreating/restarting/stopping bearmount for ANY reason (config change,
 # mem_limit tweak, unrelated debugging - the reason does not matter, see CLAUDE.md's
-# 2026-07-23 repeat-incident entry). /tmp/.altmount-queue is NOT a persistent volume, so any
-# recreate wipes queued NZBs and each resulting failure silently unmonitors + permanently
-# blocklists the affected Radarr/Sonarr item. Confirm pending/processing is 0 first, or drain
-# the queue before touching the container.
-sqlite3 config/altmount/altmount.db "SELECT status, COUNT(*) FROM import_queue GROUP BY status;"
+# 2026-07-23 repeat-incident entry, which carried over unchanged to bearmount's rebrand).
+# /tmp/.bearmount-queue is NOT a persistent volume, so any recreate wipes queued NZBs and
+# each resulting failure silently unmonitors + permanently blocklists the affected
+# Radarr/Sonarr item. Confirm pending/processing is 0 first, or drain the queue before
+# touching the container.
+sqlite3 config/bearmount/bearmount.db "SELECT status, COUNT(*) FROM import_queue GROUP BY status;"
 
 # Unit tests (added 2026-07-22) — control-panel/app.py's pure logic (helpers, CSRF
 # middleware, bucketing/ETA math) plus scripts/*.py's pure logic, all with docker.sock,
 # httpx, and urllib network calls mocked out; no real stack/daemon needed. Now part of
 # CI (validate.yml), alongside the compose/ruff/shellcheck checks below.
+# This host's Python is externally-managed (PEP 668) - pip install below refuses with
+# "externally-managed-environment" outside a venv: `python3 -m venv /tmp/venv &&
+# /tmp/venv/bin/pip install -r control-panel/requirements.txt -r requirements-dev.txt &&
+# /tmp/venv/bin/pytest`.
 pip install -r control-panel/requirements.txt -r requirements-dev.txt
 pytest
 ```
@@ -393,6 +416,25 @@ section, and there's no substitute for it for that class of change.
 
 ## Known current landmines (not historical — still true as of last audit)
 
+- **A new rclone-mount-owning container needs its `/mnt/<name>` host directory pre-created and
+  `chown 1000:1000` before first start** - `/mnt` itself is root-owned, and the container can't
+  `mkdir` under it (`permission denied`). Hit for both AltMount's and BearMount's first boot -
+  not a one-off, expect this for any future rclone/FUSE-mounting service.
+- **BearMount's config schema is stricter than AltMount's for `providers[*].last_speed_test_time`**
+  - AltMount tolerated a plain RFC3339 string there; BearMount's decoder rejects anything but
+    `null` or an omitted key ("expected a map or struct, got string"). Same underlying
+    codebase/fork, a real behavior difference - don't assume a config.yaml copied from
+    AltMount's loads as-is into BearMount.
+- **Radarr/Sonarr have real bulk-delete endpoints**: `DELETE /api/v3/movie/editor` /
+  `/api/v3/series/editor`, body `{movieIds|seriesIds: [...], deleteFiles: bool,
+  addImportListExclusion: bool}`. Keep `addImportListExclusion: false` if the intent is "let
+  Import Lists re-add these later" - `true` permanently blacklists them from list-based
+  re-adding.
+- **Once a compose service block is deleted, `docker compose stop/rm <service>` fails with
+  "no such service"** even while the container itself is still running - use `docker stop
+  <container_name>` / `docker rm <container_name>` directly for a container whose compose
+  block is already gone.
+
 ### Quick diagnosis: AltMount/Plex/Radarr/Sonarr symptoms from 2026-07-23
 
 Fast symptom → cause → fix reference for the failure classes hit during the NzbDAV→AltMount
@@ -428,6 +470,22 @@ scratch. Full incident narrative is in the History section below; this is the ch
   branch `fix/internal-mount-obscure-password`) and redeploy. Check whether PR #792 merged
   upstream first — if so, switch back to the stock tagged image instead of maintaining the
   fork build.
+- **`~/Claude/altmount`** is a persistent local clone of the AltMount fork
+  (`WhispersOfJ/altmount`). Its `main` is now the definitive, pushed baseline — consolidated
+  from the original scoped PRs plus a deeper path-traversal pass, CI-gated
+  (`altmount-fixes-ci.yml`: build/vet/lint/test) and kept in sync with upstream
+  (`sync-upstream.yml`: daily merge from `javi11/altmount` main, `-X ours` so this fork's fixes
+  win any conflicting hunk, validated before push). Treat `main` as current, not the old
+  `fix/all-consolidated` branch name or the "kept deliberately local" framing from the first
+  audit round — check `main` there before re-auditing AltMount from scratch.
+- **Host now has a real Go toolchain** (`go` 1.26, `gopls`) installed directly on this machine
+  (not just inside a container) — installed for the AltMount audit above, but usable for any
+  Go work in this repo or elsewhere. The `LSP` tool needs `gopls` on the *host* PATH
+  specifically; a Docker-container-only `gopls` install won't satisfy it.
+- **Files created via `docker run ... golang:...` (or similar) can end up root-owned and/or
+  read-only** (e.g. a mounted Go module cache) — a plain `chmod -R u+w` can fail with
+  "Operation not permitted" on those files. Use `sudo rm -rf` to clean up scratch directories
+  that mixed host and containerized work.
 - **Symptom: a Radarr/Sonarr download sits at `status: completed` /
   `trackedDownloadState: importing` (or `importPending`/`importBlocked`) forever, no error, and
   `GET /api/v3/command` shows a `ProcessMonitoredDownloads` entry permanently stuck at
@@ -474,8 +532,8 @@ scratch. Full incident narrative is in the History section below; this is the ch
   scoped per quality profile~~ **Moot as of v11.2.0**: both apps were consolidated down to a
   single "ANY" quality profile each (all other profiles deleted, everything reassigned - see
   [History](README.md#history)), so there's only one profile per instance to share the
-  instance-wide size definitions with now. Recyclarr (which managed the now-deleted
-  TRaSH-tier profiles) was removed entirely the same version.
+  instance-wide size definitions with now. **Recyclarr was reinstalled 2026-07-23** (see
+  History) — both apps have multiple profiles again, sharing that same instance-wide list.
 - ~~Kometa's `sleep infinity` entrypoint override is load-bearing, not a placeholder~~ **Moot
   as of v11.7.0**: Kometa was removed entirely (no Jellyfin support - see the migration History
   entry), along with its Quickstart companion. No automated collections/overlays/metadata tool
@@ -869,6 +927,11 @@ away for 8+ hours with instructions to log non-critical issues and only interrup
   is 0, or drain/wait it out first. The reason for the recreate does not matter and is not a
   factor in whether this check is needed — "it's just a memory bump" is exactly the reasoning
   that caused this to happen twice.
+- **The same hard rule caught a third real recurrence, 2026-07-23**: adding Sportarr's
+  category to `config/altmount/config.yaml` needed a restart, which (as always) wiped ~778
+  pending queue rows and caused a small blocklist fallout (2 Radarr movies, 4 Sonarr episodes)
+  before being caught and cleaned up the same way as the incidents above. No new lesson here —
+  just further confirmation this rule has zero exceptions, including "just adding a category."
 - **User's response on return: abandon the old library entirely rather than repair the
   re-link.** Explicit instructions, executed in this order:
   1. AltMount's queue backlog (39,168 rows) killed directly via
@@ -1110,6 +1173,97 @@ time:
   link) was already entirely correct — this was purely a stale-connection issue. Fixed with a
   plain `docker compose restart bazarr`; confirmed both SignalR feeds reconnected cleanly with
   zero errors afterward, and `/api/system/status` reported live real versions from both apps.
+
+## Recyclarr reinstalled, trash-guides-applier skill found broken, 2026-07-23
+
+User asked to sync custom formats/quality profiles with TRaSH-Guides, explicitly ruling out
+Recyclarr at first. `trash-guides-applier` skill was tried instead — its bundled JSON turned
+out mostly unusable: 9 of 11 custom formats (`profiles/{radarr,sonarr}-profiles.json`) are
+placeholder stubs (`{"type": ..., "value": ...}`, not real Radarr/Sonarr `implementation`/
+`fields` shape — one 400'd immediately with "Condition name(s) cannot be empty"), and
+`applier.py`'s `apply` command creates quality profiles with `"items": []` and no `cutoff`,
+which both apps' real API rejects outright (500, `ArgumentNullException: source`) rather than
+accepting as a fillable skeleton. Only the one custom format with a real API shape ("Blocklist:
+Unwanted Groups/Sources, RU-CN Audio, Blu-ray") applied successfully via this skill — quality
+profiles never got created through it at all. **Don't trust this skill's bundled profile JSON
+or its `apply` quality-profile path without re-verifying against a live `/qualityprofile/schema`
+first** — the custom-format diff/apply path for a real-shaped entry does work correctly.
+User then explicitly reversed the "no Recyclarr" instruction and asked for it reinstalled.
+Recovered verbatim from the v11.2.0 removal commit (`ead5f04~1` / `4f6f9f4~1`): compose
+service block, `config/recyclarr/recyclarr.yml` (real TRaSH profile/CF trash_ids for both
+apps), control-panel's `/api/recyclarr/status` route + `CONTAINER_LABELS` entry, and the
+`stack-recyclarr-status` palette command in `commands.json` — not rebuilt from scratch.
+A manual `docker exec recyclarr recyclarr sync` was run to verify immediately rather than
+waiting for the 6am cron — confirmed live: 62 CFs/3 profiles on Radarr, 42 CFs/3 profiles on
+Sonarr, matching `recyclarr.yml`'s own trash_ids. Existing "Any" profile assignments were
+left untouched on both apps — this only recreated the tiered profiles, it didn't reassign
+any movie/series to them.
+
+## Sportarr removed entirely, 2026-07-24
+
+Added 2026-07-23 (see the Sports PVR entry this file used to carry), removed less than 24
+hours later after its Plex integration turned out to be structurally broken, and the user
+chose full removal over continued debugging.
+
+- **Root cause of the Plex problem**: the Wrestling library had two root locations,
+  `/data/wrestling/WWE` and `/data/wrestling/WCW` — both one directory too deep. Since
+  Sportarr's own naming convention is `{Series}/Season {year}/`, pointing the library root
+  directly at the league folder made Plex treat each `Season 2021`/`Season 2023`/`Season
+  2024`/`Season 2025` folder as its own top-level show (`guid="local://..."`, Plex's
+  unmatched-item placeholder) instead of a season under one real "WWE" show. Confirmed via
+  `section_locations` in Plex's own SQLite DB and Plex's scanner log (`"There were 1
+  top-level paths for Season 2023"`, match requests for `'Season 2023'` etc. all returning
+  "no metadata"). Consolidating to a single `/data/wrestling` root and forcing a rescan fixed
+  it for WWE (73 real episodes, 5 real seasons, real TMDb-backed metadata) — but one WCW file
+  (`Bash At The Beach 1999`) never got picked up by Plex's scanner even after empty-trash,
+  repeated forced rescans, and touching the file plus both parent directories to force an
+  mtime change; Plex kept reporting the `WCW` directory as unchanged and never created an
+  item for it. This remained unresolved when the user decided to remove Sportarr rather than
+  debug further — not a symlink/mount problem (AltMount/FUSE were confirmed healthy and
+  streaming correctly throughout), a Plex scanner-cache quirk specific to that one file.
+- **Everything removed, verified physically gone, not just stopped**: `sportarr` container
+  stopped and `rm -f`'d; `sportarr/sportarr:latest` image `docker rmi`'d; `config/sportarr`
+  (41MB) and `media/wrestling` (372KB, 100% symlinks per this stack's usual policy — no real
+  bytes were ever stored) deleted with `rm -rf`; Plex's "Wrestling" library section deleted
+  via `DELETE /library/sections/5` (not just emptied); Prowlarr's Sportarr Application entry
+  (id 5, the second Sonarr-type sync target) deleted via `DELETE /api/v1/applications/5`.
+  `docker-compose.yml`'s service block, its `SPORTARR_API_KEY` env line into control-panel,
+  and Plex's now-dangling `./media/wrestling:/data/wrestling` volume mount all removed;
+  `SPORTARR_API_KEY` dropped from `.env`/`.env.example`; `control-panel/app.py`'s
+  `SPORTARR_URL`/`SPORTARR_API_KEY` vars, the `sportarr_api()` helper, all six
+  `/api/sportarr/*` routes, and its `CONTAINER_LABELS`/`MOUNT_DEPENDENTS`/
+  `ARR_LOG_CONTAINERS` entries all deleted outright (no dead-route/degrade-gracefully
+  treatment — this wasn't a removed-but-still-reachable dependency like the old Plex routes,
+  it never needs to respond again). No frontend (`static/*.js`/`*.html`) or `commands.json`
+  entries existed for Sportarr at all — the redesigned Control Panel UI (see its own History
+  entry above) never wired these routes into any panel, so there was nothing to unwire there.
+  109 unit tests pass, ruff clean, `docker compose config` validates clean for both the core
+  and `extras` profiles after the edits.
+- **Queue cleanup done the documented-safe way, not a raw DB wipe**: AltMount's own SABnzbd
+  bulk-delete (`mode=queue&name=delete` with a comma-joined value list) is the already-known-
+  buggy endpoint that silently no-ops beyond the first id and always reports
+  `{"status": true}` regardless (see the earlier AltMount API bug entry above) — so all 11
+  `category='sportarr'` queue items were deleted with one API call per `nzo_id` instead, then
+  verified against both the live SABnzbd-compatible queue (0 remaining `sportarr` slots) and
+  `import_queue`'s own `category='sportarr'` row count, not just trusted from the response.
+  **AltMount's `config.yaml` still needs a container restart to actually drop the `sportarr`
+  SABnzbd category and stop advertising `sportarr_instances: []`** — both were removed from
+  the file, but the queue had 246 pending / 1 processing items for *other* categories
+  (Radarr/Sonarr) at the time, so per this file's own hard rule (see the repeat
+  altmount-recreate-wipes-the-queue incidents above) the restart was deliberately deferred
+  rather than risking another blocklist-fallout cascade. Restart `altmount` once
+  `SELECT status, COUNT(*) FROM import_queue GROUP BY status;` shows 0 pending/processing, to
+  make the category removal take effect.
+- **Cleanuparr, NeutArr, and Bazarr needed no cleanup** — confirmed live: Cleanuparr's
+  `arr_instances` table never had a Sportarr row (only Sonarr and Radarr), NeutArr has no
+  `sportarr.json` placeholder file, and Bazarr was never wired to it at all (single-Sonarr-
+  instance limitation, already a documented accepted gap before this removal). No `~/.dotfiles`
+  fish functions referenced Sportarr either — Control Panel's dedicated `/api/sportarr/*`
+  routes were apparently never given their own `stack-sportarr-*` CLI wrapper.
+- **Full stack health swept after every change** — all remaining containers healthy, all HTTP
+  endpoints reachable (Tautulli's expected failure aside — it has no container, see the
+  "present but dormant" correction elsewhere in this file), confirming the removal didn't
+  regress anything else.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
