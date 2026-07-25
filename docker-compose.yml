@@ -160,24 +160,33 @@ services:
       COOKIE_DOMAIN: ${HOST_IP}
     volumes:
       - ./config/bearmount:/config
-      - /mnt:/mnt:rshared
-      # :rprivate is deliberate, not the default - this bind mount sits
-      # nested under the /mnt entry above, which is rshared (needed so
-      # BearMount's own internal rclone FUSE mount at /mnt/bearmount
-      # propagates out to the host for other containers' :rslave binds).
-      # Without an explicit private propagation flag here, this nested
-      # mount inherits shared propagation too - and since several
-      # container kills this session were abnormal (the documented
-      # FUSE/D-state hangs), the mount event wasn't cleanly torn down on
-      # stop and instead leaked a new copy into the host's shared peer
-      # group on every recreate. Confirmed live 2026-07-25: this leaked
-      # to 16,384 stacked host-visible mount entries at this exact path,
-      # eventually blocking BearMount's own remount with a misleading
-      # "no space left on device" (a mount-table/propagation-group
-      # exhaustion, not real disk space - real usage was 19%). :rprivate
-      # scopes propagation to just this one mount, breaking the leak
-      # mechanism without affecting the /mnt:rshared entry it sits under.
-      - ./media/bearmount-import:/mnt/bearmount-import:rprivate
+      # CORRECTION, 2026-07-25: this used to be `/mnt:/mnt:rshared` (the
+      # whole host /mnt tree) plus a *nested* `./media/bearmount-import:
+      # /mnt/bearmount-import:rprivate` bind underneath it - the :rprivate
+      # flag was believed to stop that nested mount from leaking onto the
+      # host, but it doesn't: the leak happens because the mount-creation
+      # *event* propagates to the parent's (host's) peer group at the
+      # moment the nested mount is created, before the child mount's own
+      # propagation flag has any effect on anything. :rprivate only
+      # controls whether *that* mount subsequently relays *further*
+      # propagation events - it can't retroactively stop the one event
+      # that already fired. Confirmed live 2026-07-25 with a single
+      # controlled `docker compose up -d --force-recreate bearmount`: host
+      # mount entries for /mnt/bearmount-import doubled from 127 to 255 in
+      # one recreate (previously reached 16,384 before being noticed,
+      # eventually blocking BearMount's own remount with a misleading "no
+      # space left on device" - a mount-table/propagation-group
+      # exhaustion, not real disk space). Real fix: only bind-mount the
+      # exact path that needs shared propagation (BearMount's own internal
+      # rclone FUSE mount, created at runtime at /mnt/bearmount - other
+      # containers' :rslave binds on that same path need to see it) rather
+      # than the whole /mnt tree, so bearmount-import is never nested
+      # under a shared ancestor in the first place - same pattern
+      # radarr/sonarr already use correctly for this exact directory
+      # (plain default-propagation bind, no flag needed, confirmed live:
+      # zero leaked entries for either of *their* mounts of this path).
+      - /mnt/bearmount:/mnt/bearmount:rshared
+      - ./media/bearmount-import:/mnt/bearmount-import
     devices:
       - /dev/fuse:/dev/fuse:rwm
     cap_add:
@@ -192,6 +201,23 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    # CONFIRMED LIVE 2026-07-25: BearMount's own graceful-shutdown sequence
+    # legitimately takes ~40s even in the best case, due to two internal
+    # bugs (a subprocess-reap race that wastes ~10s waiting on an already-
+    # exited rclone process before giving up, then an HTTP server
+    # Shutdown() that hits its own hardcoded 30s context deadline) -
+    # neither bug blocks the actual FUSE unmount, which completes in well
+    # under a second ("All mounts unmounted successfully" logs almost
+    # immediately on SIGTERM). But with no stop_grace_period set, Docker's
+    # 10s default SIGKILL timeout fires *during* that ~40s sequence on
+    # essentially every restart - 21 of 21 recent restarts in
+    # config/bearmount/bearmount.log show this exact pattern. A SIGKILL
+    # mid-sequence is the most likely trigger for the FUSE/D-state hangs
+    # and mount-table leaks documented elsewhere in this file: restarting
+    # BearMount to recover from a hang was itself almost never completing
+    # cleanly, making the "fix" a contributor to the next hang. 90s gives
+    # real headroom above the measured ~43s worst case.
+    stop_grace_period: 90s
     mem_limit: 6g
     mem_reservation: 128m
     cpus: 4
@@ -312,6 +338,21 @@ services:
     mem_limit: 3g
     mem_reservation: 512m
     cpus: 12
+    # CONFIRMED LIVE 2026-07-25: same root-cause class already fixed for
+    # bearmount (see its own stop_grace_period comment) - Plex's own
+    # shutdown sequence, when it needs to touch the FUSE mount or a busy
+    # SQLite DB during heavy import/analysis load, doesn't necessarily
+    # complete within Docker's 10s default. A ViewStateSync request hit
+    # "Waited over 10 seconds for a busy database" and 9s later Plex
+    # received a clean SIGTERM (Control Panel's own Tier 1 auto-restart,
+    # correctly triggered) and began an orderly shutdown - but the
+    # container's own StartedAt never advanced and it was left genuinely
+    # unkillable (`docker kill` failed with "tried to kill container, but
+    # did not receive an exit event"), needing the same Tier 3 FUSE-abort
+    # recovery as a real hang. In effect: the automated recovery action
+    # itself produced the exact failure class it exists to fix. 90s
+    # matches the same headroom already validated for bearmount.
+    stop_grace_period: 90s
 
   # =======================================================================
   # Optional / recommended extras - start with:
@@ -389,6 +430,9 @@ services:
       # 2026-07-24 (see CLAUDE.md's History) - BearMount's SABnzbd-compatible
       # API key replaces it.
       BEARMOUNT_API_KEY: ${BEARMOUNT_API_KEY}
+      # 2026-07-25: BearMount's own JWT-authenticated REST API (fuse/health
+      # control), separate from the SABnzbd-compatible API above.
+      BEARMOUNT_ADMIN_PASSWORD: ${BEARMOUNT_ADMIN_PASSWORD}
       # Prowlarr has no other integration in this stack (CONTAINER_LABELS
       # dashboard entry only) - added specifically so /api/log-levels can
       # cover all five Servarr-shaped apps, not just the four QUEUE_ARR_APPS.
