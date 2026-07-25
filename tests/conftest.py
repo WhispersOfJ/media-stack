@@ -100,3 +100,23 @@ def enable_recycle_bin():
 @pytest.fixture(scope="module")
 def bearmount_prune_history():
     return _import_script("bearmount-prune-history")
+
+
+@pytest.fixture(scope="module")
+def plex_health_monitor():
+    return _import_script("plex-health-monitor")
+
+
+@pytest.fixture(scope="module")
+def plex_webhook_listener():
+    return _import_script("plex-webhook-listener")
+
+
+@pytest.fixture(scope="module")
+def plex_library_report():
+    return _import_script("plex-library-report")
+
+
+@pytest.fixture(scope="module")
+def poster_sync_fanart():
+    return _import_script("poster-sync-fanart")
