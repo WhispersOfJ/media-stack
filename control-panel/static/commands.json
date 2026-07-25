@@ -491,6 +491,65 @@
     "LogContainer": "{1}"
   },
   {
+    "Name": "stack-arr-blocklist",
+    "Description": "Show blocklisted releases in Radarr/Sonarr",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/blocklist",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "50",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
+    "Name": "stack-arr-blocklist-clear",
+    "Description": "Clear every blocklisted release in Radarr/Sonarr",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/blocklist/clear",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": true,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "{1}"
+  },
+  {
     "Name": "stack-disk-usage",
     "Description": "Per-app config/ directory size, largest first",
     "Method": "GET",
