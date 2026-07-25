@@ -2566,13 +2566,27 @@ def _bounded_exec(container, cmd: list[str], timeout: int = 5):
     this runs it in a worker thread and gives up on the *caller's* side if
     it doesn't return in time - the abandoned thread may still be blocked
     in the kernel afterward, but the request thread is no longer hostage
-    to it."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(container.exec_run, cmd=cmd)
-        try:
-            return future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
-            return None
+    to it.
+
+    CORRECTION #2, same day: the first version of this fix wrapped the
+    pool in a `with` block - which looked right but reintroduced the
+    exact hang it was meant to prevent. ThreadPoolExecutor.__exit__ calls
+    shutdown(wait=True), which blocks until the submitted worker actually
+    finishes, even after future.result(timeout=...) already raised
+    TimeoutError and this function tried to return None. Confirmed live:
+    _plex_scanner_processes() still hung past 15s with this bug in place,
+    same symptom as before the "fix". A bare ThreadPoolExecutor (no
+    `with`, shutdown(wait=False)) lets this function actually return on
+    timeout - the worker thread is abandoned for real, not silently
+    waited on."""
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(container.exec_run, cmd=cmd)
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        return None
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _plex_scanner_processes() -> list[str]:
@@ -2658,20 +2672,38 @@ def _fuse_waiting_total() -> int:
     return total
 
 
-def _plex_log_tail(lines: int = 200) -> dict:
-    """Reads Plex's own log file directly - the "Waited over 10 seconds
-    for a busy database" / scanner-kill diagnostic lines live here, never
-    in docker logs (confirmed this session: every diagnosis read this file
-    directly, Plex does not echo these to stdout)."""
+def _plex_log_tail(lines: int = 200, tail_bytes: int = 512_000) -> dict:
+    """Reads only the last `tail_bytes` of Plex's own log file - the "Waited
+    over 10 seconds for a busy database" / scanner-kill diagnostic lines
+    live here, never in docker logs (confirmed this session: every
+    diagnosis read this file directly, Plex does not echo these to stdout).
+
+    CONFIRMED LIVE, 2026-07-25: the original version called f.readlines()
+    on the WHOLE file every poll - fine at first, but this file grows
+    continuously during a heavy scan/import burst (hit 9.9MB / 65,908
+    lines this session) and was actively being written to at the same
+    time. That made /api/plex/scan-health itself take anywhere from ~10s
+    to indefinitely long per call under load, which looked exactly like
+    a real Plex freeze from the outside - it wasn't; direct checks
+    (mount test, FUSE waiting, D-state, BearMount queue) all stayed fast
+    and healthy the whole time. Seeking from the end bounds this to a
+    fixed amount of I/O regardless of how large the file gets. Only
+    "busy database" occurrences within this same bounded window are
+    counted now, not the whole file's history - an accepted tradeoff for
+    "recent activity", which is this field's stated purpose anyway."""
     log_path = os.path.join(HOST_CONFIG_DIR, "plex", "Plex Media Server", "Logs", "Plex Media Server.log")
     if not os.path.isfile(log_path):
         return {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": []}
     try:
-        with open(log_path, errors="replace") as f:
-            all_lines = f.readlines()
+        with open(log_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - tail_bytes))
+            chunk = f.read().decode(errors="replace")
     except OSError:
         return {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": []}
-    tail = [line.rstrip("\n") for line in all_lines[-lines:]]
+    all_lines = chunk.splitlines()
+    tail = all_lines[-lines:]
     busy_lines = [line for line in all_lines if "busy database" in line]
     timestamps = [line.split("]")[0].split("[")[0].strip() for line in busy_lines[-10:]]
     return {"lines": tail, "busy_db_errors": len(busy_lines), "recent_busy_db_timestamps": timestamps}
