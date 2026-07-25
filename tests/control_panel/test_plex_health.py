@@ -22,6 +22,30 @@ def test_bounded_exec_returns_none_on_timeout(cp_app):
     assert cp_app._bounded_exec(container, ["ps", "aux"], timeout=0.2) is None
 
 
+def test_bounded_exec_actually_returns_promptly_not_just_eventually(cp_app):
+    # Regression test for a real live bug 2026-07-25: an earlier version
+    # wrapped the pool in a `with` block, whose __exit__ calls
+    # shutdown(wait=True) and blocks until the abandoned worker thread
+    # finishes - silently defeating the timeout even though the return
+    # *value* was still correctly None. Assert on wall-clock time, not
+    # just the return value, or this exact regression passes silently.
+    container = MagicMock()
+
+    def never_returns(cmd):
+        time.sleep(5)
+        return "way too slow"
+
+    container.exec_run.side_effect = never_returns
+    start = time.monotonic()
+    result = cp_app._bounded_exec(container, ["ps", "aux"], timeout=0.3)
+    elapsed = time.monotonic() - start
+    assert result is None
+    assert elapsed < 2.0, (
+        f"_bounded_exec took {elapsed:.2f}s to return with timeout=0.3 - "
+        "it's blocking on the abandoned worker thread instead of giving up"
+    )
+
+
 def test_plex_container_pid_returns_pid(cp_app):
     container = MagicMock()
     container.attrs = {"State": {"Pid": 12345}}
@@ -150,6 +174,31 @@ def test_mount_test_false_on_nonzero_exit(cp_app, monkeypatch):
     monkeypatch.setattr(cp_app, "_bounded_exec", lambda c, cmd, timeout=5: result)
     cp_app.docker_client.containers.get.return_value = container
     assert cp_app._mount_test("plex") is False
+
+
+def test_plex_log_tail_bounded_read_on_large_file(cp_app, monkeypatch, tmp_path):
+    config_dir = tmp_path / "host-config"
+    log_dir = config_dir / "plex" / "Plex Media Server" / "Logs"
+    log_dir.mkdir(parents=True)
+    log_path = log_dir / "Plex Media Server.log"
+    # Write far more than tail_bytes so a full read would be the slow path
+    # this fix avoids - only the tail should ever be touched.
+    with open(log_path, "w") as f:
+        for i in range(50_000):
+            f.write(f"padding line {i}\n")
+        f.write("real busy database line near the end\n")
+    monkeypatch.setattr(cp_app, "HOST_CONFIG_DIR", str(config_dir))
+
+    result = cp_app._plex_log_tail(lines=10, tail_bytes=2048)
+    assert result["busy_db_errors"] == 1
+    assert any("busy database" in line for line in result["lines"])
+    assert len(result["lines"]) <= 10
+
+
+def test_plex_log_tail_missing_file(cp_app, monkeypatch, tmp_path):
+    monkeypatch.setattr(cp_app, "HOST_CONFIG_DIR", str(tmp_path / "does-not-exist"))
+    result = cp_app._plex_log_tail()
+    assert result == {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": []}
 
 
 def _patch_scan_health_deps(cp_app, monkeypatch, *, dstate=None, mount_ok=True,
