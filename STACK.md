@@ -670,6 +670,30 @@ section, and there's no substitute for it for that class of change.
   content-check step itself and refuses to restart the 5 dependents if BearMount's own mount
   comes back empty — don't bypass that check by restarting containers by hand outside those
   routes without doing the same verification manually first.
+- **A per-container bind-mount view of BearMount's FUSE mount can go stale
+  (`Transport endpoint is not connected`) independently of BearMount's own mount and
+  independently of Docker's healthcheck** — confirmed live 2026-07-25. After a
+  `restart-cascade`, BearMount's own mount and the host's view of `/mnt/bearmount` were
+  both fine (`ls` succeeded, real content present), and Plex's container reported
+  `healthy`, but Plex's *own* bind-mounted view of the same path still returned
+  `Transport endpoint is not connected` — a restart-ordering race where Plex's mount
+  namespace picked up the old FUSE connection before it was replaced. `_mount_test()` /
+  `/api/plex/scan-health` correctly caught this (`mount_ok: false`, state
+  `hung_confirmed`) since it execs `ls /mnt/bearmount` *inside the plex container*, not
+  the host or BearMount — checking those two alone is not sufficient, always check from
+  inside the actual dependent container that's suspected stuck. **Real consequence, same
+  as the `abort`/`rshared` incident above but via a different trigger**: while the mount
+  was stale, Plex's library-verify scan ran, found symlinks unavailable, and
+  `autoEmptyTrash` (still `true`, no prior mitigation had disabled it) silently dropped
+  Movies from ~549 items down to single digits before this was caught. **Fix**: restarting
+  Plex alone (not BearMount — its queue was actively draining, healthy, not the broken
+  part) refreshed its bind-mount view; confirmed real content from inside Plex's own
+  container (`docker exec plex ls /mnt/bearmount/movies`) before letting it rescan, then
+  it repopulated correctly (`N added, 0 deleted` climbing, no deletions logged this time).
+  **Disabled `autoEmptyTrash` via `PUT /:/prefs?autoEmptyTrash=0` afterward** — this is now
+  the second confirmed incident of this exact deletion trigger (see the `abort`/`rshared`
+  entry above, and the 2026-07-13 Radarr/Sonarr-side occurrence further below); leaving it
+  on means every future mount blip is a library-wipe risk, not just a display glitch.
 - **`docker exec`/`container.exec_run` against a partially-wedged container does NOT
   reliably fail fast** — an earlier note in this file claimed it does (based on a healthcheck
   exec erroring in ~2s during a full hang); a live, earlier-stage FUSE hang 2026-07-25 (waiting
