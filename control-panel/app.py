@@ -2700,6 +2700,74 @@ def arr_missing_aired(app_name: str):
     return results
 
 
+@app.get("/api/arr/{app_name}/blocklist")
+def arr_blocklist(app_name: str, limit: int = 50):
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}'.", status_code=404)
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(
+            f"{cfg['url']}/api/{cfg['api']}/blocklist",
+            params={"page": 1, "pageSize": limit, "sortKey": "date", "sortDirection": "descending"},
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} blocklist lookup failed: {e}")
+    data = r.json()
+    records = [{
+        "id": rec.get("id"),
+        "title": rec.get("sourceTitle"),
+        "date": rec.get("date"),
+        "seriesId": rec.get("seriesId"),
+        "movieId": rec.get("movieId"),
+    } for rec in data.get("records", [])]
+    return ok(f"{data.get('totalRecords', len(records))} total blocklist entry(ies) in {cfg['label']} ({len(records)} shown).",
+               total=data.get("totalRecords", len(records)), records=records)
+
+
+@app.post("/api/arr/{app_name}/blocklist/clear")
+def arr_blocklist_clear(app_name: str):
+    """Clears every blocklist entry, not just the page shown by the GET
+    above. Radarr's DELETE /blocklist/bulk works with an arbitrary id
+    list; Sonarr's real endpoint is the same shape (confirmed live,
+    despite Sonarr's queue/bulk 404ing - blocklist/bulk is a different
+    endpoint and does exist on both apps). Pages through in batches of
+    250 rather than trying to delete an unbounded id list in one call."""
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}'.", status_code=404)
+    cfg = ARR_APPS[app_name]
+    total_cleared = 0
+    while True:
+        try:
+            r = httpx.get(
+                f"{cfg['url']}/api/{cfg['api']}/blocklist",
+                params={"page": 1, "pageSize": 250},
+                headers={"X-Api-Key": cfg["key"]},
+                timeout=20,
+            )
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"{cfg['label']} blocklist lookup failed: {e}")
+        ids = [rec["id"] for rec in r.json().get("records", [])]
+        if not ids:
+            break
+        try:
+            r = httpx.request(
+                "DELETE",
+                f"{cfg['url']}/api/{cfg['api']}/blocklist/bulk",
+                json={"ids": ids},
+                headers={"X-Api-Key": cfg["key"]},
+                timeout=20,
+            )
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"{cfg['label']} blocklist clear failed after removing {total_cleared}: {e}")
+        total_cleared += len(ids)
+    return ok(f"Cleared {total_cleared} blocklist entry(ies) from {cfg['label']}.", cleared=total_cleared)
+
+
 # ---------------------------------------------------------------------
 # Wanted/missing backlog ETA - a fundamentally different estimate from
 # queue_status above: nothing here is mid-transfer, so there's no size to
