@@ -61,6 +61,50 @@
       <div id="arr-fleet"></div>
     </section>
 
+    <section class="rail" id="rail-plex-health" aria-labelledby="h-plex-health">
+      <h2 id="h-plex-health">Plex Health <span class="rail-hint">live scan status — see CLAUDE.md's landmines for the two hang classes this detects</span></h2>
+      <div class="vitals-row">
+        <div class="vital">
+          <span class="vital-label">State</span>
+          <span class="vital-value" id="plex-health-state">—</span>
+          <span class="vital-sub" id="plex-health-state-sub"></span>
+        </div>
+        <div class="vital">
+          <span class="vital-label">Scan progress</span>
+          <span class="vital-value" id="plex-health-progress">—</span>
+          <span class="vital-sub" id="plex-health-progress-sub"></span>
+        </div>
+        <div class="vital">
+          <span class="vital-label">BearMount queue</span>
+          <span class="vital-value" id="plex-health-queue">—</span>
+          <span class="vital-sub" id="plex-health-queue-sub"></span>
+        </div>
+        <div class="vital">
+          <span class="vital-label">Restarts</span>
+          <span class="vital-value" id="plex-health-restarts">—</span>
+          <span class="vital-sub" id="plex-health-restarts-sub"></span>
+        </div>
+      </div>
+
+      <h3 class="rail-sub">History <span class="rail-hint">last ~15 min, this session only</span></h3>
+      <div class="sparkline-row">
+        <div class="sparkline-block">
+          <span class="sparkline-label">Scan progress %</span>
+          <svg class="sparkline" id="spark-progress" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="sparkline-block">
+          <span class="sparkline-label">Busy-database errors</span>
+          <svg class="sparkline" id="spark-busydb" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+
+      <h3 class="rail-sub">Recent Plex log</h3>
+      <pre class="log-block" id="plex-health-log"></pre>
+
+      <h3 class="rail-sub">Mitigations</h3>
+      <div class="rule-list" id="plex-health-actions"></div>
+    </section>
+
     <section class="rail two-lane" id="rail-host" aria-labelledby="h-host">
       <h2 id="h-host">Host</h2>
       <div class="lane-grid">
