@@ -218,7 +218,7 @@ services:
     # cleanly, making the "fix" a contributor to the next hang. 90s gives
     # real headroom above the measured ~43s worst case.
     stop_grace_period: 90s
-    mem_limit: 6g
+    mem_limit: 12g
     mem_reservation: 128m
     cpus: 4
 
@@ -368,6 +368,15 @@ services:
     <<: *common
     image: ghcr.io/hotio/bazarr:release
     container_name: bazarr
+    # No explicit hostname previously - Docker defaulted it to the
+    # container's own short ID, which Bazarr then baked into its
+    # self-registered Plex account webhook URL. That ID changes on every
+    # recreate, permanently orphaning the old webhook entry on the Plex
+    # account (confirmed live 2026-07-25: registered URL still pointed at
+    # a dead prior container ID, unresolvable, logging warnings on every
+    # Plex event). A stable hostname keeps any future re-registration
+    # resolvable indefinitely.
+    hostname: bazarr
     profiles: [extras]
     networks: [stacknet]
     healthcheck:
