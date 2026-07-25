@@ -415,6 +415,26 @@ section, and there's no substitute for it for that class of change.
 
 ## Known current landmines (not historical — still true as of last audit)
 
+- **Cleanuparr has its own independent missing-content hunter ("Seeker"), separate from
+  NeutArr and from any Sonarr/Radarr import list** — found live 2026-07-25 still actively
+  enabled (`seeker_configs.proactive_search_enabled`/`search_enabled` both `1`,
+  `config/cleanuparr/cleanuparr.db`) and running every 30 minutes for both Radarr and Sonarr
+  (843 job runs since 2026-07-10, per `config/cleanuparr/events.db`'s `job_runs` table),
+  despite this file's own older guidance that Cleanuparr's built-in proactive search "should
+  stay disabled so it doesn't redundantly hunt alongside NeutArr" — it evidently never was.
+  This is a real, independent contributor to the 2026-07-24/25 mega-series-import-flood
+  incidents (RuPaul's Drag Race, Snapped, Dimension 20, Modern Marvels) alongside NeutArr and
+  the "Daddy's List" import list — don't assume disabling NeutArr alone stops unwanted
+  automated hunting in this stack; Cleanuparr's Seeker is a second, easy-to-miss source of
+  the exact same class of problem. **Disabled 2026-07-25** (`UPDATE seeker_configs SET
+  proactive_search_enabled = 0, search_enabled = 0`, container stopped/backed-up/edited/
+  restarted, same WAL-safety practice as every other live-DB edit in this file) - re-check
+  this table if large unexpected import bursts ever recur, since re-enabling Seeker by
+  mistake (or a Cleanuparr update resetting it) would silently reintroduce this. QueueCleaner
+  (Cleanuparr's actual intended job - strikes/malware-block/stalled-cleanup) is unaffected and
+  confirmed still legitimately useful: 4,147 runs since 2026-07-10, 696 strikes issued, but
+  zero strikes in the 14 days before 2026-07-24 - a safety net that only fires when something
+  is actually wrong, not noise.
 - **BearMount's `config/bearmount/config.yaml` `queue_cleanup_rules` entries can have
   `action: blocklist_search`, which blocklists a failed release AND immediately fires a new
   search** — if an indexer keeps serving equally-bad releases for a given episode/series
