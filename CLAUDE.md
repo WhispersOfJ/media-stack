@@ -632,6 +632,15 @@ scratch. Full incident narrative is in the History section below; this is the ch
   same Sonarr version this stack runs) — don't assume a bulk-queue-delete endpoint is shared
   Servarr-family API just because Radarr has it. Fall back to looping individual
   `DELETE /api/v3/queue/{id}?removeFromClient=true&blocklist=false` calls for Sonarr.
+  **This is queue-specific, not universal** - `DELETE /api/v3/blocklist/bulk` (body
+  `{"ids": [...]}`) works fine on both apps, confirmed live building
+  `stack-arr-blocklist-clear`. Don't assume every Sonarr bulk endpoint is broken just because
+  the queue one is.
+- **`httpx.delete()` (the module-level shortcut) doesn't accept a `json=` kwarg in this
+  project's pinned httpx version** — confirmed live building `/api/arr/{app}/blocklist/clear`,
+  which needs a body on DELETE (Radarr/Sonarr's `blocklist/bulk` endpoint takes `{"ids": [...]}`).
+  Use `httpx.request("DELETE", url, json=...)` instead for any future control-panel route that
+  needs a DELETE with a body.
 
 - ~~Radarr's and Sonarr's "Quality Definitions" are one flat, instance-wide list each, not
   scoped per quality profile~~ **Moot as of v11.2.0**: both apps were consolidated down to a
