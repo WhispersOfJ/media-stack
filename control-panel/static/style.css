@@ -162,6 +162,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .vital-sub { font-size: 0.76rem; color: var(--ink-soft); }
 .vital-sub.stat-sub-warn { color: var(--warn); }
 .vital-btn { align-self: flex-start; margin-top: 2px; }
+.vital-value.state-success { color: var(--good); }
+.vital-value.state-error { color: var(--bad); }
+.vital-value.state-pending { color: var(--warn); }
+
+/* ---------- Plex Health sparklines - hand-rolled SVG, no charting library ---------- */
+.sparkline-row { display: flex; gap: 16px; margin: 10px 0 6px; flex-wrap: wrap; }
+.sparkline-block { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 4px; }
+.sparkline-label { font-family: var(--font-mono); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+.sparkline { width: 100%; height: 40px; background: var(--surface); border: 1px solid var(--line); }
 
 /* ---------- Rule list: the box replacement — a hairline-divided row list ---------- */
 .rule-list { display: flex; flex-direction: column; border-top: 1px solid var(--line); }

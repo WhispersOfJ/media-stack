@@ -415,6 +415,64 @@ section, and there's no substitute for it for that class of change.
 
 ## Known current landmines (not historical — still true as of last audit)
 
+- **`echo 1 > /sys/fs/fuse/connections/<id>/abort` is NOT a safe, isolated way to clear one
+  stuck FUSE request — confirmed live 2026-07-25 to tear down BearMount's entire mount, not
+  just the one connection.** BearMount's `/mnt:/mnt:rshared` volume mount uses *symmetric*
+  shared propagation (not a one-way slave relationship) between the host and BearMount's own
+  container. Aborting a stuck connection this session left `/mnt/bearmount` a dead mountpoint
+  everywhere — including inside BearMount's own container, not just the 5 downstream
+  dependents — and a subsequent `sudo umount -l /mnt/bearmount` on the host (intended only to
+  clear an already-dead reference) had the same symmetric-propagation effect. **A `ls`/`stat`
+  against an empty-but-technically-mounted directory still exits 0 with no error** — this
+  looks identical to "healthy" unless the actual content is checked, which is what let this
+  go unnoticed through a full 5-container restart cascade that "succeeded" by every check
+  that only tested exit codes. Real consequence: Plex's own library-verify scan ran against
+  the now-empty mount right after its restart, found every symlink unavailable, and
+  `autoEmptyTrash` silently deleted 600+ library items across both sections within about a
+  second (confirmed via `Plex Media Server.log`'s `[LibraryTimeline] Scanner activity`
+  lines — `0 added, N deleted`, N climbing fast). Real media files on disk were untouched
+  (192 real movie folders confirmed intact) — this was metadata/library-record loss, not data
+  loss, recovered via a fresh `/library/sections/{id}/refresh` since the underlying
+  symlinks/files were fine once the mount was genuinely restored. **Recovery that actually
+  worked**: restart BearMount itself (not just the 5 dependents) to force a fresh internal
+  remount, verify real content is present (not just an empty dir) via something like
+  `docker exec bearmount ls /mnt/bearmount/movies`, *then* restart the 5 dependents, then
+  trigger a fresh Plex library refresh. `control-panel/app.py`'s `_restart_bearmount_cascade()`
+  (used by both `/api/plex/restart-cascade` and `/api/plex/unstick`) now enforces this
+  content-check step itself and refuses to restart the 5 dependents if BearMount's own mount
+  comes back empty — don't bypass that check by restarting containers by hand outside those
+  routes without doing the same verification manually first.
+- **`docker exec`/`container.exec_run` against a partially-wedged container does NOT
+  reliably fail fast** — an earlier note in this file claimed it does (based on a healthcheck
+  exec erroring in ~2s during a full hang); a live, earlier-stage FUSE hang 2026-07-25 (waiting
+  count building on one connection, not yet a full hang) instead made `docker exec plex ps
+  aux` hang past an 8s CLI timeout, which is exactly what made `/api/plex/scan-health` itself
+  unresponsive to callers for a stretch. `control-panel/app.py`'s `_bounded_exec()` helper
+  now wraps every `exec_run` call used by the Plex Health feature in a worker-thread timeout
+  so a wedged exec can no longer hang the request thread — any *new* code that calls
+  `exec_run` directly needs the same wrapper, don't assume a wedged container's exec calls
+  are safe to leave unbounded.
+- **Control Panel's compose service now carries `pid: host`, `cap_add: SYS_ADMIN`,
+  `security_opt: apparmor:unconfined`, plus `/proc:/host-proc:ro` and
+  `/sys/fs/fuse:/host-sys-fuse` (read-write)** — added 2026-07-25 for the Plex Health
+  feature's Tier 3 "Force Unstick" mitigation (`/api/plex/unstick`). This is a real,
+  meaningful increase in blast radius for an unauthenticated LAN-only service: an
+  unauthenticated POST can now enumerate every host process under `/host-proc` and write to
+  host `/sys/fs/fuse/connections/*/abort`. Mitigated the same way as the existing
+  docker.sock access — Origin/Host validation, not a login gate — see the Security section's
+  existing reasoning for why that tradeoff was accepted here too.
+- **Plex Health feature (`GET /api/plex/scan-health`, `POST /api/plex/restart-cascade`,
+  `POST /api/plex/unstick`) turns this session's own repeated by-hand FUSE/D-state and
+  SQLite-lock-contention diagnosis into a real, always-visible Control Panel panel** — status
+  tiles, sparkline history, a live Plex-log tail, and the three-tier mitigation buttons
+  (Tier 1: existing plain container restart; Tier 2: `restart-cascade`, force-recreates
+  BearMount + restarts the 5 `MOUNT_DEPENDENTS`; Tier 3: `unstick`, aborts wedged FUSE
+  connections first). Both Tier 2 and Tier 3 are gated on BearMount's own `import_queue`
+  being empty (same hard rule as every other BearMount recreate in this file) unless
+  `?force=true` is passed. `stack-plex-restart-cascade`/`stack-plex-unstick` fish functions
+  and matching `commands.json` palette entries exist for CLI/palette parity. See the two
+  landmines above for real bugs this feature's first live use surfaced the same day it
+  shipped — both are now fixed in the route logic itself, not just noted here.
 - **Cleanuparr has its own independent missing-content hunter ("Seeker"), separate from
   NeutArr and from any Sonarr/Radarr import list** — found live 2026-07-25 still actively
   enabled (`seeker_configs.proactive_search_enabled`/`search_enabled` both `1`,

@@ -91,6 +91,11 @@ def _mdblist_key() -> str | None:
 # docker-compose.yml's control-panel volumes for what backs each of these.
 HOST_CONFIG_DIR = "/host-config"
 HOST_MNT_DIR = "/mnt"
+# Only present once the compose privilege change for Force Unstick lands -
+# every helper that reads these degrades gracefully (empty result, not a
+# 500) if the mount isn't there, so this route works before and after.
+HOST_PROC_DIR = "/host-proc"
+HOST_SYS_FUSE_DIR = "/host-sys-fuse"
 HOST_BACKUP_LOCAL = "/host-backups/stack-restic-repo"
 HOST_BACKUP_OFFSITE = "/host-backup-offsite"
 HOST_RESTIC_PASSWORD_FILE = "/host-backups/.restic-password"
@@ -2529,6 +2534,242 @@ def _bucket_plex_activity(a: dict, prev_progress: dict[str, int]) -> tuple[str, 
     return "stalled", item
 
 
+# ---------------------------------------------------------------------
+# Plex scan health - turns this session's own manual incident-diagnosis
+# sequence (docker exec ps aux, /proc D-state reads, FUSE connection
+# waiting counts, a log-file grep, a bearmount import_queue check) into a
+# real endpoint. See CLAUDE.md's landmines for the two distinct failure
+# classes this detects: a genuine FUSE/D-state kernel hang on BearMount's
+# mount, vs. a Plex-internal SQLite lock-contention stall under a large
+# import burst - they look similar from the activities API alone but need
+# different fixes (Tier 3 FUSE-abort vs. a plain restart).
+# ---------------------------------------------------------------------
+
+def _plex_container_pid() -> int | None:
+    """Pure Docker API metadata - no new privilege needed. Returns the
+    HOST pid Docker itself reports for Plex's own init process."""
+    try:
+        c = docker_client.containers.get("plex")
+        return c.attrs.get("State", {}).get("Pid") or None
+    except docker.errors.NotFound:
+        return None
+
+
+def _bounded_exec(container, cmd: list[str], timeout: int = 5):
+    """Runs container.exec_run(cmd) with a hard wall-clock bound.
+    CORRECTION, 2026-07-25: this session originally assumed docker exec
+    against a wedged container fails fast (an OCI runtime error in ~2s).
+    A real, live early-stage FUSE hang the same day disproved that -
+    `docker exec plex ps aux` hung past an 8s CLI timeout instead of
+    erroring, and that hang is exactly what made /api/plex/scan-health
+    itself unresponsive for callers. exec_run has no built-in timeout, so
+    this runs it in a worker thread and gives up on the *caller's* side if
+    it doesn't return in time - the abandoned thread may still be blocked
+    in the kernel afterward, but the request thread is no longer hostage
+    to it."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(container.exec_run, cmd=cmd)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            return None
+
+
+def _plex_scanner_processes() -> list[str]:
+    """See _bounded_exec's docstring for why this can no longer assume a
+    wedged container fails fast - it's now bounded from the caller's side
+    instead. Safe to call on every poll; returns [] on timeout, same as
+    on any other exec failure (indistinguishable to the caller, which
+    already treats "no scanner lines found" as one input among several)."""
+    try:
+        c = docker_client.containers.get("plex")
+    except docker.errors.NotFound:
+        return []
+    try:
+        result = _bounded_exec(c, ["ps", "aux"], timeout=5)
+    except Exception:
+        return []
+    if result is None:
+        return []
+    lines = result.output.decode(errors="replace").splitlines()
+    return [line for line in lines if "Plex Media Scanner" in line]
+
+
+def _plex_dstate_threads(pid: int | None) -> list[dict]:
+    """Iterates /host-proc/{pid}/task/*/status for any thread in D (disk
+    sleep, uninterruptible) state - the exact signature of the FUSE hang
+    this session hit repeatedly (fuse_open blocked in the kernel forever).
+    Returns [] gracefully if pid is unknown or /host-proc isn't mounted -
+    this route works (with reduced detection) before the compose privilege
+    change for Force Unstick lands, and after it if the mount ever fails."""
+    if not pid or not os.path.isdir(HOST_PROC_DIR):
+        return []
+    task_dir = os.path.join(HOST_PROC_DIR, str(pid), "task")
+    found = []
+    try:
+        tids = os.listdir(task_dir)
+    except OSError:
+        return []
+    for tid in tids:
+        status_path = os.path.join(task_dir, tid, "status")
+        try:
+            with open(status_path) as f:
+                text = f.read()
+        except OSError:
+            continue
+        state = comm = None
+        for line in text.splitlines():
+            if line.startswith("State:"):
+                state = line.split(":", 1)[1].strip()
+            elif line.startswith("Name:"):
+                comm = line.split(":", 1)[1].strip()
+        if state and state.startswith("D "):
+            entry = {"tid": tid, "comm": comm, "state": state}
+            stack_path = os.path.join(task_dir, tid, "stack")
+            try:
+                with open(stack_path) as f:
+                    entry["stack"] = f.read().strip().splitlines()[:6]
+            except OSError:
+                pass
+            found.append(entry)
+    return found
+
+
+def _fuse_waiting_total() -> int:
+    """Sums the 'waiting' counter across every live FUSE connection - a
+    sustained non-zero count on BearMount's connection is what a real hang
+    looks like from the kernel's side, confirmed repeatedly this session.
+    Returns 0 gracefully if /host-sys-fuse isn't mounted."""
+    conn_dir = os.path.join(HOST_SYS_FUSE_DIR, "connections")
+    if not os.path.isdir(conn_dir):
+        return 0
+    total = 0
+    try:
+        conn_ids = os.listdir(conn_dir)
+    except OSError:
+        return 0
+    for conn_id in conn_ids:
+        waiting_path = os.path.join(conn_dir, conn_id, "waiting")
+        try:
+            with open(waiting_path) as f:
+                total += int(f.read().strip() or 0)
+        except (OSError, ValueError):
+            continue
+    return total
+
+
+def _plex_log_tail(lines: int = 200) -> dict:
+    """Reads Plex's own log file directly - the "Waited over 10 seconds
+    for a busy database" / scanner-kill diagnostic lines live here, never
+    in docker logs (confirmed this session: every diagnosis read this file
+    directly, Plex does not echo these to stdout)."""
+    log_path = os.path.join(HOST_CONFIG_DIR, "plex", "Plex Media Server", "Logs", "Plex Media Server.log")
+    if not os.path.isfile(log_path):
+        return {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": []}
+    try:
+        with open(log_path, errors="replace") as f:
+            all_lines = f.readlines()
+    except OSError:
+        return {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": []}
+    tail = [line.rstrip("\n") for line in all_lines[-lines:]]
+    busy_lines = [line for line in all_lines if "busy database" in line]
+    timestamps = [line.split("]")[0].split("[")[0].strip() for line in busy_lines[-10:]]
+    return {"lines": tail, "busy_db_errors": len(busy_lines), "recent_busy_db_timestamps": timestamps}
+
+
+def _bearmount_queue_counts() -> dict:
+    """Same read-only-URI sqlite pattern already used by cleanuparr_instances()
+    - the exact check CLAUDE.md's own hard rule requires before touching
+    bearmount for any reason: a non-empty import_queue means a recreate
+    wipes /tmp/.bearmount-queue and silently blocklists affected items."""
+    db_path = os.path.join(HOST_CONFIG_DIR, "bearmount", "bearmount.db")
+    if not os.path.isfile(db_path):
+        return {"pending": 0, "processing": 0, "db_missing": True}
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+    cur.execute("SELECT status, COUNT(*) as n FROM import_queue GROUP BY status")
+    counts = {row["status"]: row["n"] for row in cur.fetchall()}
+    con.close()
+    return {"pending": counts.get("pending", 0), "processing": counts.get("processing", 0)}
+
+
+def _mount_test(container_name: str = "plex", timeout: int = 5) -> bool:
+    """Bounded twice over: the in-container `timeout` command bounds a
+    merely-slow mount, and _bounded_exec bounds the exec_run call itself
+    from the caller's side - see its docstring for why that second layer
+    is required, not just the in-container one (a real live hang
+    2026-07-25 got stuck before the in-container timeout process even
+    started scheduling, confirmed by an outer CLI `timeout` also expiring
+    on a plain `docker exec ... ls`). Unlike the existing /api/mount-health
+    route's unbounded os.listdir(), this can never hang the request thread."""
+    try:
+        c = docker_client.containers.get(container_name)
+    except docker.errors.NotFound:
+        return False
+    try:
+        result = _bounded_exec(c, ["timeout", str(timeout), "ls", "/mnt/bearmount"], timeout=timeout + 2)
+    except Exception:
+        return False
+    if result is None:
+        return False
+    return result.exit_code == 0
+
+
+@app.get("/api/plex/scan-health")
+def plex_scan_health():
+    """One snapshot combining every signal this session used by hand to
+    tell a healthy-but-slow scan apart from a genuine hang: live /activities
+    progress, whether a real scanner subprocess is actually running, D-state
+    kernel threads, FUSE waiting-request count, a bounded mount test,
+    BearMount's own queue state, and recent "busy database" log activity.
+    Stateless per call, matching every other route here - the frontend
+    keeps its own ring buffer for "stuck for N polls" trend detection."""
+    pid = _plex_container_pid()
+    dstate = _plex_dstate_threads(pid)
+    fuse_waiting = _fuse_waiting_total()
+    mount_ok = _mount_test("plex")
+    scanner_lines = _plex_scanner_processes()
+    bearmount_queue = _bearmount_queue_counts()
+    log_info = _plex_log_tail(lines=50)
+
+    try:
+        activities = _plex_activities()
+    except HTTPException:
+        activities = []
+
+    try:
+        c = docker_client.containers.get("plex")
+        c.reload()
+        health = c.attrs.get("State", {}).get("Health", {}).get("Status") or "unknown"
+        restart_count = c.attrs.get("RestartCount", 0)
+    except docker.errors.NotFound:
+        health = "missing"
+        restart_count = 0
+
+    if dstate or not mount_ok:
+        state = "hung_confirmed"
+    elif bearmount_queue.get("pending", 0) or bearmount_queue.get("processing", 0):
+        state = "stalled_suspected" if activities and not scanner_lines else "scanning"
+    elif activities:
+        state = "scanning"
+    else:
+        state = "healthy"
+
+    return ok(f"Plex is {state.replace('_', ' ')}.",
+              state=state,
+              activities=activities,
+              scanner_running=bool(scanner_lines),
+              dstate_threads=dstate,
+              fuse_waiting=fuse_waiting,
+              mount_ok=mount_ok,
+              container={"health": health, "restart_count": restart_count},
+              bearmount_queue=bearmount_queue,
+              recent_busy_db_errors=log_info["busy_db_errors"],
+              recent_busy_db_timestamps=log_info["recent_busy_db_timestamps"],
+              log_tail=log_info["lines"][-20:])
+
+
 @app.get("/api/queue-status")
 def queue_status():
     """Every *arr app's download queue plus BearMount's and Plex's own
@@ -3104,6 +3345,133 @@ def stack_restart_all():
 
     threading.Thread(target=worker, daemon=True).start()
     return ok(f"Restarting {len(names)} containers (everything except this panel): {', '.join(names)}")
+
+
+def _restart_bearmount_cascade():
+    """Shared by both Tier 2 (restart-cascade) and Tier 3 (unstick): force-
+    recreates BearMount (no SDK equivalent of `docker compose up
+    --force-recreate` exists - container.restart() is same-container
+    stop+start, not a recreate, confirmed by reading this file's own
+    stack_restart_all() above), waits for it to report healthy, then
+    restarts the 5 MOUNT_DEPENDENTS in order. Run synchronously - this is a
+    scoped 6-container operation, bounded enough not to need
+    stack_restart_all()'s fire-and-forget thread pattern.
+
+    CONFIRMED LIVE, 2026-07-25: recreating BearMount here isn't optional
+    even for Tier 3's own abort step - the mount volume is `/mnt:/mnt:rshared`
+    (symmetric propagation, not a one-way slave), so an abort or an
+    umount anywhere in that peer group can tear down BearMount's own
+    internal mount too, not just a stale downstream reference. This is
+    exactly why the recreate happens here rather than skipping straight
+    to restarting the 5 dependents.
+
+    Also confirmed live the same day: a container.exec_run `ls` against a
+    *content-less* mount still exits 0 with empty output - it looks
+    identical to a healthy check unless the content itself is verified.
+    `wait_for_healthy()` alone would have falsely reported success here,
+    so this checks for a real, non-empty directory listing before
+    declaring BearMount itself recovered."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    result = subprocess.run(
+        ["docker", "compose", "up", "-d", "--force-recreate", "bearmount"],
+        cwd=repo_root, capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0:
+        fail(f"bearmount force-recreate failed: {result.stderr.strip()[:400]}")
+    try:
+        bearmount = docker_client.containers.get("bearmount")
+    except docker.errors.NotFound:
+        fail("bearmount container not found after recreate.")
+    wait_for_healthy(bearmount)
+
+    mount_has_content = False
+    for _ in range(10):
+        result = _bounded_exec(bearmount, ["ls", "/mnt/bearmount/movies"], timeout=5)
+        if result is not None and result.exit_code == 0 and result.output.strip():
+            mount_has_content = True
+            break
+        time.sleep(2)
+    if not mount_has_content:
+        fail("bearmount recreated and reports healthy, but /mnt/bearmount/movies is still "
+             "empty after 20s - its own internal FUSE mount hasn't come back with real "
+             "content. Do not restart the 5 dependents against an empty mount (this is what "
+             "caused the 2026-07-25 mass library deletion - Plex's autoEmptyTrash cleared "
+             "600+ items after finding every symlink unavailable). Check `docker logs "
+             "bearmount` before retrying.", status_code=502)
+
+    restarted = []
+    for name in sorted(MOUNT_DEPENDENTS):
+        try:
+            c = docker_client.containers.get(name)
+            c.restart(timeout=30)
+            wait_for_healthy(c)
+            restarted.append(name)
+        except Exception as e:
+            print(f"bearmount cascade: failed to restart {name}: {e}")
+    return restarted
+
+
+@app.post("/api/plex/restart-cascade")
+def plex_restart_cascade(force: bool = False):
+    """Tier 2 mitigation: fixes 'bearmount itself needs a bump' (a degraded
+    mount, not a genuine FUSE/D-state hang - that needs Tier 3's abort
+    first). Gated on CLAUDE.md's own hard rule: a non-empty import_queue
+    means this recreate wipes /tmp/.bearmount-queue and silently
+    blocklists affected Radarr/Sonarr items - confirmed live, repeatedly,
+    this session."""
+    counts = _bearmount_queue_counts()
+    if not force and (counts.get("pending", 0) or counts.get("processing", 0)):
+        fail(f"BearMount's queue isn't empty (pending={counts.get('pending', 0)}, "
+             f"processing={counts.get('processing', 0)}) - recreating now risks silently "
+             f"blocklisting in-flight items. Pass force=true to override.", status_code=409)
+    restarted = _restart_bearmount_cascade()
+    return ok(f"Mount cascade restarted: bearmount + {', '.join(restarted)}.", restarted=restarted)
+
+
+@app.post("/api/plex/unstick")
+def plex_unstick(force: bool = False):
+    """Tier 3 mitigation - the only one that clears a genuine FUSE/D-state
+    hang. Requires the host-level /host-sys-fuse (rw) + /host-proc (ro) +
+    pid: host + cap_add: SYS_ADMIN compose privilege - without it, every
+    connection under /host-sys-fuse/connections is invisible and this
+    route has nothing to abort (returns a clear message, not a silent
+    no-op). Same import_queue safety gate as Tier 2, since this also ends
+    in a bearmount recreate."""
+    conn_dir = os.path.join(HOST_SYS_FUSE_DIR, "connections")
+    if not os.path.isdir(conn_dir):
+        fail(f"{conn_dir} not mounted - this control-panel container needs the Force Unstick "
+             f"compose privilege change (see CLAUDE.md) before this route can do anything.",
+             status_code=503)
+
+    counts = _bearmount_queue_counts()
+    if not force and (counts.get("pending", 0) or counts.get("processing", 0)):
+        fail(f"BearMount's queue isn't empty (pending={counts.get('pending', 0)}, "
+             f"processing={counts.get('processing', 0)}) - the cascade this triggers risks "
+             f"silently blocklisting in-flight items. Pass force=true to override.", status_code=409)
+
+    aborted = []
+    for conn_id in os.listdir(conn_dir):
+        waiting_path = os.path.join(conn_dir, conn_id, "waiting")
+        try:
+            with open(waiting_path) as f:
+                waiting = int(f.read().strip() or 0)
+        except (OSError, ValueError):
+            continue
+        if waiting > 0:
+            try:
+                with open(os.path.join(conn_dir, conn_id, "abort"), "w") as f:
+                    f.write("1")
+                aborted.append(conn_id)
+            except OSError as e:
+                fail(f"Failed to abort FUSE connection {conn_id}: {e}")
+
+    if not aborted:
+        return ok("No FUSE connections currently show waiting requests - nothing to unstick.", aborted=[])
+
+    time.sleep(3)
+    restarted = _restart_bearmount_cascade()
+    return ok(f"Aborted connection(s) {', '.join(aborted)}; mount cascade restarted: "
+              f"bearmount + {', '.join(restarted)}.", aborted=aborted, restarted=restarted)
 
 
 # ---------------------------------------------------------------------

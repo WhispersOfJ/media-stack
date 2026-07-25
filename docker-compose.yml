@@ -161,7 +161,23 @@ services:
     volumes:
       - ./config/bearmount:/config
       - /mnt:/mnt:rshared
-      - ./media/bearmount-import:/mnt/bearmount-import
+      # :rprivate is deliberate, not the default - this bind mount sits
+      # nested under the /mnt entry above, which is rshared (needed so
+      # BearMount's own internal rclone FUSE mount at /mnt/bearmount
+      # propagates out to the host for other containers' :rslave binds).
+      # Without an explicit private propagation flag here, this nested
+      # mount inherits shared propagation too - and since several
+      # container kills this session were abnormal (the documented
+      # FUSE/D-state hangs), the mount event wasn't cleanly torn down on
+      # stop and instead leaked a new copy into the host's shared peer
+      # group on every recreate. Confirmed live 2026-07-25: this leaked
+      # to 16,384 stacked host-visible mount entries at this exact path,
+      # eventually blocking BearMount's own remount with a misleading
+      # "no space left on device" (a mount-table/propagation-group
+      # exhaustion, not real disk space - real usage was 19%). :rprivate
+      # scopes propagation to just this one mount, breaking the leak
+      # mechanism without affecting the /mnt:rshared entry it sits under.
+      - ./media/bearmount-import:/mnt/bearmount-import:rprivate
     devices:
       - /dev/fuse:/dev/fuse:rwm
     cap_add:
@@ -345,6 +361,17 @@ services:
     container_name: control-panel
     profiles: [extras]
     networks: [stacknet]
+    # Plex Health feature (Tier 3 "Force Unstick") - pid: host lets
+    # /api/plex/scan-health resolve Plex's real host PID for D-state
+    # thread introspection under /host-proc; cap_add + security_opt are
+    # what actually let the abort write to /host-sys-fuse succeed. Start
+    # minimal (this set) before adding anything broader if a real
+    # permission error proves it's needed - see CLAUDE.md.
+    pid: host
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8420/healthz')\" || exit 1"]
       interval: 30s
@@ -396,6 +423,16 @@ services:
       # of these need write access, only visibility into what's already there.
       - /mnt:/mnt:ro
       - ./config:/host-config:ro
+      # Plex Health feature (Tier 3 "Force Unstick") - real, meaningful
+      # increase in blast radius for an unauthenticated LAN-only service,
+      # see CLAUDE.md's Security section for the tradeoff this accepts.
+      # /host-proc is read-only (D-state thread introspection only);
+      # /host-sys-fuse is NOT read-only - Force Unstick writes
+      # .../connections/<id>/abort to abort a wedged FUSE connection, the
+      # same host-level action this session did by hand during the
+      # 2026-07-25 hang (see CLAUDE.md's landmines section).
+      - /proc:/host-proc:ro
+      - /sys/fs/fuse:/host-sys-fuse
       - /home/bear/backups:/host-backups:ro
       - /home/bear/Dropbox/stack-restic-repo-offsite:/host-backup-offsite:ro
       # Single-file bind mount, not a directory - confirmed live this

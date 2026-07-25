@@ -550,6 +550,30 @@
     "LogContainer": "{1}"
   },
   {
+    "Name": "stack-plex-restart-cascade",
+    "Description": "Tier 2: force-recreate BearMount + restart the 5 mount-dependent containers",
+    "Method": "POST",
+    "PathTemplate": "/api/plex/restart-cascade",
+    "Query": null,
+    "Args": null,
+    "Confirm": true,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "bearmount"
+  },
+  {
+    "Name": "stack-plex-unstick",
+    "Description": "Tier 3: abort wedged FUSE connections, then run the mount cascade",
+    "Method": "POST",
+    "PathTemplate": "/api/plex/unstick",
+    "Query": null,
+    "Args": null,
+    "Confirm": true,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "bearmount"
+  },
+  {
     "Name": "stack-sonarr-monitor-episodes-fix",
     "Description": "Fix any unmonitored episode under a monitored Sonarr series/season",
     "Method": "POST",
