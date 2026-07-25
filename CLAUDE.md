@@ -49,6 +49,13 @@ relevant sections, not loaded in full every turn. Before making any change to th
   set — mount owner and mount consumer both, including containers restarted by automated
   recovery logic. See STACK.md's 2026-07-25 root-cause landmines before assuming a service is
   exempt.
+- A dependent container's own bind-mount view of BearMount can go stale independently of the
+  host and of BearMount itself, even while Docker healthchecks pass. Verify mount health from
+  *inside the specific dependent container* (`docker exec <container> ls /mnt/bearmount/...`),
+  not just the host or BearMount's own container. See STACK.md 2026-07-25.
+- Plex's `autoEmptyTrash` setting has mass-deleted library items 3x on a stale-mount scan
+  (confirmed history in STACK.md) and is now disabled — don't re-enable it without reading
+  that history first.
 
 ## Commands
 
@@ -98,8 +105,8 @@ The unit suite only covers pure logic reachable with everything mocked; it does 
 exercising a change against the real running stack (curl an endpoint, check `docker logs`,
 load the dashboard) for anything that actually talks to a live container.
 
-**`README.md`** is the only end-user documentation in this repo (~1,900 lines, organized by
-subsystem with a linked table of contents) — read the relevant section there for how a feature
-is meant to work. **`STACK.md`** is the operational/incident memory for Claude Code specifically
+**`README.md`** is the only end-user documentation in this repo (long, organized by subsystem
+with a linked table of contents) — read the relevant section there for how a feature is meant
+to work. **`STACK.md`** is the operational/incident memory for Claude Code specifically
 — read it for how things have actually broken, what's currently true vs. historical, and the
 gotchas that aren't visible from reading the code alone.
