@@ -550,6 +550,18 @@
     "LogContainer": "{1}"
   },
   {
+    "Name": "stack-sonarr-monitor-episodes-fix",
+    "Description": "Fix any unmonitored episode under a monitored Sonarr series/season",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/sonarr/monitor-episodes-fix",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "sonarr"
+  },
+  {
     "Name": "stack-disk-usage",
     "Description": "Per-app config/ directory size, largest first",
     "Method": "GET",
