@@ -39,6 +39,14 @@ PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
 # app.Use, not a literal /api/sabnzbd path).
 BEARMOUNT_URL = "http://bearmount:8080/sabnzbd"
 BEARMOUNT_API_KEY = os.environ.get("BEARMOUNT_API_KEY")
+# BearMount's own JWT-authenticated REST API (fuse/health/etc, distinct from
+# the SABnzbd-compatible queue/history API above, which uses BEARMOUNT_API_KEY
+# as a query param instead). Confirmed live 2026-07-25: the admin user is
+# fixed ("admin", not a secret - only its password is), and the JWT must be
+# sent as an X-JWT header, not Authorization: Bearer (that was rejected).
+BEARMOUNT_REST_URL = "http://bearmount:8080"
+BEARMOUNT_ADMIN_USERNAME = "admin"
+BEARMOUNT_ADMIN_PASSWORD = os.environ.get("BEARMOUNT_ADMIN_PASSWORD")
 HOST_IP = os.environ.get("HOST_IP")
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 BAZARR_URL = "http://bazarr:6767"
@@ -1359,6 +1367,103 @@ def bearmount_history(limit: int = 20):
         "fail_message": s.get("fail_message") or None,
         "path": s.get("storage"),
     } for s in slots]
+
+
+# ---------------------------------------------------------------------
+# BearMount's own REST API (JWT-authenticated) - fuse mount control and
+# health/corruption monitoring. Added 2026-07-25 ahead of the mount_type:
+# rclone -> fuse switch (see STACK.md). _bearmount_jwt() caches the token
+# in memory (24h lifetime observed live) and re-logs in on expiry or a 401.
+#
+# CONFIRMED LIVE, 2026-07-25: /api/fuse/start and /api/fuse/stop act on the
+# raw FUSE layer regardless of the current mount_type config - calling
+# start while mount_type is still "rclone" mounts a second filesystem on
+# top of the live rclone mount at the same path, and stop then tears down
+# both layers together. Real incident, not theoretical: this broke BearMount's
+# serving mount and hung Plex the first time it was tried. Do NOT call
+# bearmount_fuse_start/bearmount_fuse_stop for real while mount_type is
+# still rclone - they only become safe to exercise once config.yaml's
+# mount_type is actually "fuse".
+_bearmount_jwt_cache = {"token": None, "expires_at": 0.0}
+
+
+def _bearmount_jwt() -> str:
+    now = time.time()
+    if _bearmount_jwt_cache["token"] and now < _bearmount_jwt_cache["expires_at"]:
+        return _bearmount_jwt_cache["token"]
+    if not BEARMOUNT_ADMIN_PASSWORD:
+        fail("BearMount isn't configured (BEARMOUNT_ADMIN_PASSWORD not set)", status_code=503)
+    try:
+        r = httpx.post(
+            f"{BEARMOUNT_REST_URL}/api/auth/login",
+            json={"username": BEARMOUNT_ADMIN_USERNAME, "password": BEARMOUNT_ADMIN_PASSWORD},
+            timeout=15,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"BearMount login failed: {e}")
+    set_cookie = r.headers.get("set-cookie", "")
+    match = re.search(r"JWT=([^;]+)", set_cookie)
+    if not match:
+        fail("BearMount login succeeded but no JWT cookie was returned.")
+    token = match.group(1)
+    _bearmount_jwt_cache["token"] = token
+    _bearmount_jwt_cache["expires_at"] = now + 23 * 3600  # 24h lifetime observed, refresh early
+    return token
+
+
+def _bearmount_rest_request(method: str, path: str, json_body: dict | None = None, timeout: int = 15) -> dict:
+    token = _bearmount_jwt()
+    try:
+        r = httpx.request(
+            method, f"{BEARMOUNT_REST_URL}{path}", headers={"X-JWT": token}, json=json_body, timeout=timeout,
+        )
+        if r.status_code == 401:
+            # Token expired/invalid despite our cache - force one fresh
+            # login and retry exactly once, rather than looping.
+            _bearmount_jwt_cache["token"] = None
+            token = _bearmount_jwt()
+            r = httpx.request(
+                method, f"{BEARMOUNT_REST_URL}{path}", headers={"X-JWT": token}, json=json_body, timeout=timeout,
+            )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"BearMount {method} {path} failed: {e}")
+    return r.json()
+
+
+@app.get("/api/bearmount/fuse/status")
+def bearmount_fuse_status():
+    data = _bearmount_rest_request("GET", "/api/fuse/status")
+    return ok("FUSE status fetched.", **data.get("data", {}))
+
+
+@app.post("/api/bearmount/fuse/start")
+def bearmount_fuse_start(path: str = "/mnt/bearmount"):
+    """See the module-level warning above - only safe to call once
+    config.yaml's mount_type is actually "fuse"."""
+    data = _bearmount_rest_request("POST", "/api/fuse/start", json_body={"path": path})
+    return ok(data.get("message", "FUSE mount starting."))
+
+
+@app.post("/api/bearmount/fuse/stop")
+def bearmount_fuse_stop():
+    """See the module-level warning above - only safe to call once
+    config.yaml's mount_type is actually "fuse"."""
+    data = _bearmount_rest_request("POST", "/api/fuse/stop")
+    return ok(data.get("message", "FUSE mount stopping."))
+
+
+@app.get("/api/bearmount/health/stats")
+def bearmount_health_stats():
+    data = _bearmount_rest_request("GET", "/api/health/stats")
+    return ok("Health stats fetched.", **data.get("data", {}))
+
+
+@app.get("/api/bearmount/health/corrupted")
+def bearmount_health_corrupted():
+    data = _bearmount_rest_request("GET", "/api/health/corrupted")
+    return ok("Corrupted file list fetched.", files=data.get("data", []), meta=data.get("meta", {}))
 
 
 # ---------------------------------------------------------------------
@@ -2691,9 +2796,11 @@ def _plex_log_tail(lines: int = 200, tail_bytes: int = 512_000) -> dict:
     "busy database" occurrences within this same bounded window are
     counted now, not the whole file's history - an accepted tradeoff for
     "recent activity", which is this field's stated purpose anyway."""
+    empty = {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": [],
+              "analysis_active": False, "analysis_batches": 0, "analysis_last_seconds": None}
     log_path = os.path.join(HOST_CONFIG_DIR, "plex", "Plex Media Server", "Logs", "Plex Media Server.log")
     if not os.path.isfile(log_path):
-        return {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": []}
+        return empty
     try:
         with open(log_path, "rb") as f:
             f.seek(0, os.SEEK_END)
@@ -2701,12 +2808,39 @@ def _plex_log_tail(lines: int = 200, tail_bytes: int = 512_000) -> dict:
             f.seek(max(0, size - tail_bytes))
             chunk = f.read().decode(errors="replace")
     except OSError:
-        return {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": []}
+        return empty
     all_lines = chunk.splitlines()
     tail = all_lines[-lines:]
     busy_lines = [line for line in all_lines if "busy database" in line]
     timestamps = [line.split("]")[0].split("[")[0].strip() for line in busy_lines[-10:]]
-    return {"lines": tail, "busy_db_errors": len(busy_lines), "recent_busy_db_timestamps": timestamps}
+
+    # Media Analyzer activity - confirmed live 2026-07-25 that "Background
+    # analysis completed in 30.0 seconds" is Plex's own fixed on-the-fly
+    # analysis batch window (every occurrence checked read exactly 30.0,
+    # never a variable "timeout" value), and the "signal: Killed" line
+    # immediately following each one is Plex recycling that batch's worker
+    # process - both are normal operation during a heavy import burst, not
+    # a hang or a failure. Surfaced here so callers (scan-health's own
+    # state logic, and scripts/plex-health-monitor.py) can tell "Plex is
+    # legitimately busy analyzing new imports" apart from "Plex is stuck",
+    # rather than only having scan-progress and queue-depth to go on -
+    # both of those stay flat while analysis runs, which previously looked
+    # identical to a real stall from the outside.
+    analysis_lines = [line for line in all_lines
+                       if "Media Analyzer" in line and ("Performing on-the-fly analysis" in line
+                                                         or "Background analysis completed" in line)]
+    last_analysis_seconds = None
+    for line in reversed(analysis_lines):
+        if "Background analysis completed in" in line:
+            try:
+                last_analysis_seconds = float(line.split("completed in")[1].split("seconds")[0].strip())
+            except (IndexError, ValueError):
+                pass
+            break
+
+    return {"lines": tail, "busy_db_errors": len(busy_lines), "recent_busy_db_timestamps": timestamps,
+            "analysis_active": bool(analysis_lines), "analysis_batches": len(analysis_lines),
+            "analysis_last_seconds": last_analysis_seconds}
 
 
 def _bearmount_queue_counts() -> dict:
@@ -2717,12 +2851,20 @@ def _bearmount_queue_counts() -> dict:
     db_path = os.path.join(HOST_CONFIG_DIR, "bearmount", "bearmount.db")
     if not os.path.isfile(db_path):
         return {"pending": 0, "processing": 0, "db_missing": True}
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
-    cur.execute("SELECT status, COUNT(*) as n FROM import_queue GROUP BY status")
-    counts = {row["status"]: row["n"] for row in cur.fetchall()}
-    con.close()
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        cur.execute("SELECT status, COUNT(*) as n FROM import_queue GROUP BY status")
+        counts = {row["status"]: row["n"] for row in cur.fetchall()}
+        con.close()
+    except sqlite3.OperationalError:
+        # Confirmed live 2026-07-25: "unable to open database file" during a
+        # brief window while bearmount's own container is mid-restart -
+        # scan-health (a monitoring route) shouldn't 500 over a transient
+        # race like this, so this degrades the same way a missing db_path
+        # already does above rather than crashing the whole endpoint.
+        return {"pending": 0, "processing": 0, "db_unavailable": True}
     return {"pending": counts.get("pending", 0), "processing": counts.get("processing", 0)}
 
 
@@ -2782,7 +2924,14 @@ def plex_scan_health():
     if dstate or not mount_ok:
         state = "hung_confirmed"
     elif bearmount_queue.get("pending", 0) or bearmount_queue.get("processing", 0):
-        state = "stalled_suspected" if activities and not scanner_lines else "scanning"
+        # log_info["analysis_active"]: added 2026-07-25 - Plex's Media
+        # Analyzer running background analysis on freshly-imported items
+        # legitimately keeps scanner_lines empty for brief windows between
+        # its ~30s batch cycles (see _plex_log_tail's docstring), which
+        # previously looked identical to a real stall from here. Real
+        # analysis activity in the log tail is treated the same as a live
+        # scanner process for this branch.
+        state = "stalled_suspected" if activities and not scanner_lines and not log_info["analysis_active"] else "scanning"
     elif activities:
         state = "scanning"
     else:
@@ -2799,6 +2948,9 @@ def plex_scan_health():
               bearmount_queue=bearmount_queue,
               recent_busy_db_errors=log_info["busy_db_errors"],
               recent_busy_db_timestamps=log_info["recent_busy_db_timestamps"],
+              analysis_active=log_info["analysis_active"],
+              analysis_batches=log_info["analysis_batches"],
+              analysis_last_seconds=log_info["analysis_last_seconds"],
               log_tail=log_info["lines"][-20:])
 
 
@@ -3379,15 +3531,58 @@ def stack_restart_all():
     return ok(f"Restarting {len(names)} containers (everything except this panel): {', '.join(names)}")
 
 
+def _recreate_container_via_sdk(name: str):
+    """Recreates a container in place from its own current inspected
+    config - the closest reachable equivalent to `docker compose up
+    --force-recreate <service>` from inside a container that only has
+    docker.sock, not the `docker` CLI or a docker-compose.yml to run it
+    against.
+
+    CORRECTION, 2026-07-25: this used to shell out to `docker compose up
+    -d --force-recreate` via subprocess. Confirmed live, both halves of
+    that were broken: the `docker` CLI binary isn't installed in this
+    image at all (every call failed with a bare FileNotFoundError, not a
+    compose error), and even with it installed, `cwd=repo_root` resolved
+    to this container's own filesystem root (`os.path.dirname` of `/app/
+    app.py` twice is `/`), which has no docker-compose.yml - there's no
+    bind-mounted copy of the repo in here. This path had never actually
+    completed successfully in production; Tier 3's abort step had been
+    silently leaving Plex dead with no recreate ever happening. Recreating
+    from the container's own Config/HostConfig/NetworkSettings needs only
+    the docker.sock already mounted for every other route in this file."""
+    old = docker_client.api.inspect_container(name)
+    config = old["Config"]
+    host_config = old["HostConfig"]
+    networking_config = docker_client.api.create_networking_config({
+        net: docker_client.api.create_endpoint_config()
+        for net in old.get("NetworkSettings", {}).get("Networks", {})
+    })
+    docker_client.api.remove_container(name, force=True)
+    new_id = docker_client.api.create_container(
+        image=config["Image"],
+        name=name,
+        hostname=config.get("Hostname"),
+        user=config.get("User") or None,
+        entrypoint=config.get("Entrypoint"),
+        command=config.get("Cmd"),
+        environment=config.get("Env"),
+        labels=config.get("Labels"),
+        healthcheck=config.get("Healthcheck"),
+        working_dir=config.get("WorkingDir") or None,
+        host_config=host_config,
+        networking_config=networking_config,
+    )["Id"]
+    docker_client.api.start(new_id)
+    return docker_client.containers.get(name)
+
+
 def _restart_bearmount_cascade():
     """Shared by both Tier 2 (restart-cascade) and Tier 3 (unstick): force-
-    recreates BearMount (no SDK equivalent of `docker compose up
-    --force-recreate` exists - container.restart() is same-container
-    stop+start, not a recreate, confirmed by reading this file's own
-    stack_restart_all() above), waits for it to report healthy, then
-    restarts the 5 MOUNT_DEPENDENTS in order. Run synchronously - this is a
-    scoped 6-container operation, bounded enough not to need
-    stack_restart_all()'s fire-and-forget thread pattern.
+    recreates BearMount via _recreate_container_via_sdk (see its docstring
+    for why this isn't the `docker compose` CLI), waits for it to report
+    healthy, then restarts the 5 MOUNT_DEPENDENTS in order. Run
+    synchronously - this is a scoped 6-container operation, bounded enough
+    not to need stack_restart_all()'s fire-and-forget thread pattern.
 
     CONFIRMED LIVE, 2026-07-25: recreating BearMount here isn't optional
     even for Tier 3's own abort step - the mount volume is `/mnt:/mnt:rshared`
@@ -3403,17 +3598,10 @@ def _restart_bearmount_cascade():
     `wait_for_healthy()` alone would have falsely reported success here,
     so this checks for a real, non-empty directory listing before
     declaring BearMount itself recovered."""
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    result = subprocess.run(
-        ["docker", "compose", "up", "-d", "--force-recreate", "bearmount"],
-        cwd=repo_root, capture_output=True, text=True, timeout=60,
-    )
-    if result.returncode != 0:
-        fail(f"bearmount force-recreate failed: {result.stderr.strip()[:400]}")
     try:
-        bearmount = docker_client.containers.get("bearmount")
-    except docker.errors.NotFound:
-        fail("bearmount container not found after recreate.")
+        bearmount = _recreate_container_via_sdk("bearmount")
+    except docker.errors.APIError as e:
+        fail(f"bearmount force-recreate failed: {e}")
     wait_for_healthy(bearmount)
 
     mount_has_content = False

@@ -198,11 +198,28 @@ def test_plex_log_tail_bounded_read_on_large_file(cp_app, monkeypatch, tmp_path)
 def test_plex_log_tail_missing_file(cp_app, monkeypatch, tmp_path):
     monkeypatch.setattr(cp_app, "HOST_CONFIG_DIR", str(tmp_path / "does-not-exist"))
     result = cp_app._plex_log_tail()
-    assert result == {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": []}
+    assert result == {"lines": [], "busy_db_errors": 0, "recent_busy_db_timestamps": [],
+                       "analysis_active": False, "analysis_batches": 0, "analysis_last_seconds": None}
+
+
+def test_plex_log_tail_detects_analysis_activity(cp_app, monkeypatch, tmp_path):
+    config_dir = tmp_path / "host-config"
+    log_dir = config_dir / "plex" / "Plex Media Server" / "Logs"
+    log_dir.mkdir(parents=True)
+    log_path = log_dir / "Plex Media Server.log"
+    with open(log_path, "w") as f:
+        f.write("Jul 25, 2026 08:34:26.192 [1] DEBUG - Media Analyzer: Performing on-the-fly analysis on 1 item.\n")
+        f.write("Jul 25, 2026 08:34:26.341 [1] DEBUG - Media Analyzer: Background analysis completed in 30.0 seconds, removing 1 IDs\n")
+    monkeypatch.setattr(cp_app, "HOST_CONFIG_DIR", str(config_dir))
+
+    result = cp_app._plex_log_tail()
+    assert result["analysis_active"] is True
+    assert result["analysis_batches"] == 2
+    assert result["analysis_last_seconds"] == 30.0
 
 
 def _patch_scan_health_deps(cp_app, monkeypatch, *, dstate=None, mount_ok=True,
-                             scanner_lines=None, queue=None, activities=None):
+                             scanner_lines=None, queue=None, activities=None, analysis_active=False):
     monkeypatch.setattr(cp_app, "_plex_container_pid", lambda: 1)
     monkeypatch.setattr(cp_app, "_plex_dstate_threads", lambda pid: dstate or [])
     monkeypatch.setattr(cp_app, "_fuse_waiting_total", lambda: 0)
@@ -212,7 +229,9 @@ def _patch_scan_health_deps(cp_app, monkeypatch, *, dstate=None, mount_ok=True,
                          lambda: queue or {"pending": 0, "processing": 0})
     monkeypatch.setattr(cp_app, "_plex_log_tail",
                          lambda lines=50: {"lines": [], "busy_db_errors": 0,
-                                           "recent_busy_db_timestamps": []})
+                                           "recent_busy_db_timestamps": [],
+                                           "analysis_active": analysis_active,
+                                           "analysis_batches": 0, "analysis_last_seconds": None})
     monkeypatch.setattr(cp_app, "_plex_activities", lambda: activities or [])
     container = MagicMock()
     container.attrs = {"State": {"Health": {"Status": "healthy"}}, "RestartCount": 0}
@@ -263,6 +282,24 @@ def test_scan_health_stalled_suspected_queue_active_no_scanner(cp_app, monkeypat
     client = TestClient(cp_app.app, base_url="http://localhost")
     r = client.get("/api/plex/scan-health")
     assert r.json()["state"] == "stalled_suspected"
+
+
+def test_scan_health_not_stalled_suspected_when_analysis_active(cp_app, monkeypatch):
+    # Same inputs as test_scan_health_stalled_suspected_queue_active_no_scanner
+    # (no live scanner process) except Media Analyzer activity was found in
+    # the log tail - this should read as "scanning" (legitimately busy),
+    # not "stalled_suspected", since analysis batches routinely leave no
+    # scanner process running between their ~30s cycles.
+    _patch_scan_health_deps(
+        cp_app, monkeypatch,
+        queue={"pending": 5, "processing": 1},
+        scanner_lines=[],
+        activities=[{"title": "Scanning Movies", "progress": 10}],
+        analysis_active=True,
+    )
+    client = TestClient(cp_app.app, base_url="http://localhost")
+    r = client.get("/api/plex/scan-health")
+    assert r.json()["state"] == "scanning"
 
 
 def test_restart_cascade_blocked_when_queue_not_empty(cp_app, monkeypatch):
