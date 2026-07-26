@@ -149,7 +149,15 @@ services:
   bearmount:
     restart: unless-stopped
     logging: *common-logging
-    image: ghcr.io/whispersofj/bearmount:dev
+    # TEMPORARY local-fix pin, 2026-07-26: unreleased fixes for a recurring FUSE
+    # read-hang - see STACK.md's "Recurring BearMount FUSE read hangs" entry.
+    # PR open at javi11/altmount#806 (issue #805). Built from the de-branded
+    # WhispersOfJ/altmount fork (formerly WhispersOfJ/bearmount, renamed back
+    # 2026-07-26 - GitHub repo, module path, and binary are all "altmount"
+    # again; this stack's own service/container name below is unaffected,
+    # that's this repo's own naming, independent of upstream identity).
+    # Revert to a real upstream tag once #806 merges.
+    image: altmount-local-fix:ephemeral-diag
     container_name: bearmount
     networks: [stacknet]
     environment:
@@ -218,9 +226,9 @@ services:
     # cleanly, making the "fix" a contributor to the next hang. 90s gives
     # real headroom above the measured ~43s worst case.
     stop_grace_period: 90s
-    mem_limit: 12g
+    mem_limit: 14g
     mem_reservation: 128m
-    cpus: 4
+    cpus: 8
 
   # ---------------------------------------------------------------------
   # Requests

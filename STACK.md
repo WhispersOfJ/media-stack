@@ -1790,6 +1790,409 @@ chose full removal over continued debugging.
   removed along with Decypharr itself in v11.0.0** — this stack has no Remote Path Mappings
   at all now, no exceptions.
 
+## Recurring BearMount FUSE read hangs during import-time ffprobe, 2026-07-26
+
+**UPDATE, same day, later in the session: root-caused and a local fix deployed — see the
+"Root cause found and fixed" subsection below before reading the rest of this section, which
+records the investigation that led there.**
+
+**Not fully root-caused — recurred 8+ times in one ~3hr session, always a different file.**
+A read against `/mnt/bearmount-import/...` (Radarr/Sonarr's own `ffprobe -probesize 50000000`
+validation call, not the Plex-facing `/mnt/bearmount` playback path) permanently wedges in
+D-state. Zero NNTP connections open during the hang (`ss -tn` on the bearmount container),
+zero log output from bearmount for the affected file, bearmount's own CPU is idle — ruled out
+provider contention, worker saturation, and health-check locking. BearMount's own dashboard
+shows the download as `STALLED`, `0 B/s`, stuck at a fixed ~960KB offset regardless of file
+size. The file's own BearMount health record shows `healthy` from its last *sampled* check —
+only the full/large sequential read hangs, not small reads. No fix applied this session beyond
+the standing per-incident recipe below; this is a live, open problem, not resolved.
+
+**Recovery** (same every time): blocklist the specific queue item in Radarr/Sonarr
+(`DELETE /api/v3/queue/{id}?removeFromClient=true&blocklist=true`), then `docker compose
+restart <radarr|sonarr>`. If the container's own PID1 gets wedged waiting on the D-state child
+(`docker restart`/`docker kill` both fail with "did not receive an exit event") — confirmed
+happened 2x this session — bearmount itself needs `--force-recreate` to release the handle,
+followed by the full dependent cascade + verification (see
+[[feedback_bearmount_recreate_verification]]). A `--force-recreate` of bearmount right after a
+lazy host unmount can itself transiently fail with `"user has no write access to mountpoint"`
+— retry the recreate once, don't assume a real permissions regression from a single failure.
+
+**Investigated, not confirmed as root cause**: upstream `javi11/altmount` has two closed issues
+with near-identical symptoms — #647 ("FUSE multi-segment sequential reads deadlock... single
+reads OK"), fixed 2026-06-03 by commit `347f0e7c19414e3d9191e5d75fa7e18e4d01aea5`; #426
+("Goroutine leak in UsenetReader.Close()... accumulates as files are opened and closed, e.g.
+Sonarr importing files that then fail"), fixed 2026-03-22. Our running image was built
+2026-07-24 (fork revision `682e224b18...`), well after both fix dates, so both *should* already
+be included. `git merge-base --is-ancestor 347f0e7c19... HEAD` reported **not an ancestor** of
+either the fork's HEAD or `upstream/main` — but this check is not fully trusted (GitHub's
+"referenced" timeline event doesn't reliably map to the real merge commit if it landed via
+squash-merge), so treat as a lead to verify manually, not a confirmed finding. Fork
+(`WhispersOfJ/bearmount`) has issues disabled, so nothing was filed anywhere — this section is
+the only record. If this recurs again, re-check whether `347f0e7c19...` / equivalent fix is
+actually present before re-doing this whole investigation from scratch.
+
+### Root cause found and fixed, same day
+
+Read the fork's own source directly (`internal/usenet/usenet_reader.go`) rather than continuing
+to guess from symptoms. Real bug, independent of the two upstream issues above (neither's fix
+commit touches this code path):
+
+`UsenetReader`'s download-scheduling loop (`downloadManager`) throttles how far ahead it
+prefetches using a `sync.Cond` (`b.cond`, tied to `b.mu`) — it holds `b.mu`, checks
+`ahead := b.nextToDownload - b.rg.GetCurrentIndex()`, and calls `b.cond.Wait()` if over the
+prefetch limit. The wakeup call sites — `Read()`'s post-`rg.Next()` signal, and each download
+goroutine's completion signal — both called `b.cond.Signal()` **without holding `b.mu`**.
+Critically, `segmentRange` (`b.rg`) has its **own separate `sync.RWMutex`**, so the state
+`downloadManager` checks isn't actually guarded by the same lock the condition variable is tied
+to. Race: `downloadManager` reads a stale `currentRead`, decides to wait, and is about to call
+`Wait()` — but `Read()` concurrently advances the index and signals in that exact gap.
+`sync.Cond` does not queue signals; with no goroutine yet parked in `Wait()`, the signal is
+silently lost. `downloadManager` then calls `Wait()` a moment later and blocks forever — no more
+segments get scheduled, `Read()`'s next call blocks on data that will never arrive. Zero logs,
+zero new NNTP connections, permanent hang — matches every symptom logged above exactly. Same
+*class* of bug as upstream's already-fixed #426 (`sync.Cond` lost-wakeup), different, still-live
+call site. Timing-dependent, which is why it only ever surfaced under sustained concurrent read
+load, never at light usage.
+
+**Fix**: wrap both `Signal()` calls in `b.mu.Lock()/Unlock()`. Verified: builds clean
+(`go build ./internal/usenet/...`), full package test suite passes with `-race`
+(`go test -race ./internal/usenet/...`, including the pre-existing sequential/prefetch/storm
+tests written for this exact area).
+
+**Deployed same session** as a temporary local image, per explicit instruction to skip the
+normal queue-empty check for this one recreate: `bearmount-local-fix:cond-signal-lock` (built
+from the fork's `rebrand/bearmount` branch, commit `a02afbd8...`, plus this one-file patch).
+`docker-compose.yml`'s `bearmount` service is pinned to it with a dated comment — **revert to
+`ghcr.io/whispersofj/bearmount:dev` once this lands upstream in a real tagged release**, don't
+leave this pinned forever (same policy as the earlier playback-repair local-fix image). No PR
+opened against the fork (issues/discussions are disabled there) — if the user wants a paper
+trail, the patch needs to go up as a PR against `upstream/main`/`javi11/altmount` directly, not
+filed as an issue.
+
+**Post-deploy validation: the fix did NOT resolve the hang.** Confirmed by direct observation —
+the same D-state `ffprobe` hang recurred (`The Legend Of Ochi` REMUX) on `bearmount:
+bearmount-local-fix:cond-signal-lock` itself, ~6 minutes after deploy, `docker inspect`-confirmed
+running that exact image. The `b.cond` lost-wakeup race in `downloadManager`/`Read()` is a real,
+verified bug (compiles, passes `-race`) and worth fixing regardless, but **it is not the sole
+cause of the recurring hangs — treat as one contributing bug, not the fix.** Checked
+`segment.go`'s own data-readiness signaling (`dataReady chan struct{}`, closed exactly-once via
+`sync.Once`) as the other half of the wait chain — that mechanism is channel-close-based, not
+`sync.Cond`-based, so it's structurally immune to the same lost-wakeup class of bug; ruled out.
+Remaining candidates, not yet investigated: something in the FUSE layer itself (`hanwen`
+backend) upstream of `UsenetReader`, or a different lock/wait pattern elsewhere in the read
+path not yet read. Don't claim this is solved next time it's touched — it isn't.
+
+### Second fix: unbounded import-connection-budget wait, deployed as `budget-timeout`
+
+Continued digging per explicit request past the first fix. Read `internal/fuse/backend/hanwen/handle.go`
+and `internal/fuse/backend/asyncbuffer.go` (the FUSE-facing read-ahead buffer) — both are
+well-engineered; every `cond.Signal()`/`Broadcast()` in `asyncbuffer.go` is correctly called
+under its own lock, unlike the bug in `usenet_reader.go`. Not the second cause, but it pointed
+at the real one: `AsyncReadBuffer.fill()`'s blocking source read has no timeout of its own — if
+`UsenetReader.Read()` never returns, nothing here can rescue it.
+
+Traced further into the vendored `github.com/javi11/nntppool` client (`nntp.go`). Found a real
+bug there too: `tryGroup`'s per-attempt timer is a one-shot `time.Timer` — once it fires it can
+never fire again (the code's own comment says so), but the "reader already committed" branch
+falls through and keeps looping past that point with no working timeout for a stream that stalls
+*after* starting. Traced whether `usenet_reader.go`'s own 15s `attemptCtx` still rescues this via
+context propagation (`reqCtx.Done()` is one of `tryGroup`'s select cases) — it does, so this
+alone doesn't explain multi-*minute* hangs; a genuine defense-in-depth gap, but not deployed as
+a fix this session (would require instrumenting the vendored library's actual socket-read loop,
+never located — larger, riskier surgery than the time available justified; noted for later).
+
+**The actual confirmed mechanism**: `UsenetReader.downloadSegmentWithRetry`'s
+`b.budget.AcquireImportConnection(ctx)` call (the global import-connection semaphore) runs
+*before* any per-attempt timeout exists, using the reader's own long-lived context — genuinely
+unbounded. Under heavy concurrent import load (both apps running large ffprobe batches
+simultaneously — exactly this stack's conditions), if any current budget-holder is itself slow
+(amplified by the nntppool timer gap above), waiters queue behind it with no cap, and a waiter
+near the back can legitimately wait minutes — indistinguishable from a permanent hang, and why a
+container restart "fixes" it (discards the queue rather than waiting it out).
+
+**Fix**: wrapped the `Acquire` call in a bounded 5-minute `context.WithTimeout`, plus a warning
+log on timeout (this path previously logged nothing at all, which is why the whole investigation
+took hours). 5 minutes is deliberately generous — the original unbounded design was intentional
+("queue wait never burns the fetch deadline"), so this preserves normal heavy-contention
+behavior and only fires for genuinely pathological queueing.
+
+Verified: clean build, full `internal/usenet` suite passes with `-race`. Deployed as
+`bearmount-local-fix:budget-timeout`, then held clean for 12+ consecutive 1-minute health checks
+under continued real concurrent import load — meaningfully more validation than fix #1 alone
+ever got (that one failed within one check-in cycle under the same conditions).
+
+### PR + issue filed upstream, repo renamed back to AltMount, 2026-07-26
+
+Both write-ups updated with the complete, honest history (including that fix #1 alone didn't
+work) and filed for real:
+- Issue: https://github.com/javi11/altmount/issues/805
+- PR: https://github.com/javi11/altmount/pull/806 (from `WhispersOfJ:debrand/altmount-clean`)
+
+Then, per explicit user request, went further than just a side-branch de-brand:
+
+1. Confirmed the rebrand really was one isolated commit (`a02afbd8`, 367 files) at the tip of
+   `rebrand/bearmount`, nothing built on top — branched from the commit before it
+   (`debrand/altmount-clean`), reapplied both fixes (clean auto-merge, the rebrand never touched
+   `usenet_reader.go`), verified zero leftover branding and a full clean `go build ./...`.
+2. **Renamed the GitHub repo**: `WhispersOfJ/bearmount` → `WhispersOfJ/altmount`
+   (`gh repo rename altmount --repo WhispersOfJ/bearmount -y`). GitHub redirects the old URL.
+   Confirmed via API this repo genuinely is a real GitHub-level fork of `javi11/altmount`
+   (`fork: true, parent: javi11/altmount`) — an earlier check in this same session had wrongly
+   concluded it wasn't; that was a mistake, corrected here.
+3. **Set `debrand/altmount-clean` as the repo's new default branch** (`gh api -X PATCH
+   repos/WhispersOfJ/altmount --field default_branch=...`) rather than force-pushing over the
+   existing `main`/former-`rebrand/bearmount` history — non-destructive, the old branded history
+   still exists as a non-default branch if ever needed again.
+4. Built a fresh image from this de-branded+fixed state: `altmount-local-fix:budget-timeout`
+   (binary itself is now literally named `altmount`, confirmed via the Dockerfile's `chmod +x
+   /app/altmount` build step). `docker-compose.yml`'s `bearmount` service `image:` updated to
+   point at it — **this stack's own service/container name stays `bearmount`**, that's this
+   repo's own internal naming convention, unrelated to and unaffected by the upstream project's
+   identity.
+5. Deployed, full cascade + verification per the standing rule, confirmed clean.
+
+**Local scratch clone note**: the local `rebrand/bearmount` git branch was deleted from the
+scratch clone (not from GitHub — the remote branch still exists under whatever it's called post
+default-branch-change) once its content was confirmed carried forward into
+`debrand/altmount-clean`. If a future session needs the pre-fix branded history, it's still on
+GitHub, just no longer the default branch.
+
+### Third fix: unbounded poolGetter wait, deployed as `poolgetter-timeout`, 2026-07-26
+
+Same-day recurrence on `budget-timeout`: `radarr` PID 1080 (`ffprobe` on the Inception 2010
+REMUX) hung in D-state 18+ minutes, well past the deployed 5-minute budget-Acquire bound, with
+`bearmount` logs showing zero warning/error for that file (only Debug-level activity, actively
+serving other files fine) and zero active NNTP connections (`ss -tn | grep :563` → 0). Confirmed
+the budget-Acquire and cond-signal fixes were genuinely still in the running image
+(`debrand/altmount-clean` at `7d6e113c`) before looking further, so this was a third, distinct
+gap, not a regression of either earlier fix.
+
+Traced every wait in `downloadSegmentWithRetry` (`internal/usenet/usenet_reader.go`): each fetch
+attempt is bounded (15s `attemptCtx`, `retry.Attempts(2)`), the budget Acquire is bounded (5min),
+and the per-segment data-ready wait in `segment.go` is `select`-guarded on `ctx.Done()`. The one
+remaining unbounded call is `b.poolGetter()` (→ `pool.manager.GetPool()`), which takes the pool
+manager's `RWMutex` read-side — normally fast, but can block for as long as a concurrent
+`SetProviders` call holds the write lock (provider health-checks and pool teardown/setup run
+under that lock with no timeout of their own). **Not fully confirmed as this specific hang's
+mechanism** — other files continued processing throughout the window, which argues against a
+global writer-lock stall (that would block every `GetPool()` caller, not just one file) — but it
+was the one structurally unbounded piece left, so patched defensively per explicit instruction
+rather than left as a known gap like the `nntppool` `tryGroup` one-shot-timer issue above still
+is.
+
+**Fix**: wrapped `b.poolGetter()` in a goroutine + `select` with a 30s timeout (the function
+takes no `context.Context` parameter, so it can't be bounded directly) and a warning log on
+timeout. Verified: `go build ./...` clean after `go mod vendor` (this checkout's vendor dir was
+stale — same "inconsistent vendoring" issue seen earlier this session on a different worktree),
+`go vet` clean, `go test -race ./internal/usenet/...` passing. Committed to
+`debrand/altmount-clean` (`120b20a2`). Built and deployed as `altmount-local-fix:poolgetter-timeout`.
+
+**Deploy hit the documented stale-bind-mount landmine** (see "Plex stale bind-mount" entry): the
+recreate cascade used `docker compose restart` for the dependents first, which reuses the
+existing container's mount namespace and does *not* pick up bearmount's fresh FUSE mount —
+confirmed via `docker exec <dependent> ls /mnt/bearmount` → `Transport endpoint is not
+connected`/`Socket not connected` on every one of radarr/sonarr/plex/unpackerr/cleanuparr despite
+all showing Docker-healthy. Also made one mistake fixing it: ran `sudo umount -l /mnt/bearmount`
+on the host to clear what looked like a stale reference, but bearmount's *own* recreate had
+already succeeded by that point — the lazy unmount tore down bearmount's brand-new working mount
+too (rshared propagation is bidirectional), which then made the *next* recreate attempt fail with
+`fusermount3: user has no write access to mountpoint` (a transient state right after an unmount,
+not a real permissions problem — `/mnt/bearmount` was correctly `1000:1000` throughout). Recovered
+by force-recreating bearmount once more (clean "FUSE filesystem mounted and ready" log line) and
+then using `docker compose up -d --force-recreate` (not `restart`) for all five dependents.
+**Lesson: prefer `--force-recreate` over `restart` for the whole cascade by default** — `restart`
+looking sufficient here was the initial mistake that triggered the unnecessary `umount -l`
+detour. Post-recreate verification (mount readable from inside each dependent, zero D-state, zero
+`bearmount-import` mount-table leak) passed clean on the second attempt.
+
+`docker-compose.yml`'s `bearmount` service now points at `altmount-local-fix:poolgetter-timeout`.
+Same revert-once-upstream-lands caveat as the two fixes before it.
+
+**Recurred same day, ~10 minutes after this deploy, on a different file** (`Minions.2015` REMUX,
+~53GB, `radarr` PID 284) — confirms the third fix did not resolve the underlying class either.
+Same fingerprint as every prior occurrence: zero NNTP connections, zero log activity, but this
+time got harder evidence before restarting:
+
+- Host-side `/proc/<pid>/io` sampled twice 10s apart showed **identical** `rchar`/`syscr` —
+  confirmed genuinely stalled, not just slow.
+- Host-side kernel stack (`sudo cat /proc/<pid>/stack`): `filemap_read` → `folio_wait_bit_common`
+  → blocked in the `read()` syscall on a page-cache lock. For a FUSE mount this means the kernel
+  is still waiting on bearmount's userspace daemon to answer the read request — consistent with
+  everything assumed so far, now confirmed at the kernel level rather than inferred from symptoms.
+  Distinguishes it from a real disk/network stall: this is a userspace FUSE-response hang.
+- Ran well past all three now-bounded timeouts (30s poolGetter, 5min budget, 15s×2 fetch
+  attempts) with no warning logged for any of them — the stuck point is upstream of
+  `downloadSegmentWithRetry` entirely (most likely `downloadManager`'s prefetch-scheduling loop,
+  or the FUSE `hanwen` backend layer — both still flagged "not yet investigated" above).
+- `bearmount` at 0.03% CPU throughout — not spin-looping, genuinely parked.
+- **Root cause of the "zero log activity" mystery, resolved**: `config/bearmount/config.yaml`'s
+  `log.level` was `info` the whole time; every per-segment/per-fetch log line added by all three
+  fixes today (`slog.DebugContext`) is `Debug`-level, so none of them were ever visible — this
+  wasn't evidence the hang bypassed the instrumented code, it was evidence the logs were filtered
+  out. **Set `log.level: debug`** and redeployed so the *next* occurrence produces real per-segment
+  timing instead of requiring kernel-level forensics again. Revert to `info` once the actual root
+  cause is found and fixed — debug logging at this volume isn't meant to run long-term.
+- Redeploy hit the stale-bind-mount landmine a second time, worse: `--force-recreate bearmount`
+  alone (before touching any dependent) somehow resulted in bearmount itself being torn down and
+  recreated *twice* within ~10 seconds (`docker inspect .State.StartedAt` confirmed two distinct
+  container-create timestamps from one `--force-recreate bearmount` command plus one
+  `--force-recreate` of the five dependents run right after) — the second internal recreate's own
+  FUSE auto-mount failed (`fusermount3: user has no write access to mountpoint`, the same
+  transient-post-unmount state as the first `poolgetter-timeout` deploy above), leaving both the
+  host mount and the container itself broken (`docker compose up -d --force-recreate bearmount`
+  then failed outright with `invalid mount config for type "bind": stat /mnt/bearmount: transport
+  endpoint is not connected`). Exact trigger for the double-recreate not fully diagnosed — worth
+  watching for on the next deploy. Recovered with the same `sudo umount -l /mnt/bearmount` +
+  recreate recipe, this time adding an explicit settle/verify pause (host `ls /mnt/bearmount`
+  succeeding) between recreating bearmount and recreating any dependent, which is what finally
+  held clean. **Add this pause to the standard recreate procedure going forward, not just the
+  five-dependent cascade order already documented.**
+
+### Fourth round: pure diagnostics, deployed as `diag-instrumentation`, 2026-07-26
+
+Same hang recurred a third time within the hour, same file (`Minions.2015` REMUX, retried by
+radarr after the earlier kill), this time with `log.level: debug` live — and still zero
+segment-level log output, even at Debug. Root cause of that silence: the stuck goroutine never
+reaches `downloadSegmentWithRetry` at all (none of today's three fixes live inside functions this
+hang ever calls), and the two layers upstream of it — `UsenetReader.downloadManager`'s
+prefetch-throttle `cond.Wait()` (`internal/usenet/usenet_reader.go`) and `AsyncReadBuffer.fill()`'s
+blocking source read plus `ReadAtContext`'s two frontier-wait loops
+(`internal/fuse/backend/asyncbuffer.go`) — had essentially no logging at all. Both are genuinely
+unbounded `sync.Cond.Wait()` calls with no context-cancellation escape while parked (`ctx.Err()`
+is only rechecked *after* a wakeup, never interrupts a `Wait()` itself) — same underlying hazard
+class as the already-fixed `cond.Signal()` lost-wakeup bug, just not yet confirmed as this
+specific hang's mechanism.
+
+**Deployed as pure diagnostics, no behavior change**: warn-on-slow (>10s) + debug logging at all
+four candidate points — the prefetch wait, the fill goroutine's source read, and both
+`ReadAtContext` frontier waits — committed to `debrand/altmount-clean` (`73840e40`), built and
+deployed as `altmount-local-fix:diag-instrumentation`. Verified: `go build ./...`,
+`go vet ./...`, `go test -race ./...` all clean repo-wide. Recreate cascade held clean this time
+(mount-settle pause + `--force-recreate` throughout, no `restart`, no incidental host
+`umount -l` needed).
+
+**Next occurrence should finally pinpoint the actual stuck line** via one of these four new log
+lines. Do not add a fifth speculative timeout fix without that evidence — three blind fixes today
+already missed the real mechanism each time.
+
+**Occurrence #4, same session, root cause finally captured live** — same file (`Minions.2015`
+REMUX) hung a second time under the `diag-instrumentation` image. The new logs caught it exactly:
+
+```
+next_to_download=46 current_read=1 in_flight=45 → ... → in_flight=0 (all scheduled downloads
+completed) → current_read never advances past 1 → downloadManager stops logging entirely
+(no more Wait() wakeups — nothing left in flight to ever Signal() it again)
+```
+
+All 45 prefetched segments downloaded successfully (`in_flight` drained cleanly to 0), but the
+**reader's own consumption position (`b.rg.GetCurrentIndex()`) never advanced past segment 1**,
+despite segments 1-45 being fully downloaded and sitting ready. `downloadManager` then blocks
+forever on `b.cond.Wait()` waiting for `current_read` to advance — but nothing is left in flight
+to ever call `Signal()` again, and even if something did, `ctx.Err()` is only rechecked *after* a
+wakeup (the known `sync.Cond` limitation flagged in the diagnostic commit). This means the actual
+stall is **downstream of the download layer entirely** — the reader consuming already-available
+segment 1 never happens, which points at the FUSE-facing `AsyncReadBuffer`/`Handle.Read` chain,
+or `segment.Reader()`'s hand-off from a completed download to a waiting reader. Not yet fixed —
+this is the first real, non-speculative lead of the day and should be the actual starting point
+for the next fix, not another guess.
+
+**Operational resolution for this occurrence**: per explicit request, captured the above evidence
+from the live logs, then removed+blocklisted the release via Radarr's queue API
+(`DELETE /api/v3/queue/{id}?removeFromClient=true&blocklist=true&skipRedownload=false`) so Radarr
+grabs a different release instead of retrying the same stuck one. The already-open FUSE handle
+(D-state `ffprobe`) did not clear on its own after the blocklist — removing a download-client
+reference doesn't touch an already-issued FUSE read — so one more `--force-recreate bearmount` +
+full dependent cascade was needed to actually release it. **The double-recreate mystery recurred
+a third time** on the first attempt (bearmount tore itself down and remounted twice within ~12s
+of one `--force-recreate bearmount` call, second attempt's auto-mount failing with the same
+transient `fusermount3: user has no write access` state) — still not diagnosed (a `docker events`
+capture attempt during the repro hung/timed out rather than yielding an answer). Recovered with
+the by-now-standard `sudo umount -l /mnt/bearmount` + recreate + settle-pause-before-dependents
+recipe; held clean on the second attempt with a longer (15s) settle pause. **This double-recreate
+behavior is real and reproducible on `--force-recreate bearmount` alone — worth a dedicated
+investigation next time there's headroom, independent of the read-hang bug above.**
+
+**Occurrence #5, ~15 minutes later, different file — confirms the pattern is reproducible, not a
+one-off.** `The.Creator.2023` REMUX (~56.5GB, also in the tens-of-GB REMUX class like Minions and
+the original Inception hang), `radarr` PID 869, hit during a large concurrent bulk manual-import
+run (`stack-arr-import-all radarr` / `POST /api/arr/radarr/manual-import-all`, ~59 queue items).
+Identical log signature to occurrence #4: `current_read` stalls at 6 while `next_to_download`
+reaches 51 and `in_flight` drains cleanly to 0, then `downloadManager` stops logging entirely —
+same "all segments downloaded, reader consumption position never advances, nothing left to
+Signal()" deadlock. Two independent files, same exact mechanism — treat this as confirmed
+reproducible, not coincidental. Strengthens the lead from occurrence #4: the bug is in the
+reader-side hand-off (`AsyncReadBuffer`/`Handle.Read`/`segment.Reader()`), not anywhere in the
+download-scheduling or NNTP-fetch code three fixes were already spent on today.
+
+**Occurrence #6, ~10 minutes later — the original file from this morning, `Inception.2010`
+REMUX, hung again**, `radarr` PID 940. Now 3-for-3 with the identical signature:
+`current_read` stalls (this time at 0 — never advances even once, vs. 1 for Minions and 6 for
+The Creator) while `next_to_download=45` and `in_flight` drains cleanly to 0. The varying stall
+point (0, 1, 6) rules out any specific segment index being special — this is a structural hazard
+in the reader-consumption hand-off that can trigger at essentially any point once it fires, not
+tied to one segment's content. Common thread across all three: every file is a 50+GB REMUX, and
+every hang was triggered by an `ffprobe -probesize 50000000` invocation specifically — worth
+checking whether the large `probesize` read pattern (likely a big non-sequential seek early in
+the file) is what demotes/promotes `AsyncReadBuffer` in a way that exposes this hazard, versus
+Plex's more sequential streaming reads never triggering it in this session's observations.
+
+### Fifth fix attempt, `readerctx-timeout` — real improvement, not a full fix, 2026-07-26
+
+Traced the exact stuck call: `UsenetReader.Read()`'s `s.GetReaderContext(b.ctx)` for the segment
+at `current_read`. `GetReaderContext`'s wait is a `select` on the segment's `dataReady` channel
+close (immune to the `sync.Cond` lost-wakeup class already fixed elsewhere), but `b.ctx` is the
+file handle's long-lived context — never cancels in practice, making its `ctx.Done()` escape
+hatch useless here. Bounded it to 2 minutes via a derived `context.WithTimeout`. Verified safe: a
+context-timeout return doesn't poison the segment (`readerReady` stays false), so a later retry
+can still succeed. Committed (`eb491cf5` on `debrand/altmount-clean`, after a rebase to strip an
+accidentally-vendored Slack webhook secret that GitHub's push protection caught — see commit
+history, nothing of ours was exposed, the secret belonged to a vendored dependency's own CI
+config), pushed upstream, deployed as `altmount-local-fix:readerctx-timeout`.
+
+**Post-deploy: real but partial improvement, not a fix.** `Death.on.the.Nile.2022` REMUX hung
+~10 minutes after deploy. First time ever, `current_read` actually advanced (0→1) before
+stalling — every prior occurrence froze at its very first segment. But once stalled at segment 1,
+it stayed D-state for 7+ minutes with **zero** `GetReaderContext took unusually long` warnings —
+meaning the 2-minute bound never fired because this stall isn't inside `GetReaderContext` at all
+for this occurrence. `downloadManager` logs confirm it's behaving correctly (parked in
+`cond.Wait()`, throttled since `current_read` isn't advancing — not itself stuck). Confirmed via
+log absence of any remux/nested/encryption path, so `mvf.reader` is the plain `UsenetReader`
+directly. **The real conclusion: whatever is supposed to call `UsenetReader.Read()` again after
+segment 0 completed never does** — the block is upstream of everywhere fixed today, most likely
+`MetadataVirtualFile.mu` contention or something in the FUSE dispatch layer above
+`ReadAtContext`, neither instrumented yet. **Do not treat `readerctx-timeout` as resolving this
+hang class** — it's a real, verified improvement (one confirmed case of progress that wouldn't
+have happened before), but a fifth fix/instrumentation round targeting `mvf.mu` acquisition and
+the FUSE-level read dispatch is still needed.
+
+### Sixth and seventh instrumentation rounds — four independent points all ruled out, 2026-07-26
+
+Added `mvf-lock-diag` (measures the `mvf.mu.Lock()` acquisition wait itself in `ReadAtContext`,
+not just work done after acquiring it — `Close()`'s own comment already documents this lock "can
+be held for the full segment-download latency") and, after that also stayed silent through a
+`Death.on.the.Nile` hang, `ephemeral-diag` (instruments `readFullContext`, which backs a
+completely separate "ephemeral" reader branch — `createReaderAtOffset` + a fresh one-off reader
+per call — that `ffprobe`'s non-sequential probing very plausibly hits instead of the "shared"
+sequential-offset branch every earlier fix targeted).
+
+**Result: a fourth confirmed occurrence (`The.Creator.2023`, new release) stayed D-state 6+
+minutes with *zero* warnings from all four independently-instrumented points**
+(`GetReaderContext`, the shared-reader `Read` loop, `mvf.mu` acquisition, `readFullContext`'s
+ephemeral wait) — while `downloadManager`'s own logs confirm the same signature as every prior
+occurrence (`current_read` frozen, `in_flight` drained to 0). This is a strong negative result:
+the actual stuck code is not in any of the four candidate waits examined across five rounds of
+instrumentation today. Remaining unexamined territory: the `hanwen/go-fuse` library's own request
+dispatch/goroutine-pool layer (upstream of `Handle.Read`, never touched today), or something at
+the kernel/FUSE-protocol boundary itself. Getting further needs either a real Go goroutine dump
+(no pprof endpoint currently wired up — see the 2026-07-26 poolgetter-timeout entry above for why
+that wasn't done live) or reading `go-fuse`'s own source, neither attempted yet.
+
+**Operationally, the blocklist + recreate playbook (documented per-occurrence above) remains the
+reliable mitigation** regardless of root cause: identify the file via `cmdline`, confirm the
+50GB+ REMUX / `ffprobe -probesize` pattern, blocklist via Radarr's queue API, then the standard
+bearmount recreate + cascade + verification procedure. Six same-day occurrences all cleared this
+way with zero data loss or lasting stack damage.
+
 ## Workflow playbook: recurring task types
 
 Add to this section as new recurring task shapes come up. Goal: the next session facing

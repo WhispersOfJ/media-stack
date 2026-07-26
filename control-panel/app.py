@@ -3619,15 +3619,23 @@ def _restart_bearmount_cascade():
              "600+ items after finding every symlink unavailable). Check `docker logs "
              "bearmount` before retrying.", status_code=502)
 
+    # CORRECTION, 2026-07-26: this used to call c.restart() on each dependent.
+    # Confirmed live, repeatedly, the same day: restart() reuses the
+    # container's existing mount namespace and never picks up bearmount's
+    # fresh FUSE mount, leaving every dependent holding a stale handle
+    # (`docker exec <dependent> ls /mnt/bearmount` -> "Transport endpoint is
+    # not connected") despite Docker reporting it healthy the whole time.
+    # _recreate_container_via_sdk (the same helper bearmount itself uses
+    # above) forces a real new mount namespace, matching `docker compose up
+    # -d --force-recreate` - see CLAUDE.md and STACK.md's 2026-07-26 entries.
     restarted = []
     for name in sorted(MOUNT_DEPENDENTS):
         try:
-            c = docker_client.containers.get(name)
-            c.restart(timeout=30)
+            c = _recreate_container_via_sdk(name)
             wait_for_healthy(c)
             restarted.append(name)
         except Exception as e:
-            print(f"bearmount cascade: failed to restart {name}: {e}")
+            print(f"bearmount cascade: failed to recreate {name}: {e}")
     return restarted
 
 
@@ -3692,6 +3700,143 @@ def plex_unstick(force: bool = False):
     restarted = _restart_bearmount_cascade()
     return ok(f"Aborted connection(s) {', '.join(aborted)}; mount cascade restarted: "
               f"bearmount + {', '.join(restarted)}.", aborted=aborted, restarted=restarted)
+
+
+# ---------------------------------------------------------------------
+# BearMount ffprobe read-hang unstick - automates the manual playbook run
+# repeatedly on 2026-07-26 (see STACK.md's recurring-hang investigation):
+# radarr/sonarr's own media-info probe (`ffprobe -probesize 50000000`)
+# against a 50GB+ REMUX occasionally deadlocks in D-state, always the same
+# signature (BearMount's downloadManager finishes every prefetched segment
+# but the reader's consumption position never advances - see STACK.md for
+# the five rounds of Go-level instrumentation that traced this without
+# finding root cause). The only reliable clear is: identify the stuck
+# file, blocklist its release so it isn't regrabbed, then recreate
+# bearmount + cascade. This endpoint is that playbook, not a fix for the
+# underlying hang - it will keep recurring on other 50GB+ REMUX files
+# until the actual Go-level bug is found (see STACK.md for where that
+# investigation left off: the hanwen/go-fuse library's own dispatch layer,
+# never examined).
+# ---------------------------------------------------------------------
+
+FFPROBE_STUCK_THRESHOLD_S = 90  # every confirmed-genuine hang 2026-07-26 was 2min+
+
+
+def _parse_ps_etime(etime: str) -> int | None:
+    """Parses ps's etime format ([[DD-]HH:]MM:SS) into total seconds."""
+    try:
+        days = 0
+        if "-" in etime:
+            days_str, etime = etime.split("-", 1)
+            days = int(days_str)
+        parts = [int(p) for p in etime.split(":")]
+        while len(parts) < 3:
+            parts.insert(0, 0)
+        hours, minutes, seconds = parts
+        return days * 86400 + hours * 3600 + minutes * 60 + seconds
+    except (ValueError, IndexError):
+        return None
+
+
+def _find_stuck_ffprobe(app_name: str) -> dict | None:
+    """Scans app_name's own container for a D-state ffprobe/ffmpeg process
+    reading a file under /mnt/bearmount-import, running past
+    FFPROBE_STUCK_THRESHOLD_S - the exact signature confirmed live across
+    nine occurrences on 2026-07-26. Returns {pid, file_path, elapsed_s} for
+    the first match, or None. Uses _bounded_exec (see its docstring) since
+    a wedged mount can make `ps` itself hang, not just the ffprobe call
+    being diagnosed."""
+    try:
+        c = docker_client.containers.get(app_name)
+    except docker.errors.NotFound:
+        return None
+    result = _bounded_exec(c, ["ps", "-eo", "stat,pid,etime,args"], timeout=5)
+    if result is None or result.exit_code != 0:
+        return None
+    for line in result.output.decode(errors="replace").splitlines()[1:]:
+        parts = line.split(None, 3)
+        if len(parts) < 4:
+            continue
+        stat, pid, etime, args = parts
+        if not stat.startswith("D"):
+            continue
+        if "ffprobe" not in args and "ffmpeg" not in args:
+            continue
+        file_path = next(
+            (tok for tok in args.split() if tok.startswith("/mnt/bearmount-import/")),
+            None,
+        )
+        if not file_path:
+            continue
+        elapsed = _parse_ps_etime(etime)
+        if elapsed is not None and elapsed >= FFPROBE_STUCK_THRESHOLD_S:
+            return {"pid": pid, "file_path": file_path, "elapsed_s": elapsed}
+    return None
+
+
+def _match_queue_item_by_path(app_name: str, file_path: str) -> dict | None:
+    """Matches a stuck file's path to the Radarr/Sonarr queue item whose
+    outputPath is a prefix of it (outputPath is the release folder; the
+    stuck ffprobe's argument is the full file path inside it)."""
+    for q in arr_queue(app_name):
+        output_path = q.get("outputPath")
+        if output_path and file_path.startswith(output_path):
+            return q
+    return None
+
+
+@app.post("/api/bearmount/unstick-ffprobe-hang")
+def bearmount_unstick_ffprobe_hang(force: bool = False):
+    """Detects a stuck ffprobe/ffmpeg read on radarr or sonarr, blocklists
+    the matching queue item so it isn't regrabbed, then runs the same
+    bearmount recreate + 5-dependent cascade used manually all day
+    2026-07-26. Same import_queue safety gate as the other cascade routes.
+    Does NOT fix the underlying hang - see this section's header comment."""
+    found = None
+    app_name = None
+    for candidate in QUEUE_ARR_APPS:
+        found = _find_stuck_ffprobe(candidate)
+        if found:
+            app_name = candidate
+            break
+    if not found:
+        return ok("No stuck ffprobe/ffmpeg process found on radarr or sonarr.", blocklisted=None)
+
+    cfg = ARR_APPS[app_name]
+    queue_item = _match_queue_item_by_path(app_name, found["file_path"])
+    blocklisted_title = None
+    if queue_item:
+        try:
+            r = httpx.delete(
+                f"{cfg['url']}/api/{cfg['api']}/queue/{queue_item['id']}",
+                params={"removeFromClient": "true", "blocklist": "true", "skipRedownload": "false"},
+                headers={"X-Api-Key": cfg["key"]},
+                timeout=20,
+            )
+            r.raise_for_status()
+            blocklisted_title = queue_item.get("title")
+        except httpx.HTTPError as e:
+            fail(f"Found stuck ffprobe on {found['file_path']} (pid {found['pid']}, "
+                 f"{found['elapsed_s']}s) but blocklisting queue item {queue_item['id']} "
+                 f"in {cfg['label']} failed: {e}")
+
+    counts = _bearmount_queue_counts()
+    if not force and (counts.get("pending", 0) or counts.get("processing", 0)):
+        fail(f"Found and blocklisted the stuck item, but BearMount's queue isn't empty "
+             f"(pending={counts.get('pending', 0)}, processing={counts.get('processing', 0)}) - "
+             f"recreating now risks silently blocklisting other in-flight items. Pass "
+             f"force=true to override, or retry shortly once the queue drains.",
+             status_code=409)
+
+    restarted = _restart_bearmount_cascade()
+    blocklist_note = f"blocklisted \"{blocklisted_title}\"" if blocklisted_title else "no matching queue item found to blocklist"
+    return ok(
+        f"Found stuck ffprobe on {app_name} (pid {found['pid']}, {found['elapsed_s']}s, "
+        f"{found['file_path']}); {blocklist_note}; mount cascade restarted: "
+        f"bearmount + {', '.join(restarted)}.",
+        pid=found["pid"], file_path=found["file_path"], elapsed_s=found["elapsed_s"],
+        app=app_name, blocklisted=blocklisted_title, restarted=restarted,
+    )
 
 
 # ---------------------------------------------------------------------

@@ -53,6 +53,15 @@ relevant sections, not loaded in full every turn. Before making any change to th
   host and of BearMount itself, even while Docker healthchecks pass. Verify mount health from
   *inside the specific dependent container* (`docker exec <container> ls /mnt/bearmount/...`),
   not just the host or BearMount's own container. See STACK.md 2026-07-25.
+- Always use `--force-recreate` for bearmount's dependent cascade, never `restart` — `restart`
+  reuses the container's existing mount namespace and never picks up bearmount's fresh FUSE
+  mount, leaving every dependent silently stale. After recreating bearmount, verify the host
+  mount is actually up (`ls /mnt/bearmount` succeeds) before touching any dependent — recreating
+  them against a still-settling mount reproduces the same stale-handle problem. See STACK.md
+  2026-07-26.
+- If bearmount itself fails to (re)mount with `transport endpoint is not connected` or
+  `fusermount3: user has no write access to mountpoint`, clear it with
+  `sudo umount -l /mnt/bearmount` then recreate again — see STACK.md 2026-07-26.
 - Plex's `autoEmptyTrash` setting has mass-deleted library items 3x on a stale-mount scan
   (confirmed history in STACK.md) and is now disabled — don't re-enable it without reading
   that history first.
@@ -104,6 +113,11 @@ CI (`.github/workflows/validate.yml`) runs compose-config validation, ruff, shel
 The unit suite only covers pure logic reachable with everything mocked; it does not replace
 exercising a change against the real running stack (curl an endpoint, check `docker logs`,
 load the dashboard) for anything that actually talks to a live container.
+
+Fish functions (`stack-*`) aren't available in Claude Code's own shell (zsh/bash, not fish) —
+invoke via `fish -c "stack-foo ..."` or call the underlying control-panel API endpoint directly.
+`/api/arr/{app}/manual-import-all` scans queue items one at a time, sequentially — a 50+ item
+queue can legitimately take several minutes; that's not a hang.
 
 **`README.md`** is the only end-user documentation in this repo (long, organized by subsystem
 with a linked table of contents) — read the relevant section there for how a feature is meant
