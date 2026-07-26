@@ -69,8 +69,13 @@ relevant sections, not loaded in full every turn. Before making any change to th
 ## Commands
 
 ```bash
-# Validate compose config (what CI runs) — needs a .env first, dummy values are fine
-cp .env.example .env
+# Validate compose config (what CI runs) — needs a .env first, dummy values are fine.
+# DANGER on a real deployment: this OVERWRITES an existing .env with template
+# placeholders, no confirmation, no backup. Check `test -f .env` first — if it
+# already exists, it holds real secrets; never blindly cp over it. (Confirmed
+# live 2026-07-26: recovery required reconstructing every credential from
+# `docker inspect`'s running container environments.)
+test -f .env || cp .env.example .env
 docker compose config --quiet
 docker compose --profile extras config --quiet
 
@@ -124,3 +129,8 @@ with a linked table of contents) — read the relevant section there for how a f
 to work. **`STACK.md`** is the operational/incident memory for Claude Code specifically
 — read it for how things have actually broken, what's currently true vs. historical, and the
 gotchas that aren't visible from reading the code alone.
+
+**`FIXES.md`** tracks the still-open BearMount FUSE read-hang investigation (50GB+ REMUX files,
+`ffprobe` deadlocks in D-state) — condensed state of what's fixed vs. not, and where the trail
+left off. `POST /api/bearmount/unstick-ffprobe-hang` automates the operational mitigation
+(detect, blocklist, recreate+cascade) — reach for it instead of doing that dance by hand.
