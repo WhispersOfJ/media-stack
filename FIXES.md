@@ -1,8 +1,19 @@
 # BearMount FUSE read-hang — 2026-07-26 session notes
 
-**ROOT CAUSE FOUND AND FIXED, 2026-07-27** — see "Root cause" section below. Everything under
-"What's fixed vs. not" / "five instrumentation rounds" is kept as-is for the historical trail;
-the short version is all of that was real but none of it was the actual mechanism.
+**2026-07-27 UPDATE: the `readFullContext` fix below is real but NOT sufficient** — a live
+recurrence happened ~20 minutes after deploying it (two ffprobe D-state hangs,
+`Spectral.2016...` and `Jurassic.World.Chaos.Theory...`, both past 2 minutes stuck) with
+**zero log output whatsoever** for either file - no `readFullContext` timeout warning, no
+`GetReaderContext` slow-warning, no `mvf.mu` wait warning. That absence is itself informative:
+it proves the stuck code is upstream of every point instrumented or bounded across two sessions
+now, most likely genuinely inside `hanwen/go-fuse`'s own request dispatch or the kernel/FUSE
+boundary - the two pieces of "remaining unexamined territory" this doc already named and never
+got to. bearmount's own FUSE mount died during/shortly after this occurrence (`transport
+endpoint is not connected`, container gone) - recovered with the standard `sudo umount -l` +
+recreate + cascade. Keep the `readFullContext` fix (it closes a real, separately-confirmed dead
+escape hatch, see below) but **do not consider this hang solved** - next step is a real
+goroutine dump via pprof (still not wired up) or reading `go-fuse`'s dispatch/request-pool
+internals directly.
 
 Working notes for whoever picks this up next. Full blow-by-blow with all evidence lives in
 `STACK.md` (search "recurring-hang" / "Occurrence #"); this file is the condensed version:
@@ -96,9 +107,18 @@ could never arrive.
 trusting the inherited FUSE-request context to ever cancel — the same pattern `GetReaderContext`
 already used. Since this call runs with `mvf.mu` held for its entire duration, this also
 unblocks every other read queued behind it on the same file handle (shared reader, AsyncReadBuffer
-fill goroutine) once it fires. `go build`/`vet`/`test` all pass; **not yet built into a new
-`altmount-local-fix` image or deployed to the live stack** — do that next, then watch for a real
-recurrence to confirm this is actually the fix and not a sixth negative round.
+fill goroutine) once it fires. `go build`/`vet`/`test` all pass. Built as
+`altmount-local-fix:fuse-ctx-independent-timeout` and deployed live 2026-07-27 — **confirmed a
+sixth negative round**, see the update at the top of this doc. Worth keeping regardless (real
+fix for a real dead escape hatch, just not this hang's mechanism).
+
+**Also fixed live 2026-07-27, a second, separate control-panel bug found during this same
+incident**: `_restart_bearmount_cascade`'s lazy-umount retry only ran when the *first* recreate
+succeeded but came back with an empty mount — if the first `_recreate_container_via_sdk` call
+itself threw (confirmed live: it can, when the host mount is already wedged going in, not just
+racing a fresh umount), the route just called `fail()` immediately with bearmount already
+removed and no recovery attempt at all. Now retries via the same lazy-umount dance in that case
+too. Fixed in `control-panel/app.py`, rebuilt and deployed.
 
 Getting further needs either a real Go goroutine dump (no `pprof` endpoint wired up currently —
 adding one and getting a live SIGQUIT-style dump was considered but not attempted, since it kills

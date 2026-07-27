@@ -3674,11 +3674,33 @@ def _restart_bearmount_cascade():
     `sudo umount -l /mnt/bearmount` + recreate that both real incidents
     that day needed. Still refuses to touch the 5 dependents if the mount
     is empty after that retry too - see the 2026-07-25 mass-deletion
-    history in STACK.md for why that gate exists."""
+    history in STACK.md for why that gate exists.
+
+    CORRECTION, 2026-07-27: the first recreate call used to just fail()
+    immediately on APIError, skipping the umount-retry logic entirely -
+    that logic only ran for the "recreated fine but content is empty"
+    case below it. Confirmed live: the first recreate attempt can itself
+    throw "invalid mount config ... transport endpoint is not connected"
+    when the host mount is already wedged going in (not a transient
+    create_container race - that's what _recreate_container_via_sdk's own
+    retry loop covers), which is exactly the case a lazy umount fixes.
+    Previously this left bearmount deleted (remove already ran) with no
+    recovery attempt at all. Now retries via the same lazy-umount dance
+    as the empty-content branch before giving up."""
     try:
         bearmount = _recreate_container_via_sdk("bearmount")
     except docker.errors.APIError as e:
-        fail(f"bearmount force-recreate failed: {e}")
+        umount_err = _host_lazy_umount("/mnt/bearmount")
+        if umount_err:
+            fail(f"bearmount force-recreate failed ({e}), and the host-level lazy umount "
+                 f"retry also failed: {umount_err}. Check `docker logs bearmount` and "
+                 f"`mount | grep bearmount` before retrying manually.", status_code=502)
+        try:
+            bearmount = _recreate_container_via_sdk("bearmount")
+        except docker.errors.APIError as e2:
+            fail(f"bearmount force-recreate failed both before and after a host-level lazy "
+                 f"umount: {e2}. Check `docker logs bearmount` before retrying manually.",
+                 status_code=502)
     wait_for_healthy(bearmount)
 
     mount_has_content = _wait_for_bearmount_content()
