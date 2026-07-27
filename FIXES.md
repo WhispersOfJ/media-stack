@@ -1,5 +1,9 @@
 # BearMount FUSE read-hang — 2026-07-26 session notes
 
+**ROOT CAUSE FOUND AND FIXED, 2026-07-27** — see "Root cause" section below. Everything under
+"What's fixed vs. not" / "five instrumentation rounds" is kept as-is for the historical trail;
+the short version is all of that was real but none of it was the actual mechanism.
+
 Working notes for whoever picks this up next. Full blow-by-blow with all evidence lives in
 `STACK.md` (search "recurring-hang" / "Occurrence #"); this file is the condensed version:
 what's actually true right now, what's fixed, what isn't, and where to start.
@@ -59,6 +63,42 @@ unexamined territory:
 - The `hanwen/go-fuse` library's own request dispatch / goroutine pool (never touched — every
   fix today started from `Handle.Read()` downward, not from the library's own internals).
 - The kernel/FUSE-protocol boundary itself.
+
+## Root cause, confirmed 2026-07-27
+
+Found by reading `hanwen/go-fuse`'s vendored source instead of adding more instrumentation —
+the "kernel/FUSE-protocol boundary" flagged above as unexamined territory.
+
+`ctx` passed into every one of these handlers (`ReadAtContext`, `readFullContext`,
+`GetReaderContext`'s caller in `UsenetReader.Read`) traces back to `*fuse.Context`
+(`vendor/github.com/hanwen/go-fuse/v2/fuse/context.go`), which `rawBridge.Read`
+(`vendor/.../fs/bridge.go`) constructs fresh per FUSE request and passes straight through as the
+`context.Context` argument — it satisfies the interface, but it isn't a real one:
+
+- `Deadline()` unconditionally returns `(time.Time{}, false)` — no deadline, ever.
+- `Done()`/`Err()` are wired to a `<-chan struct{}` that only closes when the kernel sends the
+  `FUSE_INTERRUPT` opcode for that specific request (`protocol-server.go`'s
+  `interruptRequest`) — and the kernel only sends `FUSE_INTERRUPT` when a **signal** arrives for
+  the process blocked in the `read()` syscall.
+
+A process stuck in **D-state** (uninterruptible sleep — confirmed via `/proc/<pid>/stack` on
+every single occurrence of this hang) cannot receive that signal by definition. So `ctx.Done()`
+in `readFullContext` — the exact escape hatch it was written to use — could never fire for the
+one case it existed to catch. This is also why five rounds of instrumentation on downstream
+waits (`GetReaderContext`, `budget.Acquire`, `poolGetter`) never caught anything firing: those
+are real, independently-bounded fixes, but the actual stall was in `readFullContext`'s ephemeral
+reader path (`createReaderAtOffset` + a fresh one-off reader per call — exactly the branch
+`ffprobe`'s non-sequential probing hits), waiting on a cancellation signal that structurally
+could never arrive.
+
+**Fix** (`javi11/altmount` fork, `debrand/altmount-clean`, commit `1b59596e`):
+`readFullContext` now derives its own `context.WithTimeout(ctx, 2*time.Minute)` instead of
+trusting the inherited FUSE-request context to ever cancel — the same pattern `GetReaderContext`
+already used. Since this call runs with `mvf.mu` held for its entire duration, this also
+unblocks every other read queued behind it on the same file handle (shared reader, AsyncReadBuffer
+fill goroutine) once it fires. `go build`/`vet`/`test` all pass; **not yet built into a new
+`altmount-local-fix` image or deployed to the live stack** — do that next, then watch for a real
+recurrence to confirm this is actually the fix and not a sixth negative round.
 
 Getting further needs either a real Go goroutine dump (no `pprof` endpoint wired up currently —
 adding one and getting a live SIGQUIT-style dump was considered but not attempted, since it kills
