@@ -75,9 +75,27 @@ standard bearmount recreate + 5-dependent cascade.
 
 **This is now automated**: `POST /api/bearmount/unstick-ffprobe-hang` (control-panel,
 `app.py`) does the whole thing — detect, blocklist, recreate, cascade, verify. Pass `force=true`
-to skip the import-queue-empty gate if needed. Same-day addition; only tested against a clean
-(non-stuck) state so far, never against a live hang — worth a real end-to-end test next time one
-occurs.
+to skip the import-queue-empty gate if needed.
+
+**Now exercised against real live hangs (2026-07-26), not just a clean state.** Two real
+occurrences the same day exposed a gap: bearmount sometimes comes back "healthy" after a plain
+recreate with its own FUSE mount still wedged (`/mnt/bearmount/movies` stays empty) — the
+endpoint correctly refused to touch the 5 dependents in that state (avoiding a repeat of the
+2026-07-25 mass-deletion trigger) but originally required a manual `sudo umount -l
+/mnt/bearmount` + second recreate to actually clear it. That retry is now automated too, via
+`_host_lazy_umount()` using `nsenter --target 1 --mount` — control-panel already runs with
+`pid: host` for the Plex Force Unstick feature, so PID 1 in its own `/proc` is the host's real
+init, and `nsenter` through it reaches the host mount namespace with no new bind-mount needed.
+This did require adding `cap_add: SYS_PTRACE` to control-panel's compose service (deliberate,
+non-trivial privilege widening — ptrace access to any host process, not just this one mount
+namespace file — accepted 2026-07-26 for this) and `util-linux` to the Dockerfile (provides
+`nsenter`).
+
+Also found and fixed live during that same test: `_wait_for_bearmount_content()` held a single
+`Container` object across its whole poll loop. If anything recreates bearmount again while the
+loop is running, that handle goes stale mid-poll and crashed the whole route with an unhandled
+`docker.errors.NotFound` (500) instead of failing cleanly. Now re-fetches by name every
+iteration and swallows `NotFound` as "not ready yet."
 
 Also fixed the same day: `_restart_bearmount_cascade()` (the function every unstick/restart-cascade
 route already used) was calling `.restart()` on the five FUSE-dependent containers instead of a
@@ -101,6 +119,22 @@ had exercised that code path against a fresh bearmount mount recently. Now uses
   a live repro hung instead of yielding an answer. Worth a dedicated look if it recurs.
 - **Fish functions (`stack-*`) aren't in Claude Code's own shell** — use `fish -c "stack-foo ..."`
   or call the control-panel API directly.
+- **Root cause found and fixed, 2026-07-27**: `unstick-ffprobe-hang` ran live against a real hang,
+  hit the "mount still empty after first recreate" branch, called `_host_lazy_umount`, then tried
+  a second `_recreate_container_via_sdk("bearmount")`. That helper's `create_container` call raced
+  the kernel still settling the just-completed umount — bind-mount source stat still reported
+  "transport endpoint is not connected", `create_container` raised `APIError`, and because
+  `remove_container` had already run with no rollback, bearmount was left with **no container at
+  all** (not unhealthy — gone), mount still wedged. `_restart_bearmount_cascade` correctly refused
+  to touch the 5 dependents (they were untouched, all healthy on their pre-outage mount views) but
+  the 502 gave no indication bearmount itself had been deleted. Found via `docker compose ps -a`
+  showing bearmount absent entirely, then `dockerd` journal's `task-delete` event at 04:01:10
+  correlated to control-panel's own access log (`POST /api/bearmount/unstick-ffprobe-hang ...  502
+  Bad Gateway` at the same timestamp). Fixed by retrying `create_container` up to 5x with a 2s
+  backoff inside `_recreate_container_via_sdk` instead of raising on the first transient failure —
+  see the function's docstring/comment in `app.py`. Recovered manually this session: `sudo umount
+  -l /mnt/bearmount` + `docker compose up -d --force-recreate bearmount`, verified mount content,
+  then `--force-recreate` on all 5 dependents.
 - Debug logging for bearmount is `config/bearmount/config.yaml`'s top-level `log:` → `level:`
   field — *not* the `log_level:` field under the disabled rclone-mount section higher up in the
   same file, which looks similar but does nothing (rclone mount is disabled in this config).

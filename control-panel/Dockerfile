@@ -9,7 +9,10 @@ ENV PYTHONUNBUFFERED=1
 
 # restic - for /api/backup-verify and /api/backup-restore-test, reading the
 # same two repos scripts/backup-config.sh writes to (mounted read-only below).
-RUN apt-get update && apt-get install -y --no-install-recommends restic \
+# util-linux - provides nsenter, used by _host_lazy_umount to clear a wedged
+# bearmount FUSE mount in the host's own mount namespace (pid: host +
+# cap_add: SYS_ADMIN already grant the access; this just adds the binary).
+RUN apt-get update && apt-get install -y --no-install-recommends restic util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
