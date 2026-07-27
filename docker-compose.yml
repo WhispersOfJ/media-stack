@@ -149,15 +149,17 @@ services:
   bearmount:
     restart: unless-stopped
     logging: *common-logging
-    # TEMPORARY local-fix pin, 2026-07-26: unreleased fixes for a recurring FUSE
-    # read-hang - see STACK.md's "Recurring BearMount FUSE read hangs" entry.
-    # PR open at javi11/altmount#806 (issue #805). Built from the de-branded
+    # TEMPORARY local-fix pin, 2026-07-27: fuse-ctx-independent-timeout carries the
+    # confirmed root-cause fix for the recurring ffprobe D-state read hang - see
+    # FIXES.md's "Root cause, confirmed 2026-07-27" section and STACK.md's
+    # "Recurring BearMount FUSE read hangs" entry. Built from the de-branded
     # WhispersOfJ/altmount fork (formerly WhispersOfJ/bearmount, renamed back
     # 2026-07-26 - GitHub repo, module path, and binary are all "altmount"
     # again; this stack's own service/container name below is unaffected,
-    # that's this repo's own naming, independent of upstream identity).
-    # Revert to a real upstream tag once #806 merges.
-    image: altmount-local-fix:ephemeral-diag
+    # that's this repo's own naming, independent of upstream identity), commit
+    # 1b59596e on debrand/altmount-clean. Not yet upstreamed as a PR - do that
+    # once this build has survived a real ffprobe hang without recurring.
+    image: altmount-local-fix:fuse-ctx-independent-timeout
     container_name: bearmount
     networks: [stacknet]
     environment:
