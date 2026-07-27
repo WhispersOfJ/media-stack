@@ -1,6 +1,38 @@
 # BearMount FUSE read-hang — 2026-07-26 session notes
 
-**2026-07-27 UPDATE: the `readFullContext` fix below is real but NOT sufficient** — a live
+**2026-07-27 ROOT CAUSE CONFIRMED (via a live pprof goroutine dump, not theory)**: wired
+`profiler_enabled: true` in `config/bearmount/config.yaml` (altmount already had `/debug/pprof`
+routed, just gated behind that flag - no code change needed for this part) and captured a real
+goroutine dump mid-hang. It showed the actual FUSE `Read()` goroutine parked in
+`sync.Cond.Wait()` inside `AsyncReadBuffer.ReadAtContext` (`internal/fuse/backend/asyncbuffer.go`),
+and the buffer's background `fill()` goroutine *also* parked in its own `sync.Cond.Wait()` -
+same buffer instance, both permanently stuck, neither able to wake the other.
+
+Mechanism: both frontier-wait loops in `ReadAtContext` (sequential-at-frontier and
+near-frontier) omitted `a.streaming` from their wait condition. A concurrent `ReadAtContext`
+call on the *same open handle* (the kernel can and does issue multiple in-flight reads per fd -
+ffprobe's probe-then-seek pattern is exactly this) sees a non-sequential offset while the buffer
+is streaming and calls `demoteLocked()`, which sets `a.streaming = false`, resets `a.filled = 0`,
+and `Broadcast()`s. The waiting goroutine wakes, re-checks its *old* condition - which never
+looked at `a.streaming` - sees `filled` still hasn't caught up to its offset, and parks again.
+But `fill()` has itself parked waiting for a *new* promotion, and only a goroutine reaching the
+probing-mode code path (not one stuck in this wait loop) can trigger that. Permanent deadlock,
+unrelated to anything examined in the sections below - it doesn't touch `readFullContext`,
+`GetReaderContext`, `mvf.mu`, or `downloadManager` at all, which is exactly why none of those
+five rounds of instrumentation, across two sessions, ever caught it: it isn't in any of that code.
+
+**Fix**: both wait loops now also exit when `a.streaming` goes false, falling through to the
+existing probing/passthrough path - the same recovery the pre-existing "closed while waiting"
+case already used, just reached from one more cause. `debrand/altmount-clean` commit `3130a4b6`.
+Built as `altmount-local-fix:asyncbuf-streaming-guard` (includes the earlier `1b59596e`
+`readFullContext` fix too - that one closed a real, separately-confirmed dead escape hatch, kept
+even though it wasn't this hang's mechanism) and deployed live 2026-07-27. Watching for a real
+recurrence before calling this closed for good and upstreaming as a PR.
+
+---
+
+**2026-07-27 EARLIER UPDATE (superseded by the above): the `readFullContext` fix below is real
+but NOT sufficient** — a live
 recurrence happened ~20 minutes after deploying it (two ffprobe D-state hangs,
 `Spectral.2016...` and `Jurassic.World.Chaos.Theory...`, both past 2 minutes stuck) with
 **zero log output whatsoever** for either file - no `readFullContext` timeout warning, no

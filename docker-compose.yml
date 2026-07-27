@@ -149,17 +149,24 @@ services:
   bearmount:
     restart: unless-stopped
     logging: *common-logging
-    # TEMPORARY local-fix pin, 2026-07-27: fuse-ctx-independent-timeout carries the
-    # confirmed root-cause fix for the recurring ffprobe D-state read hang - see
-    # FIXES.md's "Root cause, confirmed 2026-07-27" section and STACK.md's
-    # "Recurring BearMount FUSE read hangs" entry. Built from the de-branded
-    # WhispersOfJ/altmount fork (formerly WhispersOfJ/bearmount, renamed back
-    # 2026-07-26 - GitHub repo, module path, and binary are all "altmount"
-    # again; this stack's own service/container name below is unaffected,
-    # that's this repo's own naming, independent of upstream identity), commit
-    # 1b59596e on debrand/altmount-clean. Not yet upstreamed as a PR - do that
-    # once this build has survived a real ffprobe hang without recurring.
-    image: altmount-local-fix:fuse-ctx-independent-timeout
+    # TEMPORARY local-fix pin, 2026-07-27: asyncbuf-streaming-guard carries the
+    # CONFIRMED (via a live pprof goroutine dump, not theory) root-cause fix for
+    # the recurring ffprobe D-state read hang - AsyncReadBuffer's frontier-wait
+    # loops in internal/fuse/backend/asyncbuffer.go didn't check a.streaming, so
+    # a concurrent seek's demoteLocked() could strand a waiting reader forever.
+    # See FIXES.md's "Root cause, confirmed 2026-07-27 (via live goroutine
+    # dump)" section and STACK.md's "Recurring BearMount FUSE read hangs" entry.
+    # The earlier fuse-ctx-independent-timeout build (commit 1b59596e) is a
+    # real, separate fix (closed a genuinely dead ctx-cancellation escape
+    # hatch) but was confirmed NOT sufficient on its own - this build
+    # (commit 3130a4b6 on debrand/altmount-clean) includes both. Built from the
+    # de-branded WhispersOfJ/altmount fork (formerly WhispersOfJ/bearmount,
+    # renamed back 2026-07-26 - GitHub repo, module path, and binary are all
+    # "altmount" again; this stack's own service/container name below is
+    # unaffected, that's this repo's own naming, independent of upstream
+    # identity). Not yet upstreamed as a PR - do that once this build has
+    # survived a real ffprobe hang without recurring.
+    image: altmount-local-fix:asyncbuf-streaming-guard
     container_name: bearmount
     networks: [stacknet]
     environment:
