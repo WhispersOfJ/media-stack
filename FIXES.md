@@ -15,6 +15,42 @@ escape hatch, see below) but **do not consider this hang solved** - next step is
 goroutine dump via pprof (still not wired up) or reading `go-fuse`'s dispatch/request-pool
 internals directly.
 
+**A THIRD occurrence followed within the same watch window** (`Jurassic.World.Chaos.Theory.S02E06`),
+with a cleaner signature worth recording: `downloadManager` DEBUG logs showed all 46 initially
+scheduled segments finish downloading (`in_flight` draining 27→0) while `current_read` advanced
+only from 0→1, then **total silence** — not one more log line of any kind, including the
+`GetReaderContext`-took-`>10s` warning, which is logged unconditionally after that call returns
+regardless of success or timeout. Its total absence, more than 3 minutes past the point that
+warning should have fired if the call were even in flight, means the code isn't inside
+`GetReaderContext` either — confirms (doesn't just suggest) that the stall is upstream of both
+bounded points, at debug log level with nothing to show for it. bearmount itself then died a
+*third* time, independently — not as a side effect of anything this session did to it.
+
+**A real, separate control-panel bug found trying to recover from that third death**: the
+2026-07-27 lazy-umount-retry fix (below) called `_recreate_container_via_sdk("bearmount")` a
+second time on retry, and that function unconditionally re-`inspect_container`s the named
+container to build its recreate config. Once the first attempt's `remove_container` has already
+run, there is nothing left to inspect — the retry 404'd immediately regardless of whether the
+umount itself worked, and the endpoint reported a useless "No such container: bearmount" instead
+of actually recovering. Fixed by splitting `_recreate_container_via_sdk` into
+`_capture_container_config` (inspect once) and `_recreate_and_start_from_config` (takes the
+already-captured config, never re-inspects) — `_restart_bearmount_cascade` now captures once up
+front and reuses that same captured config across every retry in the function. If bearmount is
+already fully gone before the cascade even starts, there is still no way for this endpoint to
+recover (no container left to capture from at all) - that now fails fast with a clear message
+pointing at a host-side `docker compose up -d --force-recreate bearmount` instead of a confusing
+404. Rebuilt and deployed live 2026-07-27.
+
+**Net effect of this watch session**: two real control-panel bugs found and fixed (both
+concrete, both confirmed against live failures, both worth keeping), one altmount-side fix
+deployed and shown insufficient, and the actual root cause still open. Recovered from three
+separate bearmount deaths by hand during this window - each time via the standard `sqlite3`
+queue check + `sudo umount -l /mnt/bearmount` + `docker compose up -d --force-recreate
+bearmount` + verify content + `--force-recreate` the 5 dependents + verify from inside each one.
+That recipe held every time; nothing about tonight suggests it's unreliable, only that
+bearmount is currently dying more often than before (three times in under 15 minutes of active
+Radarr/Sonarr import traffic, vs. roughly one every few days before this).
+
 Working notes for whoever picks this up next. Full blow-by-blow with all evidence lives in
 `STACK.md` (search "recurring-hang" / "Occurrence #"); this file is the condensed version:
 what's actually true right now, what's fixed, what isn't, and where to start.
