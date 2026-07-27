@@ -3531,43 +3531,50 @@ def stack_restart_all():
     return ok(f"Restarting {len(names)} containers (everything except this panel): {', '.join(names)}")
 
 
-def _recreate_container_via_sdk(name: str):
-    """Recreates a container in place from its own current inspected
-    config - the closest reachable equivalent to `docker compose up
-    --force-recreate <service>` from inside a container that only has
-    docker.sock, not the `docker` CLI or a docker-compose.yml to run it
-    against.
-
-    CORRECTION, 2026-07-25: this used to shell out to `docker compose up
-    -d --force-recreate` via subprocess. Confirmed live, both halves of
-    that were broken: the `docker` CLI binary isn't installed in this
-    image at all (every call failed with a bare FileNotFoundError, not a
-    compose error), and even with it installed, `cwd=repo_root` resolved
-    to this container's own filesystem root (`os.path.dirname` of `/app/
-    app.py` twice is `/`), which has no docker-compose.yml - there's no
-    bind-mounted copy of the repo in here. This path had never actually
-    completed successfully in production; Tier 3's abort step had been
-    silently leaving Plex dead with no recreate ever happening. Recreating
-    from the container's own Config/HostConfig/NetworkSettings needs only
-    the docker.sock already mounted for every other route in this file."""
+def _capture_container_config(name: str):
+    """Snapshots the pieces of a running container's inspect output needed to
+    recreate it later - split out from _recreate_container_via_sdk on
+    2026-07-27 so a caller can capture this ONCE while the container is known
+    to exist, then retry creation against the same captured config instead of
+    re-inspecting a container that a prior failed attempt may have already
+    removed (see _recreate_and_start_from_config's docstring for why that
+    matters - confirmed live the same day: a second top-level call to the old
+    combined function 404'd on inspect_container because the first attempt's
+    remove_container had already run)."""
     old = docker_client.api.inspect_container(name)
-    config = old["Config"]
-    host_config = old["HostConfig"]
-    networking_config = docker_client.api.create_networking_config({
-        net: docker_client.api.create_endpoint_config()
-        for net in old.get("NetworkSettings", {}).get("Networks", {})
-    })
-    docker_client.api.remove_container(name, force=True)
+    return {
+        "config": old["Config"],
+        "host_config": old["HostConfig"],
+        "networking_config": docker_client.api.create_networking_config({
+            net: docker_client.api.create_endpoint_config()
+            for net in old.get("NetworkSettings", {}).get("Networks", {})
+        }),
+    }
 
-    # CORRECTION, 2026-07-27: create_container used to run once, right after
-    # remove, with no retry. Confirmed live: when this follows a
-    # _host_lazy_umount() call, create_container can race the kernel still
-    # settling the just-completed umount - the bind-mount source stat briefly
-    # still reports "transport endpoint is not connected", create_container
-    # raises APIError, and since remove_container already ran, bearmount was
-    # left with no container at all (not even unhealthy - gone) until fixed
-    # by hand. Retrying a few times with a short backoff survives that race
-    # instead of orphaning the container on the first transient failure.
+
+def _recreate_and_start_from_config(name: str, captured: dict):
+    """Removes the current `name` container (if any) and creates+starts a new
+    one from an already-captured config (see _capture_container_config).
+    Taking the config as a parameter rather than re-inspecting `name` is
+    deliberate: once remove_container has run, `name` may no longer exist to
+    inspect, so any retry after a failed create must reuse the config
+    captured before the first removal, not fetch fresh state that might not
+    be there anymore.
+
+    Retries create_container up to 5x with a 2s backoff: confirmed live
+    2026-07-27, create_container can race a just-completed lazy umount (the
+    bind-mount source stat briefly still reports "transport endpoint is not
+    connected") - retrying survives that instead of orphaning the container
+    on the first transient failure."""
+    config = captured["config"]
+    host_config = captured["host_config"]
+    networking_config = captured["networking_config"]
+
+    try:
+        docker_client.api.remove_container(name, force=True)
+    except docker.errors.NotFound:
+        pass
+
     create_err = None
     for attempt in range(5):
         try:
@@ -3593,6 +3600,34 @@ def _recreate_container_via_sdk(name: str):
         raise create_err
     docker_client.api.start(new_id)
     return docker_client.containers.get(name)
+
+
+def _recreate_container_via_sdk(name: str):
+    """Recreates a container in place from its own current inspected
+    config - the closest reachable equivalent to `docker compose up
+    --force-recreate <service>` from inside a container that only has
+    docker.sock, not the `docker` CLI or a docker-compose.yml to run it
+    against.
+
+    CORRECTION, 2026-07-25: this used to shell out to `docker compose up
+    -d --force-recreate` via subprocess. Confirmed live, both halves of
+    that were broken: the `docker` CLI binary isn't installed in this
+    image at all (every call failed with a bare FileNotFoundError, not a
+    compose error), and even with it installed, `cwd=repo_root` resolved
+    to this container's own filesystem root (`os.path.dirname` of `/app/
+    app.py` twice is `/`), which has no docker-compose.yml - there's no
+    bind-mounted copy of the repo in here. This path had never actually
+    completed successfully in production; Tier 3's abort step had been
+    silently leaving Plex dead with no recreate ever happening. Recreating
+    from the container's own Config/HostConfig/NetworkSettings needs only
+    the docker.sock already mounted for every other route in this file.
+
+    Single-shot convenience wrapper around _capture_container_config +
+    _recreate_and_start_from_config for every caller that doesn't need to
+    reuse the captured config across a retry - see
+    _restart_bearmount_cascade for the one that does."""
+    captured = _capture_container_config(name)
+    return _recreate_and_start_from_config(name, captured)
 
 
 def _host_lazy_umount(path: str) -> str | None:
@@ -3686,9 +3721,34 @@ def _restart_bearmount_cascade():
     retry loop covers), which is exactly the case a lazy umount fixes.
     Previously this left bearmount deleted (remove already ran) with no
     recovery attempt at all. Now retries via the same lazy-umount dance
-    as the empty-content branch before giving up."""
+    as the empty-content branch before giving up.
+
+    CORRECTION, 2026-07-27 (later the same day): that first fix was itself
+    broken - it called _recreate_container_via_sdk("bearmount") a second
+    time on retry, which re-inspects "bearmount" to build its config. Once
+    the first attempt's remove_container has run, there is nothing left to
+    inspect, so the retry 404'd immediately regardless of the umount -
+    confirmed live, bearmount stuck fully deleted with the endpoint
+    reporting a useless "No such container: bearmount" error instead of
+    actually recovering. Now captures the container's config ONCE up front
+    via _capture_container_config and reuses that same captured config for
+    every retry in this function via _recreate_and_start_from_config,
+    so a retry never depends on the named container still existing to
+    inspect. If bearmount is already fully gone when this function starts
+    (no container left to capture from at all), that is a real dead end
+    for this endpoint - see the fail() below - and needs a host-side
+    `docker compose up -d --force-recreate bearmount` instead."""
     try:
-        bearmount = _recreate_container_via_sdk("bearmount")
+        captured = _capture_container_config("bearmount")
+    except docker.errors.NotFound:
+        fail("bearmount does not exist at all right now (not just unhealthy) - there is no "
+             "running container left to capture a recreate config from, so this endpoint "
+             "cannot self-heal it. Run `docker compose up -d --force-recreate bearmount` "
+             "from the host, verify /mnt/bearmount/movies is non-empty, then retry.",
+             status_code=502)
+
+    try:
+        bearmount = _recreate_and_start_from_config("bearmount", captured)
     except docker.errors.APIError as e:
         umount_err = _host_lazy_umount("/mnt/bearmount")
         if umount_err:
@@ -3696,7 +3756,7 @@ def _restart_bearmount_cascade():
                  f"retry also failed: {umount_err}. Check `docker logs bearmount` and "
                  f"`mount | grep bearmount` before retrying manually.", status_code=502)
         try:
-            bearmount = _recreate_container_via_sdk("bearmount")
+            bearmount = _recreate_and_start_from_config("bearmount", captured)
         except docker.errors.APIError as e2:
             fail(f"bearmount force-recreate failed both before and after a host-level lazy "
                  f"umount: {e2}. Check `docker logs bearmount` before retrying manually.",
@@ -3715,7 +3775,7 @@ def _restart_bearmount_cascade():
                  f"cleared 600+ items after finding every symlink unavailable). Check "
                  f"`docker logs bearmount` before retrying.", status_code=502)
         try:
-            bearmount = _recreate_container_via_sdk("bearmount")
+            bearmount = _recreate_and_start_from_config("bearmount", captured)
         except docker.errors.APIError as e:
             fail(f"bearmount force-recreate (post-umount retry) failed: {e}")
         wait_for_healthy(bearmount)
