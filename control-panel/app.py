@@ -3558,22 +3558,98 @@ def _recreate_container_via_sdk(name: str):
         for net in old.get("NetworkSettings", {}).get("Networks", {})
     })
     docker_client.api.remove_container(name, force=True)
-    new_id = docker_client.api.create_container(
-        image=config["Image"],
-        name=name,
-        hostname=config.get("Hostname"),
-        user=config.get("User") or None,
-        entrypoint=config.get("Entrypoint"),
-        command=config.get("Cmd"),
-        environment=config.get("Env"),
-        labels=config.get("Labels"),
-        healthcheck=config.get("Healthcheck"),
-        working_dir=config.get("WorkingDir") or None,
-        host_config=host_config,
-        networking_config=networking_config,
-    )["Id"]
+
+    # CORRECTION, 2026-07-27: create_container used to run once, right after
+    # remove, with no retry. Confirmed live: when this follows a
+    # _host_lazy_umount() call, create_container can race the kernel still
+    # settling the just-completed umount - the bind-mount source stat briefly
+    # still reports "transport endpoint is not connected", create_container
+    # raises APIError, and since remove_container already ran, bearmount was
+    # left with no container at all (not even unhealthy - gone) until fixed
+    # by hand. Retrying a few times with a short backoff survives that race
+    # instead of orphaning the container on the first transient failure.
+    create_err = None
+    for attempt in range(5):
+        try:
+            new_id = docker_client.api.create_container(
+                image=config["Image"],
+                name=name,
+                hostname=config.get("Hostname"),
+                user=config.get("User") or None,
+                entrypoint=config.get("Entrypoint"),
+                command=config.get("Cmd"),
+                environment=config.get("Env"),
+                labels=config.get("Labels"),
+                healthcheck=config.get("Healthcheck"),
+                working_dir=config.get("WorkingDir") or None,
+                host_config=host_config,
+                networking_config=networking_config,
+            )["Id"]
+            break
+        except docker.errors.APIError as e:
+            create_err = e
+            time.sleep(2)
+    else:
+        raise create_err
     docker_client.api.start(new_id)
     return docker_client.containers.get(name)
+
+
+def _host_lazy_umount(path: str) -> str | None:
+    """Lazy-unmounts `path` in the *host's* mount namespace via nsenter.
+    Needed because a recreate alone sometimes isn't enough to clear a
+    wedged FUSE mount - confirmed live twice on 2026-07-26 (two separate
+    ffprobe hangs, same day): bearmount comes back "healthy" with
+    /mnt/bearmount/movies still empty until `sudo umount -l /mnt/bearmount`
+    runs on the host first, then a second recreate picks up a real mount.
+    This container already has `pid: host` + `cap_add: SYS_ADMIN` for the
+    Plex Force Unstick feature, which means PID 1 in this container's own
+    /proc is the host's real init - `nsenter --target 1 --mount` enters
+    the host mount namespace through it, no extra compose privilege
+    needed. Returns None on success (including "not mounted", which is
+    also a success state here - it means there was nothing to clear), or
+    an error string."""
+    try:
+        result = subprocess.run(
+            ["nsenter", "--target", "1", "--mount", "--", "umount", "-l", path],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return str(e)
+    if result.returncode == 0:
+        return None
+    stderr = result.stderr.strip()
+    if "not mounted" in stderr or "not found" in stderr:
+        return None
+    return stderr or f"umount exited {result.returncode}"
+
+
+def _wait_for_bearmount_content(tries: int = 10, sleep_s: int = 2) -> bool:
+    """Polls until /mnt/bearmount/movies is a real, non-empty directory
+    listing - a content-less mount still exits 0 with empty output, so
+    wait_for_healthy() alone would falsely report success here (confirmed
+    live 2026-07-25).
+
+    CORRECTION, 2026-07-26: the first version took a single Container
+    object and reused it across every iteration. Confirmed live: if
+    bearmount gets recreated again by anything else while this loop is
+    running (another caller, a concurrent request), that object's ID goes
+    stale mid-poll and _bounded_exec's exec_run raises an unhandled
+    docker.errors.NotFound, 500ing the whole route instead of just
+    treating that iteration as "not ready yet". Re-fetching by name each
+    iteration and swallowing NotFound fixes both: a stale handle and a
+    container that hasn't fully landed yet look the same here - not
+    ready, keep polling."""
+    for _ in range(tries):
+        try:
+            bearmount = docker_client.containers.get("bearmount")
+            result = _bounded_exec(bearmount, ["ls", "/mnt/bearmount/movies"], timeout=5)
+        except docker.errors.NotFound:
+            result = None
+        if result is not None and result.exit_code == 0 and result.output.strip():
+            return True
+        time.sleep(sleep_s)
+    return False
 
 
 def _restart_bearmount_cascade():
@@ -3592,32 +3668,44 @@ def _restart_bearmount_cascade():
     exactly why the recreate happens here rather than skipping straight
     to restarting the 5 dependents.
 
-    Also confirmed live the same day: a container.exec_run `ls` against a
-    *content-less* mount still exits 0 with empty output - it looks
-    identical to a healthy check unless the content itself is verified.
-    `wait_for_healthy()` alone would have falsely reported success here,
-    so this checks for a real, non-empty directory listing before
-    declaring BearMount itself recovered."""
+    If the mount still comes back empty after that first recreate
+    (confirmed live twice on 2026-07-26), this now runs _host_lazy_umount
+    and recreates a second time before giving up - automating the manual
+    `sudo umount -l /mnt/bearmount` + recreate that both real incidents
+    that day needed. Still refuses to touch the 5 dependents if the mount
+    is empty after that retry too - see the 2026-07-25 mass-deletion
+    history in STACK.md for why that gate exists."""
     try:
         bearmount = _recreate_container_via_sdk("bearmount")
     except docker.errors.APIError as e:
         fail(f"bearmount force-recreate failed: {e}")
     wait_for_healthy(bearmount)
 
-    mount_has_content = False
-    for _ in range(10):
-        result = _bounded_exec(bearmount, ["ls", "/mnt/bearmount/movies"], timeout=5)
-        if result is not None and result.exit_code == 0 and result.output.strip():
-            mount_has_content = True
-            break
-        time.sleep(2)
+    mount_has_content = _wait_for_bearmount_content()
+
     if not mount_has_content:
-        fail("bearmount recreated and reports healthy, but /mnt/bearmount/movies is still "
-             "empty after 20s - its own internal FUSE mount hasn't come back with real "
-             "content. Do not restart the 5 dependents against an empty mount (this is what "
-             "caused the 2026-07-25 mass library deletion - Plex's autoEmptyTrash cleared "
-             "600+ items after finding every symlink unavailable). Check `docker logs "
-             "bearmount` before retrying.", status_code=502)
+        umount_err = _host_lazy_umount("/mnt/bearmount")
+        if umount_err:
+            fail(f"bearmount recreated and reports healthy, but /mnt/bearmount/movies is "
+                 f"still empty, and the host-level lazy umount retry failed: {umount_err}. "
+                 f"Do not restart the 5 dependents against an empty mount (this is what "
+                 f"caused the 2026-07-25 mass library deletion - Plex's autoEmptyTrash "
+                 f"cleared 600+ items after finding every symlink unavailable). Check "
+                 f"`docker logs bearmount` before retrying.", status_code=502)
+        try:
+            bearmount = _recreate_container_via_sdk("bearmount")
+        except docker.errors.APIError as e:
+            fail(f"bearmount force-recreate (post-umount retry) failed: {e}")
+        wait_for_healthy(bearmount)
+        mount_has_content = _wait_for_bearmount_content()
+
+    if not mount_has_content:
+        fail("bearmount recreated twice (including a host-level lazy umount in between) but "
+             "/mnt/bearmount/movies is still empty. Do not restart the 5 dependents against "
+             "an empty mount (this is what caused the 2026-07-25 mass library deletion - "
+             "Plex's autoEmptyTrash cleared 600+ items after finding every symlink "
+             "unavailable). Check `docker logs bearmount` before retrying manually.",
+             status_code=502)
 
     # CORRECTION, 2026-07-26: this used to call c.restart() on each dependent.
     # Confirmed live, repeatedly, the same day: restart() reuses the
@@ -3723,7 +3811,22 @@ FFPROBE_STUCK_THRESHOLD_S = 90  # every confirmed-genuine hang 2026-07-26 was 2m
 
 
 def _parse_ps_etime(etime: str) -> int | None:
-    """Parses ps's etime format ([[DD-]HH:]MM:SS) into total seconds."""
+    """Parses ps's etime into total seconds. Two formats show up across this
+    stack's containers: procps' [[DD-]HH:]MM:SS (radarr/sonarr are Alpine
+    though - see below) and BusyBox's, which drops colons once past an hour:
+    "Dd HH" past a day, "Hh MM" past an hour, else plain "MM:SS". Confirmed
+    live 2026-07-26: a genuinely stuck 1h28m ffprobe in radarr's container
+    reported etime "1h27" - the procps-only parser raised ValueError on the
+    bare int() cast and silently returned None, so the stuck-ffprobe
+    detector treated a real hang as not-stuck."""
+    m = re.match(r"^(\d+)d(\d+)$", etime)
+    if m:
+        days, hours = (int(g) for g in m.groups())
+        return days * 86400 + hours * 3600
+    m = re.match(r"^(\d+)h(\d+)$", etime)
+    if m:
+        hours, minutes = (int(g) for g in m.groups())
+        return hours * 3600 + minutes * 60
     try:
         days = 0
         if "-" in etime:

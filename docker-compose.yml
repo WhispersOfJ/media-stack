@@ -425,9 +425,15 @@ services:
     # what actually let the abort write to /host-sys-fuse succeed. Start
     # minimal (this set) before adding anything broader if a real
     # permission error proves it's needed - see CLAUDE.md.
+    # SYS_PTRACE added 2026-07-26 for _host_lazy_umount's nsenter call
+    # (unstick-ffprobe-hang's automated mount recovery) - reading another
+    # process's /proc/<pid>/ns/mnt requires ptrace access to that pid, not
+    # just SYS_ADMIN. This is a real privilege widening (ptrace access to
+    # any host process), accepted deliberately - see CLAUDE.md.
     pid: host
     cap_add:
       - SYS_ADMIN
+      - SYS_PTRACE
     security_opt:
       - apparmor:unconfined
     healthcheck:
