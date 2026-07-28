@@ -18,12 +18,16 @@ from pathlib import Path
 # Known FUSE-mount-owning services -> containers that bind-mount their output and
 # must be restarted afterward or they'll keep serving a stale mount handle.
 # Update this when the compose topology changes; it cannot be inferred from
-# docker-compose.yml alone. bearmount is the only mount owner left (rebrand/fork
-# of AltMount, itself the NzbDAV/nzbdav-rclone replacement - see CLAUDE.md's
-# History) - matches control-panel/app.py's own MOUNT_PROVIDERS/
-# MOUNT_DEPENDENTS sets exactly.
+# docker-compose.yml alone. As of the 2026-07-28 BearMount->nzbdav/nzbdav
+# cutover (see STACK.md's History), the FUSE mount owner is nzbdav_rclone (a
+# stock rclone sidecar), not the nzbdav backend itself - nzbdav is a real
+# upstream prereq for it now (the WebDAV source it mounts) but restarting
+# nzbdav alone doesn't invalidate the kernel-level FUSE mount the way
+# recreating nzbdav_rclone does, so it isn't a cascade key here. Matches
+# control-panel/app.py's own MOUNT_PREREQS/MOUNT_PROVIDERS/MOUNT_DEPENDENTS
+# sets exactly.
 CASCADE_MAP = {
-    "bearmount": ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"],
+    "nzbdav_rclone": ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"],
 }
 
 

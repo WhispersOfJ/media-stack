@@ -550,30 +550,6 @@
     "LogContainer": "{1}"
   },
   {
-    "Name": "stack-plex-restart-cascade",
-    "Description": "Tier 2: force-recreate BearMount + restart the 5 mount-dependent containers",
-    "Method": "POST",
-    "PathTemplate": "/api/plex/restart-cascade",
-    "Query": null,
-    "Args": null,
-    "Confirm": true,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "bearmount"
-  },
-  {
-    "Name": "stack-plex-unstick",
-    "Description": "Tier 3: abort wedged FUSE connections, then run the mount cascade",
-    "Method": "POST",
-    "PathTemplate": "/api/plex/unstick",
-    "Query": null,
-    "Args": null,
-    "Confirm": true,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "bearmount"
-  },
-  {
     "Name": "stack-sonarr-monitor-episodes-fix",
     "Description": "Fix any unmonitored episode under a monitored Sonarr series/season",
     "Method": "POST",
@@ -885,9 +861,9 @@
   },
   {
     "Name": "stack-bearmount-delete-failures",
-    "Description": "Delete all Failed entries from BearMount history",
+    "Description": "Delete all Failed entries from NzbDAV history",
     "Method": "POST",
-    "PathTemplate": "/api/bearmount/delete-failures",
+    "PathTemplate": "/api/nzbdav/delete-failures",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -897,9 +873,9 @@
   },
   {
     "Name": "stack-bearmount-history",
-    "Description": "Show BearMount's recent download history (completed/failed)",
+    "Description": "Show NzbDAV's recent download history (completed/failed)",
     "Method": "GET",
-    "PathTemplate": "/api/bearmount/history",
+    "PathTemplate": "/api/nzbdav/history",
     "Query": [
       {
         "Key": "limit",
@@ -923,9 +899,9 @@
   },
   {
     "Name": "stack-bearmount-queue",
-    "Description": "Show BearMount's current Usenet download queue",
+    "Description": "Show NzbDAV's current Usenet download queue",
     "Method": "GET",
-    "PathTemplate": "/api/bearmount/queue",
+    "PathTemplate": "/api/nzbdav/queue",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -935,9 +911,9 @@
   },
   {
     "Name": "stack-bearmount-stats",
-    "Description": "Show aggregate BearMount queue/history stats",
+    "Description": "Show aggregate NzbDAV queue/history stats",
     "Method": "GET",
-    "PathTemplate": "/api/bearmount/stats",
+    "PathTemplate": "/api/nzbdav/stats",
     "Query": null,
     "Args": null,
     "Confirm": false,

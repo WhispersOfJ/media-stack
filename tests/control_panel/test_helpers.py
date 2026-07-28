@@ -111,21 +111,21 @@ def test_bucket_arr_item_stalled_no_progress(cp_app):
     assert bucket == "stalled"
 
 
-def test_bucket_bearmount_item_importing(cp_app):
+def test_bucket_nzbdav_item_importing(cp_app):
     s = {"nzo_id": "a", "filename": "Foo", "mb": 100, "mbleft": 0, "status": "Downloading"}
-    bucket, item = cp_app._bucket_bearmount_item(s, {})
+    bucket, item = cp_app._bucket_nzbdav_item(s, {})
     assert bucket == "importing"
 
 
-def test_bucket_bearmount_item_queued(cp_app):
+def test_bucket_nzbdav_item_queued(cp_app):
     s = {"nzo_id": "a", "filename": "Foo", "mb": 100, "mbleft": 50, "status": "Queued"}
-    bucket, item = cp_app._bucket_bearmount_item(s, {})
+    bucket, item = cp_app._bucket_nzbdav_item(s, {})
     assert bucket == "queued"
 
 
-def test_bucket_bearmount_item_downloading(cp_app):
+def test_bucket_nzbdav_item_downloading(cp_app):
     s = {"nzo_id": "a", "filename": "Foo", "mb": 100, "mbleft": 40, "status": "Downloading"}
-    bucket, item = cp_app._bucket_bearmount_item(s, {"a": 60.0})
+    bucket, item = cp_app._bucket_nzbdav_item(s, {"a": 60.0})
     assert bucket == "downloading"
     assert "eta" in item
 

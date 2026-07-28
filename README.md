@@ -3,11 +3,15 @@
 Current version: **v11.9.0**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
-via Usenet through **AltMount** - streamed via a FUSE mount, not downloaded to local disk - and
-serves the result through **Plex**. Jellyfin briefly replaced Plex in v11.7.0 and was fully
-reverted back to Plex the same day after repeated unresolved library-scan hangs; NzbDAV (the
-Usenet client v11.7.0 and earlier versions of this doc refer to) was itself replaced by AltMount
-the following day for an unrelated, unfixed connection-leak bug. Torrent/debrid support was
+via Usenet through **nzbdav/nzbdav** - streamed via a FUSE mount (a separate `nzbdav_rclone`
+sidecar), not downloaded to local disk - and serves the result through **Plex**. Jellyfin briefly
+replaced Plex in v11.7.0 and was fully reverted back to Plex the same day after repeated
+unresolved library-scan hangs; the original NzbDAV (the Usenet client v11.7.0 and earlier
+versions of this doc refer to) was itself replaced by AltMount the following day for an
+unrelated, unfixed connection-leak bug, then AltMount's rebrand/fork BearMount, then finally by
+the current nzbdav/nzbdav (a different, unrelated codebase despite the name) on 2026-07-28 - see
+[The Usenet pipeline](#the-usenet-pipeline-nzbdavnzbdav) for the full lineage. Torrent/debrid
+support was
 removed entirely in v11.0.0 (see [History](#history)). One compose file, every image pinned and
 healthchecked. Two operator surfaces: a custom dashboard (Control Panel, redesigned entirely in
 v11.8.0 - no boxed/card layout, no tabs, a permanently pinned live log console) and a custom CLI
@@ -25,7 +29,7 @@ chronological [History](#history) section is at the end.
 - [Directory layout](#directory-layout)
 - [The full service list](#the-full-service-list)
 - [The *arr apps](#the-arr-apps)
-- [The Usenet pipeline: AltMount](#the-usenet-pipeline-altmount)
+- [The Usenet pipeline: nzbdav/nzbdav](#the-usenet-pipeline-nzbdavnzbdav)
 - [Indexing: Prowlarr](#indexing-prowlarr)
 - [Requests: Seerr](#requests-seerr)
 - [Media server: Plex](#media-server-plex)
@@ -49,7 +53,7 @@ chronological [History](#history) section is at the end.
 
 A Usenet-only media stack: an indexer layer (Prowlarr), a request front-end (Seerr), two
 `*arr` apps (Radarr, Sonarr; Lidarr was removed in v10.9.9 and Whisparr in v10.12.0, see
-[History](#history)), Usenet acquisition that streams rather than downloads (**AltMount**),
+[History](#history)), Usenet acquisition that streams rather than downloads (**nzbdav/nzbdav**),
 and **Plex** for serving, plus automation extras (Cleanuparr, Unpackerr, Watchtower,
 Bazarr). Ebooks briefly had a dedicated app (Bindery) plus a reader (Calibre-Web); both were
 retired in v10.9.8 with no replacement (see
@@ -70,10 +74,11 @@ either. See [History](#history) `[11.7.0]` for the full migration and reversion,
 **Torrent and debrid (Decypharr, Zurg, rclone-alldebrid, Zilean, Byparr) were removed
 entirely** (see [History](#history)) - the stack ran debrid-first originally, flipped to
 Usenet-preferred in v10.14.1, and finally went Usenet-only once that migration proved out.
-AltMount covers acquisition as a WebDAV virtual filesystem streamed on demand, not a local
-download; it replaced NzbDAV entirely, after an unfixed upstream connection-leak bug (see
-[History](#history)). NZBGet, which wrote real files to disk, was removed earlier still (see
-[History](#history)).
+nzbdav/nzbdav covers acquisition - a WebDAV virtual filesystem plus an `nzbdav_rclone` FUSE
+sidecar, streamed on demand, not a local download - the current stop in a lineage of four
+Usenet clients (original NzbDAV -> AltMount -> BearMount -> nzbdav/nzbdav, see
+[The Usenet pipeline](#the-usenet-pipeline-nzbdavnzbdav) for the full history). NZBGet, which
+wrote real files to disk, was removed earliest of all (see [History](#history)).
 
 This assumes familiarity with Docker Compose. Every web UI publishes directly to the LAN with
 no login gate (see [Security](#security)). A Traefik + Authelia + CrowdSec auth layer was
@@ -125,11 +130,12 @@ a `.env` change. Use `--force-recreate`.
 Prowlarr ──indexes──> your Usenet indexers
    │
    ▼
-Radarr/Sonarr ──grab──> AltMount (SABnzbd-compatible API) ──streams via its own
-                         internal rclone/FUSE mount──> /mnt/altmount
-                         AltMount's SYMLINK import_dir (./media/altmount-import, same
-                         filesystem as every root folder) ──symlinked into──> each
-                         app's root folder: ./media/<type> → /data/<type>
+Radarr/Sonarr ──grab──> nzbdav (SABnzbd-compatible API, WebDAV server, no mount of
+                         its own) ──streamed by the nzbdav_rclone sidecar's FUSE
+                         mount──> /mnt/remote/nzbdav
+                         nzbdav's symlinks import strategy (same filesystem as every
+                         root folder) ──symlinked into──> each app's root folder:
+                         ./media/<type> → /data/<type>
 
 ./media/{movies,shows}  → /data/{...}  → every app's writable root folder, 100%
                                           symlinks, zero real media files on disk
@@ -140,25 +146,26 @@ publishes directly to stacknet with no reverse proxy)
 ```
 
 Root folders live on regular host disk (`./media/<type>`), matching every app's own tracked
-root folder path. The only FUSE mount in this stack is `altmount`'s own (no separate rclone
-sidecar, unlike the old NzbDAV setup - see [History](#history)), at `/mnt/altmount` - every
-service that reads a root folder's symlinks needs that same mount (Radarr, Sonarr, Plex,
-Unpackerr, Cleanuparr).
+root folder path. The only FUSE mount in this stack is `nzbdav_rclone`'s (a separate sidecar
+container - `nzbdav` itself is a pure WebDAV server with no mount of its own, see
+[History](#history)), at `/mnt/remote/nzbdav` - every service that reads a root folder's
+symlinks needs that same mount (Radarr, Sonarr, Plex, Unpackerr, Cleanuparr).
 
 > **FUSE mount fragility.** A direct subpath bind of a FUSE mountpoint
-> (`/mnt/altmount:/mnt/altmount:rslave`) does not reliably survive the FUSE process being
-> recreated underneath it (an image update, a resource-limit change, a plain restart) -
+> (`/mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave`) does not reliably survive the FUSE process
+> being recreated underneath it (an image update, a resource-limit change, a plain restart) -
 > confirmed live more than once for this exact mount-owner-plus-five-dependents shape (see
 > [History](#history)). Never `sudo umount` it yourself to "clear" it - with `rshared`
 > propagation this can tear down the real live mount instead of just a stale reference.
 > Confirm the mount owner itself is healthy first, then restart the five dependents. Control
 > Panel's whole-stack restart (see [Control Panel](#control-panel)) already sequences this:
-> mount provider first, wait for healthy, dependents last.
+> prereq (nzbdav healthy) first, mount provider next, wait for healthy, dependents last.
 
 `control-panel/app.py`'s mount-ordering sets (see [Control Panel](#control-panel)):
-`MOUNT_PROVIDERS = {"altmount"}`, `MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr",
-"cleanuparr"}` - `MOUNT_PREREQS` is empty, since AltMount owns its own mount directly with no
-separate sidecar to wait on first, unlike the old NzbDAV/`nzbdav-rclone` pair.
+`MOUNT_PREREQS = {"nzbdav"}`, `MOUNT_PROVIDERS = {"nzbdav_rclone"}`, `MOUNT_DEPENDENTS =
+{"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}` - unlike AltMount/BearMount (which owned
+their mount directly, no prereq needed), nzbdav_rclone can't mount until the `nzbdav` WebDAV
+server it targets is up and healthy first.
 
 Seerr (formerly Overseerr/Jellyseerr; the projects merged) is the user-facing request page,
 talking to Radarr and Sonarr, and is pointed at Plex - `mediaServerType: 1` (`PLEX`), Plex
@@ -180,18 +187,19 @@ Stack/
 ├── README.md
 ├── config/<app>/                     # each app's persistent config (gitignored)
 ├── control-panel/                    # custom-built dashboard (own Dockerfile)
-├── config/altmount/                  # AltMount's own config + internal rclone/FUSE mount state
+├── config/nzbdav/                    # nzbdav's own config (headless NZBDAV_CONFIG__... env)
+├── config/nzbdav-rclone/             # nzbdav_rclone's rclone.conf + VFS cache
 ├── scripts/                          # backup/alert/setup automation, stdlib-only Python or bash
 ├── systemd/                          # user-scope units for boot automation, backups, alerts
-└── media/{movies,shows,music,books,comics,audiobooks,altmount-import,youtube}
+└── media/{movies,shows,music,books,comics,audiobooks,youtube}
                                        # every arr app's writable root folder, mounted at
-                                       # /data/<type>; altmount-import/ is AltMount's SYMLINK
-                                       # import_dir (same filesystem as movies/shows, so a
-                                       # "hardlink" import produces another symlink, never a
-                                       # real copy); music/books/comics/audiobooks/youtube are
-                                       # inert leftovers from removed integrations (Lidarr,
-                                       # Bindery/Calibre-Web, Pinchflat) with no current app
-                                       # reading them
+                                       # /data/<type>; completed downloads land as symlinks
+                                       # under nzbdav's own mount (same filesystem as
+                                       # movies/shows, so a "hardlink" import produces another
+                                       # symlink, never a real copy); music/books/comics/
+                                       # audiobooks/youtube are inert leftovers from removed
+                                       # integrations (Lidarr, Bindery/Calibre-Web, Pinchflat)
+                                       # with no current app reading them
 ```
 
 ## The full service list
@@ -203,15 +211,16 @@ Every service in `docker-compose.yml`, in the order they appear:
 | 1 | `prowlarr` | `ghcr.io/hotio/prowlarr:release` | 9696 | core |
 | 2 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
 | 3 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
-| 4 | `altmount` | `altmount-local-fix:obscure-pass` (temporary local build, see below) | 8081→8080 | core |
-| 5 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
-| 6 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host networking) | core |
-| 7 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
-| 8 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
-| 9 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 10 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 11 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 12 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+| 4 | `nzbdav` | `ghcr.io/nzbdav/nzbdav:latest` | 3000 | core |
+| 5 | `nzbdav_rclone` | `rclone/rclone:latest` | none | core |
+| 6 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
+| 7 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host networking) | core |
+| 8 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
+| 9 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
+| 10 | `control-panel` | built from `./control-panel` | 8420 | extras |
+| 11 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
+| 12 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
+| 13 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
 
 **Jellyfin briefly replaced Plex in v11.7.0 and was fully reverted back to Plex the same day**
 (see [History](#history) for the migration and the reversion) - `jellyfin`, `jellystat`, and
@@ -219,10 +228,12 @@ Every service in `docker-compose.yml`, in the order they appear:
 anywhere in this stack now. **`tautulli`, `kometa`, and `quickstart` were removed entirely in
 v11.9.0** - compose blocks, config, and every Control Panel/dashboard reference deleted outright
 (see [History](#history) `[11.9.0]`); there is no monitoring dashboard or collections/overlays
-automation of any kind in this stack now. `nzbdav`/`nzbdav-rclone` were removed entirely and
-replaced by `altmount` on 2026-07-23, after an unfixed upstream connection-leak bug (see
-[History](#history)) - `altmount` owns its own internal rclone/FUSE mount directly, so there is
-no separate sidecar container the way NzbDAV needed one. Service table: 18 → 14 rows.
+automation of any kind in this stack now. The original NzbDAV was replaced by AltMount
+(2026-07-23), then AltMount's rebrand/fork BearMount (2026-07-24), then finally the current
+`nzbdav`/`nzbdav_rclone` (2026-07-28, a different, unrelated codebase despite the name reuse -
+see [The Usenet pipeline](#the-usenet-pipeline-nzbdavnzbdav)) - unlike AltMount/BearMount's single
+self-mounting container, `nzbdav` needs the separate `nzbdav_rclone` sidecar to do the actual FUSE
+mount, a net +1 row versus the immediately preceding architecture. Service table: 18 → 13 rows.
 
 `docker compose up -d` brings up the 7 core services; `docker compose --profile extras up
 -d` adds the other 7. Both are safe to re-run; Compose only recreates what is out of sync with
@@ -231,7 +242,7 @@ zilean-postgres, Byparr - were removed entirely; see [History](#history).)
 
 ## The *arr apps
 
-Both follow the same wiring: Prowlarr pushes Usenet indexers down via `fullSync`, AltMount is
+Both follow the same wiring: Prowlarr pushes Usenet indexers down via `fullSync`, NzbDAV is
 the only download client, Unpackerr extracts RAR'd releases, the root folder is
 `./media/<type>` mounted at `/data/<type>`, and Control Panel provides RSS sync /
 search-missing / unstick / unstick-importing / manual-import for each.
@@ -298,7 +309,7 @@ Zurg (Real-Debrid FUSE mount), Decypharr (two instances - qBittorrent-API gatewa
 Real-Debrid + AllDebrid), rclone-alldebrid (AllDebrid FUSE mount), Zilean + zilean-postgres
 (DMM cache-hash indexer), and Byparr (Cloudflare bypass, only needed by torrent trackers) were
 **all removed entirely** - see [History](#history) for the full removal and rationale. This
-stack is Usenet-only now (see [The Usenet pipeline: AltMount](#the-usenet-pipeline-altmount)).
+stack is Usenet-only now (see [The Usenet pipeline: nzbdav/nzbdav](#the-usenet-pipeline-nzbdavnzbdav)).
 
 Worth preserving from the old debrid era, in case anything like it comes back: Zurg's
 content-routing config (`config/zurg/config.yml`, gitignored, deleted with the rest of that
@@ -311,73 +322,100 @@ lesson, not tied to Zurg specifically: when removing an app that owns a content-
 group/filter of any kind, removing the group itself has to be part of that same removal
 checklist** - nothing else in this stack ever caught it on its own.
 
-## The Usenet pipeline: AltMount
+## The Usenet pipeline: nzbdav/nzbdav
 
-**AltMount** (`ghcr.io/javi11/altmount`, temporarily a locally-patched build - see below) is a
-virtual filesystem, not a local downloader: it exposes Usenet content over its own internal
-rclone/FUSE mount at `/mnt/altmount`, with no separate sidecar container the way the old
-NzbDAV setup needed one.
+**NzbDAV** (`ghcr.io/nzbdav/nzbdav:latest`, a maintained super-fork of `nzbdav-dev/nzbdav` -
+see History for why this specific fork) is a pure WebDAV server with **no built-in mount of its
+own** - a `rclone/rclone` sidecar (`nzbdav_rclone`) does the actual `rclone mount` against its
+WebDAV endpoint, landing completed downloads at `/mnt/remote/nzbdav` as symlinks streamed on
+demand. This is a deliberate, knowingly-accepted tradeoff (two containers instead of one) over
+BearMount's single-binary embedded FUSE mount - see History for the evaluation.
 
 ```yaml
 # docker-compose.yml
-altmount:
-  image: altmount-local-fix:obscure-pass  # see the pinning note below
+nzbdav:
+  image: ghcr.io/nzbdav/nzbdav:latest
   environment:
-    PORT: "8080"
-    JWT_SECRET: ${ALTMOUNT_JWT_SECRET}
-    COOKIE_DOMAIN: ${HOST_IP}
+    FRONTEND_BACKEND_API_KEY: ${FRONTEND_BACKEND_API_KEY}
+    NZBDAV_CONFIG__API__KEY: ${FRONTEND_BACKEND_API_KEY}
+    NZBDAV_CONFIG__API__IMPORT_STRATEGY: "symlinks"
+    NZBDAV_CONFIG__WEBDAV__USER: ${NZBDAV_WEBDAV_USER}
+    NZBDAV_CONFIG__WEBDAV__PASS: ${NZBDAV_WEBDAV_PASS}
+    NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
+    NZBDAV_CONFIG__USENET__PROVIDERS: >-
+      {"Providers":[{"Host":"${NZBDAV_USENET_HOST}", ...}]}
+    NZBDAV_CONFIG__ARR__INSTANCES: >-
+      {"RadarrInstances":[{"Host":"http://radarr:7878", ...}], "SonarrInstances":[...]}
+  volumes: ["./config/nzbdav:/config", "/mnt:/mnt"]
+  ports: ["3000:3000"]
+
+nzbdav_rclone:
+  image: rclone/rclone:latest
   volumes:
-    - ./config/altmount:/config
-    - /mnt:/mnt:rshared
-    - ./media/altmount-import:/mnt/altmount-import
-  devices:
-    - /dev/fuse:/dev/fuse:rwm
+    # Bind the PARENT dir, not /mnt/remote/nzbdav itself - see the rclone
+    # "already mounted" false-positive note below.
+    - /mnt/remote:/mnt/remote:rshared
+    - ./config/nzbdav-rclone/rclone.conf:/config/rclone/rclone.conf:ro
+  devices: ["/dev/fuse:/dev/fuse:rwm"]
   cap_add: ["SYS_ADMIN"]
   security_opt: ["apparmor:unconfined"]
-  ports: ["8081:8080"]
+  command: mount nzbdav: /mnt/remote/nzbdav --allow-other --links --vfs-cache-mode=full ...
 ```
 
-**Provider**: the Thundernews block-account credentials live in `config/altmount/config.yaml`
-(`ALTMOUNT_PROVIDER_HOST`/`_PORT`/`_USERNAME`/`_PASSWORD` in `.env.example` document the
-reference copy). **Temporary local build**: `altmount-local-fix:obscure-pass` fixes a real
-upstream bug (`createConfig()` omitted rclone's `obscure: true` flag, writing the WebDAV
-password to `rclone.conf` in plaintext - rclone then tried to de-obscure that plaintext as if
-it were already-obscured ciphertext, producing a permanent 401). Revert to
-`ghcr.io/javi11/altmount:latest` once this fix lands upstream - no issue/PR filed yet as of
-this writing.
+**Fully headless-configured** via `NZBDAV_CONFIG__...` environment variables (available since
+NzbDAV's v0.9.0) - providers, arr instances, import strategy, WebDAV creds, rclone RC
+notification settings are all declarative here, no manual Settings-UI setup needed. Verified
+against NzbDAV's own real admin API, not just assumed from the env vars: `GET /api/get-config`
+confirms every value loaded, `POST /api/test-arr-connection`/`test-usenet-connection`/
+`test-rclone-connection` confirm live Radarr/Sonarr/provider/rclone-RC connectivity. All these
+routes and the SABnzbd-compatible API share one key, `FRONTEND_BACKEND_API_KEY` - no separate
+JWT-login flow.
 
-**Import strategy** is `SYMLINK` (`import.import_strategy` in `config/altmount/config.yaml`),
-with `import.import_dir` pointed at `/mnt/altmount-import` - the same host filesystem as every
-`*arr` app's root folder (`./media/movies`, `./media/shows`, both under `/`, confirmed via
-`df`), so Radarr's/Sonarr's `copyUsingHardlinks: true` produces another symlink instead of a
-real byte copy. This wasn't always true: `import_strategy` was originally `NONE` (a direct
-copy/hardlink import) combined with `copyUsingHardlinks: false`, which together silently wrote
-318.7GB of real files to local disk before being caught and fixed - see [History](#history)
-for the full incident and why `SYMLINK` is the enforced, verified-working state now.
+**Import strategy** is `symlinks` (`NZBDAV_CONFIG__API__IMPORT_STRATEGY`), landing completed
+items under the same mount `*arr` apps read from, so Radarr's/Sonarr's `copyUsingHardlinks: true`
+produces another symlink rather than a real byte copy - the same no-local-disk model this stack
+has enforced since the original 318.7GB AltMount incident (see History).
 
-AltMount is every `*arr` app's only download client (torrent/debrid was removed entirely, and
-NzbDAV before it - see [History](#history)). API examples via Control Panel's proxy, over
-AltMount's SABnzbd-compatible query API (keyed by `ALTMOUNT_API_KEY`):
+**Known rclone gotcha**: bind-mounting the *exact* FUSE target path
+(`/mnt/remote/nzbdav:/mnt/remote/nzbdav`) makes rclone's own pre-mount safety check see that
+path as already a mount boundary and refuse to mount ("directory already mounted") on every
+attempt, not just a race with a prior crashed instance - confirmed live 2026-07-28. Fixed by
+binding the *parent* directory (`/mnt/remote:/mnt/remote:rshared`) instead and letting rclone
+create the `nzbdav` subdirectory fresh underneath.
+
+NzbDAV is every `*arr` app's only download client (torrent/debrid was removed entirely, and
+three earlier Usenet clients before it - see History). API examples via Control Panel's proxy:
 
 ```bash
 # Current Usenet download queue
-curl -s http://192.168.4.105:8420/api/altmount/queue | jq .
+curl -s http://192.168.4.105:8420/api/nzbdav/queue | jq .
 
 # Recent history (completed/failed), last 20 by default
-curl -s http://192.168.4.105:8420/api/altmount/history | jq .
+curl -s http://192.168.4.105:8420/api/nzbdav/history | jq .
+
+# Aggregate queue/history stats
+curl -s http://192.168.4.105:8420/api/nzbdav/stats | jq .
 ```
 
-**Known API bug**: the queue-delete endpoint (`mode=queue&name=delete`) only accepts one
-`value` (a single `nzo_id`) per call despite normal SABnzbd convention supporting a
-comma-separated list, and it **always returns `{"status": true}` regardless of whether
-anything was actually deleted** (confirmed by reading `internal/api/sabnzbd_handlers.go`'s
-`handleSABnzbdQueueDelete` directly - the fallback path always reports success). Loop one
-DELETE call per `nzo_id` and verify against the real queue afterward; don't trust the reported
-status.
+### Historical: AltMount and BearMount, replaced entirely by nzbdav/nzbdav 2026-07-28
 
-### Historical: NzbDAV, replaced by AltMount 2026-07-23
+This stack ran **AltMount** (`ghcr.io/javi11/altmount`, a virtual filesystem with its own
+embedded FUSE mount, no separate sidecar) starting 2026-07-23, then its rebrand/fork
+**BearMount** (`ghcr.io/whispersofj/bearmount`) from 2026-07-24, before both were replaced
+entirely by nzbdav/nzbdav - not because of a bug found in BearMount itself, but a deliberate
+decision made while diagnosing an unrelated live issue (see `STACK.md`'s 2026-07-28 entry for
+the full reasoning, the provider-side root cause of that original issue, and everything that
+did *not* get ported forward from BearMount - notably the ffprobe/D-state FUSE read-hang
+mitigation subsystem, confirmed specific to BearMount's own Go FUSE implementation with no
+equivalent bug observed in nzbdav_rclone's stock rclone). Two upstream `javi11/altmount`
+security issues filed 2026-07-23 ([#796](https://github.com/javi11/altmount/issues/796),
+unauthenticated SSRF; [#797](https://github.com/javi11/altmount/issues/797), unenforced
+`IsAdmin`) are moot for this stack now that neither codebase is in use, though still open
+upstream as of this writing if ever revisited.
 
-**NzbDAV** (`nzbdav/nzbdav:latest` plus an `nzbdav-rclone` sidecar) served this same role
+### Historical: nzbdav-dev (the original NzbDAV), replaced by AltMount 2026-07-23
+
+**NzbDAV** (`nzbdav-dev/nzbdav:latest` plus an `nzbdav-rclone` sidecar) served this same role
 before AltMount - a WebDAV virtual filesystem, `nzbdav-rclone` mounting that WebDAV at
 `/mnt/nzbdav`, completed downloads appearing there as symlinks streamed on demand. It was
 removed entirely after an unfixed upstream connection-leak bug (`UsenetStreamingClient.
@@ -394,36 +432,40 @@ architecturally immune to the same bug class but far less active upstream), and 
 subsequent bulk re-link/library-abandonment that came with the cutover.
 
 **Superfork found and independently verified to actually fix both root-cause bugs, 2026-07-24**
-(moot for this stack since AltMount already replaced NzbDAV, kept here for the record and for
-anyone still running NzbDAV): a community reply on issue #477 pointed at `nzbdav/nzbdav`
-("a super-fork of related projects to the OG nzbdav-dev version"), claiming both bugs were
-already fixed there. Verified by cloning both `nzbdav-dev/nzbdav` (stale - last pushed
-2026-07-01, 1,117 stars) and `nzbdav/nzbdav` (actively maintained - pushed same-day, 55 stars)
-and reading the actual code, not trusting the claim: `nzbdav/nzbdav`'s
-`UsenetStreamingClient.CreateNewConnection` wraps the connect+auth handshake in a
-try/catch that disposes the connection on any failure (including failed auth - the exact leak
-this fork's PR #478 fixes) and adds a hard connect/auth timeout; its `ProviderCircuitBreaker`
-has a real `Interlocked.CompareExchange`-based `_halfOpenProbeInFlight` gate enforcing the
-single-probe limit the original's circuit breaker only claimed to have in a doc comment. Both
-fixes confirmed present and structurally sound, with dedicated test coverage
+(the fork this stack's *current* NzbDAV runs, `nzbdav/nzbdav` - see the section above): a
+community reply on issue #477 pointed at `nzbdav/nzbdav` ("a super-fork of related projects to
+the OG nzbdav-dev version"), claiming both bugs were already fixed there. Verified by cloning
+both `nzbdav-dev/nzbdav` (stale - last pushed 2026-07-01, 1,117 stars) and `nzbdav/nzbdav`
+(actively maintained - pushed same-day, 55 stars) and reading the actual code, not trusting the
+claim: `nzbdav/nzbdav`'s `UsenetStreamingClient.CreateNewConnection` wraps the connect+auth
+handshake in a try/catch that disposes the connection on any failure (including failed auth -
+the exact leak this fork's PR #478 fixes) and adds a hard connect/auth timeout; its
+`ProviderCircuitBreaker` has a real `Interlocked.CompareExchange`-based `_halfOpenProbeInFlight`
+gate enforcing the single-probe limit the original's circuit breaker only claimed to have in a
+doc comment. Both fixes confirmed present and structurally sound, with dedicated test coverage
 (`ProviderCircuitBreakerHalfOpenTests`, `ConnectionPoolIdleTimeoutTests`) that the original
 repo has no equivalent of. The superfork is also a much larger project overall (1,089 vs 567
 files at time of comparison - many more features, not just these two fixes), so treat it as a
 different, actively-developed project to evaluate on its own merits rather than a drop-in patch
 release of the original.
 
-NzbDAV had a genuine STRM import mode too (`backend/Queue/PostProcessors/
+nzbdav-dev/nzbdav had a genuine STRM import mode too (`backend/Queue/PostProcessors/
 CreateStrmFilesPostProcessor.cs` wrote a plain `.strm` file containing a direct HTTP URL back
 to NzbDAV's own `/view/...` endpoint, bypassing the FUSE mount entirely - genuinely
 Emby/Jellyfin-only, Plex never supported `.strm`), evaluated and deliberately rejected during
 the brief v11.7.0 Jellyfin era because of a real, still-open Radarr bug
 (`Radarr/Radarr#11435`, a grab-import-delete loop specific to `.strm` files from a
 SABnzbd-compatible client) and a live user report of the exact same combination being
-unworkable (`nzbdav-dev/nzbdav` Discussion #175). Moot now along with the rest of NzbDAV.
+unworkable (`nzbdav-dev/nzbdav` Discussion #175). Moot now along with the rest of that codebase.
 
 This replaced NZBGet before it, a real local downloader (files land on `./usenet`, then import
-into the library), which did not match the stack's no-local-disk model. Its old
-`config/nzbget/` and `usenet/` directories were left on disk, unused.
+into the library), which did not match the stack's no-local-disk model. Its old `config/nzbget/`
+and `usenet/` directories were left on disk, unused for weeks - deleted for real 2026-07-28
+(confirmed unmounted, unreferenced by any container or compose service, untouched since the
+original cutover) along with several other confirmed-orphaned `config/` directories from since-
+reverted or retired features (`traefik`/`authelia` from the reverted security-stack experiment,
+`readarr`/`calibre-web` from the retired ebook app - see this file's Security section and
+`STACK.md`'s "What this is" respectively).
 
 ## Indexing: Prowlarr
 
@@ -493,9 +535,9 @@ plex:
     - ./config/plex-transcode:/transcode
     - ./media/movies:/data/movies
     - ./media/shows:/data/shows
-    - /mnt/altmount:/mnt/altmount:rslave
+    - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
   devices:
-    - /dev/dri/renderD128:/dev/dri/renderD128
+    - /dev/dri:/dev/dri  # whole device, not just renderD128 - see below
 ```
 
 - **A fresh install, not a restore** - `config/plex/` (34GB, including all prior watch
@@ -504,10 +546,14 @@ plex:
   `plex.tv/claim` token (`PLEX_CLAIM`, valid ~4 minutes, added temporarily to `.env` then
   removed). Two libraries created via `POST /library/sections`, matching Radarr's/Sonarr's root
   folders exactly: Movies (`/data/movies`), Shows (`/data/shows`).
-- Same VAAPI hardware-transcode device (`/dev/dri/renderD128`) as before. **Real hardware
-  transcoding confirmed working, not just configured** - a deliberately-incompatible
-  `PlaybackInfo` request followed by fetching a real HLS segment produced a genuine
-  `ffmpeg -hwaccel vaapi ... -codec:v:0 h264_vaapi` process, not a software fallback.
+- VAAPI hardware transcode via the whole `/dev/dri` device, not just `renderD128` - mapping only
+  `renderD128` (as originally configured) left every real (non-directstream) transcode falling
+  back to software encode despite Plex Pass being active and the correct GPU detected; Plex's
+  hardware-eligibility probe needs `card1` and the `by-path` entries too, confirmed live
+  2026-07-28. **Real hardware transcoding confirmed working, not just configured** - a
+  deliberately-incompatible `PlaybackInfo` request followed by fetching a real HLS segment
+  produced a genuine `ffmpeg -hwaccel vaapi ... -codec:v:0 h264_vaapi` process, not a software
+  fallback.
 - `mem_limit: 3g`/`cpus: 12` - the `cpus` ceiling is sized from a real scan-only CPU spike (a
   library scan alone briefly hit 100% CPU with zero playback sessions active - hardware
   transcode covers play/decode, not scan/analysis); `mem_limit` is sized from an observed
@@ -517,9 +563,11 @@ plex:
 - The image is a manually-bumped version tag, deliberately kept off Watchtower's auto-update
   train (see [Image pinning policy](#image-pinning-policy)) - PMS version changes on a live
   library are applied by hand.
-- `/mnt/altmount:/mnt/altmount:rslave` only matters for content imported through AltMount from
-  now on - see [Architecture](#architecture) for the FUSE-mount-cascade caveat this mount
-  shares with Radarr/Sonarr/Unpackerr/Cleanuparr.
+- `/mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave` only matters for content imported through
+  nzbdav_rclone from the 2026-07-28 cutover on - symlinks from every prior Usenet client
+  (original NzbDAV, AltMount, BearMount) are broken, since none of them share an ID scheme (see
+  `STACK.md`'s History). See [Architecture](#architecture) for the FUSE-mount-cascade caveat this
+  mount shares with Radarr/Sonarr/Unpackerr/Cleanuparr.
 
 **Kometa and Tautulli were removed entirely in v11.9.0** (see [History](#history)
 `[11.9.0]`) - there is no automated Plex collections/overlays/metadata tool and no
@@ -543,7 +591,7 @@ Kept as historical record, same convention as this file's other removed-app sect
 Whisparr, the debrid pipeline). **Jellyfin (`lscr.io/linuxserver/jellyfin:latest`) replaced
 Plex entirely for one day**, then was **fully reverted back to Plex the same day** after
 repeated, unresolved library-scan hangs tied to the NzbDAV connection-leak bug (see
-[The Usenet pipeline: AltMount](#the-usenet-pipeline-altmount)'s historical section) - the user
+[The Usenet pipeline: nzbdav/nzbdav](#the-usenet-pipeline-nzbdavnzbdav)'s historical section) - the user
 explicitly chose full reversion over continuing to debug Jellyfin, accepting that Jellyfin's
 own watch history/config was lost with no archive, the same treatment Plex's config got during
 the original migration. See [History](#history) for the complete incident.
@@ -913,9 +961,9 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/posters/sync` | POST | `{"library": "...", "dry_run": bool}` → starts a poster sync, one job at a time |
 | `/api/posters/sync/stream` | GET | SSE progress feed for the running (or just-finished) poster sync |
 | `/api/container/{name}/logs/stream` | GET | SSE live-follow of a container's own `docker logs`, any container in the project |
-| `/api/altmount/queue` \| `/history` | GET | AltMount's current queue / recent history |
-| `/api/altmount/stats` | GET | Queued/history counts in one call |
-| `/api/altmount/delete-failures` | POST | Bulk-clears failed history entries |
+| `/api/nzbdav/queue` \| `/history` | GET | NzbDAV's current queue / recent history |
+| `/api/nzbdav/stats` | GET | Queued/history counts in one call |
+| `/api/nzbdav/delete-failures` | POST | Bulk-clears failed history entries |
 | `/api/arr/{app}/rss-sync` \| `/search-missing` | POST | Per-app RSS sync / missing-search |
 | `/api/arr/{app}/unstick` | POST | Removes + blocklists + re-searches every `warning`/`error` queue item |
 | `/api/arr/{app}/unstick-importing` | POST | Diagnoses a download wedged in `importing` state (dead-article/missing-path check via `docker exec`), clears or blocklists, re-searches |
@@ -941,13 +989,13 @@ cycle: TMDb matching keys off Plex's Guid array again (it briefly used Jellyfin'
 
 ### Live API hit counter
 
-Container cards for apps the panel talks to over HTTP (Radarr, Sonarr, Plex, AltMount) show a
+Container cards for apps the panel talks to over HTTP (Radarr, Sonarr, Plex, NzbDAV) show a
 running count of outbound calls since the panel last started. Cosmetic only: in-memory
 `Counter`, resets on restart, no persistence, no per-endpoint breakdown. The `Plex` label
 briefly became `Jellyfin` during the v11.7.0 detour and reverted back along with everything
-else (see [Media server: Plex](#media-server-plex)); `AltMount` replaced the old `NzbDAV` label
-entirely once AltMount took over Usenet acquisition (see
-[The Usenet pipeline: AltMount](#the-usenet-pipeline-altmount)).
+else (see [Media server: Plex](#media-server-plex)); the Usenet card's label went
+`NzbDAV` -> `AltMount` -> `BearMount` -> back to `NzbDAV` across three cutovers (see
+[The Usenet pipeline: nzbdav/nzbdav](#the-usenet-pipeline-nzbdavnzbdav)).
 
 ```python
 # control-panel/app.py - wraps httpx.request itself rather than touching
@@ -995,8 +1043,8 @@ uploading anything.
 
 ```python
 # control-panel/app.py
-MOUNT_PREREQS: set[str] = set()
-MOUNT_PROVIDERS = {"altmount"}
+MOUNT_PREREQS = {"nzbdav"}
+MOUNT_PROVIDERS = {"nzbdav_rclone"}
 MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}
 
 def worker():
@@ -1012,23 +1060,24 @@ def worker():
 curl -X POST http://192.168.4.105:8420/api/stack/restart-all
 ```
 
-`MOUNT_PREREQS` is empty because AltMount owns its own internal rclone/FUSE mount directly -
-unlike the old NzbDAV/`nzbdav-rclone` pair, there's no separate sidecar container to restart
-and wait on first before the mount provider itself comes up.
+`MOUNT_PREREQS` holds `nzbdav` because the current architecture (unlike AltMount/BearMount, which
+each owned their mount directly) needs the WebDAV backend up and healthy before the
+`nzbdav_rclone` sidecar can mount against it - a genuine extra step versus the immediately
+preceding architecture, not a leftover.
 
-This exists because a direct subpath bind of a FUSE mountpoint (`/mnt/altmount:/mnt/altmount:
-rslave`) does not reliably survive the FUSE process underneath it being recreated: restarting
-a dependent before its mount provider is healthy reproduces that bug - confirmed live more
-than once for this exact mount-owner-plus-five-dependents shape, both for the old
-`nzbdav-rclone` and again for `altmount` itself (see [History](#history) for both incidents).
-`MOUNT_DEPENDENTS` has stayed at the same five services (`radarr`, `sonarr`, `plex`,
-`unpackerr`, `cleanuparr`) through the NzbDAV→AltMount cutover and the Plex→Jellyfin→Plex
-round trip - only the mount *provider* name changed each time, not which containers depend on
-it. **Never recreate the mount provider outside this endpoint** (e.g. a direct
-`docker compose up -d --force-recreate altmount`) without also manually restarting all five
-dependents afterward - confirmed live: doing exactly that once left `plex`, `unpackerr`, and
-`cleanuparr` all holding stale FUSE references because only `radarr`/`sonarr` were remembered
-by hand.
+This exists because a direct subpath bind of a FUSE mountpoint (`/mnt/remote/nzbdav:
+/mnt/remote/nzbdav:rslave`) does not reliably survive the FUSE process underneath it being
+recreated: restarting a dependent before its mount provider is healthy reproduces that bug -
+confirmed live more than once for this exact mount-owner-plus-five-dependents shape, across
+every Usenet client this stack has run (the original `nzbdav-rclone`, `altmount`, `bearmount`,
+and now `nzbdav_rclone` again - see [History](#history) for the incidents). `MOUNT_DEPENDENTS`
+has stayed at the same five services (`radarr`, `sonarr`, `plex`, `unpackerr`, `cleanuparr`)
+through every Usenet-client cutover and the Plex→Jellyfin→Plex round trip - only the mount
+*provider* (and, now, prereq) name changed each time, not which containers depend on it. **Never
+recreate the mount provider outside this endpoint** (e.g. a direct `docker compose up -d
+--force-recreate nzbdav_rclone`) without also manually restarting all five dependents afterward -
+confirmed live: doing exactly that once left `plex`, `unpackerr`, and `cleanuparr` all holding
+stale FUSE references because only `radarr`/`sonarr` were remembered by hand.
 
 ### Security: CSRF/Origin-Host validation, not auth
 
@@ -1057,8 +1106,13 @@ A terminal interface to Control Panel's API, tracked in `~/.dotfiles`
 **Every `stack-plex-*`/`stack-kometa-*`/`stack-tautulli-*` command was briefly reworked to a
 `stack-jellyfin-*` equivalent during the v11.7.0 Jellyfin era, then reworked back** once
 Jellyfin was reverted to Plex the same day - see [History](#history) for both passes.
-`stack-nzbdav-*` was similarly replaced outright by `stack-altmount-*` on 2026-07-23, when
-AltMount replaced NzbDAV entirely (no revert this time - NzbDAV isn't coming back).
+The Usenet-client commands went `stack-nzbdav-*` -> `stack-altmount-*` -> `stack-bearmount-*`
+across the first two client cutovers, then the 2026-07-28 cutover to the current nzbdav/nzbdav
+brought the naming back to `stack-nzbdav-*` (not a revert of the *client* - it's a different
+codebase under the same name). `stack-bearmount-restart` and
+`stack-bearmount-unstick-ffprobe-hang` were retired outright rather than renamed (redundant with
+`stack-container` + the `docker-compose-manager` skill; no current equivalent bug, respectively)
+- see `STACK.md`'s fish-function-cleanup entry for the full reasoning.
 
 ```fish
 # ~/.dotfiles/.config/fish/functions/__stack_api.fish
@@ -1076,8 +1130,8 @@ stack-arr-import-candidates sonarr              # list files ready to manually i
 stack-arr-import sonarr 0                       # import candidate #0 from the list above
 stack-plex scan                                 # or optimize-db
 stack-plex-libraries                            # list Plex library names
-stack-altmount-queue                            # current Usenet download queue
-stack-altmount-history 20                       # recent history, default limit 20
+stack-nzbdav-queue                              # current Usenet download queue
+stack-nzbdav-history 20                         # recent history, default limit 20
 stack-container restart radarr                  # or stop / start
 stack-restart-all -y                            # skip the interactive confirm prompt
 ```
@@ -1320,7 +1374,7 @@ otherwise:
 | Service | mem_limit | cpus | Basis |
 |---|---|---|---|
 | `plex` | 3GB | 12 | `cpus` sized from a real library-scan CPU spike (100% with zero playback sessions - hardware transcode covers play/decode, not scan/analysis); `mem_limit` from an observed 231MB/6GiB (3.76%) baseline, not yet stress-tested against a heavy scan |
-| `altmount` | 4GB | 4 | Bumped 1g → 2g → 4g after the 2g ceiling hit 99.87% during the bulk re-link job - per-archive memory cost scales with part count, and this library has several 50-70GB+ UHD remux releases |
+| `nzbdav` | 4GB | 4 | Carried forward unchanged across the AltMount->BearMount->nzbdav/nzbdav cutovers - originally bumped 1g → 2g → 4g after the 2g ceiling hit 99.87% during a bulk re-link job on the predecessor client; per-archive memory cost scales with part count, and this library has several 50-70GB+ UHD remux releases |
 
 **Jellyfin/Jellystat/`jellystat-db` briefly had their own rows during the v11.7.0 detour** (3GB/
 6 cpus for Jellyfin, 512MB/1 cpu each for the Jellystat pair) - all three moot now that they
@@ -1355,9 +1409,11 @@ Every web UI publishes its port directly on the host with no login gate:
 - Control Panel's CSRF/Origin-Host validation (see [Control Panel](#control-panel)) is not
   auth; it closes a specific cross-origin-POST gap. It is the one piece kept from the
   reverted network-security effort.
-- `config/<app>/` generally holds plaintext credentials wherever an app stores its own config
-  (e.g. `config/altmount/config.yaml` holds the Usenet provider's real
-  username/password). Relevant if this host is shared or backed up somewhere less trusted.
+- `config/<app>/` generally holds plaintext credentials wherever an app stores its own config.
+  `nzbdav` is the exception now - it's fully headless-configured via `NZBDAV_CONFIG__...`
+  environment variables (see [The Usenet pipeline](#the-usenet-pipeline-nzbdavnzbdav)), so the
+  Usenet provider's real username/password live in `.env`, not a file under `config/nzbdav/`.
+  Relevant if this host is shared or backed up somewhere less trusted.
 
 A full Traefik + Authelia + CrowdSec stack (TOTP 2FA, CrowdSec bans) was built, verified
 end-to-end, and reverted; the login+2FA prompt in front of every app, three extra services,
@@ -1365,15 +1421,15 @@ and a hairpin-NAT bug that took Plex down through the proxy did not pay for them
 LAN-only deployment. The recipe is in [History](#history) if it is ever needed again (e.g.
 before any public exposure).
 
-**Two upstream `javi11/altmount` security issues filed 2026-07-23, still open/unaddressed as of
-2026-07-24** (relevant to the `bearmount` fork this stack now depends on - see
-[AltMount](#the-usenet-pipeline-altmount)):
+**Two upstream `javi11/altmount` security issues filed 2026-07-23** - moot for this stack since
+2026-07-28, when BearMount (AltMount's rebrand/fork) was replaced entirely by nzbdav/nzbdav, an
+unrelated codebase (see [Usenet pipeline](#the-usenet-pipeline-nzbdavnzbdav)); kept here for the
+record in case AltMount/BearMount is ever run again elsewhere:
 - [javi11/altmount#796](https://github.com/javi11/altmount/issues/796) - unauthenticated SSRF
   via the SABnzbd ARR-credential auto-registration path.
 - [javi11/altmount#797](https://github.com/javi11/altmount/issues/797) - the `IsAdmin` flag
   isn't enforced on any destructive/mutating route.
-Neither has a maintainer response yet. Re-check before assuming either is fixed in whatever
-`bearmount`/`altmount` image tag this stack is pinned to at the time.
+Neither had a maintainer response as of the 2026-07-28 cutover.
 
 ## CI
 

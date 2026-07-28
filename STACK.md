@@ -2193,6 +2193,222 @@ reliable mitigation** regardless of root cause: identify the file via `cmdline`,
 bearmount recreate + cascade + verification procedure. Six same-day occurrences all cleared this
 way with zero data loss or lasting stack damage.
 
+## BearMount replaced entirely by nzbdav/nzbdav, 2026-07-28
+
+**This was a "nuclear option" decision, not a bug found in BearMount itself.** While diagnosing
+a live issue that same evening (every RuPaul's Drag Race grab failing bearmount's fast-fail
+segment check identically - "no regular files were successfully processed (all files failed
+validation)" - regardless of release/uploader, which pointed at something systemic rather than
+individually-bad releases), the user chose to fully replace the download client with
+`nzbdav/nzbdav` rather than keep debugging BearMount. The actual root cause of that original
+issue turned out to be provider-side (the ThunderNews account was mid-resync at the time,
+causing an intermittent NNTP login hang - confirmed independently via a raw NNTP
+`AUTHINFO USER`/`PASS` test from the host, no app in the loop at all) - this migration doesn't
+fix or relate to that; the same single ThunderNews provider carries over unchanged.
+
+**What `nzbdav/nzbdav` actually is**: a maintained "super-fork" of `nzbdav-dev/nzbdav` (confirmed
+via `gh api` - `fork: true`, description literally says "a super-fork of related projects to the
+OG nzbdav-dev version"). Not the same codebase as BearMount's lineage (`javi11/altmount`) at
+all - a completely different implementation (.NET/C# backend + React frontend, vs. BearMount's
+single Go binary).
+
+**Key architectural difference, surfaced during planning and accepted knowingly**: NzbDAV has
+**no built-in mount at all** - it's a pure WebDAV server. Getting real files to Plex/Sonarr/
+Radarr requires an external `rclone/rclone` sidecar container (`nzbdav_rclone`) doing
+`rclone mount` against NzbDAV's WebDAV endpoint. This is a **net increase in moving parts**
+versus BearMount (one container owning its own embedded FUSE mount, vs. two now) - the same
+architecture (`rclone.mount_enabled`) BearMount itself had explicitly disabled in favor of
+native FUSE. Accepted as a known tradeoff, not an oversight - the alternative (STRM files, no
+FUSE/rclone needed at all) was also considered and rejected in favor of staying closer to the
+existing symlink-based Plex/Sonarr/Radarr integration.
+
+### New topology
+
+- `nzbdav` (image `ghcr.io/nzbdav/nzbdav:latest`, port 3000) - WebDAV + SABnzbd-compatible API +
+  admin API. Fully headless-configured via `NZBDAV_CONFIG__...` environment variables (available
+  since its v0.9.0 release) - providers, arr instances, import strategy, WebDAV creds, rclone RC
+  notification settings, all declarative in `docker-compose.yml`/`.env`, matching this stack's
+  existing infrastructure-as-code style. No manual Settings-UI setup was done or is needed.
+- `nzbdav_rclone` (image `rclone/rclone:latest`) - the actual FUSE mount owner now, replacing
+  BearMount in that role. Mounts NzbDAV's WebDAV tree at `/mnt/remote/nzbdav`.
+- Radarr, Sonarr, Plex, Unpackerr, Cleanuparr all bind `/mnt/remote/nzbdav:rslave` (was
+  `/mnt/bearmount:rslave`) - same cascade-restart requirement as always after a mount-owner
+  recreate, just a new mount-owner name.
+- Radarr/Sonarr's SABnzbd download-client entry updated in place (same ids, renamed
+  "BearMount" -> "NzbDAV"): host `nzbdav`, port `3000`, no `urlBase` (NzbDAV's SAB API is at
+  root `/api`, unlike BearMount's `/sabnzbd` prefix). Both connection tests pass.
+- Stale "BearMount Webhook"/"AltMount Webhook" notification entries (pointing at long-dead
+  hostnames) found and deleted from both Radarr and Sonarr during this cutover - leftover cruft
+  from the two earlier cutovers that had never been cleaned up.
+
+### Real bug found and fixed during setup: rclone "already mounted" false-positive
+
+Binding the exact FUSE target path into the container (`/mnt/remote/nzbdav:/mnt/remote/nzbdav`)
+made rclone's own pre-mount safety check see that path as *already a mount boundary* (trivially
+true - a bind mount is itself a distinct mount from its parent's perspective) and refuse to
+mount ("directory already mounted, use --allow-non-empty to mount anyway"), failing identically
+on every attempt, not just a race with a prior crashed instance. Fixed by binding the **parent**
+directory (`/mnt/remote:/mnt/remote:rshared`) instead, letting rclone create the `nzbdav`
+subdirectory and mount fresh underneath - an ordinary subdirectory of an already-mounted parent
+isn't its own mount boundary, so the false-positive goes away. Confirmed live: mount succeeds
+and stays up.
+
+### Config audit performed same day (after the cutover, on request)
+
+Verified every piece via NzbDAV's own real admin API (not assumed from the env vars alone):
+`GET /api/get-config` (form param `config-keys`, repeatable) confirmed every
+`NZBDAV_CONFIG__...` value loaded as the effective config; `POST /api/test-arr-connection`
+(form params `host`/`apiKey`) confirmed live Radarr and Sonarr connectivity; `POST
+/api/test-usenet-connection` (form params `host`/`user`/`pass`/`port`/`use-ssl`) confirmed live
+provider login; `POST /api/test-rclone-connection` (form param `host`, optional `user`/`pass`)
+confirmed the rclone RC link once RC notifications were added (see below). All these routes
+require `x-api-key` header or `apikey` query/form param - same key as the SAB API
+(`FRONTEND_BACKEND_API_KEY`), no separate JWT-login flow the way BearMount's admin API needed.
+
+Rclone RC notifications (`vfs/forget` on file add/remove, avoids relying purely on
+`--dir-cache-time` for fresh directory listings) were not configured in the initial cutover and
+came back "Connection refused" on first test - added `--rc --rc-addr=:5572 --rc-user=rclone
+--rc-pass=...` to the `nzbdav_rclone` command plus `NZBDAV_CONFIG__RCLONE__RC_ENABLED/HOST/USER/
+PASS` on the `nzbdav` side, recreated both containers (regardless of queue state, per explicit
+request), recreated the 5 dependents, and reconfirmed the mount and all four connection tests
+pass.
+
+### What was NOT ported from BearMount, and why
+
+- **`/api/bearmount/fuse/status`, `/start`, `/stop`** (JWT-authenticated FUSE mount control) -
+  NzbDAV owns no FUSE mount itself; `nzbdav_rclone` is a stock rclone container with no
+  app-specific admin API to control it this way.
+- **`/api/bearmount/health/stats`, `/health/corrupted`** - no equivalent admin endpoint confirmed
+  in NzbDAV's own docs; dropped rather than guessed at (see CLAUDE.md's "don't guess APIs" rule).
+- **The entire ffprobe/D-state read-hang cascade-restart subsystem**
+  (`_host_lazy_umount`, `_wait_for_bearmount_content`, `_restart_bearmount_cascade`,
+  `/api/plex/restart-cascade`, `/api/plex/unstick`, `/api/bearmount/unstick-ffprobe-hang`) - built
+  and confirmed against BearMount's own Go FUSE implementation's specific bug signature (see the
+  section above). `nzbdav_rclone` is stock, separately-maintained rclone - a different codebase
+  with no confirmed equivalent bug. Removed rather than fabricating an equivalent for a problem
+  never observed here; `FIXES.md` is marked closed/moot rather than deleted. Revisit if
+  `nzbdav_rclone` ever shows a real hang class of its own - the general
+  `MOUNT_PREREQS`/`MOUNT_PROVIDERS`/`MOUNT_DEPENDENTS`-ordered restart mechanism (unaffected by
+  this removal) still covers the ordinary case.
+- **BearMount's direct-SQLite pre-recreate safety check** (`_bearmount_queue_counts` reading
+  `bearmount.db`'s `import_queue` table) - NzbDAV's own `db.sqlite` schema is unconfirmed/unread,
+  so the replacement (`_nzbdav_queue_counts`) goes through the SAB API's `queue` mode instead of
+  guessing at raw SQL.
+- **Fish function names** (`stack-bearmount-queue.fish` etc., under `~/.config/fish/functions/`,
+  outside this repo) - **correction, 2026-07-28**: the claim above that these "still work since
+  they call the underlying API by URL, not by name" was wrong, confirmed live - the function
+  bodies themselves still hardcoded the removed `/api/bearmount/*` routes (404 on every call),
+  not just a stale name. Renamed to `stack-nzbdav-queue`/`-history`/`-stats`/`-delete-failures`
+  with bodies updated to the real `/api/nzbdav/*` routes. `stack-bearmount-restart` and
+  `stack-bearmount-unstick-ffprobe-hang` were deleted outright rather than renamed (see below and
+  the entry above on what wasn't ported) - the former is redundant with `stack-container restart
+  <name>` plus `docker-compose-manager`'s cascade-aware restart, the latter has no nzbdav
+  equivalent. `stack-plex-unstick`/`stack-plex-restart-cascade` were also deleted - their backend
+  routes are gone (see above), the cascade-restart functionality they wrapped now lives in the
+  `docker-compose-manager` skill.
+- **`config/bearmount/`** (BearMount's own SQLite DB, ~368M metadata, ~51G VFS cache) - none of
+  it reusable by NzbDAV's completely different data model. Renamed aside to
+  `config/bearmount.removed-<timestamp>/` rather than deleted, for a rollback window. Deleted for
+  real 2026-07-28 (~81G by then) after the cutover's live verification above was confirmed
+  working and the user explicitly signed off on ending the rollback window.
+
+### Verification performed live, not just configured
+
+Triggered a real `EpisodeSearch` for RuPaul's Drag Race S01E01 end-to-end: grabbed via NzbDAV,
+imported by Sonarr as a **real symlink** (`.../Season 1/... .mp4 -> /mnt/remote/nzbdav/.ids/...`),
+confirmed `hasFile: true` with a real `episodeFileId` and file size, and `dd`-read 4MB through
+the symlink at 466 MB/s - genuinely streaming, not a dangling reference. Plex reads the same
+mount so picks up new content on its next scan without further changes.
+
+## MDBList toplists import + two real import-list bugs found, 2026-07-28
+
+Built to bulk-import every list on `mdblist.com/toplists/` into Radarr/Sonarr as native,
+unmonitored, no-search import lists (`scripts/mdblist_toplists_import.py`) - no new container,
+no MDBListarr. MDBList's own docs confirm both Radarr's "Custom Lists" (`RadarrListImport`) and
+Sonarr's "Custom List" (`CustomImport`) accept a plain `mdblist.com/lists/<user>/<slug>` URL
+directly; MDBListarr is a different tool (syncs an existing library's watched-state back to
+MDBList) and doesn't apply here. Each list is classified by MDBList's own `/lists/<user>/<slug>`
+metadata endpoint (real `movies`/`shows` counts, not guessed) before being routed - confirmed live
+that handing a show-only list to `RadarrListImport` (or the reverse to `CustomImport`) fails
+validation outright ("no results were returned"), it does not silently skip mismatched items.
+`mdblist.com/toplists/` itself is a single static page (no pagination) of ordinary `/lists/`
+links; `api.mdblist.com` is a Django REST Framework API that returns its browsable HTML page
+instead of JSON if the request's `Accept` header prefers `text/html` (confirmed live) - needs a
+separate `Accept: application/json` header from the browser-shaped one used for the HTML scrape.
+Two different toplists.html entries can share a display name (e.g. two different users' "Latest
+TV Shows") - Radarr/Sonarr both reject a duplicate import-list name, so the registered name
+includes the MDBList username/slug for guaranteed uniqueness.
+
+**Two real bugs found in `control-panel/app.py`'s existing generic import-list endpoint**
+(`/api/arr/{app}/import-list/add`, already used by `stack-radarr-list-import`,
+`stack-sonarr-custom-list-import`, `stack-tmdb-*-import`, `stack-trakt-list-import` before this):
+- Sonarr's importlist schema uses different field names than Radarr's
+  (`enableAutomaticAdd`/`searchForMissingEpisodes`/`shouldMonitor` vs. Radarr's
+  `enableAuto`/`searchOnAdd`/`monitor`) - the endpoint was unconditionally writing Radarr's field
+  names onto the Sonarr body too, so none of the three ever actually reached Sonarr; every
+  Sonarr import list created through it silently kept the live schema's own defaults instead.
+- **`enableAuto` (Radarr) / `enableAutomaticAdd` (Sonarr) is not a search toggle - it's the
+  master "add anything from this list at all" switch**, confirmed by a live probe: created a
+  real `RadarrListImport` test entry (id 8, a 250-movie MDBList list) with `enableAuto: false`,
+  `monitor: none`, `searchOnAdd: false`, ran `ImportListSync` - 0 movies added. Flipped only
+  `enableAuto` to `true`, ran the same sync again - 246 added (unmonitored, no search triggered,
+  exactly as configured). The old code tied `enableAuto` to the caller's `search_on_add` flag, so
+  **every existing `--no-search` invocation of this stack's list-import commands added zero
+  items to Radarr**, not just skipped the search. Test artifacts (the id-8 import list, all 246
+  movies) were deleted immediately after confirming the result - not a lasting change to the
+  library. Fixed: `enableAuto`/`enableAutomaticAdd` now always `true`; only
+  `searchOnAdd`/`searchForMissingEpisodes` follows the caller's flag.
+
+Deployed via the normal `docker compose build control-panel && up -d --force-recreate` path, spot
+health-checked (`/healthz`) before use.
+
+## Fish function cleanup: bearmount->nzbdav rename, dead functions removed, 2026-07-28
+
+Continuation of the BearMount->nzbdav/nzbdav cutover above, on the fish-function side (outside
+this repo, under `~/.config/fish/functions/`) - see the "What was NOT ported from BearMount"
+section's fish-function entry, corrected in place above once this work confirmed the original
+claim wrong. Also removed, same session: `Stack/` (empty dir), `.ruff_cache/` (regenerable lint
+cache), `status.txt`/`prompt` (stale artifacts from a pre-BearMount, even pre-AltMount stack
+architecture - mentioned services and sibling repos that no longer exist), a bare plaintext
+secret (`decypharpass`) sitting outside any repo, and orphaned `config/` directories for services
+confirmed absent from `docker-compose.yml` (`nzbget` 25G, `traefik`, `authelia`, `readarr`,
+`calibre-web` - Traefik/Authelia were the reverted security-stack experiment, see README's
+Security section; Readarr/Calibre-Web were retired in v10.9.8, no ebook app in this stack since).
+All confirmed via `mount`/`docker inspect`/`docker-compose.yml` grep before deletion, not assumed.
+
+Also deleted, orphaned from earlier feature removals unrelated to this cutover: `media/
+bearmount-import/` (184K, no mount, no compose reference - a leftover BearMount-era import path;
+current nzbdav symlinks land under `/mnt/remote/nzbdav` directly, no `media/*-import` subfolder
+in this architecture) and `media/wrestling/` (4K, dangling since the Sportarr removal, see
+below). `config/bearmount.removed-20260728_145530/` (~81G, the rollback-window copy from the
+cutover section above) was also deleted for real this same session, after live verification and
+explicit user sign-off - see that section's updated note.
+
+**Real live bug found while checking for test/script staleness after this cleanup**:
+`scripts/plex-health-monitor.py` (a long-running systemd service, confirmed actively running)
+had a Tier 2 auto-remediation path - on a confirmed FUSE/D-state hard hang, it called
+`/api/plex/restart-cascade` to auto-trigger the mount-cascade restart. That endpoint was removed
+in the BearMount->nzbdav cutover above (superseded by the `docker-compose-manager` Claude Code
+skill) but this script was never updated - it would have silently 404'd on every real hard-hang
+detection, alerting "failed" but never actually attempting the intended remediation, since first
+deployed after the cutover. Fixed by removing the Tier 2 auto-restart call entirely (per explicit
+user choice) - a hard hang now only alerts; there is no headless equivalent to trigger, since the
+cascade-restart logic now lives in an interactive Claude Code skill a systemd script can't invoke.
+Tier 1 (plain restart, for `busy_db`/sustained `scan_lag`) is unaffected. The matching
+`tests/scripts/test_plex_health_monitor.py` cases used the same dead path string as an arbitrary
+example (fully mocked, asserted nothing endpoint-specific) - updated to a live path for clarity,
+not because the old assertions were wrong. `systemd/stack-plex-health-monitor.service`'s
+`Description=` updated to match, service reloaded and restarted live to pick up the fix.
+
+Also found and fixed during the same pass: 19 pre-existing failing tests in
+`tests/control_panel/test_helpers.py` and `test_plex_health.py`, all exercising BearMount-only
+functions/routes removed in the cutover above (`_bucket_bearmount_item` -> renamed
+`_bucket_nzbdav_item`, drop-in signature; `_bearmount_queue_counts` -> `_nzbdav_queue_counts`,
+a real reimplementation via the SAB API rather than direct sqlite, test rewritten against that;
+`/api/plex/restart-cascade`, `/api/plex/unstick`, `_restart_bearmount_cascade` - tests deleted
+outright, no equivalent feature exists to test). These had been failing since the cutover was
+first made (uncommitted, predating this session) - would have broken CI on the first push.
+
 ## Workflow playbook: recurring task types
 
 Add to this section as new recurring task shapes come up. Goal: the next session facing

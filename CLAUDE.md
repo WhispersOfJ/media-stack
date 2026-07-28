@@ -15,7 +15,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Docker Compose media-acquisition-and-serving stack (indexing via Prowlarr, requests via
-Seerr, Radarr/Sonarr for organizing, Usenet fetch via BearMount, Plex for serving) plus
+Seerr, Radarr/Sonarr for organizing, Usenet fetch via NzbDAV + its nzbdav_rclone FUSE-mount
+sidecar, Plex for serving) plus
 `control-panel/`, a custom FastAPI dashboard — the one in-repo application, everything else is
 off-the-shelf images wired together in `docker-compose.yml`.
 
@@ -40,8 +41,9 @@ relevant sections, not loaded in full every turn. Before making any change to th
   times, and old assumptions are wrong more often than not.
 - Check STACK.md's "Known current landmines" and "Architecture facts" sections for anything
   relevant to the change before running destructive or restart-type commands (especially around
-  BearMount's FUSE mount and its import queue — recreating it while items are queued is a
-  repeat, documented incident).
+  nzbdav_rclone's FUSE mount and NzbDAV's download queue — recreating a mount-owning container
+  while items are queued is a repeat, documented incident class across every download-client
+  this stack has run).
 - Real API keys/secrets are never in `STACK.md` or any tracked file — they live in `.env`
   (gitignored) and each app's own `config/<app>/` directory. `STACK.md` documents *where* a
   given app's key lives and how to rotate it, not the key values themselves.
@@ -49,19 +51,21 @@ relevant sections, not loaded in full every turn. Before making any change to th
   set — mount owner and mount consumer both, including containers restarted by automated
   recovery logic. See STACK.md's 2026-07-25 root-cause landmines before assuming a service is
   exempt.
-- A dependent container's own bind-mount view of BearMount can go stale independently of the
-  host and of BearMount itself, even while Docker healthchecks pass. Verify mount health from
-  *inside the specific dependent container* (`docker exec <container> ls /mnt/bearmount/...`),
-  not just the host or BearMount's own container. See STACK.md 2026-07-25.
-- Always use `--force-recreate` for bearmount's dependent cascade, never `restart` — `restart`
-  reuses the container's existing mount namespace and never picks up bearmount's fresh FUSE
-  mount, leaving every dependent silently stale. After recreating bearmount, verify the host
-  mount is actually up (`ls /mnt/bearmount` succeeds) before touching any dependent — recreating
-  them against a still-settling mount reproduces the same stale-handle problem. See STACK.md
-  2026-07-26.
-- If bearmount itself fails to (re)mount with `transport endpoint is not connected` or
-  `fusermount3: user has no write access to mountpoint`, clear it with
-  `sudo umount -l /mnt/bearmount` then recreate again — see STACK.md 2026-07-26.
+- A dependent container's own bind-mount view of `/mnt/remote/nzbdav` can go stale
+  independently of the host and of nzbdav_rclone itself, even while Docker healthchecks pass.
+  Verify mount health from *inside the specific dependent container*
+  (`docker exec <container> ls /mnt/remote/nzbdav/...`), not just the host or nzbdav_rclone's
+  own container. See STACK.md 2026-07-25 (documented against BearMount, same underlying class).
+- Always use `--force-recreate` for nzbdav_rclone's dependent cascade, never `restart` —
+  `restart` reuses the container's existing mount namespace and never picks up a fresh FUSE
+  mount, leaving every dependent silently stale. After recreating nzbdav_rclone, verify the
+  host mount is actually up (`ls /mnt/remote/nzbdav` succeeds) before touching any dependent —
+  recreating them against a still-settling mount reproduces the same stale-handle problem. See
+  STACK.md 2026-07-26.
+- If nzbdav_rclone itself fails to (re)mount with `transport endpoint is not connected` or
+  `directory already mounted`, clear it with `sudo umount -l /mnt/remote/nzbdav` then recreate
+  again — see STACK.md 2026-07-26 (BearMount) and 2026-07-28 (nzbdav_rclone's own variant of
+  this, where binding the exact mount target rather than its parent caused the same symptom).
 - Plex's `autoEmptyTrash` setting has mass-deleted library items 3x on a stale-mount scan
   (confirmed history in STACK.md) and is now disabled — don't re-enable it without reading
   that history first.
@@ -95,15 +99,17 @@ docker compose up -d --force-recreate control-panel
 docker compose up -d
 docker compose --profile extras up -d
 
-# MANDATORY before recreating/restarting/stopping bearmount for ANY reason — see STACK.md
-sqlite3 config/bearmount/bearmount.db "SELECT status, COUNT(*) FROM import_queue GROUP BY status;"
+# MANDATORY before recreating/restarting/stopping nzbdav or nzbdav_rclone for ANY reason —
+# see STACK.md. NzbDAV's own db.sqlite schema is unconfirmed, so this goes through its SAB
+# API rather than a raw sqlite query (unlike BearMount's old direct-DB check).
+source .env && curl -s "http://localhost:3000/api?mode=queue&apikey=$FRONTEND_BACKEND_API_KEY&output=json"
 
-# FUSE mount-table leak check (should be 0) — see STACK.md
-mount | grep -c bearmount-import
+# FUSE mount-table leak check (should be 1, not growing across recreates) — see STACK.md
+mount | grep -c "remote/nzbdav"
 
 # Corruption check — test multiple offsets, retry failures before concluding real corruption
 # (see STACK.md: a single failed read under heavy load is usually contention, not corruption)
-docker exec bearmount dd if='/mnt/bearmount/<path>' bs=1M skip=<N> count=1 2>/dev/null | wc -c
+docker exec nzbdav_rclone dd if='/mnt/remote/nzbdav/<path>' bs=1M skip=<N> count=1 2>/dev/null | wc -c
 
 # Unit tests — pure logic only, everything mocked (docker.sock, httpx, urllib). This host's
 # Python is externally-managed (PEP 668): python3 -m venv /tmp/venv &&
@@ -130,7 +136,9 @@ to work. **`STACK.md`** is the operational/incident memory for Claude Code speci
 — read it for how things have actually broken, what's currently true vs. historical, and the
 gotchas that aren't visible from reading the code alone.
 
-**`FIXES.md`** tracks the still-open BearMount FUSE read-hang investigation (50GB+ REMUX files,
-`ffprobe` deadlocks in D-state) — condensed state of what's fixed vs. not, and where the trail
-left off. `POST /api/bearmount/unstick-ffprobe-hang` automates the operational mitigation
-(detect, blocklist, recreate+cascade) — reach for it instead of doing that dance by hand.
+**`FIXES.md`** now only holds historical record of the BearMount FUSE read-hang investigation
+(50GB+ REMUX files, `ffprobe` deadlocks in D-state) — closed as moot when BearMount itself was
+removed 2026-07-28 (see STACK.md's History). Its automated mitigation endpoint
+(`/api/bearmount/unstick-ffprobe-hang`) was removed along with it, not ported — NzbDAV's mount
+is a stock rclone sidecar (`nzbdav_rclone`), a different codebase with no confirmed equivalent
+bug. Don't assume this class of hang still applies before re-reading that history.

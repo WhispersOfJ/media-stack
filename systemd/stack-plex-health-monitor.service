@@ -1,5 +1,5 @@
 [Unit]
-Description=Plex health watchdog (scan-lag/FUSE-hang/SQLite-stall detection + auto Tier 1/2 mitigation)
+Description=Plex health watchdog (scan-lag/FUSE-hang/SQLite-stall detection + auto Tier 1 mitigation, alert-only on hard hang)
 After=media-stack.service
 OnFailure=notify-failure@%n.service
 

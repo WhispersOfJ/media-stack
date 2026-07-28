@@ -60,16 +60,15 @@ services:
       start_period: 30s
     volumes:
       - ./config/radarr:/config
-      - /mnt/bearmount:/mnt/bearmount:rslave
+      # nzbdav_rclone's mount point (replaces BearMount's native FUSE mount,
+      # 2026-07-28 cutover - see STACK.md's History). Symlinks land directly
+      # under here (completed-symlinks/) per NzbDAV's own symlink strategy,
+      # no separate import_dir bind needed unlike BearMount's SYMLINK mode.
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
       # Genuinely writable root folder on regular disk - the old debrid FUSE
       # mounts did not support having files written into them (confirmed:
       # symlink/hardlink/copy all failed there with I/O errors).
       - ./media/movies:/data/movies
-      # BearMount's SYMLINK import_dir - same host filesystem as ./media/movies
-      # above (both under ./media, confirmed via df), so copyUsingHardlinks
-      # produces another symlink here instead of a real byte copy. Enforces
-      # "no real media on disk" - see CLAUDE.md's 2026-07-23 entry.
-      - ./media/bearmount-import:/mnt/bearmount-import
     ports:
       - "7878:7878"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -92,10 +91,9 @@ services:
       start_period: 30s
     volumes:
       - ./config/sonarr:/config
-      - /mnt/bearmount:/mnt/bearmount:rslave
+      # nzbdav_rclone's mount point - see radarr's matching mount comment above.
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
       - ./media/shows:/data/shows
-      # BearMount's SYMLINK import_dir - see radarr's matching mount comment above.
-      - ./media/bearmount-import:/mnt/bearmount-import
     ports:
       - "8989:8989"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -135,109 +133,118 @@ services:
 
 
   # ---------------------------------------------------------------------
-  # Usenet - streaming, no local disk. Replaced AltMount entirely,
-  # 2026-07-24 (full cutover to the WhispersOfJ/bearmount fork/rebrand -
-  # see CLAUDE.md's History for the full incident, including the explicit
-  # choice to accept every pre-cutover symlink breaking rather than keep
-  # altmount running read-only alongside this). AltMount itself had
-  # replaced NzbDAV entirely on 2026-07-23 for the same reason (an unmerged
-  # upstream connection-leak bug) - this is that same class of cutover
-  # happening a second time, one layer up. Radarr/Sonarr's download client
-  # points here directly (SABnzbd-compatible API). Own internal rclone/FUSE
-  # mount - no separate sidecar container needed.
+  # Usenet - streaming, no local disk. Replaced BearMount entirely,
+  # 2026-07-28 (full cutover to nzbdav/nzbdav, the "super-fork" - see
+  # STACK.md's History for the full incident/decision). BearMount itself
+  # had replaced AltMount on 2026-07-24, which had replaced NzbDAV
+  # (nzbdav-dev) on 2026-07-23 - this is that same class of cutover
+  # happening a third time. Unlike BearMount, NzbDAV has NO native FUSE
+  # mount - it's WebDAV-only, so a separate rclone sidecar (nzbdav_rclone,
+  # below) does the actual mount. Radarr/Sonarr's download client points
+  # at nzbdav directly (SABnzbd-compatible API, port 3000).
   # ---------------------------------------------------------------------
-  bearmount:
+  nzbdav:
     restart: unless-stopped
     logging: *common-logging
-    # TEMPORARY local-fix pin, 2026-07-27: asyncbuf-streaming-guard carries the
-    # CONFIRMED (via a live pprof goroutine dump, not theory) root-cause fix for
-    # the recurring ffprobe D-state read hang - AsyncReadBuffer's frontier-wait
-    # loops in internal/fuse/backend/asyncbuffer.go didn't check a.streaming, so
-    # a concurrent seek's demoteLocked() could strand a waiting reader forever.
-    # See FIXES.md's "Root cause, confirmed 2026-07-27 (via live goroutine
-    # dump)" section and STACK.md's "Recurring BearMount FUSE read hangs" entry.
-    # The earlier fuse-ctx-independent-timeout build (commit 1b59596e) is a
-    # real, separate fix (closed a genuinely dead ctx-cancellation escape
-    # hatch) but was confirmed NOT sufficient on its own - this build
-    # (commit 3130a4b6 on debrand/altmount-clean) includes both. Built from the
-    # de-branded WhispersOfJ/altmount fork (formerly WhispersOfJ/bearmount,
-    # renamed back 2026-07-26 - GitHub repo, module path, and binary are all
-    # "altmount" again; this stack's own service/container name below is
-    # unaffected, that's this repo's own naming, independent of upstream
-    # identity). Not yet upstreamed as a PR - do that once this build has
-    # survived a real ffprobe hang without recurring.
-    image: altmount-local-fix:asyncbuf-streaming-guard
-    container_name: bearmount
+    image: ghcr.io/nzbdav/nzbdav:latest
+    container_name: nzbdav
     networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:3000/healthz > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
-      PORT: "8080"
-      JWT_SECRET: ${BEARMOUNT_JWT_SECRET}
-      COOKIE_DOMAIN: ${HOST_IP}
+      TZ: ${TZ}
+      FRONTEND_BACKEND_API_KEY: ${FRONTEND_BACKEND_API_KEY}
+      # Headless/authoritative Settings overlay (since v0.9.0) - every value
+      # below is otherwise a manual Settings-UI field. Mirrors
+      # FRONTEND_BACKEND_API_KEY so *Arr/SAB and the Settings UI agree on
+      # one download-client key.
+      NZBDAV_CONFIG__API__KEY: ${FRONTEND_BACKEND_API_KEY}
+      NZBDAV_CONFIG__API__CATEGORIES: "tv,movies"
+      NZBDAV_CONFIG__API__IMPORT_STRATEGY: "symlinks"
+      NZBDAV_CONFIG__WEBDAV__USER: ${NZBDAV_WEBDAV_USER}
+      NZBDAV_CONFIG__WEBDAV__PASS: ${NZBDAV_WEBDAV_PASS}
+      NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
+      NZBDAV_CONFIG__MEDIA__LIBRARY_DIR: "/mnt/remote/nzbdav/completed-symlinks"
+      NZBDAV_CONFIG__USENET__PROVIDERS: >-
+        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":25,"Nickname":"primary"}]}
+      NZBDAV_CONFIG__ARR__INSTANCES: >-
+        {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"}],"QueueRules":[]}
+      NZBDAV_CONFIG__REPAIR__ENABLE: "true"
+      # Rclone RC notifications - auto vfs/forget on file add/remove instead of
+      # relying purely on --dir-cache-time. Confirmed the RC test-connection
+      # endpoint returns "Connection refused" without this, 2026-07-28.
+      NZBDAV_CONFIG__RCLONE__RC_ENABLED: "true"
+      NZBDAV_CONFIG__RCLONE__HOST: "http://nzbdav_rclone:5572"
+      NZBDAV_CONFIG__RCLONE__USER: "rclone"
+      NZBDAV_CONFIG__RCLONE__PASS: ${NZBDAV_RCLONE_RC_PASS}
     volumes:
-      - ./config/bearmount:/config
-      # CORRECTION, 2026-07-25: this used to be `/mnt:/mnt:rshared` (the
-      # whole host /mnt tree) plus a *nested* `./media/bearmount-import:
-      # /mnt/bearmount-import:rprivate` bind underneath it - the :rprivate
-      # flag was believed to stop that nested mount from leaking onto the
-      # host, but it doesn't: the leak happens because the mount-creation
-      # *event* propagates to the parent's (host's) peer group at the
-      # moment the nested mount is created, before the child mount's own
-      # propagation flag has any effect on anything. :rprivate only
-      # controls whether *that* mount subsequently relays *further*
-      # propagation events - it can't retroactively stop the one event
-      # that already fired. Confirmed live 2026-07-25 with a single
-      # controlled `docker compose up -d --force-recreate bearmount`: host
-      # mount entries for /mnt/bearmount-import doubled from 127 to 255 in
-      # one recreate (previously reached 16,384 before being noticed,
-      # eventually blocking BearMount's own remount with a misleading "no
-      # space left on device" - a mount-table/propagation-group
-      # exhaustion, not real disk space). Real fix: only bind-mount the
-      # exact path that needs shared propagation (BearMount's own internal
-      # rclone FUSE mount, created at runtime at /mnt/bearmount - other
-      # containers' :rslave binds on that same path need to see it) rather
-      # than the whole /mnt tree, so bearmount-import is never nested
-      # under a shared ancestor in the first place - same pattern
-      # radarr/sonarr already use correctly for this exact directory
-      # (plain default-propagation bind, no flag needed, confirmed live:
-      # zero leaked entries for either of *their* mounts of this path).
-      - /mnt/bearmount:/mnt/bearmount:rshared
-      - ./media/bearmount-import:/mnt/bearmount-import
+      - ./config/nzbdav:/config
+      - /mnt:/mnt
+    ports:
+      - "3000:3000"
+    mem_limit: 4g
+    mem_reservation: 256m
+    cpus: 4
+
+  # rclone sidecar: NzbDAV has no native mount (pure WebDAV server), so this
+  # does the actual FUSE mount of NzbDAV's WebDAV tree at /mnt/remote/nzbdav
+  # for Plex/Radarr/Sonarr symlink imports. Binds ONLY that exact subpath,
+  # not the whole /mnt tree - see BearMount's own mount-table-leak incident
+  # (2026-07-25, STACK.md) for why binding a shared ancestor is dangerous.
+  nzbdav_rclone:
+    image: rclone/rclone:latest
+    container_name: nzbdav_rclone
+    restart: unless-stopped
+    logging: *common-logging
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+    volumes:
+      # Bind the PARENT dir, not /mnt/remote/nzbdav itself: bind-mounting the
+      # exact FUSE target makes rclone's own "already mounted" safety check
+      # misfire (that path already looks like a mount boundary from inside
+      # the container before rclone ever touches it) - confirmed live
+      # 2026-07-28, every attempt failed identically until this changed.
+      - /mnt/remote:/mnt/remote:rshared
+      - ./config/nzbdav-rclone/rclone.conf:/config/rclone/rclone.conf:ro
+      - ./config/nzbdav-rclone/cache:/cache
     devices:
       - /dev/fuse:/dev/fuse:rwm
     cap_add:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
-    ports:
-      - "8082:8080"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    # CONFIRMED LIVE 2026-07-25: BearMount's own graceful-shutdown sequence
-    # legitimately takes ~40s even in the best case, due to two internal
-    # bugs (a subprocess-reap race that wastes ~10s waiting on an already-
-    # exited rclone process before giving up, then an HTTP server
-    # Shutdown() that hits its own hardcoded 30s context deadline) -
-    # neither bug blocks the actual FUSE unmount, which completes in well
-    # under a second ("All mounts unmounted successfully" logs almost
-    # immediately on SIGTERM). But with no stop_grace_period set, Docker's
-    # 10s default SIGKILL timeout fires *during* that ~40s sequence on
-    # essentially every restart - 21 of 21 recent restarts in
-    # config/bearmount/bearmount.log show this exact pattern. A SIGKILL
-    # mid-sequence is the most likely trigger for the FUSE/D-state hangs
-    # and mount-table leaks documented elsewhere in this file: restarting
-    # BearMount to recover from a hang was itself almost never completing
-    # cleanly, making the "fix" a contributor to the next hang. 90s gives
-    # real headroom above the measured ~43s worst case.
-    stop_grace_period: 90s
-    mem_limit: 14g
-    mem_reservation: 128m
-    cpus: 8
+    depends_on:
+      nzbdav:
+        condition: service_healthy
+        restart: true
+    command: >
+      mount nzbdav: /mnt/remote/nzbdav
+        --cache-dir=/cache
+        --uid=1000
+        --gid=1000
+        --allow-other
+        --links
+        --use-cookies
+        --vfs-cache-mode=full
+        --vfs-cache-max-size=20G
+        --vfs-cache-max-age=24h
+        --buffer-size=0M
+        --vfs-read-ahead=512M
+        --dir-cache-time=20s
+        --rc
+        --rc-addr=:5572
+        --rc-user=rclone
+        --rc-pass=${NZBDAV_RCLONE_RC_PASS}
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 4
 
   # ---------------------------------------------------------------------
   # Requests
@@ -322,18 +329,21 @@ services:
       - ./config/plex-transcode:/transcode
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
-      # Root folders were 100% symlinks into NzbDAV's own WebDAV filesystem
-      # (e.g. /mnt/nzbdav/.ids/...) before it was removed entirely 2026-07-23
-      # (see CLAUDE.md's History) - every one of those old symlinks is now
-      # broken, since BearMount doesn't share NzbDAV's ID scheme (and, as of
-      # the 2026-07-24 AltMount->BearMount cutover, every pre-cutover
-      # AltMount-sourced symlink is broken too, same reasoning). This mount
-      # only matters for content actually imported through BearMount from
-      # now on; the pre-existing library needs its own reconciliation, see
-      # CLAUDE.md.
-      - /mnt/bearmount:/mnt/bearmount:rslave
+      # Root folders were symlinks into the original NzbDAV's WebDAV
+      # filesystem, then AltMount's, then BearMount's - each cutover broke
+      # every prior symlink since none of them share an ID scheme (see
+      # STACK.md's History). Now nzbdav_rclone's mount, 2026-07-28 cutover -
+      # same story: pre-cutover symlinks are broken again, new imports only.
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
     devices:
-      - /dev/dri/renderD128:/dev/dri/renderD128
+      # Whole /dev/dri, not just renderD128: confirmed live 2026-07-28 that
+      # mapping renderD128 alone left every real (non-directstream) transcode
+      # falling back to software encode ("hardware transcoding: enabled, but
+      # no hardware decode accelerator found" every session, despite Plex Pass
+      # active, correct GPU detected, and the VAAPI driver already downloaded)
+      # - card1 and the by-path entries were missing from the container, and
+      # Plex's hardware-eligibility probe needs those, not just the render node.
+      - /dev/dri:/dev/dri
     # video/render host GIDs - renderD128 is already world-writable
     # (confirmed: crw-rw-rw-), so this is a defensive fallback rather than
     # strictly required for VAAPI hardware transcoding to work.
@@ -458,13 +468,11 @@ services:
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
-      # NzbDAV removed entirely 2026-07-23, then AltMount removed entirely
-      # 2026-07-24 (see CLAUDE.md's History) - BearMount's SABnzbd-compatible
-      # API key replaces it.
-      BEARMOUNT_API_KEY: ${BEARMOUNT_API_KEY}
-      # 2026-07-25: BearMount's own JWT-authenticated REST API (fuse/health
-      # control), separate from the SABnzbd-compatible API above.
-      BEARMOUNT_ADMIN_PASSWORD: ${BEARMOUNT_ADMIN_PASSWORD}
+      # NzbDAV (nzbdav-dev) removed entirely 2026-07-23, then AltMount removed
+      # entirely 2026-07-24, then BearMount removed entirely 2026-07-28 (see
+      # STACK.md's History) - nzbdav/nzbdav's shared frontend<->backend proxy
+      # key doubles as its SABnzbd-compatible API key.
+      FRONTEND_BACKEND_API_KEY: ${FRONTEND_BACKEND_API_KEY}
       # Prowlarr has no other integration in this stack (CONTAINER_LABELS
       # dashboard entry only) - added specifically so /api/log-levels can
       # cover all five Servarr-shaped apps, not just the four QUEUE_ARR_APPS.
@@ -569,7 +577,7 @@ services:
       # Low-impact: ebook releases are rarely RAR'd the way video/audio
       # ones are.
     volumes:
-      - /mnt/bearmount:/mnt/bearmount:rslave
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
       - ./usenet:/usenet:rslave
     # No prior ceiling - extraction (unzip/unrar) can spike CPU briefly on
     # large archives, cheap insurance same as the other companion apps above.
@@ -634,9 +642,9 @@ services:
       - ./config/cleanuparr:/config
       # Cleanuparr's QueueCleaner/MalwareBlocker jobs need filesystem access
       # to whatever path the download client's own API reports as each queue
-      # item's location - BearMount's mount, since AltMount was removed
-      # entirely 2026-07-24 (see CLAUDE.md's History).
-      - /mnt/bearmount:/mnt/bearmount:rslave
+      # item's location - nzbdav_rclone's mount, since BearMount was removed
+      # entirely 2026-07-28 (see STACK.md's History).
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
     # No prior observation - generous default ceiling, same reasoning as
     # every other companion app in this file.
     ports:

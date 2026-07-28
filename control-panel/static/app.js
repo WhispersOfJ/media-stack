@@ -337,7 +337,7 @@ function buildPrimaryActions() {
 const FLEET_GROUPS = {
   prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
   recyclarr: "Arr apps",
-  bearmount: "Usenet", seerr: "Requests", plex: "Media server",
+  nzbdav: "Usenet", nzbdav_rclone: "Usenet", seerr: "Requests", plex: "Media server",
   bazarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
   cleanuparr: "Queue cleanup",
@@ -941,7 +941,7 @@ const QUICK_LINKS = [
   { id: "prowlarr", label: "Prowlarr", port: 9696 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "bearmount", label: "BearMount", port: 8082 },
+  { id: "nzbdav", label: "NzbDAV", port: 3000 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "bazarr", label: "Bazarr", port: 6767 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
@@ -962,7 +962,7 @@ const DOC_LINKS = [
   { app: "Radarr", desc: "movie root-folder/quality-profile management", urls: [["Wiki", "https://wiki.servarr.com/radarr"], ["Source", "https://github.com/Radarr/Radarr"]] },
   { app: "Sonarr", desc: "TV root-folder/quality-profile management", urls: [["Wiki", "https://wiki.servarr.com/sonarr"], ["Source", "https://github.com/Sonarr/Sonarr"]] },
   { app: "Prowlarr", desc: "indexer manager, syncs to Radarr/Sonarr", urls: [["Wiki", "https://wiki.servarr.com/prowlarr"], ["Source", "https://github.com/Prowlarr/Prowlarr"]] },
-  { app: "BearMount", desc: "Usenet WebDAV mount + SABnzbd-compatible API (WhispersOfJ/bearmount, a rebranded fork of javi11/altmount)", urls: [["Source", "https://github.com/WhispersOfJ/bearmount"]] },
+  { app: "NzbDAV", desc: "Usenet WebDAV server + SABnzbd-compatible API (nzbdav/nzbdav, a maintained super-fork of nzbdav-dev/nzbdav); FUSE-mounted for Plex/Radarr/Sonarr by the nzbdav_rclone sidecar", urls: [["Docs", "https://nzbdav.com/"], ["Source", "https://github.com/nzbdav/nzbdav"]] },
   { app: "Seerr", desc: "media request/discovery front-end", urls: [["Source", "https://github.com/seerr-team/seerr"]] },
   { app: "Plex", desc: "media server", urls: [["Support", "https://support.plex.tv"]] },
   { app: "Bazarr", desc: "subtitle management for Radarr/Sonarr", urls: [["Source", "https://github.com/morpheus65535/bazarr"]] },
@@ -1034,7 +1034,7 @@ const CLAUDE_SKILLS = [
   { name: "stack-cli-infra-ops", desc: "Container control, backup verify/integrity, disk usage checks." },
   { name: "stack-cli-plex-kometa", desc: "Plex library/Butler tasks, duplicates, TMDb-link audit." },
   { name: "stack-cli-system-maintenance", desc: "Host package updates, reboot/disk/SMART/journal checks (terminal-only — see the Host rail's note above)." },
-  { name: "stack-cli-usenet-queue", desc: "BearMount/Cleanuparr/Prowlarr status and queue ops." },
+  { name: "stack-cli-usenet-queue", desc: "NzbDAV/Cleanuparr/Prowlarr status and queue ops." },
 ];
 
 function buildSkillsList() {
@@ -1781,26 +1781,22 @@ function plexHealthStateBadgeClass(state) {
 function buildPlexHealth() {
   const wrap = document.getElementById("plex-health-actions");
 
-  const rows = [
-    {
-      id: "plex-restart", title: "Restart Plex",
-      desc: "Plain container restart. Fixes a Plex-internal SQLite stall; does NOT clear a genuine FUSE/D-state hang (restart's own stop call hits the same wedge).",
-      idle: "Restart Plex", armed: "Click again to confirm", danger: false,
-      run: () => postAction("/api/container/plex/restart", {}),
-    },
-    {
-      id: "plex-cascade", title: "Restart Mount Cascade",
-      desc: "Force-recreates BearMount, then restarts radarr/sonarr/plex/unpackerr/cleanuparr in order. Refuses if BearMount's own queue isn't empty (recreating with items in flight silently blocklists them).",
-      idle: "Restart Mount Cascade", armed: "Click again to confirm", danger: false,
-      run: () => postAction("/api/plex/restart-cascade", {}),
-    },
-    {
-      id: "plex-unstick", title: "Force Unstick",
-      desc: "Aborts the stuck FUSE connection at the host level, then runs the same cascade as above. The only mitigation that clears a genuine D-state hang - needs the host-level privilege this compose change adds. Highest-consequence action here.",
-      idle: "Force Unstick", armed: "Click again to confirm", danger: true,
-      run: () => postAction("/api/plex/unstick", {}),
-    },
-  ];
+  // All three quick-action buttons that used to live here were removed 2026-07-28:
+  // "Restart Mount Cascade" and "Force Unstick" called into the BearMount-specific
+  // ffprobe/D-state hang subsystem (/api/plex/restart-cascade, /api/plex/unstick),
+  // which was removed along with BearMount itself - NzbDAV's mount is a stock rclone
+  // sidecar (nzbdav_rclone) with no confirmed equivalent hang class (see STACK.md's
+  // History); re-add here if one is ever confirmed. "Restart Plex" (plain
+  // /api/container/plex/restart) was removed from the UI the same day because the
+  // server-side route now rejects that call unless activated=true is passed
+  // explicitly - a button that can only ever fail isn't worth keeping; use the API
+  // directly with activated=true when a Plex restart is genuinely intended.
+  const rows = [];
+
+  if (rows.length === 0) {
+    wrap.innerHTML = `<p class="rule-desc">No mitigation buttons available here - Plex restart requires activated=true via the API directly (not exposed as a plain click), and the mount-cascade/unstick actions were removed with BearMount.</p>`;
+    return;
+  }
 
   for (const row of rows) {
     const el = document.createElement("div");
@@ -1860,7 +1856,7 @@ async function refreshPlexHealth() {
   document.getElementById("plex-health-progress").textContent = progress === null ? "idle" : `${progress}%`;
   document.getElementById("plex-health-progress-sub").textContent = scanActivity ? (scanActivity.subtitle || scanActivity.title) : "";
 
-  const q = data.bearmount_queue;
+  const q = data.nzbdav_queue;
   document.getElementById("plex-health-queue").textContent = String(q.pending ?? 0);
   document.getElementById("plex-health-queue-sub").textContent = q.processing ? `${q.processing} processing` : "";
 

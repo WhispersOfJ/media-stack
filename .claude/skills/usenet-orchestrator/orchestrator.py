@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect and manage download-client queues (bearmount, or any other
+"""Inspect and manage download-client queues (nzbdav, or any other
 SABnzbd/qBittorrent-API-compatible client added to CLIENTS below) for the
 media-stack.
 
@@ -20,27 +20,33 @@ import sys
 import urllib.error
 import urllib.request
 
-# BearMount is the only download client this stack runs (rebrand/fork of
-# AltMount, itself the NzbDAV replacement - see CLAUDE.md's History) - other
-# SABnzbd/qBittorrent-API clients can still be added here if a future stack
-# change brings one back. "path" is the base path each client's
+# nzbdav/nzbdav (the "super-fork") is the only download client this stack
+# runs as of the 2026-07-28 BearMount cutover (see STACK.md's History) -
+# other SABnzbd/qBittorrent-API clients can still be added here if a future
+# stack change brings one back. "path" is the base path each client's
 # SABnzbd-compatible API is actually mounted under - a real vanilla SABnzbd
-# install expects /api directly; BearMount's Fiber router mounts it under
-# /sabnzbd instead (app.Use("/sabnzbd", ...), prefix-matching, carried over
-# from AltMount's own source, confirmed live). Host port is BearMount's
-# published one (8082, mapped from container 8080) - override via
-# BEARMOUNT_URL for anything reached differently.
+# install expects /api directly, and so does NzbDAV (root /api, no prefix -
+# unlike BearMount's Fiber router, which mounted it under /sabnzbd). Host
+# port is NzbDAV's published one (3000, its frontend - not the internal 8080
+# backend) - override via NZBDAV_URL for anything reached differently.
 CLIENTS = {
-    "bearmount": {"port": 8082, "path": "/sabnzbd", "kind": "sabnzbd"},
+    "nzbdav": {"port": 3000, "path": "/api", "kind": "sabnzbd"},
 }
 
-# NzbDAV/nzbdav-rclone's stuck-file diagnostic (matched a repeating
-# ".ids/<uuid> 404 Not Found" log pattern specific to that FUSE mount) had
-# no confirmed AltMount/BearMount equivalent as of the 2026-07-23 AltMount
-# cutover, and none has been confirmed since the 2026-07-24 BearMount
-# rebrand either - both are a single container with their own internal
-# mount/logging shape, not verified to log missing-article failures the
-# same way. Removed rather than guessed; see cmd_diagnose_stuck_file below.
+# NzbDAV's own admin/API key is stored as FRONTEND_BACKEND_API_KEY in .env
+# (shared with the frontend<->backend proxy auth, not a separate per-client
+# secret like BearMount's BEARMOUNT_API_KEY was) - Client.__init__ below
+# falls back to it if NZBDAV_API_KEY isn't set, so this script works
+# whether the caller exports the generic or the nzbdav-specific name.
+
+# The original NzbDAV (nzbdav-dev)'s stuck-file diagnostic (matched a
+# repeating ".ids/<uuid> 404 Not Found" log pattern specific to its FUSE
+# mount) had no confirmed AltMount/BearMount equivalent through either of
+# those cutovers. Now that the download client is nzbdav/nzbdav again (a
+# super-fork of that same lineage, and its mount does expose a matching
+# `.ids/` directory structure - confirmed live 2026-07-28), this diagnostic
+# may actually be relevant again, but that hasn't been confirmed against
+# real logs yet - still refuses to guess; see cmd_diagnose_stuck_file below.
 
 
 class Client:
@@ -53,7 +59,7 @@ class Client:
         self.base_url = os.environ.get(
             f"{env_prefix}_URL", f"http://localhost:{meta['port']}"
         ).rstrip("/")
-        self.api_key = os.environ.get(f"{env_prefix}_API_KEY", "")
+        self.api_key = os.environ.get(f"{env_prefix}_API_KEY") or os.environ.get("FRONTEND_BACKEND_API_KEY", "")
         self.kind = meta["kind"]
         self.path = meta.get("path", "/api")
 
@@ -167,17 +173,23 @@ def cmd_reachability() -> None:
 
 
 def cmd_diagnose_stuck_file(since: str, media_root: str) -> None:
-    """Read-only. Was built around NzbDAV/nzbdav-rclone's specific
-    ".ids/<uuid> 404 Not Found" log pattern (see module comment) - NzbDAV
-    was removed entirely 2026-07-23 and this diagnostic has no confirmed
-    BearMount equivalent, so it refuses to run rather than silently
-    search logs that likely don't match this pattern at all."""
-    print("diagnose-stuck-file has no confirmed BearMount equivalent - it was built")
-    print("around NzbDAV/nzbdav-rclone's specific log format, and NzbDAV was removed")
-    print("entirely 2026-07-23 (see CLAUDE.md's History). Check BearMount's own logs")
-    print("(docker logs bearmount) directly for now, or port this diagnostic once")
-    print("BearMount's actual missing-article/failed-mount log format is confirmed.")
-    _ = (since, media_root)  # unused until a real BearMount log pattern is confirmed
+    """Read-only. Was built around the original NzbDAV (nzbdav-dev)'s
+    specific ".ids/<uuid> 404 Not Found" log pattern (see module comment).
+    That app was removed entirely 2026-07-23, and no equivalent was ever
+    confirmed for AltMount or BearMount. The current client (nzbdav/nzbdav,
+    since 2026-07-28) is a super-fork of that same original lineage and its
+    mount does expose a matching `.ids/` directory structure - plausible
+    this diagnostic applies again - but that hasn't been confirmed against
+    real log output yet, so it still refuses to guess rather than search
+    logs that may not match."""
+    print("diagnose-stuck-file has no CONFIRMED nzbdav/nzbdav equivalent yet - it was")
+    print("built around the original NzbDAV (nzbdav-dev)'s specific log format. The")
+    print("current client is a super-fork of that same lineage and its mount does")
+    print("expose a matching .ids/ structure (confirmed live 2026-07-28), so this may")
+    print("well apply again - but that hasn't been verified against real log output.")
+    print("Check nzbdav's own logs (docker logs nzbdav) directly for now, or port this")
+    print("diagnostic once its actual missing-article log format is confirmed.")
+    _ = (since, media_root)  # unused until a real nzbdav log pattern is confirmed
 
 
 def main() -> int:

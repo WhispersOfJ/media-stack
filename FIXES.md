@@ -1,3 +1,16 @@
+> **CLOSED AS MOOT — 2026-07-28.** BearMount was removed entirely this date (cutover to
+> `nzbdav/nzbdav`, a maintained "super-fork" of the original NzbDAV lineage - see STACK.md's
+> History), following a live investigation into a *different* issue (a Usenet provider
+> connection/retention problem, not a FUSE bug). This investigation's fix (`asyncbuf-streaming-
+> guard`, confirmed 2026-07-27) never had a chance to prove itself over real time before the
+> app it was fixing was replaced. NzbDAV's actual FUSE mount is now a separate stock rclone
+> sidecar (`nzbdav_rclone`), a different codebase with no confirmed equivalent bug — this
+> record is kept as-is below for historical reference, not because the hang class is expected
+> to recur. The automated mitigation endpoint this investigation built
+> (`/api/bearmount/unstick-ffprobe-hang`) was removed along with BearMount, not ported.
+>
+> Original notes follow unchanged.
+
 # BearMount FUSE read-hang — 2026-07-26 session notes
 
 **2026-07-27 ROOT CAUSE CONFIRMED (via a live pprof goroutine dump, not theory)**: wired
