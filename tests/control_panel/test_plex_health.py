@@ -1,4 +1,3 @@
-import sqlite3
 import time
 from unittest.mock import MagicMock
 
@@ -123,32 +122,26 @@ def test_fuse_waiting_total_zero_when_not_mounted(cp_app, monkeypatch, tmp_path)
     assert cp_app._fuse_waiting_total() == 0
 
 
-def test_bearmount_queue_counts_reads_real_sqlite(cp_app, monkeypatch, tmp_path):
-    config_dir = tmp_path / "host-config"
-    bearmount_dir = config_dir / "bearmount"
-    bearmount_dir.mkdir(parents=True)
-    db_path = bearmount_dir / "bearmount.db"
-    con = sqlite3.connect(str(db_path))
-    con.execute("CREATE TABLE import_queue (status TEXT)")
-    con.executemany(
-        "INSERT INTO import_queue (status) VALUES (?)",
-        [("pending",), ("pending",), ("processing",), ("completed",)],
-    )
-    con.commit()
-    con.close()
-    monkeypatch.setattr(cp_app, "HOST_CONFIG_DIR", str(config_dir))
+def test_nzbdav_queue_counts_splits_pending_and_processing(cp_app, monkeypatch):
+    slots = [{"status": "Downloading"}, {"status": "Queued"}, {"status": "Queued"}]
+    monkeypatch.setattr(cp_app, "nzbdav_api", lambda mode, timeout=5: {"queue": {"slots": slots}})
 
-    counts = cp_app._bearmount_queue_counts()
+    counts = cp_app._nzbdav_queue_counts()
     assert counts["pending"] == 2
     assert counts["processing"] == 1
 
 
-def test_bearmount_queue_counts_db_missing(cp_app, monkeypatch, tmp_path):
-    monkeypatch.setattr(cp_app, "HOST_CONFIG_DIR", str(tmp_path / "does-not-exist"))
-    counts = cp_app._bearmount_queue_counts()
+def test_nzbdav_queue_counts_unreachable_on_http_exception(cp_app, monkeypatch):
+    from fastapi import HTTPException
+
+    def raise_unreachable(mode, timeout=5):
+        raise HTTPException(status_code=502, detail={"ok": False, "message": "unreachable"})
+
+    monkeypatch.setattr(cp_app, "nzbdav_api", raise_unreachable)
+    counts = cp_app._nzbdav_queue_counts()
     assert counts["pending"] == 0
     assert counts["processing"] == 0
-    assert counts["db_missing"] is True
+    assert counts["unreachable"] is True
 
 
 def test_mount_test_true_on_real_content(cp_app, monkeypatch):
@@ -225,7 +218,7 @@ def _patch_scan_health_deps(cp_app, monkeypatch, *, dstate=None, mount_ok=True,
     monkeypatch.setattr(cp_app, "_fuse_waiting_total", lambda: 0)
     monkeypatch.setattr(cp_app, "_mount_test", lambda name="plex": mount_ok)
     monkeypatch.setattr(cp_app, "_plex_scanner_processes", lambda: scanner_lines or [])
-    monkeypatch.setattr(cp_app, "_bearmount_queue_counts",
+    monkeypatch.setattr(cp_app, "_nzbdav_queue_counts",
                          lambda: queue or {"pending": 0, "processing": 0})
     monkeypatch.setattr(cp_app, "_plex_log_tail",
                          lambda lines=50: {"lines": [], "busy_db_errors": 0,
@@ -300,104 +293,3 @@ def test_scan_health_not_stalled_suspected_when_analysis_active(cp_app, monkeypa
     client = TestClient(cp_app.app, base_url="http://localhost")
     r = client.get("/api/plex/scan-health")
     assert r.json()["state"] == "scanning"
-
-
-def test_restart_cascade_blocked_when_queue_not_empty(cp_app, monkeypatch):
-    monkeypatch.setattr(cp_app, "_bearmount_queue_counts",
-                         lambda: {"pending": 3, "processing": 0})
-    client = TestClient(cp_app.app, base_url="http://localhost")
-    r = client.post("/api/plex/restart-cascade")
-    assert r.status_code == 409
-
-
-def test_restart_cascade_force_bypasses_queue_gate(cp_app, monkeypatch):
-    monkeypatch.setattr(cp_app, "_bearmount_queue_counts",
-                         lambda: {"pending": 3, "processing": 0})
-    monkeypatch.setattr(cp_app, "_restart_bearmount_cascade", lambda: ["radarr", "sonarr"])
-    client = TestClient(cp_app.app, base_url="http://localhost")
-    r = client.post("/api/plex/restart-cascade?force=true")
-    assert r.status_code == 200
-    assert r.json()["restarted"] == ["radarr", "sonarr"]
-
-
-def test_unstick_503_when_fuse_not_mounted(cp_app, monkeypatch, tmp_path):
-    monkeypatch.setattr(cp_app, "HOST_SYS_FUSE_DIR", str(tmp_path / "does-not-exist"))
-    client = TestClient(cp_app.app, base_url="http://localhost")
-    r = client.post("/api/plex/unstick")
-    assert r.status_code == 503
-
-
-def test_unstick_blocked_when_queue_not_empty(cp_app, monkeypatch, tmp_path):
-    fuse_dir = tmp_path / "host-sys-fuse"
-    (fuse_dir / "connections").mkdir(parents=True)
-    monkeypatch.setattr(cp_app, "HOST_SYS_FUSE_DIR", str(fuse_dir))
-    monkeypatch.setattr(cp_app, "_bearmount_queue_counts",
-                         lambda: {"pending": 1, "processing": 0})
-    client = TestClient(cp_app.app, base_url="http://localhost")
-    r = client.post("/api/plex/unstick")
-    assert r.status_code == 409
-
-
-def test_unstick_no_waiting_connections_is_a_noop(cp_app, monkeypatch, tmp_path):
-    fuse_dir = tmp_path / "host-sys-fuse"
-    conn_dir = fuse_dir / "connections" / "80"
-    conn_dir.mkdir(parents=True)
-    (conn_dir / "waiting").write_text("0")
-    monkeypatch.setattr(cp_app, "HOST_SYS_FUSE_DIR", str(fuse_dir))
-    monkeypatch.setattr(cp_app, "_bearmount_queue_counts",
-                         lambda: {"pending": 0, "processing": 0})
-    client = TestClient(cp_app.app, base_url="http://localhost")
-    r = client.post("/api/plex/unstick")
-    assert r.status_code == 200
-    assert r.json()["aborted"] == []
-
-
-def test_unstick_aborts_waiting_connection_and_cascades(cp_app, monkeypatch, tmp_path):
-    fuse_dir = tmp_path / "host-sys-fuse"
-    conn_dir = fuse_dir / "connections" / "93"
-    conn_dir.mkdir(parents=True)
-    (conn_dir / "waiting").write_text("3")
-    monkeypatch.setattr(cp_app, "HOST_SYS_FUSE_DIR", str(fuse_dir))
-    monkeypatch.setattr(cp_app, "_bearmount_queue_counts",
-                         lambda: {"pending": 0, "processing": 0})
-    monkeypatch.setattr(cp_app, "_restart_bearmount_cascade", lambda: ["plex"])
-    monkeypatch.setattr(cp_app.time, "sleep", lambda s: None)
-
-    client = TestClient(cp_app.app, base_url="http://localhost")
-    r = client.post("/api/plex/unstick")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["aborted"] == ["93"]
-    assert body["restarted"] == ["plex"]
-    assert (conn_dir / "abort").read_text() == "1"
-
-
-def test_restart_bearmount_cascade_fails_when_mount_still_empty(cp_app, monkeypatch):
-    monkeypatch.setattr(cp_app.subprocess, "run",
-                         lambda *a, **k: MagicMock(returncode=0))
-    bearmount = MagicMock()
-    cp_app.docker_client.containers.get.return_value = bearmount
-    monkeypatch.setattr(cp_app, "wait_for_healthy", lambda c, timeout=60: None)
-    monkeypatch.setattr(cp_app, "_bounded_exec", lambda c, cmd, timeout=5: MagicMock(exit_code=0, output=b""))
-    monkeypatch.setattr(cp_app.time, "sleep", lambda s: None)
-
-    from fastapi import HTTPException
-    import pytest as _pytest
-    with _pytest.raises(HTTPException) as exc:
-        cp_app._restart_bearmount_cascade()
-    assert exc.value.status_code == 502
-    assert "empty" in exc.value.detail["message"]
-
-
-def test_restart_bearmount_cascade_succeeds_with_real_content(cp_app, monkeypatch):
-    monkeypatch.setattr(cp_app.subprocess, "run",
-                         lambda *a, **k: MagicMock(returncode=0))
-    bearmount = MagicMock()
-    dependent = MagicMock()
-    cp_app.docker_client.containers.get.side_effect = lambda name: bearmount if name == "bearmount" else dependent
-    monkeypatch.setattr(cp_app, "wait_for_healthy", lambda c, timeout=60: None)
-    monkeypatch.setattr(cp_app, "_bounded_exec",
-                         lambda c, cmd, timeout=5: MagicMock(exit_code=0, output=b"movie1\nmovie2\n"))
-
-    restarted = cp_app._restart_bearmount_cascade()
-    assert set(restarted) == cp_app.MOUNT_DEPENDENTS

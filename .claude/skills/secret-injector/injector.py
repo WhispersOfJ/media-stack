@@ -23,7 +23,10 @@ KEY_PATTERNS: dict[str, tuple[str, str]] = {
     "RADARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
     "SONARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
     "PROWLARR_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
-    "BEARMOUNT_API_KEY": (r"^[A-Za-z0-9]{32}$", "32-char mixed-case alphanumeric"),
+    # NzbDAV shares one key across its frontend proxy, SAB API, and admin
+    # API (unlike BearMount's separate BEARMOUNT_API_KEY) - see STACK.md's
+    # History for the 2026-07-28 cutover.
+    "FRONTEND_BACKEND_API_KEY": (r"^[a-f0-9]{32}$", "32-char lowercase hex"),
 }
 
 

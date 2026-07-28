@@ -182,7 +182,7 @@ def test_api_post_http_error_returns_detail_message(plex_health_monitor, monkeyp
         )
 
     monkeypatch.setattr(plex_health_monitor.urllib.request, "urlopen", _raise)
-    ok, message = plex_health_monitor.api_post("/api/plex/restart-cascade")
+    ok, message = plex_health_monitor.api_post("/api/container/plex/restart")
     assert ok is False
     assert message == "cooldown active"
 

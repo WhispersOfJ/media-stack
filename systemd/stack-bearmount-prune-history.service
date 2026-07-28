@@ -1,5 +1,5 @@
 [Unit]
-Description=Prune Failed entries from BearMount's history (unblocks retry of the same release)
+Description=Prune Failed entries from NzbDAV's history (unblocks retry of the same release)
 After=media-stack.service
 OnFailure=notify-failure@%n.service
 

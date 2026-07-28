@@ -11,12 +11,13 @@ already documented in STACK.md's landmines section rather than treating
 every non-healthy state the same:
 
   1. Genuine FUSE/D-state hang (dstate_threads non-empty or mount_ok is
-     False) - alert immediately, auto-trigger Tier 2 (restart-cascade).
-     Tier 3 (unstick) is deliberately NEVER triggered automatically here -
-     it aborts a live FUSE connection at the host level, and STACK.md
-     documents this tearing down BearMount's entire mount via rshared
-     propagation when done casually. That stays a human's call from the
-     dashboard.
+     False) - alert only, no auto-restart. Tier 2 (mount-cascade restart)
+     and Tier 3 (unstick) were both control-panel API endpoints
+     (/api/plex/restart-cascade, /api/plex/unstick) that got removed along
+     with BearMount, 2026-07-28 - that cascade-restart logic now lives in
+     the docker-compose-manager Claude Code skill, which this headless
+     script has no way to invoke. A hard hang now just alerts; a human
+     runs the cascade restart via that skill or by hand.
   2. SQLite lock contention ("busy database" errors in the recent log
      tail) - alert, auto-trigger Tier 1 (plain container restart). Using
      the mount cascade here would be pointless risk for a problem it
@@ -262,21 +263,20 @@ def main():
                 msg = f"Plex scan progress stuck at {last_progress}% for {int(lag_seconds)}s."
             notify_discord(msg, "error" if kind == "hard_hang" else "warn")
 
+        # hard_hang deliberately excluded - see the module docstring's Tier 2
+        # note above. Only busy_db and sustained scan_lag still auto-restart
+        # (Tier 1, a plain container restart carries no mount-cascade risk).
         should_restart = (
             is_failing
+            and kind != "hard_hang"
             and (now - last_restart_ts) >= RESTART_COOLDOWN_SECONDS
-            and (kind in ("hard_hang", "busy_db") or lag_seconds >= SCAN_LAG_RESTART_SECONDS)
+            and (kind == "busy_db" or lag_seconds >= SCAN_LAG_RESTART_SECONDS)
         )
         if should_restart:
             last_restart_ts = now
-            if kind == "hard_hang":
-                success, message = api_post("/api/plex/restart-cascade")
-                notify_discord(f"Auto Tier 2 (restart-cascade) {'succeeded' if success else 'failed'}: {message}",
-                                "warn" if success else "error")
-            else:
-                success, message = api_post("/api/container/plex/restart")
-                notify_discord(f"Auto Tier 1 (plain restart) {'succeeded' if success else 'failed'}: {message}",
-                                "warn" if success else "error")
+            success, message = api_post("/api/container/plex/restart")
+            notify_discord(f"Auto Tier 1 (plain restart) {'succeeded' if success else 'failed'}: {message}",
+                            "warn" if success else "error")
 
         if not is_failing and active_alert is not None:
             notify_discord(f"Plex recovered from {active_alert.replace('_', ' ')}.", "info")

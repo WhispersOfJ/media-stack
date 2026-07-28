@@ -33,20 +33,17 @@ from pydantic import BaseModel
 
 PLEX_URL = (os.environ.get("PLEX_URL") or "").rstrip("/")
 PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
-# NzbDAV removed entirely 2026-07-23 (unmerged connection-leak bug,
-# nzbdav-dev/nzbdav#478 - see CLAUDE.md's History). BearMount's own
-# SABnzbd-compatible API lives under /sabnzbd (Fiber's prefix-matching
-# app.Use, not a literal /api/sabnzbd path).
-BEARMOUNT_URL = "http://bearmount:8080/sabnzbd"
-BEARMOUNT_API_KEY = os.environ.get("BEARMOUNT_API_KEY")
-# BearMount's own JWT-authenticated REST API (fuse/health/etc, distinct from
-# the SABnzbd-compatible queue/history API above, which uses BEARMOUNT_API_KEY
-# as a query param instead). Confirmed live 2026-07-25: the admin user is
-# fixed ("admin", not a secret - only its password is), and the JWT must be
-# sent as an X-JWT header, not Authorization: Bearer (that was rejected).
-BEARMOUNT_REST_URL = "http://bearmount:8080"
-BEARMOUNT_ADMIN_USERNAME = "admin"
-BEARMOUNT_ADMIN_PASSWORD = os.environ.get("BEARMOUNT_ADMIN_PASSWORD")
+# NzbDAV (nzbdav-dev) removed entirely 2026-07-23 (unmerged connection-leak
+# bug), then AltMount removed 2026-07-24 (cutover to BearMount), then
+# BearMount removed 2026-07-28 (cutover to nzbdav/nzbdav, the "super-fork" -
+# see STACK.md's History for all three). Its SABnzbd-compatible API lives at
+# the root /api (no /sabnzbd prefix, unlike BearMount's Fiber routing).
+NZBDAV_URL = "http://nzbdav:3000/api"
+NZBDAV_API_KEY = os.environ.get("FRONTEND_BACKEND_API_KEY")
+# NzbDAV's own admin REST API (queue/history detail, settings, etc) uses the
+# SAME key as a header instead of BearMount's separate JWT-login flow - no
+# admin username/password or token cache needed.
+NZBDAV_REST_URL = "http://nzbdav:3000"
 HOST_IP = os.environ.get("HOST_IP")
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 BAZARR_URL = "http://bazarr:6767"
@@ -133,7 +130,7 @@ ARR_APPS = {
     # no ebook app of any kind is in this stack anymore.
 }
 
-# Radarr and Sonarr both have a real download queue (BearMount wired to
+# Radarr and Sonarr both have a real download queue (NzbDAV wired to
 # each as the sole download client) - Unstick/manual-import work identically
 # on both.
 QUEUE_ARR_APPS = ("radarr", "sonarr")
@@ -151,7 +148,8 @@ CONTAINER_LABELS = {
     "sonarr": ("Sonarr", None),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
-    "bearmount": ("BearMount", "Usenet, WebDAV + SABnzbd-compatible API"),
+    "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),
+    "nzbdav_rclone": ("NzbDAV rclone", "rclone sidecar - FUSE-mounts NzbDAV's WebDAV tree"),
     "seerr": ("Seerr", None),
     "bazarr": ("Bazarr", "subtitle management - watches Radarr/Sonarr for missing subs"),
     "unpackerr": ("Unpackerr", None),
@@ -175,7 +173,7 @@ CONTAINER_LABELS = {
 _API_HOST_LABELS = {urlparse(cfg["url"]).hostname: cfg["label"] for cfg in ARR_APPS.values()}
 _API_HOST_LABELS.update({
     urlparse(PLEX_URL).hostname: "Plex",
-    urlparse(BEARMOUNT_URL).hostname: "BearMount",
+    urlparse(NZBDAV_URL).hostname: "NzbDAV",
 })
 # Seeded at 0 for every known app, not left empty until each app's first
 # real hit - otherwise most badges wouldn't appear at all on a fresh
@@ -1319,33 +1317,40 @@ def posters_apply(payload: PosterApplyRequest):
 
 
 # ---------------------------------------------------------------------
-# BearMount - Usenet streaming layer (WebDAV + its own internal rclone/FUSE
-# mount, no local disk). Replaced NzbDAV entirely 2026-07-23 (unmerged
-# connection-leak bug, nzbdav-dev/nzbdav#478 - see CLAUDE.md's History).
-# Queue/history go through its SABnzbd-compatible API (mode=queue/history,
-# keyed by BEARMOUNT_API_KEY, issued at registration via /api/auth/register).
-# NzbDAV's own set-connections/unstick routes were both workarounds for its
-# specific connection-leak/history-hang bugs and don't apply here - dropped
-# outright rather than ported.
+# NzbDAV - Usenet streaming layer (WebDAV, no local disk; the actual FUSE
+# mount is a separate rclone sidecar, nzbdav_rclone - see docker-compose.yml).
+# Replaced BearMount entirely 2026-07-28 (see STACK.md's History). Queue/
+# history go through its SABnzbd-compatible API (mode=queue/history, keyed
+# by NZBDAV_API_KEY == FRONTEND_BACKEND_API_KEY, same value used for both
+# the SAB surface and its admin API - no separate JWT-login flow like
+# BearMount had; NzbDAV takes the key directly as a header/query param).
+#
+# BearMount's JWT-authenticated fuse/status/start/stop and health/stats/
+# corrupted routes are NOT ported: NzbDAV owns no FUSE mount itself (that's
+# nzbdav_rclone's job, a stock rclone container with no app-specific admin
+# API), and no equivalent health/corruption-monitoring admin endpoint is
+# confirmed in NzbDAV's own docs - dropped rather than guessed at (see
+# CLAUDE.md's "don't guess APIs" rule). Revisit if NzbDAV's admin API
+# documents one later.
 # ---------------------------------------------------------------------
-def bearmount_api(mode: str, timeout: int = 15, **params) -> dict:
-    if not BEARMOUNT_API_KEY:
-        fail("BearMount isn't configured (BEARMOUNT_API_KEY not set)", status_code=503)
+def nzbdav_api(mode: str, timeout: int = 15, **params) -> dict:
+    if not NZBDAV_API_KEY:
+        fail("NzbDAV isn't configured (FRONTEND_BACKEND_API_KEY not set)", status_code=503)
     try:
         r = httpx.get(
-            BEARMOUNT_URL,
-            params={"mode": mode, "output": "json", "apikey": BEARMOUNT_API_KEY, **params},
+            NZBDAV_URL,
+            params={"mode": mode, "output": "json", "apikey": NZBDAV_API_KEY, **params},
             timeout=timeout,
         )
         r.raise_for_status()
     except httpx.HTTPError as e:
-        fail(f"BearMount {mode} lookup failed: {e}")
+        fail(f"NzbDAV {mode} lookup failed: {e}")
     return r.json()
 
 
-@app.get("/api/bearmount/queue")
-def bearmount_queue():
-    slots = bearmount_api("queue").get("queue", {}).get("slots", [])
+@app.get("/api/nzbdav/queue")
+def nzbdav_queue():
+    slots = nzbdav_api("queue").get("queue", {}).get("slots", [])
     return [{
         "name": s.get("filename"),
         "category": s.get("cat"),
@@ -1356,9 +1361,9 @@ def bearmount_queue():
     } for s in slots]
 
 
-@app.get("/api/bearmount/history")
-def bearmount_history(limit: int = 20):
-    slots = bearmount_api("history", limit=limit).get("history", {}).get("slots", [])
+@app.get("/api/nzbdav/history")
+def nzbdav_history(limit: int = 20):
+    slots = nzbdav_api("history", limit=limit).get("history", {}).get("slots", [])
     return [{
         "name": s.get("name"),
         "category": s.get("category"),
@@ -1367,103 +1372,6 @@ def bearmount_history(limit: int = 20):
         "fail_message": s.get("fail_message") or None,
         "path": s.get("storage"),
     } for s in slots]
-
-
-# ---------------------------------------------------------------------
-# BearMount's own REST API (JWT-authenticated) - fuse mount control and
-# health/corruption monitoring. Added 2026-07-25 ahead of the mount_type:
-# rclone -> fuse switch (see STACK.md). _bearmount_jwt() caches the token
-# in memory (24h lifetime observed live) and re-logs in on expiry or a 401.
-#
-# CONFIRMED LIVE, 2026-07-25: /api/fuse/start and /api/fuse/stop act on the
-# raw FUSE layer regardless of the current mount_type config - calling
-# start while mount_type is still "rclone" mounts a second filesystem on
-# top of the live rclone mount at the same path, and stop then tears down
-# both layers together. Real incident, not theoretical: this broke BearMount's
-# serving mount and hung Plex the first time it was tried. Do NOT call
-# bearmount_fuse_start/bearmount_fuse_stop for real while mount_type is
-# still rclone - they only become safe to exercise once config.yaml's
-# mount_type is actually "fuse".
-_bearmount_jwt_cache = {"token": None, "expires_at": 0.0}
-
-
-def _bearmount_jwt() -> str:
-    now = time.time()
-    if _bearmount_jwt_cache["token"] and now < _bearmount_jwt_cache["expires_at"]:
-        return _bearmount_jwt_cache["token"]
-    if not BEARMOUNT_ADMIN_PASSWORD:
-        fail("BearMount isn't configured (BEARMOUNT_ADMIN_PASSWORD not set)", status_code=503)
-    try:
-        r = httpx.post(
-            f"{BEARMOUNT_REST_URL}/api/auth/login",
-            json={"username": BEARMOUNT_ADMIN_USERNAME, "password": BEARMOUNT_ADMIN_PASSWORD},
-            timeout=15,
-        )
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"BearMount login failed: {e}")
-    set_cookie = r.headers.get("set-cookie", "")
-    match = re.search(r"JWT=([^;]+)", set_cookie)
-    if not match:
-        fail("BearMount login succeeded but no JWT cookie was returned.")
-    token = match.group(1)
-    _bearmount_jwt_cache["token"] = token
-    _bearmount_jwt_cache["expires_at"] = now + 23 * 3600  # 24h lifetime observed, refresh early
-    return token
-
-
-def _bearmount_rest_request(method: str, path: str, json_body: dict | None = None, timeout: int = 15) -> dict:
-    token = _bearmount_jwt()
-    try:
-        r = httpx.request(
-            method, f"{BEARMOUNT_REST_URL}{path}", headers={"X-JWT": token}, json=json_body, timeout=timeout,
-        )
-        if r.status_code == 401:
-            # Token expired/invalid despite our cache - force one fresh
-            # login and retry exactly once, rather than looping.
-            _bearmount_jwt_cache["token"] = None
-            token = _bearmount_jwt()
-            r = httpx.request(
-                method, f"{BEARMOUNT_REST_URL}{path}", headers={"X-JWT": token}, json=json_body, timeout=timeout,
-            )
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"BearMount {method} {path} failed: {e}")
-    return r.json()
-
-
-@app.get("/api/bearmount/fuse/status")
-def bearmount_fuse_status():
-    data = _bearmount_rest_request("GET", "/api/fuse/status")
-    return ok("FUSE status fetched.", **data.get("data", {}))
-
-
-@app.post("/api/bearmount/fuse/start")
-def bearmount_fuse_start(path: str = "/mnt/bearmount"):
-    """See the module-level warning above - only safe to call once
-    config.yaml's mount_type is actually "fuse"."""
-    data = _bearmount_rest_request("POST", "/api/fuse/start", json_body={"path": path})
-    return ok(data.get("message", "FUSE mount starting."))
-
-
-@app.post("/api/bearmount/fuse/stop")
-def bearmount_fuse_stop():
-    """See the module-level warning above - only safe to call once
-    config.yaml's mount_type is actually "fuse"."""
-    data = _bearmount_rest_request("POST", "/api/fuse/stop")
-    return ok(data.get("message", "FUSE mount stopping."))
-
-
-@app.get("/api/bearmount/health/stats")
-def bearmount_health_stats():
-    data = _bearmount_rest_request("GET", "/api/health/stats")
-    return ok("Health stats fetched.", **data.get("data", {}))
-
-
-@app.get("/api/bearmount/health/corrupted")
-def bearmount_health_corrupted():
-    data = _bearmount_rest_request("GET", "/api/health/corrupted")
-    return ok("Corrupted file list fetched.", files=data.get("data", []), meta=data.get("meta", {}))
 
 
 # ---------------------------------------------------------------------
@@ -1712,6 +1620,28 @@ def arr_search_missing(app_name: str):
     cfg = ARR_APPS[app_name]
     arr_command(app_name, cfg["search_command"])
     return ok(f"{cfg['label']} search for missing items started.")
+
+
+@app.post("/api/arr/{app_name}/search-toggle")
+def arr_search_toggle(app_name: str, enabled: bool):
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}'.", status_code=404)
+    cfg = ARR_APPS[app_name]
+    url = f"{cfg['url']}/api/{cfg['api']}/indexer"
+    headers = {"X-Api-Key": cfg["key"]}
+    try:
+        r = httpx.get(url, headers=headers, timeout=15)
+        r.raise_for_status()
+        indexers = r.json()
+        for indexer in indexers:
+            indexer["enableRss"] = enabled
+            indexer["enableAutomaticSearch"] = enabled
+            put = httpx.put(f"{url}/{indexer['id']}", json=indexer, headers=headers, timeout=15)
+            put.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} indexer search toggle failed: {e}")
+    state = "enabled" if enabled else "disabled"
+    return ok(f"{cfg['label']}: RSS sync + automatic search {state} on {len(indexers)} indexer(s).")
 
 
 # Letterboxd doesn't expose TMDb ids directly, but every matched film page
@@ -2253,7 +2183,7 @@ def arr_unstick(app_name: str):
 # merely-wedged slot - all just show "importing" - so this checks whether
 # outputPath exists at all, and if so reads the first few MB of a file
 # under it straight through the arr app's own container mount. A dead
-# article fails, sometimes only after ~30s (rclone/BearMount retries
+# article fails, sometimes only after ~30s (rclone/NzbDAV retries
 # before giving up); a wedged-but-fine file reads instantly; a
 # missing path fails the existence check immediately. Broken releases get
 # blocklisted so they aren't regrabbed; merely-wedged or missing-path ones
@@ -2294,9 +2224,9 @@ def _find_candidate_files(container, output_path: str) -> tuple[str, list[str]]:
     exists = container.exec_run(cmd=["test", "-e", output_path])
     if exists.exit_code != 0:
         return "missing", []
-    # Symlinks first - BearMount's mount may route root folders through
-    # symlinks depending on import strategy; not yet fully verified either
-    # way for the current config (import_strategy: NONE).
+    # Symlinks first - the download client's mount may route root folders
+    # through symlinks depending on import strategy (currently "symlinks"
+    # for NzbDAV, matching Radarr/Sonarr's expectations).
     find_result = container.exec_run(cmd=["find", output_path, "-maxdepth", "2", "-type", "l"])
     files = [f for f in find_result.output.decode(errors="replace").splitlines() if f.strip()]
     if not files:
@@ -2531,9 +2461,9 @@ def _arr_sizeleft_snapshot(app_name: str) -> dict[int, int]:
     return {q["id"]: q.get("sizeleft") or 0 for q in records if q.get("sizeleft")}
 
 
-def _bearmount_mbleft_snapshot() -> dict[str, float]:
+def _nzbdav_mbleft_snapshot() -> dict[str, float]:
     try:
-        slots = bearmount_api("queue").get("queue", {}).get("slots", [])
+        slots = nzbdav_api("queue").get("queue", {}).get("slots", [])
     except HTTPException:
         return {}
     return {s["nzo_id"]: float(s.get("mbleft") or 0) for s in slots if s.get("status") == "Downloading"}
@@ -2582,7 +2512,7 @@ def _bucket_arr_item(q: dict, prev_sizeleft: dict[int, int]) -> tuple[str, dict]
     return "stalled", item
 
 
-def _bucket_bearmount_item(s: dict, prev_mbleft: dict[str, float]) -> tuple[str, dict]:
+def _bucket_nzbdav_item(s: dict, prev_mbleft: dict[str, float]) -> tuple[str, dict]:
     title = s.get("filename") or "?"
     mb = float(s.get("mb") or 0)
     mbleft = float(s.get("mbleft") or 0)
@@ -2642,12 +2572,13 @@ def _bucket_plex_activity(a: dict, prev_progress: dict[str, int]) -> tuple[str, 
 # ---------------------------------------------------------------------
 # Plex scan health - turns this session's own manual incident-diagnosis
 # sequence (docker exec ps aux, /proc D-state reads, FUSE connection
-# waiting counts, a log-file grep, a bearmount import_queue check) into a
+# waiting counts, a log-file grep, a download-client queue check) into a
 # real endpoint. See CLAUDE.md's landmines for the two distinct failure
-# classes this detects: a genuine FUSE/D-state kernel hang on BearMount's
-# mount, vs. a Plex-internal SQLite lock-contention stall under a large
-# import burst - they look similar from the activities API alone but need
-# different fixes (Tier 3 FUSE-abort vs. a plain restart).
+# classes this detects: a genuine FUSE/D-state kernel hang on the mount
+# (nzbdav_rclone as of 2026-07-28, BearMount before that), vs. a
+# Plex-internal SQLite lock-contention stall under a large import burst -
+# they look similar from the activities API alone but need different fixes
+# (Tier 3 FUSE-abort vs. a plain restart).
 # ---------------------------------------------------------------------
 
 def _plex_container_pid() -> int | None:
@@ -2843,29 +2774,22 @@ def _plex_log_tail(lines: int = 200, tail_bytes: int = 512_000) -> dict:
             "analysis_last_seconds": last_analysis_seconds}
 
 
-def _bearmount_queue_counts() -> dict:
-    """Same read-only-URI sqlite pattern already used by cleanuparr_instances()
-    - the exact check CLAUDE.md's own hard rule requires before touching
-    bearmount for any reason: a non-empty import_queue means a recreate
-    wipes /tmp/.bearmount-queue and silently blocklists affected items."""
-    db_path = os.path.join(HOST_CONFIG_DIR, "bearmount", "bearmount.db")
-    if not os.path.isfile(db_path):
-        return {"pending": 0, "processing": 0, "db_missing": True}
+def _nzbdav_queue_counts() -> dict:
+    """Same purpose as the old BearMount version (check before touching the
+    mount owner for any reason: an active download means a recreate could
+    strand it) but via the SAB API rather than a direct sqlite read -
+    NzbDAV's own db.sqlite schema is unconfirmed/unread, so this doesn't
+    guess at it (see CLAUDE.md's "don't guess APIs" rule). "pending" here
+    means anything not yet actively downloading; "processing" means
+    Downloading, mirroring the old field names so callers below stay
+    unchanged."""
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-        cur.execute("SELECT status, COUNT(*) as n FROM import_queue GROUP BY status")
-        counts = {row["status"]: row["n"] for row in cur.fetchall()}
-        con.close()
-    except sqlite3.OperationalError:
-        # Confirmed live 2026-07-25: "unable to open database file" during a
-        # brief window while bearmount's own container is mid-restart -
-        # scan-health (a monitoring route) shouldn't 500 over a transient
-        # race like this, so this degrades the same way a missing db_path
-        # already does above rather than crashing the whole endpoint.
-        return {"pending": 0, "processing": 0, "db_unavailable": True}
-    return {"pending": counts.get("pending", 0), "processing": counts.get("processing", 0)}
+        slots = nzbdav_api("queue", timeout=5).get("queue", {}).get("slots", [])
+    except HTTPException:
+        return {"pending": 0, "processing": 0, "unreachable": True}
+    processing = sum(1 for s in slots if s.get("status") == "Downloading")
+    pending = len(slots) - processing
+    return {"pending": pending, "processing": processing}
 
 
 def _mount_test(container_name: str = "plex", timeout: int = 5) -> bool:
@@ -2882,7 +2806,7 @@ def _mount_test(container_name: str = "plex", timeout: int = 5) -> bool:
     except docker.errors.NotFound:
         return False
     try:
-        result = _bounded_exec(c, ["timeout", str(timeout), "ls", "/mnt/bearmount"], timeout=timeout + 2)
+        result = _bounded_exec(c, ["timeout", str(timeout), "ls", "/mnt/remote/nzbdav"], timeout=timeout + 2)
     except Exception:
         return False
     if result is None:
@@ -2896,7 +2820,7 @@ def plex_scan_health():
     tell a healthy-but-slow scan apart from a genuine hang: live /activities
     progress, whether a real scanner subprocess is actually running, D-state
     kernel threads, FUSE waiting-request count, a bounded mount test,
-    BearMount's own queue state, and recent "busy database" log activity.
+    NzbDAV's own queue state, and recent "busy database" log activity.
     Stateless per call, matching every other route here - the frontend
     keeps its own ring buffer for "stuck for N polls" trend detection."""
     pid = _plex_container_pid()
@@ -2904,7 +2828,7 @@ def plex_scan_health():
     fuse_waiting = _fuse_waiting_total()
     mount_ok = _mount_test("plex")
     scanner_lines = _plex_scanner_processes()
-    bearmount_queue = _bearmount_queue_counts()
+    nzbdav_queue = _nzbdav_queue_counts()
     log_info = _plex_log_tail(lines=50)
 
     try:
@@ -2923,7 +2847,7 @@ def plex_scan_health():
 
     if dstate or not mount_ok:
         state = "hung_confirmed"
-    elif bearmount_queue.get("pending", 0) or bearmount_queue.get("processing", 0):
+    elif nzbdav_queue.get("pending", 0) or nzbdav_queue.get("processing", 0):
         # log_info["analysis_active"]: added 2026-07-25 - Plex's Media
         # Analyzer running background analysis on freshly-imported items
         # legitimately keeps scanner_lines empty for brief windows between
@@ -2945,7 +2869,7 @@ def plex_scan_health():
               fuse_waiting=fuse_waiting,
               mount_ok=mount_ok,
               container={"health": health, "restart_count": restart_count},
-              bearmount_queue=bearmount_queue,
+              nzbdav_queue=nzbdav_queue,
               recent_busy_db_errors=log_info["busy_db_errors"],
               recent_busy_db_timestamps=log_info["recent_busy_db_timestamps"],
               analysis_active=log_info["analysis_active"],
@@ -2956,14 +2880,14 @@ def plex_scan_health():
 
 @app.get("/api/queue-status")
 def queue_status():
-    """Every *arr app's download queue plus BearMount's and Plex's own
+    """Every *arr app's download queue plus NzbDAV's and Plex's own
     background activities (library scans, media analysis, etc), bucketed
     into downloading/stalled/queued/importing with a real speed/progress
     and ETA for anything actually observed to be draining - see the
     module comment above for why this measures live instead of trusting
     each app's own timeleft."""
     before_arr = {app_name: _arr_sizeleft_snapshot(app_name) for app_name in QUEUE_ARR_APPS}
-    before_bearmount = _bearmount_mbleft_snapshot()
+    before_nzbdav = _nzbdav_mbleft_snapshot()
     before_plex = _plex_progress_snapshot()
     time.sleep(QUEUE_SAMPLE_SECONDS)
 
@@ -2984,15 +2908,15 @@ def queue_status():
         result[app_name] = {"label": cfg["label"], "total": len(records), **buckets}
 
     try:
-        slots = bearmount_api("queue").get("queue", {}).get("slots", [])
+        slots = nzbdav_api("queue").get("queue", {}).get("slots", [])
         buckets = {"downloading": [], "stalled": [], "queued": [], "importing": []}
         for s in slots:
-            bucket, item = _bucket_bearmount_item(s, before_bearmount)
+            bucket, item = _bucket_nzbdav_item(s, before_nzbdav)
             buckets[bucket].append(item)
         grand_total += len(slots)
-        result["bearmount"] = {"label": "BearMount", "total": len(slots), **buckets}
+        result["nzbdav"] = {"label": "NzbDAV", "total": len(slots), **buckets}
     except HTTPException:
-        result["bearmount"] = {"label": "BearMount", "error": "unreachable"}
+        result["nzbdav"] = {"label": "NzbDAV", "error": "unreachable"}
 
     try:
         activities = _plex_activities()
@@ -3007,7 +2931,7 @@ def queue_status():
 
     # Bazarr has no in-progress download to bucket as downloading/stalled - a
     # subtitle grab completes synchronously within one API call, there's no
-    # multi-second transfer to sample twice like the arr/bearmount/plex
+    # multi-second transfer to sample twice like the arr/nzbdav/plex
     # sources above. Its "wanted" list is the honest analog of a queue here: items
     # still waiting to be searched, which is exactly the "queued" bucket
     # already means for every other source.
@@ -3385,7 +3309,17 @@ def container_label(name: str) -> str:
 
 
 @app.post("/api/container/{name}/restart")
-def container_restart(name: str):
+def container_restart(name: str, activated: bool = False):
+    """Plex specifically requires the caller to pass activated=true - a plain
+    click of the generic restart button (which posts with no extra params)
+    no longer restarts Plex on its own, and nothing in this codebase calls
+    this route with activated=true automatically either, so Plex only
+    restarts on a deliberate, explicit request. Every other container is
+    unaffected by this gate."""
+    if name == "plex" and not activated:
+        fail("Plex restart requires activated=true - a plain restart click is no longer "
+             "enough (by design). Pass activated=true explicitly to restart Plex.",
+             status_code=400)
     c = find_project_container(name, reject_self=True)
     try:
         c.restart(timeout=30)
@@ -3444,20 +3378,21 @@ def container_logs_stream(name: str, tail: int = 100):
 # ---------------------------------------------------------------------
 # Whole-stack restart
 # ---------------------------------------------------------------------
-# Every direct-subpath bind of /mnt/bearmount (rslave) - Radarr, Sonarr,
+# Every direct-subpath bind of /mnt/remote/nzbdav (rslave) - Radarr, Sonarr,
 # Plex, Unpackerr, Cleanuparr - doesn't survive the FUSE process underneath
 # it being recreated; restarting the mount owner without restarting these
-# after reproduces the same stale-mount bug this stack hit repeatedly under
-# NzbDAV/nzbdav-rclone (see CLAUDE.md's History - NzbDAV was removed
-# entirely 2026-07-23, replaced by BearMount). BearMount owns its own
-# internal rclone/FUSE mount directly (no separate sidecar container the
-# way nzbdav-rclone was), so there's only one tier here now - MOUNT_PREREQS
-# is empty rather than removed outright, so this stays a two-phase
-# provider/dependent restart if a future mount-owning service ever needs a
-# real upstream prereq again. Restart the provider first, wait for it to
-# report healthy, then restart the dependents last.
-MOUNT_PREREQS: set[str] = set()
-MOUNT_PROVIDERS = {"bearmount"}
+# after reproduces the same stale-mount bug this stack hit repeatedly across
+# every download-client cutover so far (NzbDAV/nzbdav-rclone, then BearMount,
+# see STACK.md's History). As of the 2026-07-28 BearMount->nzbdav/nzbdav
+# cutover, the mount owner is nzbdav_rclone (a stock rclone sidecar, not an
+# app-embedded FUSE mount like BearMount had) - it has a real upstream
+# prereq again (nzbdav itself, the WebDAV backend it mounts), so
+# MOUNT_PREREQS is populated for the first time rather than staying the
+# empty placeholder it was under BearMount. Restart prereqs first, then the
+# provider, wait for both to report healthy, then restart the dependents
+# last.
+MOUNT_PREREQS = {"nzbdav"}
+MOUNT_PROVIDERS = {"nzbdav_rclone"}
 MOUNT_DEPENDENTS = {"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}
 
 
@@ -3624,405 +3559,22 @@ def _recreate_container_via_sdk(name: str):
 
     Single-shot convenience wrapper around _capture_container_config +
     _recreate_and_start_from_config for every caller that doesn't need to
-    reuse the captured config across a retry - see
-    _restart_bearmount_cascade for the one that does."""
+    reuse the captured config across a retry."""
     captured = _capture_container_config(name)
     return _recreate_and_start_from_config(name, captured)
 
 
-def _host_lazy_umount(path: str) -> str | None:
-    """Lazy-unmounts `path` in the *host's* mount namespace via nsenter.
-    Needed because a recreate alone sometimes isn't enough to clear a
-    wedged FUSE mount - confirmed live twice on 2026-07-26 (two separate
-    ffprobe hangs, same day): bearmount comes back "healthy" with
-    /mnt/bearmount/movies still empty until `sudo umount -l /mnt/bearmount`
-    runs on the host first, then a second recreate picks up a real mount.
-    This container already has `pid: host` + `cap_add: SYS_ADMIN` for the
-    Plex Force Unstick feature, which means PID 1 in this container's own
-    /proc is the host's real init - `nsenter --target 1 --mount` enters
-    the host mount namespace through it, no extra compose privilege
-    needed. Returns None on success (including "not mounted", which is
-    also a success state here - it means there was nothing to clear), or
-    an error string."""
-    try:
-        result = subprocess.run(
-            ["nsenter", "--target", "1", "--mount", "--", "umount", "-l", path],
-            capture_output=True, text=True, timeout=15,
-        )
-    except (subprocess.TimeoutExpired, OSError) as e:
-        return str(e)
-    if result.returncode == 0:
-        return None
-    stderr = result.stderr.strip()
-    if "not mounted" in stderr or "not found" in stderr:
-        return None
-    return stderr or f"umount exited {result.returncode}"
-
-
-def _wait_for_bearmount_content(tries: int = 10, sleep_s: int = 2) -> bool:
-    """Polls until /mnt/bearmount/movies is a real, non-empty directory
-    listing - a content-less mount still exits 0 with empty output, so
-    wait_for_healthy() alone would falsely report success here (confirmed
-    live 2026-07-25).
-
-    CORRECTION, 2026-07-26: the first version took a single Container
-    object and reused it across every iteration. Confirmed live: if
-    bearmount gets recreated again by anything else while this loop is
-    running (another caller, a concurrent request), that object's ID goes
-    stale mid-poll and _bounded_exec's exec_run raises an unhandled
-    docker.errors.NotFound, 500ing the whole route instead of just
-    treating that iteration as "not ready yet". Re-fetching by name each
-    iteration and swallowing NotFound fixes both: a stale handle and a
-    container that hasn't fully landed yet look the same here - not
-    ready, keep polling."""
-    for _ in range(tries):
-        try:
-            bearmount = docker_client.containers.get("bearmount")
-            result = _bounded_exec(bearmount, ["ls", "/mnt/bearmount/movies"], timeout=5)
-        except docker.errors.NotFound:
-            result = None
-        if result is not None and result.exit_code == 0 and result.output.strip():
-            return True
-        time.sleep(sleep_s)
-    return False
-
-
-def _restart_bearmount_cascade():
-    """Shared by both Tier 2 (restart-cascade) and Tier 3 (unstick): force-
-    recreates BearMount via _recreate_container_via_sdk (see its docstring
-    for why this isn't the `docker compose` CLI), waits for it to report
-    healthy, then restarts the 5 MOUNT_DEPENDENTS in order. Run
-    synchronously - this is a scoped 6-container operation, bounded enough
-    not to need stack_restart_all()'s fire-and-forget thread pattern.
-
-    CONFIRMED LIVE, 2026-07-25: recreating BearMount here isn't optional
-    even for Tier 3's own abort step - the mount volume is `/mnt:/mnt:rshared`
-    (symmetric propagation, not a one-way slave), so an abort or an
-    umount anywhere in that peer group can tear down BearMount's own
-    internal mount too, not just a stale downstream reference. This is
-    exactly why the recreate happens here rather than skipping straight
-    to restarting the 5 dependents.
-
-    If the mount still comes back empty after that first recreate
-    (confirmed live twice on 2026-07-26), this now runs _host_lazy_umount
-    and recreates a second time before giving up - automating the manual
-    `sudo umount -l /mnt/bearmount` + recreate that both real incidents
-    that day needed. Still refuses to touch the 5 dependents if the mount
-    is empty after that retry too - see the 2026-07-25 mass-deletion
-    history in STACK.md for why that gate exists.
-
-    CORRECTION, 2026-07-27: the first recreate call used to just fail()
-    immediately on APIError, skipping the umount-retry logic entirely -
-    that logic only ran for the "recreated fine but content is empty"
-    case below it. Confirmed live: the first recreate attempt can itself
-    throw "invalid mount config ... transport endpoint is not connected"
-    when the host mount is already wedged going in (not a transient
-    create_container race - that's what _recreate_container_via_sdk's own
-    retry loop covers), which is exactly the case a lazy umount fixes.
-    Previously this left bearmount deleted (remove already ran) with no
-    recovery attempt at all. Now retries via the same lazy-umount dance
-    as the empty-content branch before giving up.
-
-    CORRECTION, 2026-07-27 (later the same day): that first fix was itself
-    broken - it called _recreate_container_via_sdk("bearmount") a second
-    time on retry, which re-inspects "bearmount" to build its config. Once
-    the first attempt's remove_container has run, there is nothing left to
-    inspect, so the retry 404'd immediately regardless of the umount -
-    confirmed live, bearmount stuck fully deleted with the endpoint
-    reporting a useless "No such container: bearmount" error instead of
-    actually recovering. Now captures the container's config ONCE up front
-    via _capture_container_config and reuses that same captured config for
-    every retry in this function via _recreate_and_start_from_config,
-    so a retry never depends on the named container still existing to
-    inspect. If bearmount is already fully gone when this function starts
-    (no container left to capture from at all), that is a real dead end
-    for this endpoint - see the fail() below - and needs a host-side
-    `docker compose up -d --force-recreate bearmount` instead."""
-    try:
-        captured = _capture_container_config("bearmount")
-    except docker.errors.NotFound:
-        fail("bearmount does not exist at all right now (not just unhealthy) - there is no "
-             "running container left to capture a recreate config from, so this endpoint "
-             "cannot self-heal it. Run `docker compose up -d --force-recreate bearmount` "
-             "from the host, verify /mnt/bearmount/movies is non-empty, then retry.",
-             status_code=502)
-
-    try:
-        bearmount = _recreate_and_start_from_config("bearmount", captured)
-    except docker.errors.APIError as e:
-        umount_err = _host_lazy_umount("/mnt/bearmount")
-        if umount_err:
-            fail(f"bearmount force-recreate failed ({e}), and the host-level lazy umount "
-                 f"retry also failed: {umount_err}. Check `docker logs bearmount` and "
-                 f"`mount | grep bearmount` before retrying manually.", status_code=502)
-        try:
-            bearmount = _recreate_and_start_from_config("bearmount", captured)
-        except docker.errors.APIError as e2:
-            fail(f"bearmount force-recreate failed both before and after a host-level lazy "
-                 f"umount: {e2}. Check `docker logs bearmount` before retrying manually.",
-                 status_code=502)
-    wait_for_healthy(bearmount)
-
-    mount_has_content = _wait_for_bearmount_content()
-
-    if not mount_has_content:
-        umount_err = _host_lazy_umount("/mnt/bearmount")
-        if umount_err:
-            fail(f"bearmount recreated and reports healthy, but /mnt/bearmount/movies is "
-                 f"still empty, and the host-level lazy umount retry failed: {umount_err}. "
-                 f"Do not restart the 5 dependents against an empty mount (this is what "
-                 f"caused the 2026-07-25 mass library deletion - Plex's autoEmptyTrash "
-                 f"cleared 600+ items after finding every symlink unavailable). Check "
-                 f"`docker logs bearmount` before retrying.", status_code=502)
-        try:
-            bearmount = _recreate_and_start_from_config("bearmount", captured)
-        except docker.errors.APIError as e:
-            fail(f"bearmount force-recreate (post-umount retry) failed: {e}")
-        wait_for_healthy(bearmount)
-        mount_has_content = _wait_for_bearmount_content()
-
-    if not mount_has_content:
-        fail("bearmount recreated twice (including a host-level lazy umount in between) but "
-             "/mnt/bearmount/movies is still empty. Do not restart the 5 dependents against "
-             "an empty mount (this is what caused the 2026-07-25 mass library deletion - "
-             "Plex's autoEmptyTrash cleared 600+ items after finding every symlink "
-             "unavailable). Check `docker logs bearmount` before retrying manually.",
-             status_code=502)
-
-    # CORRECTION, 2026-07-26: this used to call c.restart() on each dependent.
-    # Confirmed live, repeatedly, the same day: restart() reuses the
-    # container's existing mount namespace and never picks up bearmount's
-    # fresh FUSE mount, leaving every dependent holding a stale handle
-    # (`docker exec <dependent> ls /mnt/bearmount` -> "Transport endpoint is
-    # not connected") despite Docker reporting it healthy the whole time.
-    # _recreate_container_via_sdk (the same helper bearmount itself uses
-    # above) forces a real new mount namespace, matching `docker compose up
-    # -d --force-recreate` - see CLAUDE.md and STACK.md's 2026-07-26 entries.
-    restarted = []
-    for name in sorted(MOUNT_DEPENDENTS):
-        try:
-            c = _recreate_container_via_sdk(name)
-            wait_for_healthy(c)
-            restarted.append(name)
-        except Exception as e:
-            print(f"bearmount cascade: failed to recreate {name}: {e}")
-    return restarted
-
-
-@app.post("/api/plex/restart-cascade")
-def plex_restart_cascade(force: bool = False):
-    """Tier 2 mitigation: fixes 'bearmount itself needs a bump' (a degraded
-    mount, not a genuine FUSE/D-state hang - that needs Tier 3's abort
-    first). Gated on CLAUDE.md's own hard rule: a non-empty import_queue
-    means this recreate wipes /tmp/.bearmount-queue and silently
-    blocklists affected Radarr/Sonarr items - confirmed live, repeatedly,
-    this session."""
-    counts = _bearmount_queue_counts()
-    if not force and (counts.get("pending", 0) or counts.get("processing", 0)):
-        fail(f"BearMount's queue isn't empty (pending={counts.get('pending', 0)}, "
-             f"processing={counts.get('processing', 0)}) - recreating now risks silently "
-             f"blocklisting in-flight items. Pass force=true to override.", status_code=409)
-    restarted = _restart_bearmount_cascade()
-    return ok(f"Mount cascade restarted: bearmount + {', '.join(restarted)}.", restarted=restarted)
-
-
-@app.post("/api/plex/unstick")
-def plex_unstick(force: bool = False):
-    """Tier 3 mitigation - the only one that clears a genuine FUSE/D-state
-    hang. Requires the host-level /host-sys-fuse (rw) + /host-proc (ro) +
-    pid: host + cap_add: SYS_ADMIN compose privilege - without it, every
-    connection under /host-sys-fuse/connections is invisible and this
-    route has nothing to abort (returns a clear message, not a silent
-    no-op). Same import_queue safety gate as Tier 2, since this also ends
-    in a bearmount recreate."""
-    conn_dir = os.path.join(HOST_SYS_FUSE_DIR, "connections")
-    if not os.path.isdir(conn_dir):
-        fail(f"{conn_dir} not mounted - this control-panel container needs the Force Unstick "
-             f"compose privilege change (see CLAUDE.md) before this route can do anything.",
-             status_code=503)
-
-    counts = _bearmount_queue_counts()
-    if not force and (counts.get("pending", 0) or counts.get("processing", 0)):
-        fail(f"BearMount's queue isn't empty (pending={counts.get('pending', 0)}, "
-             f"processing={counts.get('processing', 0)}) - the cascade this triggers risks "
-             f"silently blocklisting in-flight items. Pass force=true to override.", status_code=409)
-
-    aborted = []
-    for conn_id in os.listdir(conn_dir):
-        waiting_path = os.path.join(conn_dir, conn_id, "waiting")
-        try:
-            with open(waiting_path) as f:
-                waiting = int(f.read().strip() or 0)
-        except (OSError, ValueError):
-            continue
-        if waiting > 0:
-            try:
-                with open(os.path.join(conn_dir, conn_id, "abort"), "w") as f:
-                    f.write("1")
-                aborted.append(conn_id)
-            except OSError as e:
-                fail(f"Failed to abort FUSE connection {conn_id}: {e}")
-
-    if not aborted:
-        return ok("No FUSE connections currently show waiting requests - nothing to unstick.", aborted=[])
-
-    time.sleep(3)
-    restarted = _restart_bearmount_cascade()
-    return ok(f"Aborted connection(s) {', '.join(aborted)}; mount cascade restarted: "
-              f"bearmount + {', '.join(restarted)}.", aborted=aborted, restarted=restarted)
-
-
-# ---------------------------------------------------------------------
-# BearMount ffprobe read-hang unstick - automates the manual playbook run
-# repeatedly on 2026-07-26 (see STACK.md's recurring-hang investigation):
-# radarr/sonarr's own media-info probe (`ffprobe -probesize 50000000`)
-# against a 50GB+ REMUX occasionally deadlocks in D-state, always the same
-# signature (BearMount's downloadManager finishes every prefetched segment
-# but the reader's consumption position never advances - see STACK.md for
-# the five rounds of Go-level instrumentation that traced this without
-# finding root cause). The only reliable clear is: identify the stuck
-# file, blocklist its release so it isn't regrabbed, then recreate
-# bearmount + cascade. This endpoint is that playbook, not a fix for the
-# underlying hang - it will keep recurring on other 50GB+ REMUX files
-# until the actual Go-level bug is found (see STACK.md for where that
-# investigation left off: the hanwen/go-fuse library's own dispatch layer,
-# never examined).
-# ---------------------------------------------------------------------
-
-FFPROBE_STUCK_THRESHOLD_S = 90  # every confirmed-genuine hang 2026-07-26 was 2min+
-
-
-def _parse_ps_etime(etime: str) -> int | None:
-    """Parses ps's etime into total seconds. Two formats show up across this
-    stack's containers: procps' [[DD-]HH:]MM:SS (radarr/sonarr are Alpine
-    though - see below) and BusyBox's, which drops colons once past an hour:
-    "Dd HH" past a day, "Hh MM" past an hour, else plain "MM:SS". Confirmed
-    live 2026-07-26: a genuinely stuck 1h28m ffprobe in radarr's container
-    reported etime "1h27" - the procps-only parser raised ValueError on the
-    bare int() cast and silently returned None, so the stuck-ffprobe
-    detector treated a real hang as not-stuck."""
-    m = re.match(r"^(\d+)d(\d+)$", etime)
-    if m:
-        days, hours = (int(g) for g in m.groups())
-        return days * 86400 + hours * 3600
-    m = re.match(r"^(\d+)h(\d+)$", etime)
-    if m:
-        hours, minutes = (int(g) for g in m.groups())
-        return hours * 3600 + minutes * 60
-    try:
-        days = 0
-        if "-" in etime:
-            days_str, etime = etime.split("-", 1)
-            days = int(days_str)
-        parts = [int(p) for p in etime.split(":")]
-        while len(parts) < 3:
-            parts.insert(0, 0)
-        hours, minutes, seconds = parts
-        return days * 86400 + hours * 3600 + minutes * 60 + seconds
-    except (ValueError, IndexError):
-        return None
-
-
-def _find_stuck_ffprobe(app_name: str) -> dict | None:
-    """Scans app_name's own container for a D-state ffprobe/ffmpeg process
-    reading a file under /mnt/bearmount-import, running past
-    FFPROBE_STUCK_THRESHOLD_S - the exact signature confirmed live across
-    nine occurrences on 2026-07-26. Returns {pid, file_path, elapsed_s} for
-    the first match, or None. Uses _bounded_exec (see its docstring) since
-    a wedged mount can make `ps` itself hang, not just the ffprobe call
-    being diagnosed."""
-    try:
-        c = docker_client.containers.get(app_name)
-    except docker.errors.NotFound:
-        return None
-    result = _bounded_exec(c, ["ps", "-eo", "stat,pid,etime,args"], timeout=5)
-    if result is None or result.exit_code != 0:
-        return None
-    for line in result.output.decode(errors="replace").splitlines()[1:]:
-        parts = line.split(None, 3)
-        if len(parts) < 4:
-            continue
-        stat, pid, etime, args = parts
-        if not stat.startswith("D"):
-            continue
-        if "ffprobe" not in args and "ffmpeg" not in args:
-            continue
-        file_path = next(
-            (tok for tok in args.split() if tok.startswith("/mnt/bearmount-import/")),
-            None,
-        )
-        if not file_path:
-            continue
-        elapsed = _parse_ps_etime(etime)
-        if elapsed is not None and elapsed >= FFPROBE_STUCK_THRESHOLD_S:
-            return {"pid": pid, "file_path": file_path, "elapsed_s": elapsed}
-    return None
-
-
-def _match_queue_item_by_path(app_name: str, file_path: str) -> dict | None:
-    """Matches a stuck file's path to the Radarr/Sonarr queue item whose
-    outputPath is a prefix of it (outputPath is the release folder; the
-    stuck ffprobe's argument is the full file path inside it)."""
-    for q in arr_queue(app_name):
-        output_path = q.get("outputPath")
-        if output_path and file_path.startswith(output_path):
-            return q
-    return None
-
-
-@app.post("/api/bearmount/unstick-ffprobe-hang")
-def bearmount_unstick_ffprobe_hang(force: bool = False):
-    """Detects a stuck ffprobe/ffmpeg read on radarr or sonarr, blocklists
-    the matching queue item so it isn't regrabbed, then runs the same
-    bearmount recreate + 5-dependent cascade used manually all day
-    2026-07-26. Same import_queue safety gate as the other cascade routes.
-    Does NOT fix the underlying hang - see this section's header comment."""
-    found = None
-    app_name = None
-    for candidate in QUEUE_ARR_APPS:
-        found = _find_stuck_ffprobe(candidate)
-        if found:
-            app_name = candidate
-            break
-    if not found:
-        return ok("No stuck ffprobe/ffmpeg process found on radarr or sonarr.", blocklisted=None)
-
-    cfg = ARR_APPS[app_name]
-    queue_item = _match_queue_item_by_path(app_name, found["file_path"])
-    blocklisted_title = None
-    if queue_item:
-        try:
-            r = httpx.delete(
-                f"{cfg['url']}/api/{cfg['api']}/queue/{queue_item['id']}",
-                params={"removeFromClient": "true", "blocklist": "true", "skipRedownload": "false"},
-                headers={"X-Api-Key": cfg["key"]},
-                timeout=20,
-            )
-            r.raise_for_status()
-            blocklisted_title = queue_item.get("title")
-        except httpx.HTTPError as e:
-            fail(f"Found stuck ffprobe on {found['file_path']} (pid {found['pid']}, "
-                 f"{found['elapsed_s']}s) but blocklisting queue item {queue_item['id']} "
-                 f"in {cfg['label']} failed: {e}")
-
-    counts = _bearmount_queue_counts()
-    if not force and (counts.get("pending", 0) or counts.get("processing", 0)):
-        fail(f"Found and blocklisted the stuck item, but BearMount's queue isn't empty "
-             f"(pending={counts.get('pending', 0)}, processing={counts.get('processing', 0)}) - "
-             f"recreating now risks silently blocklisting other in-flight items. Pass "
-             f"force=true to override, or retry shortly once the queue drains.",
-             status_code=409)
-
-    restarted = _restart_bearmount_cascade()
-    blocklist_note = f"blocklisted \"{blocklisted_title}\"" if blocklisted_title else "no matching queue item found to blocklist"
-    return ok(
-        f"Found stuck ffprobe on {app_name} (pid {found['pid']}, {found['elapsed_s']}s, "
-        f"{found['file_path']}); {blocklist_note}; mount cascade restarted: "
-        f"bearmount + {', '.join(restarted)}.",
-        pid=found["pid"], file_path=found["file_path"], elapsed_s=found["elapsed_s"],
-        app=app_name, blocklisted=blocklisted_title, restarted=restarted,
-    )
-
+# BearMount's ffprobe/D-state read-hang cascade-restart automation
+# (_host_lazy_umount, _wait_for_bearmount_content, _restart_bearmount_cascade,
+# /api/plex/restart-cascade, /api/plex/unstick, /api/bearmount/unstick-ffprobe-hang)
+# was removed in the 2026-07-28 BearMount->nzbdav/nzbdav cutover - it was built
+# and confirmed against BearMount's own Go FUSE implementation's specific bug
+# signature (see STACK.md's recurring-hang investigation). nzbdav_rclone is
+# stock, separately-maintained rclone, a different codebase with no confirmed
+# equivalent bug - dropped rather than fabricating an equivalent for a problem
+# never observed here. Revisit if nzbdav_rclone ever shows a real hang class of
+# its own; MOUNT_PREREQS/MOUNT_PROVIDERS/MOUNT_DEPENDENTS above still cover
+# ordered mount-owner+dependent restarts for the general case.
 
 # ---------------------------------------------------------------------
 # Diagnostic/audit endpoints - added after a live resource+wiring audit
@@ -4166,7 +3718,7 @@ def disk_usage():
     return ok(f"{len(sizes)} app config directories.", sizes=sizes)
 
 
-KNOWN_MOUNTS = ["bearmount"]
+KNOWN_MOUNTS = ["remote/nzbdav"]
 
 
 @app.get("/api/mount-health")
@@ -4849,13 +4401,31 @@ def arr_import_list_add(app_name: str, payload: ImportListAddRequest):
     body = dict(template)
     body["name"] = payload.name
     body["enabled"] = True
-    body["enableAuto"] = payload.search_on_add
-    body["searchOnAdd"] = payload.search_on_add
     body["rootFolderPath"] = folders[0]["path"]
     body["qualityProfileId"] = profiles[0]["id"]
-    body["monitor"] = payload.monitor or ("movieOnly" if app_name == "radarr" else "all")
+    # Radarr and Sonarr's importlist schemas use different field names for
+    # the same two concepts - overlaying Radarr's names unconditionally onto
+    # a Sonarr body silently no-ops both for Sonarr, since Sonarr's real keys
+    # (enableAutomaticAdd, searchForMissingEpisodes, shouldMonitor) never get
+    # touched and keep whichever default the live schema handed back.
+    #
+    # enableAuto/enableAutomaticAdd is NOT a search toggle - confirmed live
+    # (importlist id 8 probe, 2026-07-28) it's the master "add items from
+    # this list at all" switch: enableAuto=false imported zero movies on an
+    # explicit ImportListSync even with a non-empty source list, flipping it
+    # to true with every other field unchanged added all 246. It must always
+    # be true or the list adds nothing; only searchOnAdd/searchForMissingEpisodes
+    # controls whether an add triggers a search.
     if app_name == "radarr":
+        body["enableAuto"] = True
+        body["searchOnAdd"] = payload.search_on_add
+        body["monitor"] = payload.monitor or "movieOnly"
         body["minimumAvailability"] = payload.minimum_availability
+    else:
+        body["enableAutomaticAdd"] = True
+        body["searchForMissingEpisodes"] = payload.search_on_add
+        body["shouldMonitor"] = payload.monitor or "all"
+        body["monitorNewItems"] = payload.monitor or "all"
     field_values = dict(payload.fields)
     if payload.implementation == "PlexImport" and "accessToken" not in field_values and PLEX_TOKEN:
         field_values["accessToken"] = PLEX_TOKEN
@@ -5028,13 +4598,13 @@ def arr_customformat_snapshot(app_name: str):
     return ok(f"{len(cf_names)} custom format(s) across {len(snapshot)} profile(s) on {cfg['label']}.", profiles=snapshot)
 
 
-@app.get("/api/bearmount/stats")
-def bearmount_stats():
+@app.get("/api/nzbdav/stats")
+def nzbdav_stats():
     """Aggregate counts instead of the raw queue/history dumps
-    bearmount_queue()/bearmount_history() above already provide - queued count
+    nzbdav_queue()/nzbdav_history() above already provide - queued count
     and total size left, plus history success/fail counts, in one glance."""
-    queue = bearmount_api("queue").get("queue", {}).get("slots", [])
-    history = bearmount_api("history", limit=100).get("history", {}).get("slots", [])
+    queue = nzbdav_api("queue").get("queue", {}).get("slots", [])
+    history = nzbdav_api("history", limit=100).get("history", {}).get("slots", [])
     fail_count = sum(1 for h in history if (h.get("status") or "").lower() == "failed")
     mb_left = sum(float(s.get("mbleft") or 0) for s in queue)
     return ok(f"{len(queue)} queued ({mb_left:.0f}MB left), {len(history)} in recent history "
@@ -5042,14 +4612,14 @@ def bearmount_stats():
               history_failed=fail_count)
 
 
-@app.post("/api/bearmount/delete-failures")
-def bearmount_delete_failures():
-    """Deletes every "Failed" history entry via BearMount's SABnzbd-compatible
+@app.post("/api/nzbdav/delete-failures")
+def nzbdav_delete_failures():
+    """Deletes every "Failed" history entry via NzbDAV's SABnzbd-compatible
     delete endpoint (mode=history&name=delete&value=<nzo_id>, one id per
-    call, mirroring the same shape NzbDAV's equivalent route had). Deletes
-    fan out across threads rather than running serially - same-host calls,
-    not rate-limited."""
-    history = bearmount_api("history", limit=0, timeout=180)
+    call, same shape BearMount's equivalent route used). Deletes fan out
+    across threads rather than running serially - same-host calls, not
+    rate-limited."""
+    history = nzbdav_api("history", limit=0, timeout=180)
     slots = history.get("history", {}).get("slots", [])
     failed = [s for s in slots if (s.get("status") or "") == "Failed"]
     if not failed:
@@ -5057,9 +4627,9 @@ def bearmount_delete_failures():
 
     def delete_one(slot):
         try:
-            r = httpx.get(BEARMOUNT_URL, params={
+            r = httpx.get(NZBDAV_URL, params={
                 "mode": "history", "name": "delete", "value": slot["nzo_id"],
-                "apikey": BEARMOUNT_API_KEY, "output": "json",
+                "apikey": NZBDAV_API_KEY, "output": "json",
             }, timeout=30)
             r.raise_for_status()
             result = r.json()
