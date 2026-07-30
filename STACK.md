@@ -2257,7 +2257,12 @@ and stays up.
 
 Verified every piece via NzbDAV's own real admin API (not assumed from the env vars alone):
 `GET /api/get-config` (form param `config-keys`, repeatable) confirmed every
-`NZBDAV_CONFIG__...` value loaded as the effective config; `POST /api/test-arr-connection`
+`NZBDAV_CONFIG__...` value loaded as the effective config - **despite the route name, this must
+be called as a form-encoded POST** (`curl --data-urlencode config-keys=... --data-urlencode
+config-keys=...`, no `-X GET`); a real GET with `?config-keys=...` query params 500s with "This
+request does not have a Content-Type header." Confirmed live 2026-07-29. Build repeated
+`--data-urlencode` flags as a bash array, not string concatenation, when passing many keys.
+`POST /api/test-arr-connection`
 (form params `host`/`apiKey`) confirmed live Radarr and Sonarr connectivity; `POST
 /api/test-usenet-connection` (form params `host`/`user`/`pass`/`port`/`use-ssl`) confirmed live
 provider login; `POST /api/test-rclone-connection` (form param `host`, optional `user`/`pass`)

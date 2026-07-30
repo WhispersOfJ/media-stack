@@ -69,6 +69,12 @@ relevant sections, not loaded in full every turn. Before making any change to th
 - Plex's `autoEmptyTrash` setting has mass-deleted library items 3x on a stale-mount scan
   (confirmed history in STACK.md) and is now disabled — don't re-enable it without reading
   that history first.
+- nzbdav itself also bind-mounts `/mnt` directly, so it holds a FUSE handle same as
+  radarr/sonarr/plex/unpackerr/cleanuparr — it is not just an upstream prereq for nzbdav_rclone.
+  Restart it via a plain `docker restart nzbdav`, not `docker compose restart nzbdav` — compose
+  evaluates `depends_on: nzbdav_rclone` with `restart: true` and would re-stale every other
+  dependent's mount as a side effect. See `.claude/skills/docker-compose-manager/handler.py`'s
+  `CASCADE_MAP`/`cmd_restart` for the actual restart-order implementation.
 
 ## Commands
 
@@ -127,8 +133,9 @@ load the dashboard) for anything that actually talks to a live container.
 
 Fish functions (`stack-*`) aren't available in Claude Code's own shell (zsh/bash, not fish) —
 invoke via `fish -c "stack-foo ..."` or call the underlying control-panel API endpoint directly.
-`/api/arr/{app}/manual-import-all` scans queue items one at a time, sequentially — a 50+ item
-queue can legitimately take several minutes; that's not a hang.
+See `fish-functions/README.md` for the full list of what's available. `/api/arr/{app}/manual-import-all`
+scans queue items one at a time, sequentially — a 50+ item queue can legitimately take several
+minutes; that's not a hang.
 
 **`README.md`** is the only end-user documentation in this repo (long, organized by subsystem
 with a linked table of contents) — read the relevant section there for how a feature is meant
@@ -142,3 +149,16 @@ removed 2026-07-28 (see STACK.md's History). Its automated mitigation endpoint
 (`/api/bearmount/unstick-ffprobe-hang`) was removed along with it, not ported — NzbDAV's mount
 is a stock rclone sidecar (`nzbdav_rclone`), a different codebase with no confirmed equivalent
 bug. Don't assume this class of hang still applies before re-reading that history.
+
+## Debugging gotchas
+
+- `cmd 2>&1 > file` does NOT redirect stderr to file (order matters) — use `cmd > file 2>&1`.
+- Raw socket tests: use `python3 -c "import socket..."`, not bash `/dev/tcp/...` — this fish shell doesn't support it.
+- Detect stuck FUSE/ffprobe/Plex-scanner reads host-wide: `ps -eo pid,stat,cmd | awk '$2 ~ /D/'`.
+- Plex `DELETE /library/metadata/{key}` needs `allowMediaDeletion=1` set via `/:/prefs` first — always restore it to `0` after, this stack has a history of mass-deletion incidents from it being left on.
+- Avoid full `/library/sections/{id}/refresh` scans when a usenet provider is degraded — a scan hitting a slow/timed-out read can falsely mark unrelated shows `deletedAt` even though files are intact. Prefer narrow per-item `/library/metadata/{key}/refresh`.
+- To fully stop Plex from scanning, check ALL independent triggers: `ScheduledLibraryUpdatesEnabled`, `FSEventLibraryUpdatesEnabled`, `ButlerTaskRefreshLibraries`, `ButlerTaskRefreshPeriodicMetadata` (via `/:/prefs`) — AND Bazarr's own `plex.update_series_library`/`update_movie_library`, which fires independently on every subtitle grab.
+- Bazarr's `POST /api/system/settings` silently no-ops (returns 204 but doesn't persist) with a JSON body — use form-urlencoded (`--data-urlencode "settings-plex-update_series_library=false"`).
+- Sonarr/Radarr `autoRedownloadFailed`/`autoRedownloadFailedFromInteractiveSearch` (`/api/v3/config/downloadclient`) causes retry storms when a provider has widespread missing segments — disable rather than trying to blocklist individual queue items (the queue is transient; items cycle out before you can act on them).
+- nzbdav/ThunderNews quirk: `STAT` returns `430 No such article` fast for a missing article, but `BODY` on the same article can hang with no response until timeout — this is the actual cause of "mount stalls," not a bug in rclone/nzbdav/Plex.
+- NzbDAV's `POST /api/get-config` must be called as a form-encoded POST (`--data-urlencode config-keys=...`, repeated) — despite the name, a GET with `?config-keys=...` query params 500s with a missing-Content-Type error.
