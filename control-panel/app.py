@@ -10,6 +10,7 @@ matches every other service in this stack (see README.md's "Security"
 section).
 """
 import concurrent.futures
+import csv
 import json
 import os
 import queue
@@ -156,6 +157,14 @@ CONTAINER_LABELS = {
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "recyclarr": ("Recyclarr", "TRaSH Guides custom-format/quality-profile sync, Radarr/Sonarr only"),
+    "tautulli": ("Tautulli", "Plex watch-stats/history dashboard"),
+    "wrapperr": ("Wrapperr", "Tautulli stats wrapper/report dashboard"),
+    "maintainerr": ("Maintainerr", "Plex/Radarr/Sonarr library maintenance - installed with zero rules configured"),
+    "checkrr": ("Checkrr", "corrupt-media scanner - process:false, scan/log only, no auto reacquire"),
+    "prefetcharr": ("Prefetcharr", "auto-fetches next Sonarr season from Plex watch progress"),
+    "lingarr": ("Lingarr", "subtitle translation, complements Bazarr"),
+    "kometa": ("Kometa", "Plex metadata/collections/overlays, scheduled daily 05:30"),
+    "notifiarr": ("Notifiarr", "centralized Discord notification relay"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 
@@ -3461,6 +3470,19 @@ def stack_restart_all():
                 c.restart(timeout=30)
             except Exception as e:
                 print(f"restart-all: failed to restart {c.name}: {e}")
+        # nzbdav bind-mounts /mnt directly too, not just as an upstream
+        # prereq for nzbdav_rclone - restarting it only in the prereqs pass
+        # above (before the provider) leaves it holding a stale FUSE handle
+        # once the provider restarts. Re-restart it here, after every other
+        # mount consumer has settled on the provider's final instance, to
+        # rebind it. See the CORRECTION comment near MOUNT_PREREQS. Uses a
+        # bare SDK restart (not `docker compose restart`), so it does not
+        # retrigger nzbdav_rclone's depends_on(restart:true) side-cascade.
+        for c in prereqs:
+            try:
+                c.restart(timeout=30)
+            except Exception as e:
+                print(f"restart-all: failed to restart {c.name}: {e}")
 
     threading.Thread(target=worker, daemon=True).start()
     return ok(f"Restarting {len(names)} containers (everything except this panel): {', '.join(names)}")
@@ -3575,6 +3597,18 @@ def _recreate_container_via_sdk(name: str):
 # never observed here. Revisit if nzbdav_rclone ever shows a real hang class of
 # its own; MOUNT_PREREQS/MOUNT_PROVIDERS/MOUNT_DEPENDENTS above still cover
 # ordered mount-owner+dependent restarts for the general case.
+#
+# CORRECTION, 2026-07-29: MOUNT_PREREQS's restart-nzbdav-first ordering was
+# incomplete. nzbdav is a prereq for nzbdav_rclone to start (the WebDAV
+# source it mounts), but its own compose volumes also bind-mount /mnt
+# directly - so it's just as much a mount *consumer* as MOUNT_DEPENDENTS.
+# Restarting it only before the provider left it holding a stale FUSE handle
+# once the provider came back up, identical to the bug MOUNT_DEPENDENTS
+# exists to prevent. Confirmed live: nzbdav's background health-check/repair
+# sweep ran against that stale handle and mass-deleted 667 library
+# bookkeeping entries, treating "can't see the symlink right now" the same
+# as "file is genuinely gone". stack_restart_all now restarts the MOUNT_PREREQS
+# group a second time, after MOUNT_DEPENDENTS, to rebind it - see below.
 
 # ---------------------------------------------------------------------
 # Diagnostic/audit endpoints - added after a live resource+wiring audit
@@ -4676,6 +4710,757 @@ def plex_recently_added(limit: int = 15):
               "addedAt": el.get("addedAt"), "librarySectionTitle": el.get("librarySectionTitle")}
              for el in combined]
     return ok(f"{len(items)} most recently added item(s) across Plex movie/show libraries.", items=items)
+
+
+# ---------------------------------------------------------------------
+# 2026-07-30 awesome-arr additions (tautulli, wrapperr, maintainerr,
+# checkrr, prefetcharr, lingarr, kometa, notifiarr) - see STACK.md for the
+# fit assessment. None of these eight had any API route before this batch.
+# ---------------------------------------------------------------------
+
+TAUTULLI_URL = "http://tautulli:8181"
+MAINTAINERR_URL = "http://maintainerr:6246"
+LINGARR_URL = "http://lingarr:8080"
+NOTIFIARR_URL = "http://notifiarr:5454"
+
+
+def _tautulli_key() -> str | None:
+    """Tautulli generates its own API key on first boot into
+    config/config.ini's [General] api_key - never an env var, same story
+    as Bazarr/Seerr above."""
+    path = os.path.join(HOST_CONFIG_DIR, "tautulli", "config.ini")
+    if not os.path.isfile(path):
+        return None
+    with open(path) as f:
+        for line in f:
+            if line.strip().startswith("api_key"):
+                return line.split("=", 1)[1].strip()
+    return None
+
+
+def _tautulli_call(cmd: str, **params):
+    key = _tautulli_key()
+    if not key:
+        fail("No Tautulli API key found (config.ini not present yet - has it completed setup?).", status_code=500)
+    try:
+        r = httpx.get(f"{TAUTULLI_URL}/api/v2", params={"apikey": key, "cmd": cmd, **params}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Tautulli lookup failed: {e}")
+    body = r.json().get("response", {})
+    if body.get("result") != "success":
+        fail(f"Tautulli returned an error: {body.get('message') or 'unknown'}")
+    return body.get("data")
+
+
+@app.get("/api/tautulli/activity")
+def tautulli_activity():
+    """Live Plex streams as Tautulli sees them - same data Plex's own
+    /status/sessions gives, but with Tautulli's per-session transcode
+    detail already broken out."""
+    data = _tautulli_call("get_activity") or {}
+    sessions = data.get("sessions", [])
+    items = [{"session_key": s.get("session_key"), "user": s.get("user"), "title": s.get("full_title"),
+              "state": s.get("state"), "decision": s.get("transcode_decision"), "progress": s.get("progress_percent")}
+             for s in sessions]
+    return ok(f"{data.get('stream_count', 0)} active stream(s).", items=items)
+
+
+@app.post("/api/tautulli/terminate-stream")
+def tautulli_terminate_stream(session_key: str):
+    """Kills a single active stream by its session_key (from
+    tautulli_activity() above) - for a runaway transcode or a session that
+    needs cutting off, without touching Plex directly."""
+    _tautulli_call("terminate_session", session_key=session_key, message="Stopped from Control Panel.")
+    return ok(f"Terminate requested for session {session_key}.")
+
+
+@app.get("/api/tautulli/history")
+def tautulli_history(limit: int = 20):
+    """Recent watch history across every user/library, newest first."""
+    data = _tautulli_call("get_history", length=limit) or {}
+    items = [{"title": r.get("full_title"), "user": r.get("user"), "date": r.get("date"),
+              "percent_complete": r.get("percent_complete")} for r in data.get("data", [])]
+    return ok(f"{len(items)} recent history entr{'y' if len(items) == 1 else 'ies'}.", items=items)
+
+
+@app.get("/api/tautulli/stats")
+def tautulli_stats():
+    """Home-page stat cards (most watched movies/shows, top users) -
+    Tautulli's own dashboard summary, without opening its UI."""
+    data = _tautulli_call("get_home_stats") or []
+    sections = {row.get("stat_id"): [r.get("title") or r.get("friendly_name") for r in row.get("rows", [])[:5]]
+                for row in data}
+    return ok(f"{len(sections)} stat categor{'y' if len(sections) == 1 else 'ies'}.", stats=sections)
+
+
+@app.get("/api/tautulli/users")
+def tautulli_users():
+    """Every known Plex user Tautulli has seen, with lifetime plays/duration."""
+    data = _tautulli_call("get_users_table", length=100) or {}
+    items = [{"user": r.get("friendly_name"), "plays": r.get("plays"), "duration": r.get("duration"),
+              "last_seen": r.get("last_seen")} for r in data.get("data", [])]
+    return ok(f"{len(items)} user(s).", items=items)
+
+
+@app.get("/api/tautulli/user-history")
+def tautulli_user_history(user_id: int, limit: int = 20):
+    """Same as tautulli_history() but filtered to one user_id (from
+    tautulli_users() above)."""
+    data = _tautulli_call("get_history", user_id=user_id, length=limit) or {}
+    items = [{"title": r.get("full_title"), "date": r.get("date"), "percent_complete": r.get("percent_complete")}
+             for r in data.get("data", [])]
+    return ok(f"{len(items)} entr{'y' if len(items) == 1 else 'ies'} for user {user_id}.", items=items)
+
+
+@app.get("/api/tautulli/libraries")
+def tautulli_libraries():
+    """Per-library item counts as Tautulli last saw them (its own cached
+    view, refreshed on its schedule - not a live Plex call)."""
+    data = _tautulli_call("get_libraries") or []
+    items = [{"name": r.get("section_name"), "count": r.get("count"), "type": r.get("section_type")} for r in data]
+    return ok(f"{len(items)} librar{'y' if len(items) == 1 else 'ies'}.", items=items)
+
+
+@app.get("/api/tautulli/recently-added")
+def tautulli_recently_added_via_tautulli(limit: int = 15):
+    """Tautulli's own recently-added feed - separate from
+    plex_recently_added() above, which queries Plex directly."""
+    data = _tautulli_call("get_recently_added", count=limit) or {}
+    items = [{"title": r.get("full_title"), "added_at": r.get("added_at")} for r in data.get("recently_added", [])]
+    return ok(f"{len(items)} recently-added item(s).", items=items)
+
+
+@app.get("/api/tautulli/server-info")
+def tautulli_server_info():
+    """The Plex server Tautulli is actually configured against - hostname/
+    version/machine_identifier, for the misconfiguration guard
+    tautulli_sync_check() below to compare against this stack's real Plex."""
+    data = _tautulli_call("get_server_info") or {}
+    return ok(f"Tautulli is tracking Plex server '{data.get('pms_name')}' at {data.get('pms_ip')}:{data.get('pms_port')}.",
+              **data)
+
+
+@app.get("/api/tautulli/newsletters")
+def tautulli_newsletters():
+    """Configured newsletter definitions (if any) - Tautulli ships this
+    feature but this stack has never set one up; surfaces that plainly
+    instead of it being silent."""
+    data = _tautulli_call("get_newsletters") or []
+    items = [{"id": n.get("id"), "agent": n.get("agent_name"), "active": n.get("active")} for n in data]
+    return ok(f"{len(items)} newsletter(s) configured." if items else "No newsletters configured.", items=items)
+
+
+@app.get("/api/tautulli/notifiers")
+def tautulli_notifiers():
+    """Configured notification agents (Discord, etc.) inside Tautulli
+    itself - separate from this stack's own DISCORD_WEBHOOK_URL/Notifiarr."""
+    data = _tautulli_call("get_notifiers") or []
+    items = [{"id": n.get("id"), "agent": n.get("agent_name"), "active": bool(n.get("active"))} for n in data]
+    return ok(f"{len(items)} notifier(s) configured." if items else "No notifiers configured.", items=items)
+
+
+@app.get("/api/tautulli/plays-by-date")
+def tautulli_plays_by_date(days: int = 30):
+    """Daily play-count trend for the last N days - the same series
+    behind Tautulli's own dashboard graph."""
+    data = _tautulli_call("get_plays_by_date", time_range=days) or {}
+    categories = data.get("categories", [])
+    series = data.get("series", [])
+    total_per_day = [sum(s["data"][i] for s in series) for i in range(len(categories))] if series else []
+    return ok(f"Play counts for the last {days} day(s).", days=categories, totals=total_per_day)
+
+
+@app.get("/api/tautulli/sync-check")
+def tautulli_sync_check():
+    """Misconfiguration guard: Tautulli is wired to Plex via its own UI
+    post-boot (same pattern as Seerr/Maintainerr/Wrapperr), so a typo'd
+    hostname/port silently leaves it tracking nothing. Compares its
+    configured Plex machine_identifier against this stack's real one."""
+    tautulli_info = _tautulli_call("get_server_info") or {}
+    try:
+        real = httpx.get(f"{PLEX_URL}/", headers=plex_headers(), timeout=10)
+        real.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Could not reach this stack's real Plex to compare: {e}")
+    real_id = real.json().get("MediaContainer", {}).get("machineIdentifier")
+    tautulli_id = tautulli_info.get("pms_identifier")
+    if not tautulli_id:
+        return ok("Tautulli has no Plex server configured yet.", matches=False)
+    matches = tautulli_id == real_id
+    msg = "Tautulli is tracking this stack's real Plex server." if matches else \
+          f"MISMATCH: Tautulli is tracking a different Plex server ({tautulli_info.get('pms_name')})."
+    return ok(msg, matches=matches, tautulli_pms=tautulli_info.get("pms_name"), real_machine_id=real_id)
+
+
+def _wrapperr_config() -> dict:
+    path = os.path.join(HOST_CONFIG_DIR, "wrapperr", "config.json")
+    if not os.path.isfile(path):
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+@app.get("/api/wrapperr/status")
+def wrapperr_status():
+    """Reachability + whether Wrapperr has a Tautulli connection saved at
+    all (config.json is only written once its setup wizard completes)."""
+    try:
+        r = httpx.get("http://wrapperr:8282/", timeout=10)
+        reachable = r.status_code < 500
+    except httpx.HTTPError:
+        reachable = False
+    cfg = _wrapperr_config()
+    configured = bool(cfg.get("tautulli_url") or cfg.get("tautulliUrl"))
+    msg = "Wrapperr reachable" + (", Tautulli connection saved." if configured else ", but no Tautulli connection saved yet.")
+    return ok(msg, reachable=reachable, configured=configured)
+
+
+@app.get("/api/wrapperr/reports")
+def wrapperr_reports():
+    """Saved report definitions from Wrapperr's config.json - it has no
+    real query API of its own, reports are pre-built and rendered on
+    request through its UI."""
+    cfg = _wrapperr_config()
+    reports = cfg.get("reports", [])
+    names = [r.get("name") or r.get("title") for r in reports] if isinstance(reports, list) else []
+    return ok(f"{len(names)} saved report(s)." if names else "No saved reports configured yet.", items=names)
+
+
+@app.get("/api/wrapperr/links")
+def wrapperr_links():
+    """Public share links Wrapperr has generated for specific reports."""
+    path = os.path.join(HOST_CONFIG_DIR, "wrapperr", "links")
+    if not os.path.isdir(path):
+        return ok("No share links generated yet.", items=[])
+    items = os.listdir(path)
+    return ok(f"{len(items)} share link(s).", items=items)
+
+
+@app.get("/api/wrapperr/tautulli-link-check")
+def wrapperr_tautulli_link_check():
+    """Misconfiguration guard: Wrapperr stores its OWN copy of Tautulli's
+    URL/API key (entered by hand in its setup wizard) rather than reading
+    Tautulli's config directly - if either drifts (e.g. Tautulli's API key
+    is regenerated), Wrapperr silently starts failing every report."""
+    cfg = _wrapperr_config()
+    stored_key = cfg.get("tautulli_api_key") or cfg.get("tautulliApiKey")
+    real_key = _tautulli_key()
+    if not stored_key:
+        return ok("Wrapperr has no Tautulli API key saved yet.", matches=False)
+    if not real_key:
+        return ok("Tautulli has no API key generated yet to compare against.", matches=False)
+    matches = stored_key == real_key
+    msg = "Wrapperr's saved Tautulli key matches the live one." if matches else \
+          "MISMATCH: Wrapperr's saved Tautulli API key is stale - re-enter it in Wrapperr's settings."
+    return ok(msg, matches=matches)
+
+
+@app.get("/api/maintainerr/rules")
+def maintainerr_rules():
+    """Configured maintenance rules. Installed deliberately with ZERO
+    rules (this stack has 3+ documented mass-deletion incidents - see
+    CLAUDE.md/STACK.md) - a non-empty list here is worth a second look,
+    see maintainerr_safety_check() below."""
+    try:
+        r = httpx.get(f"{MAINTAINERR_URL}/api/rules", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Maintainerr lookup failed: {e}")
+    rules = r.json()
+    items = [{"id": rl.get("id"), "name": rl.get("name"), "active": rl.get("isActive")} for rl in rules]
+    return ok(f"{len(items)} rule(s) configured." if items else "No rules configured (expected - see CLAUDE.md).", items=items)
+
+
+@app.get("/api/maintainerr/rule-detail")
+def maintainerr_rule_detail(rule_id: int):
+    """Full definition of a single rule by id (from maintainerr_rules() above)."""
+    try:
+        r = httpx.get(f"{MAINTAINERR_URL}/api/rules/{rule_id}", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Maintainerr lookup failed: {e}")
+    return ok(f"Rule {rule_id} detail.", rule=r.json())
+
+
+@app.get("/api/maintainerr/collections")
+def maintainerr_collections():
+    """Plex collections Maintainerr is tracking for cleanup evaluation."""
+    try:
+        r = httpx.get(f"{MAINTAINERR_URL}/api/collections", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Maintainerr lookup failed: {e}")
+    collections = r.json()
+    items = [{"id": c.get("id"), "title": c.get("title"), "media_count": len(c.get("media", []) or [])} for c in collections]
+    return ok(f"{len(items)} collection(s) tracked.", items=items)
+
+
+@app.get("/api/maintainerr/collection-media")
+def maintainerr_collection_media(collection_id: int):
+    """Media items inside one tracked collection (from
+    maintainerr_collections() above) and their current cleanup state."""
+    try:
+        r = httpx.get(f"{MAINTAINERR_URL}/api/collections/{collection_id}/media", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Maintainerr lookup failed: {e}")
+    items = r.json()
+    return ok(f"{len(items)} media item(s) in collection {collection_id}.", items=items)
+
+
+@app.get("/api/maintainerr/logs")
+def maintainerr_logs(lines: int = 100):
+    """Tails Maintainerr's own container logs directly."""
+    try:
+        c = docker_client.containers.get("maintainerr")
+    except docker.errors.NotFound:
+        fail("Container 'maintainerr' not found.")
+    raw = c.logs(tail=min(lines, 1000), timestamps=True).decode(errors="replace")
+    return ok(f"Last {lines} line(s) from maintainerr.", log=raw)
+
+
+@app.get("/api/maintainerr/safety-check")
+def maintainerr_safety_check():
+    """Explicit guard tied directly to this stack's mass-deletion history:
+    Maintainerr was installed with zero rules on purpose. This alerts
+    loudly the moment that's no longer true, rather than a rule quietly
+    appearing and running unnoticed."""
+    try:
+        r = httpx.get(f"{MAINTAINERR_URL}/api/rules", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Maintainerr lookup failed: {e}")
+    rules = r.json()
+    active = [rl for rl in rules if rl.get("isActive")]
+    if not active:
+        return ok("Safe: no active rules configured.", active_count=0)
+    names = ", ".join(rl.get("name", "?") for rl in active)
+    return ok(f"WARNING: {len(active)} active rule(s) configured - review before trusting it not to delete "
+              f"anything: {names}", active_count=len(active))
+
+
+@app.get("/api/maintainerr/plex-link-check")
+def maintainerr_plex_link_check():
+    """Misconfiguration guard: Maintainerr's Plex connection is entered
+    via its own setup wizard, same drift risk as Tautulli/Wrapperr above."""
+    try:
+        r = httpx.get(f"{MAINTAINERR_URL}/api/settings", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Maintainerr lookup failed: {e}")
+    settings = r.json()
+    real_host = urlparse(PLEX_URL).hostname
+    stored_host = settings.get("plex_hostname")
+    matches = bool(stored_host) and stored_host == real_host
+    msg = f"Maintainerr's Plex host ({stored_host}) matches this stack's ({real_host})." if matches else \
+          f"MISMATCH: Maintainerr is pointed at '{stored_host}', this stack's Plex is at '{real_host}'."
+    return ok(msg, matches=matches, stored_host=stored_host, real_host=real_host)
+
+
+def _checkrr_config() -> dict:
+    import yaml
+    path = os.path.join(HOST_CONFIG_DIR, "checkrr", "checkrr.yaml")
+    if not os.path.isfile(path):
+        return {}
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+
+@app.get("/api/checkrr/badfiles")
+def checkrr_badfiles(limit: int = 50):
+    """Corrupt/unreadable files Checkrr has flagged, from its own CSV log
+    (process:false - see CLAUDE.md/STACK.md - so nothing gets deleted or
+    reacquired automatically, this is scan/log only)."""
+    path = os.path.join(HOST_CONFIG_DIR, "checkrr", "badfiles.csv")
+    if not os.path.isfile(path):
+        return ok("No bad files logged yet.", items=[])
+    items = []
+    with open(path, newline="") as f:
+        for row in csv.reader(f):
+            if len(row) >= 2:
+                items.append({"path": row[0], "reason": row[1]})
+    return ok(f"{len(items)} bad file(s) logged (showing up to {limit}).", items=items[:limit], total=len(items))
+
+
+@app.get("/api/checkrr/config")
+def checkrr_config():
+    """Effective scan config - checkpaths and the process flags per Arr
+    app. process:false everywhere is the expected/safe state (see
+    CLAUDE.md's mass-deletion history) - checkrr_reacquire_guard() below
+    alerts specifically if that ever changes."""
+    cfg = _checkrr_config()
+    arr = cfg.get("arr", {}) or {}
+    process_flags = {name: (settings or {}).get("process", False) for name, settings in arr.items()}
+    return ok(f"Scanning {', '.join(cfg.get('checkrr', {}).get('checkpath', []))}, cron {cfg.get('checkrr', {}).get('cron')}.",
+              checkpaths=cfg.get("checkrr", {}).get("checkpath", []), process_flags=process_flags)
+
+
+@app.get("/api/checkrr/reacquire-guard")
+def checkrr_reacquire_guard():
+    """Explicit guard: checkrr.yaml was deployed with process:false for
+    every Arr app (scan/log only, no auto-delete/reacquire - see
+    CLAUDE.md). Alerts if that's ever flipped to true without a
+    corresponding, deliberate CLAUDE.md update."""
+    cfg = _checkrr_config()
+    arr = cfg.get("arr", {}) or {}
+    live = {name: (settings or {}).get("process", False) for name, settings in arr.items()}
+    flipped = [name for name, val in live.items() if val]
+    if not flipped:
+        return ok("Safe: process:false for every configured Arr app.", flipped=[])
+    return ok(f"WARNING: process:true for {', '.join(flipped)} - Checkrr will now auto-reacquire/delete for "
+              f"{'this app' if len(flipped) == 1 else 'these apps'}.", flipped=flipped)
+
+
+@app.get("/api/checkrr/scan-status")
+def checkrr_scan_status(lines: int = 40):
+    """Tails Checkrr's own container logs (stdout-only, no log file - see
+    its compose comment) for the most recent scan activity."""
+    try:
+        c = docker_client.containers.get("checkrr")
+    except docker.errors.NotFound:
+        fail("Container 'checkrr' not found.")
+    raw_lines = c.logs(tail=min(lines, 1000)).decode(errors="replace").splitlines()
+    relevant = [l for l in raw_lines if l.strip()]
+    return ok(f"Last {len(relevant)} log line(s) from checkrr.", lines=relevant)
+
+
+@app.get("/api/checkrr/recent-scans")
+def checkrr_recent_scans():
+    """Distinct from scan_status() above: pulls out just the scan-cycle
+    boundary lines (start/finish) from a much larger log tail, to see scan
+    cadence/duration without reading the full per-file output."""
+    try:
+        c = docker_client.containers.get("checkrr")
+    except docker.errors.NotFound:
+        fail("Container 'checkrr' not found.")
+    raw_lines = c.logs(tail=2000).decode(errors="replace").splitlines()
+    markers = [l for l in raw_lines if re.search(r"(?i)(starting|finished|complete).{0,20}scan", l)]
+    return ok(f"{len(markers)} scan-cycle marker(s) found in recent logs.", lines=markers[-20:])
+
+
+@app.get("/api/prefetcharr/logs")
+def prefetcharr_logs(lines: int = 60):
+    """Tails Prefetcharr's own log file directly (mounted at
+    config/prefetcharr, unlike Checkrr/Kometa which are stdout-only)."""
+    path = os.path.join(HOST_CONFIG_DIR, "prefetcharr")
+    log_files = sorted((f for f in os.listdir(path) if f.endswith(".log")), reverse=True) if os.path.isdir(path) else []
+    if not log_files:
+        return ok("No log file found yet.", lines=[])
+    with open(os.path.join(path, log_files[0])) as f:
+        all_lines = f.readlines()
+    return ok(f"Last {min(lines, len(all_lines))} line(s) from {log_files[0]}.", lines=[l.rstrip() for l in all_lines[-lines:]])
+
+
+@app.get("/api/prefetcharr/status")
+def prefetcharr_status():
+    """Container up/down plus the most recent prefetch-trigger event
+    found in its log - prefetcharr has no API/port of its own to poll."""
+    try:
+        c = docker_client.containers.get("prefetcharr")
+    except docker.errors.NotFound:
+        fail("Container 'prefetcharr' not found.")
+    running = c.status == "running"
+    path = os.path.join(HOST_CONFIG_DIR, "prefetcharr")
+    log_files = sorted((f for f in os.listdir(path) if f.endswith(".log")), reverse=True) if os.path.isdir(path) else []
+    last_prefetch = None
+    if log_files:
+        with open(os.path.join(path, log_files[0])) as f:
+            for line in f:
+                if re.search(r"(?i)(prefetch|request.{0,10}season)", line):
+                    last_prefetch = line.strip()
+    return ok(f"Container is {c.status}." + (f" Last prefetch event: {last_prefetch}" if last_prefetch else " No prefetch event logged yet."),
+              running=running, last_event=last_prefetch)
+
+
+@app.get("/api/prefetcharr/config")
+def prefetcharr_config():
+    """Effective PREFETCHARR_CONFIG as deployed (interval/prefetch_num/
+    request_seasons), read straight from the running container's own env -
+    it's a single TOML blob (see docker-compose.yml), not a mounted file."""
+    try:
+        c = docker_client.containers.get("prefetcharr")
+    except docker.errors.NotFound:
+        fail("Container 'prefetcharr' not found.")
+    env = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in c.attrs["Config"]["Env"] if "=" in e}
+    blob = env.get("PREFETCHARR_CONFIG", "")
+    return ok("Effective prefetcharr config.", config=blob)
+
+
+@app.get("/api/prefetcharr/plex-link-check")
+def prefetcharr_plex_link_check():
+    """Misconfiguration guard: prefetcharr's [media_server] block hardcodes
+    PLEX_URL/PLEX_TOKEN at deploy time (docker-compose.yml env
+    substitution) - if this stack's PLEX_URL/PLEX_TOKEN ever rotates
+    without recreating this container, prefetcharr keeps using the stale
+    value silently (it only reads env at container start)."""
+    try:
+        c = docker_client.containers.get("prefetcharr")
+    except docker.errors.NotFound:
+        fail("Container 'prefetcharr' not found.")
+    env = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in c.attrs["Config"]["Env"] if "=" in e}
+    blob = env.get("PREFETCHARR_CONFIG", "")
+    m = re.search(r'url\s*=\s*"([^"]*)"', blob)
+    baked_url = m.group(1) if m else None
+    matches = baked_url == PLEX_URL
+    msg = "Prefetcharr's baked-in Plex URL matches this stack's current PLEX_URL." if matches else \
+          f"MISMATCH: prefetcharr was started with Plex URL '{baked_url}', current PLEX_URL is '{PLEX_URL}' - recreate the container."
+    return ok(msg, matches=matches, baked_url=baked_url, real_url=PLEX_URL)
+
+
+@app.get("/api/lingarr/stats")
+def lingarr_stats():
+    """Lifetime translation totals - Lingarr's own dashboard summary."""
+    try:
+        r = httpx.get(f"{LINGARR_URL}/api/statistics", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Lingarr lookup failed: {e}")
+    data = r.json()
+    return ok(f"{data.get('totalSubtitles', 0)} subtitle(s) translated across "
+              f"{data.get('totalMovies', 0)} movie(s)/{data.get('totalEpisodes', 0)} episode(s) tracked.", **data)
+
+
+@app.get("/api/lingarr/movies")
+def lingarr_movies(limit: int = 20):
+    """Movies Lingarr knows about (from its own Radarr connection) and
+    their translation state."""
+    try:
+        r = httpx.get(f"{LINGARR_URL}/api/media/movies", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Lingarr lookup failed: {e}")
+    items = r.json().get("items", [])[:limit]
+    return ok(f"{len(items)} movie(s) (showing up to {limit}).", items=[{"title": i.get("title"), "id": i.get("id")} for i in items])
+
+
+@app.get("/api/lingarr/shows")
+def lingarr_shows(limit: int = 20):
+    """Shows Lingarr knows about (from its own Sonarr connection)."""
+    try:
+        r = httpx.get(f"{LINGARR_URL}/api/media/shows", timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Lingarr lookup failed: {e}")
+    items = r.json().get("items", [])[:limit]
+    return ok(f"{len(items)} show(s) (showing up to {limit}).", items=[{"title": i.get("title")} for i in items])
+
+
+@app.get("/api/lingarr/logs")
+def lingarr_logs(lines: int = 60):
+    """Tails Lingarr's own container logs."""
+    try:
+        c = docker_client.containers.get("lingarr")
+    except docker.errors.NotFound:
+        fail("Container 'lingarr' not found.")
+    raw = c.logs(tail=min(lines, 1000), timestamps=True).decode(errors="replace")
+    return ok(f"Last {lines} line(s) from lingarr.", log=raw)
+
+
+@app.get("/api/lingarr/recent-translations")
+def lingarr_recent_translations():
+    """Distinct from lingarr_stats() (lifetime totals): pulls the most
+    recent individual translation-completed events straight out of the
+    container logs, since Lingarr's REST API doesn't expose a job-history
+    list."""
+    try:
+        c = docker_client.containers.get("lingarr")
+    except docker.errors.NotFound:
+        fail("Container 'lingarr' not found.")
+    raw_lines = c.logs(tail=1000).decode(errors="replace").splitlines()
+    events = [l for l in raw_lines if re.search(r"(?i)translat(ed|ion complete)", l)]
+    return ok(f"{len(events)} recent translation event(s) found in logs.", lines=events[-20:])
+
+
+@app.get("/api/kometa/status")
+def kometa_status():
+    """Kometa is a scheduled batch job (KOMETA_TIMES) with no API of its
+    own - this parses its own periodic countdown log line for next-run
+    time, the only signal it emits between runs."""
+    try:
+        c = docker_client.containers.get("kometa")
+    except docker.errors.NotFound:
+        fail("Container 'kometa' not found.")
+    raw = c.logs(tail=5).decode(errors="replace")
+    m = re.search(r"Current Time: (\S+).*?next run at (\S+)", raw)
+    if not m:
+        return ok("Could not parse a countdown line from recent logs.", raw=raw[-500:])
+    return ok(f"Current time {m.group(1)}, next Kometa run at {m.group(2)}.", current_time=m.group(1), next_run=m.group(2))
+
+
+@app.post("/api/kometa/run-now")
+def kometa_run_now():
+    """Triggers an immediate Kometa run alongside its own scheduler loop
+    (docker exec -d python3 kometa.py --run), rather than waiting for
+    KOMETA_TIMES. Detached - returns immediately, doesn't wait for the run
+    to finish (a full run can take minutes)."""
+    try:
+        c = docker_client.containers.get("kometa")
+    except docker.errors.NotFound:
+        fail("Container 'kometa' not found.")
+    c.exec_run(["python3", "kometa.py", "--run"], detach=True)
+    return ok("Kometa run triggered in the background - check kometa_logs() shortly for progress.")
+
+
+@app.get("/api/kometa/logs")
+def kometa_logs(lines: int = 100):
+    """Tails Kometa's own container logs directly (no log file - stdout
+    only, same as Checkrr)."""
+    try:
+        c = docker_client.containers.get("kometa")
+    except docker.errors.NotFound:
+        fail("Container 'kometa' not found.")
+    raw = c.logs(tail=min(lines, 2000)).decode(errors="replace")
+    return ok(f"Last {lines} line(s) from kometa.", log=raw)
+
+
+@app.get("/api/kometa/last-run-result")
+def kometa_last_run_result():
+    """Distinct from kometa_status() (just the countdown): scans further
+    back through the logs for the last actual run's outcome - a completed
+    summary line, or a traceback if it errored out."""
+    try:
+        c = docker_client.containers.get("kometa")
+    except docker.errors.NotFound:
+        fail("Container 'kometa' not found.")
+    raw_lines = c.logs(tail=5000).decode(errors="replace").splitlines()
+    finished = [l for l in raw_lines if re.search(r"(?i)(finished|run complete)", l)]
+    errors_found = [l for l in raw_lines if re.search(r"(?i)(traceback|error)", l)]
+    if finished:
+        return ok(f"Last completed run: {finished[-1].strip()}", errors=errors_found[-5:])
+    if errors_found:
+        return ok(f"No completed run found yet - {len(errors_found)} error line(s) in recent logs.", errors=errors_found[-5:])
+    return ok("No run has completed yet (still waiting for the first KOMETA_TIMES run).", errors=[])
+
+
+@app.get("/api/kometa/config")
+def kometa_config():
+    """Effective config.yml as deployed - which libraries/collections it's
+    set to touch, without opening the file by hand. From-scratch, Plex-
+    only minimal build (TMDb/MDBList only, no Trakt) - see STACK.md."""
+    import yaml
+    path = os.path.join(HOST_CONFIG_DIR, "kometa", "config.yml")
+    if not os.path.isfile(path):
+        return ok("No config.yml found yet.", libraries=[])
+    with open(path) as f:
+        cfg = yaml.safe_load(f) or {}
+    libraries = list((cfg.get("libraries") or {}).keys())
+    return ok(f"{len(libraries)} librar{'y' if len(libraries) == 1 else 'ies'} configured: {', '.join(libraries)}.",
+              libraries=libraries)
+
+
+@app.get("/api/notifiarr/status")
+def notifiarr_status():
+    """Reachability of Notifiarr's local client API - it's a relay client
+    (talks out to notifiarr.com, not a dashboard with its own data), so
+    this is a health check, not a stats pull."""
+    try:
+        r = httpx.get(f"{NOTIFIARR_URL}/", timeout=10)
+        reachable = r.status_code < 500
+    except httpx.HTTPError:
+        reachable = False
+    return ok("Notifiarr client reachable." if reachable else "Notifiarr client is not responding.", reachable=reachable)
+
+
+@app.post("/api/notifiarr/test")
+def notifiarr_test():
+    """Sends a test message through this stack's existing Discord webhook
+    (same one every backup/health alert already uses) so Notifiarr's
+    integration path can be sanity-checked without waiting for a real
+    Radarr/Sonarr/Prowlarr event to fire it."""
+    if not DISCORD_WEBHOOK_URL:
+        fail("No DISCORD_WEBHOOK_URL configured.", status_code=500)
+    try:
+        r = httpx.post(DISCORD_WEBHOOK_URL, json={"content": "Test notification from Control Panel (Notifiarr integration check)."}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Test notification failed: {e}")
+    return ok("Test notification sent.")
+
+
+@app.get("/api/notifiarr/config")
+def notifiarr_config():
+    """Whether DN_API_KEY is set (masked) - Notifiarr silently no-ops
+    every relay without a valid key, with no obvious error surfaced
+    elsewhere in this stack."""
+    key = os.environ.get("NOTIFIARR_API_KEY")
+    masked = f"{key[:8]}...{key[-4:]}" if key and len(key) > 12 else None
+    return ok("NOTIFIARR_API_KEY is set." if key else "NOTIFIARR_API_KEY is NOT set.", set=bool(key), masked=masked)
+
+
+@app.get("/api/notifiarr/integration-check")
+def notifiarr_integration_check():
+    """Combines notifiarr_status() (client reachable) with the API-key
+    presence check - the two independent things that both have to be true
+    for a real relay to work, surfaced as one pass/fail."""
+    try:
+        r = httpx.get(f"{NOTIFIARR_URL}/", timeout=10)
+        reachable = r.status_code < 500
+    except httpx.HTTPError:
+        reachable = False
+    key_set = bool(os.environ.get("NOTIFIARR_API_KEY"))
+    if reachable and key_set:
+        return ok("Notifiarr client reachable and API key is set.", ready=True)
+    problems = []
+    if not reachable:
+        problems.append("client unreachable")
+    if not key_set:
+        problems.append("no API key set")
+    return ok(f"Notifiarr not fully ready: {', '.join(problems)}.", ready=False)
+
+
+NEW_APP_CONTAINERS = ["tautulli", "wrapperr", "maintainerr", "checkrr", "prefetcharr", "lingarr", "kometa", "notifiarr"]
+
+
+@app.get("/api/newapps/status")
+def newapps_status():
+    """One-shot health sweep across all 8 2026-07-30 additions - container
+    running state plus an HTTP reachability probe for the ones with a
+    port (prefetcharr and kometa have neither, so those are container-
+    status-only)."""
+    ports = {"tautulli": 8181, "wrapperr": 8282, "maintainerr": 6246, "checkrr": 8585, "lingarr": 8080, "notifiarr": 5454}
+    out = {}
+    for name in NEW_APP_CONTAINERS:
+        try:
+            c = docker_client.containers.get(name)
+            running = c.status == "running"
+        except docker.errors.NotFound:
+            out[name] = {"running": False, "reachable": None, "error": "container not found"}
+            continue
+        reachable = None
+        if name in ports and running:
+            try:
+                r = httpx.get(f"http://{name}:{ports[name]}/", timeout=5)
+                reachable = r.status_code < 500
+            except httpx.HTTPError:
+                reachable = False
+        out[name] = {"running": running, "reachable": reachable}
+    down = [n for n, s in out.items() if not s["running"] or s["reachable"] is False]
+    msg = "All 8 new apps healthy." if not down else f"Problem with: {', '.join(down)}"
+    return ok(msg, apps=out)
+
+
+@app.get("/api/newapps/backup-check")
+def newapps_backup_check():
+    """Verifies each of the 8 new apps' config/<app> directory actually
+    appears in the most recent LOCAL restic snapshot (scripts/backup-
+    config.sh backs up the whole ./config tree, only excluding config/*/
+    logs and config/*/log - see that script - so this confirms restic
+    didn't silently skip one, e.g. a permission error like Plex's own
+    known gotcha, rather than just trusting the glob)."""
+    if not os.path.isdir(HOST_BACKUP_LOCAL):
+        return ok("Local backup repo not found - can't verify coverage.", missing=None, repo_status="missing")
+    try:
+        r = _restic(HOST_BACKUP_LOCAL, ["ls", "latest", "/config"], timeout=60)
+    except Exception as e:
+        return ok(f"restic ls failed: {e}", missing=None, repo_status="error")
+    if r.returncode != 0:
+        return ok(f"restic ls failed: {r.stderr.strip()[:300]}", missing=None, repo_status="error")
+    listing = r.stdout
+    missing = [name for name in NEW_APP_CONTAINERS if f"/config/{name}" not in listing]
+    if not missing:
+        return ok("All 8 new apps' config directories are present in the latest local snapshot.", missing=[])
+    return ok(f"NOT in the latest snapshot: {', '.join(missing)}.", missing=missing)
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
