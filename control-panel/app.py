@@ -5121,7 +5121,7 @@ def checkrr_scan_status(lines: int = 40):
     except docker.errors.NotFound:
         fail("Container 'checkrr' not found.")
     raw_lines = c.logs(tail=min(lines, 1000)).decode(errors="replace").splitlines()
-    relevant = [l for l in raw_lines if l.strip()]
+    relevant = [line for line in raw_lines if line.strip()]
     return ok(f"Last {len(relevant)} log line(s) from checkrr.", lines=relevant)
 
 
@@ -5135,7 +5135,7 @@ def checkrr_recent_scans():
     except docker.errors.NotFound:
         fail("Container 'checkrr' not found.")
     raw_lines = c.logs(tail=2000).decode(errors="replace").splitlines()
-    markers = [l for l in raw_lines if re.search(r"(?i)(starting|finished|complete).{0,20}scan", l)]
+    markers = [line for line in raw_lines if re.search(r"(?i)(starting|finished|complete).{0,20}scan", line)]
     return ok(f"{len(markers)} scan-cycle marker(s) found in recent logs.", lines=markers[-20:])
 
 
@@ -5149,7 +5149,7 @@ def prefetcharr_logs(lines: int = 60):
         return ok("No log file found yet.", lines=[])
     with open(os.path.join(path, log_files[0])) as f:
         all_lines = f.readlines()
-    return ok(f"Last {min(lines, len(all_lines))} line(s) from {log_files[0]}.", lines=[l.rstrip() for l in all_lines[-lines:]])
+    return ok(f"Last {min(lines, len(all_lines))} line(s) from {log_files[0]}.", lines=[line.rstrip() for line in all_lines[-lines:]])
 
 
 @app.get("/api/prefetcharr/status")
@@ -5268,7 +5268,7 @@ def lingarr_recent_translations():
     except docker.errors.NotFound:
         fail("Container 'lingarr' not found.")
     raw_lines = c.logs(tail=1000).decode(errors="replace").splitlines()
-    events = [l for l in raw_lines if re.search(r"(?i)translat(ed|ion complete)", l)]
+    events = [line for line in raw_lines if re.search(r"(?i)translat(ed|ion complete)", line)]
     return ok(f"{len(events)} recent translation event(s) found in logs.", lines=events[-20:])
 
 
@@ -5324,8 +5324,8 @@ def kometa_last_run_result():
     except docker.errors.NotFound:
         fail("Container 'kometa' not found.")
     raw_lines = c.logs(tail=5000).decode(errors="replace").splitlines()
-    finished = [l for l in raw_lines if re.search(r"(?i)(finished|run complete)", l)]
-    errors_found = [l for l in raw_lines if re.search(r"(?i)(traceback|error)", l)]
+    finished = [line for line in raw_lines if re.search(r"(?i)(finished|run complete)", line)]
+    errors_found = [line for line in raw_lines if re.search(r"(?i)(traceback|error)", line)]
     if finished:
         return ok(f"Last completed run: {finished[-1].strip()}", errors=errors_found[-5:])
     if errors_found:
