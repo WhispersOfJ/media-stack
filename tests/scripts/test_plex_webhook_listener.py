@@ -209,6 +209,7 @@ def test_post_discord_once_json_only_when_no_image(plex_webhook_listener, monkey
         captured["body"] = req.data
         return _Resp()
 
+    monkeypatch.setattr(plex_webhook_listener, "DISCORD_WEBHOOK_URL", "http://discord.example/webhook")
     monkeypatch.setattr(plex_webhook_listener.urllib.request, "urlopen", _urlopen)
     embed = {"title": "x"}
     plex_webhook_listener.post_discord_once(embed, None)
