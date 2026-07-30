@@ -114,7 +114,6 @@ services:
     restart: unless-stopped
     logging: *common-logging
     container_name: recyclarr
-    profiles: [extras]
     networks: [stacknet]
     read_only: true
     tmpfs: [/tmp]
@@ -172,10 +171,31 @@ services:
       NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
       NZBDAV_CONFIG__MEDIA__LIBRARY_DIR: "/mnt/remote/nzbdav/completed-symlinks"
       NZBDAV_CONFIG__USENET__PROVIDERS: >-
-        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":25,"Nickname":"primary"}]}
+        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":35,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":35,"Nickname":"backup"}]}
       NZBDAV_CONFIG__ARR__INSTANCES: >-
         {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"}],"QueueRules":[]}
-      NZBDAV_CONFIG__REPAIR__ENABLE: "true"
+      # DISABLED 2026-07-29 after a live incident: nzbdav's repair path
+      # (backend/Services/HealthCheckService.cs::Repair) verifies segments
+      # directly against the usenet provider (not through the FUSE mount),
+      # but when it can't find a matching symlink/strm it falls back to
+      # OrganizedLinksUtil.GetLink, which scans the library dir THROUGH the
+      # FUSE mount via `find`. During the nzbdav_rclone remount incident that
+      # day, that scan either errored outright or silently returned an
+      # incomplete listing - and every branch of Repair() short of a
+      # successful Arr re-search ends in an unconditional delete, with no
+      # retry/backoff/consecutive-failure guard distinguishing "genuinely
+      # orphaned" from "scan was unreliable right now". Result: 667 library
+      # bookkeeping entries auto-deleted, 17 of them before Radarr/Sonarr had
+      # actually imported the file (real loss, not just nzbdav's disposable
+      # webdav-side copy). Disabling this stops the entire health-check loop
+      # (IsRepairJobEnabled() gates PerformHealthCheck in full, not just the
+      # delete branch), which also removes its one useful behavior
+      # (auto-triggering an Arr re-search on real decay) - accepted
+      # trade-off, since Radarr/Sonarr's own missing-file detection is the
+      # real safety net for anything actually missing from the library.
+      # Revisit only alongside an upstream fix that hardens GetLink() against
+      # a transiently-unreadable mount.
+      NZBDAV_CONFIG__REPAIR__ENABLE: "false"
       # Rclone RC notifications - auto vfs/forget on file add/remove instead of
       # relying purely on --dir-cache-time. Confirmed the RC test-connection
       # endpoint returns "Connection refused" without this, 2026-07-28.
@@ -183,6 +203,33 @@ services:
       NZBDAV_CONFIG__RCLONE__HOST: "http://nzbdav_rclone:5572"
       NZBDAV_CONFIG__RCLONE__USER: "rclone"
       NZBDAV_CONFIG__RCLONE__PASS: ${NZBDAV_RCLONE_RC_PASS}
+      # Settings audit 2026-07-29 (docs read in full from nzbdav/nzbdav's own
+      # repo, cross-checked against live config via /api/get-config - see
+      # STACK.md): these five were confirmed unset/default and enabled
+      # deliberately, not guessed. NzbDAV's own daily backup closes the same
+      # class of gap that bit this stack's .env before (STACK.md 2026-07-26);
+      # worker-count 3 lets Radarr and Sonarr imports drain concurrently
+      # instead of serializing behind one worker.
+      NZBDAV_CONFIG__BACKUP__SCHEDULE_ENABLED: "true"
+      NZBDAV_CONFIG__BACKUP__SCHEDULE_TIME: "120" # 02:00 local (TZ)
+      NZBDAV_CONFIG__BACKUP__RETENTION_COUNT: "7"
+      # ORPHAN CLEANUP LEFT DISABLED, 2026-07-29 (was about to be turned on
+      # by this same audit): RemoveUnlinkedFilesTask.cs uses the identical
+      # OrganizedLinksUtil.GetLibraryDavItemLinks FUSE-scan this stack just
+      # got burned by in the REPAIR__ENABLE incident above - its only
+      # circuit breaker is aborting if fewer than 5 total linked files are
+      # found, which does nothing against a *partial* stale-mount scan
+      # (e.g. 400 of 1000 real links seen). A transient mount blip during
+      # this task's 03:00 run would delete every file it didn't see as
+      # "unlinked", same failure class, no Arr-search-and-recover fallback
+      # at all (unlike Repair()). Enable only once the mount cascade has a
+      # longer track record, and ideally alongside an upstream fix.
+      NZBDAV_CONFIG__MAINTENANCE__REMOVE_ORPHANED_SCHEDULE_ENABLED: "false"
+      NZBDAV_CONFIG__MAINTENANCE__REMOVE_ORPHANED_SCHEDULE_TIME: "180" # 03:00 local (TZ)
+      # HEALTHCHECK_DEPTH/AGING left out entirely: moot while REPAIR__ENABLE
+      # is false (they configure a loop that no longer runs), and no reason
+      # to have them ready-armed for whenever repair is re-enabled later.
+      NZBDAV_CONFIG__QUEUE__WORKER_COUNT: "3"
     volumes:
       - ./config/nzbdav:/config
       - /mnt:/mnt
@@ -404,7 +451,6 @@ services:
     # Plex event). A stable hostname keeps any future re-registration
     # resolvable indefinitely.
     hostname: bazarr
-    profiles: [extras]
     networks: [stacknet]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:6767/ || exit 1"]
@@ -436,7 +482,6 @@ services:
     restart: unless-stopped
     logging: *common-logging
     container_name: control-panel
-    profiles: [extras]
     networks: [stacknet]
     # Plex Health feature (Tier 3 "Force Unstick") - pid: host lets
     # /api/plex/scan-health resolve Plex's real host PID for D-state
@@ -492,6 +537,9 @@ services:
       # /api/ratings/imdb, /api/ratings/mdblist - standalone secrets.
       OMDB_KEY: ${OMDB_KEY}
       MDBLIST_KEY: ${MDBLIST_KEY}
+      # /api/notifiarr/config, /api/notifiarr/integration-check - only checks
+      # whether it's set (masked), doesn't call notifiarr.com itself.
+      NOTIFIARR_API_KEY: ${NOTIFIARR_API_KEY}
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # issues restarts, not just reads status. Runs as root in-container (no
@@ -553,7 +601,6 @@ services:
     # Bump this digest deliberately when ready to take a newer release.
     image: golift/unpackerr@sha256:4ec141eeb0cb2f971d7c92f21cc40b0d2d50d7920eb7a0557443cca52270c0b0
     container_name: unpackerr
-    profiles: [extras]
     networks: [stacknet]
     # No web UI/API - checks that the main unpackerr process is still alive
     # via /proc rather than an HTTP probe.
@@ -590,7 +637,6 @@ services:
     logging: *common-logging
     image: nickfedor/watchtower:1.19.0
     container_name: watchtower
-    profiles: [extras]
     networks: [stacknet]
     # No shell in this image (distroless-style) - uses Watchtower's own
     # built-in --health-check flag rather than a wget/curl probe.
@@ -630,7 +676,6 @@ services:
     <<: *common
     image: ghcr.io/cleanuparr/cleanuparr:2.9.16
     container_name: cleanuparr
-    profiles: [extras]
     networks: [stacknet]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11011/ || exit 1"]
@@ -652,3 +697,234 @@ services:
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
+
+  # ---------------------------------------------------------------------
+  # awesome-arr additions (2026-07-30). Plex-connected companion apps -
+  # see STACK.md for the fit assessment that picked these 8 out of
+  # awesome-arr's full list. All configured post-boot via their own web
+  # UI unless noted otherwise.
+  # ---------------------------------------------------------------------
+
+  tautulli:
+    <<: *common
+    image: ghcr.io/tautulli/tautulli:latest
+    container_name: tautulli
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/tautulli:/config
+    ports:
+      - "8182:8181"
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
+
+  # Tautulli stats dashboard/wrapper. Needs Tautulli's URL + API key,
+  # entered via its own admin UI once Tautulli is up and has an API key
+  # generated (Tautulli Settings > Web Interface > API Key).
+  wrapperr:
+    restart: unless-stopped
+    logging: *common-logging
+    image: aunefyren/wrapperr:latest
+    container_name: wrapperr
+    networks: [stacknet]
+    user: "${PUID}:${PGID}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8282/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/wrapperr:/app/config
+    ports:
+      - "8283:8282"
+    mem_limit: 256m
+    mem_reservation: 32m
+    cpus: 1
+
+  # Plex/Radarr/Sonarr library maintenance (stale-content cleanup rules).
+  # Installed deliberately with ZERO rules configured - this stack has a
+  # documented history of 3+ mass-deletion incidents (stale FUSE mounts,
+  # autoEmptyTrash, bad bind-mounts, see CLAUDE.md/STACK.md). Do not
+  # create an auto-delete rule without re-reading that history first.
+  maintainerr:
+    restart: unless-stopped
+    logging: *common-logging
+    image: ghcr.io/maintainerr/maintainerr:latest
+    container_name: maintainerr
+    networks: [stacknet]
+    user: "${PUID}:${PGID}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6246/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ./config/maintainerr:/opt/data
+    ports:
+      - "6246:6246"
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
+
+  # Corrupt-media scanner, triggers a Radarr/Sonarr re-search on bad files.
+  # Config is a YAML file (config/checkrr/checkrr.yaml), not env vars - see
+  # that file for Radarr/Sonarr URLs/API keys. Reads the finished library
+  # directly (same mount scope as Radarr/Sonarr/Plex/Cleanuparr) to scan
+  # files for corruption.
+  checkrr:
+    restart: unless-stopped
+    logging: *common-logging
+    image: aetaric/checkrr:latest
+    container_name: checkrr
+    networks: [stacknet]
+    healthcheck:
+      # No curl in this image - only wget (confirmed live 2026-07-30).
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8585/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/checkrr:/config
+      - ./config/checkrr/checkrr.yaml:/etc/checkrr.yaml
+      - ./media/movies:/data/movies
+      - ./media/shows:/data/shows
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
+    ports:
+      - "8585:8585"
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
+
+  # Auto-fetches the next season in Sonarr as a Plex viewer nears the end
+  # of the current one. Headless poller, no web UI/port.
+  prefetcharr:
+    restart: unless-stopped
+    logging: *common-logging
+    image: phueber/prefetcharr:latest
+    container_name: prefetcharr
+    networks: [stacknet]
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: ${TZ}
+      # Current image dropped the --media-server-type/etc CLI-flag env vars
+      # (that path now only exists as a "compat mode" triggered by their
+      # ABSENCE) in favor of a single TOML blob via PREFETCHARR_CONFIG.
+      PREFETCHARR_CONFIG: |
+        interval = 3600
+        log_dir = "/log"
+        prefetch_num = 2
+        request_seasons = true
+        connection_retries = 6
+
+        [media_server]
+        type = "Plex"
+        url = "${PLEX_URL}"
+        api_key = "${PLEX_TOKEN}"
+
+        [sonarr]
+        url = "http://sonarr:8989"
+        api_key = "${SONARR_API_KEY}"
+    volumes:
+      - ./config/prefetcharr:/log
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: 1
+
+  # Subtitle translation, complements Bazarr (which only fetches existing
+  # subs) rather than replacing it. SQLite backend - no separate DB
+  # container needed. Radarr/Sonarr connections configured via its own UI
+  # post-boot, same pattern as Seerr/Maintainerr/Wrapperr.
+  lingarr:
+    restart: unless-stopped
+    logging: *common-logging
+    image: ghcr.io/lingarr-translate/lingarr:latest
+    container_name: lingarr
+    networks: [stacknet]
+    user: "${PUID}:${PGID}"
+    healthcheck:
+      # No curl/wget in this image (Ubuntu .NET runtime, minimal utils) -
+      # bare TCP-connect check via bash's /dev/tcp instead (confirmed
+      # live 2026-07-30). Also: actual internal listen port is 8080, not
+      # 9876 as originally assumed - confirmed via its own startup log
+      # ("Now listening on: http://[::]:8080").
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      TZ: ${TZ}
+      DB_CONNECTION: sqlite
+    volumes:
+      - ./config/lingarr:/app/config
+      - ./media/movies:/movies
+      - ./media/shows:/tv
+    ports:
+      - "9876:8080"
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 2
+
+  # Plex metadata/collections/overlays. Runs its own built-in scheduler
+  # (KOMETA_TIMES) rather than the old sleep-infinity + docker-exec
+  # placeholder pattern from the prior install. Config at
+  # config/kometa/config.yml is a from-scratch, Plex-only minimal build
+  # (TMDb/MDBList only) - no Trakt/GitHub credentials, no old config
+  # survived the 2026-07-22 removal.
+  kometa:
+    restart: unless-stopped
+    logging: *common-logging
+    image: kometateam/kometa:latest
+    container_name: kometa
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+      KOMETA_CONFIG: /config/config.yml
+      KOMETA_TIMES: "05:30"
+    volumes:
+      - ./config/kometa:/config
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 4
+
+  # Centralized Discord notification relay for Radarr/Sonarr/Prowlarr,
+  # replacing this stack's several ad hoc per-script webhook calls.
+  # DN_API_KEY is a notifiarr.com account key (NOTIFIARR_API_KEY in .env).
+  notifiarr:
+    restart: unless-stopped
+    logging: *common-logging
+    image: golift/notifiarr:latest
+    container_name: notifiarr
+    networks: [stacknet]
+    healthcheck:
+      # No curl in this image - only wget (confirmed live 2026-07-30).
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5454/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      TZ: ${TZ}
+      DN_API_KEY: ${NOTIFIARR_API_KEY}
+    volumes:
+      - ./config/notifiarr:/config
+      - /var/run/utmp:/var/run/utmp:ro
+      - /etc/machine-id:/etc/machine-id:ro
+    ports:
+      - "5454:5454"
+    mem_limit: 256m
+    mem_reservation: 32m
+    cpus: 1

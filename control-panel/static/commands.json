@@ -1733,5 +1733,827 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-activity",
+    "Description": "Current Plex streams via Tautulli",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/activity",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-terminate-stream",
+    "Description": "Kill one active Plex stream via Tautulli",
+    "Method": "POST",
+    "PathTemplate": "/api/tautulli/terminate-stream",
+    "Query": [
+      {
+        "Key": "session_key",
+        "ArgName": "session_key",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "session_key",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": true,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-history",
+    "Description": "Recent Plex watch history via Tautulli",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/history",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "20",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-stats",
+    "Description": "Tautulli home stat cards (top movies/shows/users)",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/stats",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-users",
+    "Description": "Every known Plex user + lifetime stats",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/users",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-user-history",
+    "Description": "Watch history for one Tautulli user",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/user-history",
+    "Query": [
+      {
+        "Key": "user_id",
+        "ArgName": "user_id",
+        "Literal": ""
+      },
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "user_id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "20",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-libraries",
+    "Description": "Per-library item counts (Tautulli's cached view)",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/libraries",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-recently-added",
+    "Description": "Tautulli's own recently-added feed",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/recently-added",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "15",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-server-info",
+    "Description": "Which Plex server Tautulli is tracking",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/server-info",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-newsletters",
+    "Description": "Configured Tautulli newsletters, if any",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/newsletters",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-notifiers",
+    "Description": "Notification agents configured inside Tautulli",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/notifiers",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-plays-by-date",
+    "Description": "Daily play-count trend via Tautulli",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/plays-by-date",
+    "Query": [
+      {
+        "Key": "days",
+        "ArgName": "days",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "days",
+        "Choices": null,
+        "Optional": true,
+        "Default": "30",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-tautulli-sync-check",
+    "Description": "Confirm Tautulli tracks this stack's real Plex",
+    "Method": "GET",
+    "PathTemplate": "/api/tautulli/sync-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-wrapperr-status",
+    "Description": "Wrapperr reachability + Tautulli connection saved?",
+    "Method": "GET",
+    "PathTemplate": "/api/wrapperr/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-wrapperr-reports",
+    "Description": "Wrapperr saved report definitions",
+    "Method": "GET",
+    "PathTemplate": "/api/wrapperr/reports",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-wrapperr-links",
+    "Description": "Wrapperr generated public share links",
+    "Method": "GET",
+    "PathTemplate": "/api/wrapperr/links",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-wrapperr-tautulli-link-check",
+    "Description": "Confirm Wrapperr's saved Tautulli key matches live",
+    "Method": "GET",
+    "PathTemplate": "/api/wrapperr/tautulli-link-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-maintainerr-rules",
+    "Description": "Configured Maintainerr rules (expected empty)",
+    "Method": "GET",
+    "PathTemplate": "/api/maintainerr/rules",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-maintainerr-rule-detail",
+    "Description": "Full definition of one Maintainerr rule",
+    "Method": "GET",
+    "PathTemplate": "/api/maintainerr/rule-detail",
+    "Query": [
+      {
+        "Key": "rule_id",
+        "ArgName": "rule_id",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "rule_id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-maintainerr-collections",
+    "Description": "Plex collections Maintainerr is tracking",
+    "Method": "GET",
+    "PathTemplate": "/api/maintainerr/collections",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-maintainerr-collection-media",
+    "Description": "Media items in one tracked Maintainerr collection",
+    "Method": "GET",
+    "PathTemplate": "/api/maintainerr/collection-media",
+    "Query": [
+      {
+        "Key": "collection_id",
+        "ArgName": "collection_id",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "collection_id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-maintainerr-logs",
+    "Description": "Tail Maintainerr's container logs",
+    "Method": "GET",
+    "PathTemplate": "/api/maintainerr/logs",
+    "Query": [
+      {
+        "Key": "lines",
+        "ArgName": "lines",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "lines",
+        "Choices": null,
+        "Optional": true,
+        "Default": "100",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "maintainerr"
+  },
+  {
+    "Name": "stack-maintainerr-safety-check",
+    "Description": "ALERT if any Maintainerr rule is ever active",
+    "Method": "GET",
+    "PathTemplate": "/api/maintainerr/safety-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-maintainerr-plex-link-check",
+    "Description": "Confirm Maintainerr's Plex host matches real Plex",
+    "Method": "GET",
+    "PathTemplate": "/api/maintainerr/plex-link-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-checkrr-badfiles",
+    "Description": "Corrupt files Checkrr has flagged (process:false, log only)",
+    "Method": "GET",
+    "PathTemplate": "/api/checkrr/badfiles",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "50",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-checkrr-badfiles-count",
+    "Description": "Just the total bad-file count from Checkrr",
+    "Method": "GET",
+    "PathTemplate": "/api/checkrr/badfiles",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-checkrr-scan-status",
+    "Description": "Tail recent Checkrr scan activity",
+    "Method": "GET",
+    "PathTemplate": "/api/checkrr/scan-status",
+    "Query": [
+      {
+        "Key": "lines",
+        "ArgName": "lines",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "lines",
+        "Choices": null,
+        "Optional": true,
+        "Default": "40",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "checkrr"
+  },
+  {
+    "Name": "stack-checkrr-config",
+    "Description": "Effective Checkrr checkpaths/cron/process flags",
+    "Method": "GET",
+    "PathTemplate": "/api/checkrr/config",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-checkrr-reacquire-guard",
+    "Description": "ALERT if Checkrr's process flag is ever enabled",
+    "Method": "GET",
+    "PathTemplate": "/api/checkrr/reacquire-guard",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-checkrr-recent-scans",
+    "Description": "Checkrr scan-cycle start/finish markers only",
+    "Method": "GET",
+    "PathTemplate": "/api/checkrr/recent-scans",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-prefetcharr-logs",
+    "Description": "Tail Prefetcharr's log file",
+    "Method": "GET",
+    "PathTemplate": "/api/prefetcharr/logs",
+    "Query": [
+      {
+        "Key": "lines",
+        "ArgName": "lines",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "lines",
+        "Choices": null,
+        "Optional": true,
+        "Default": "60",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-prefetcharr-status",
+    "Description": "Prefetcharr container state + last prefetch event",
+    "Method": "GET",
+    "PathTemplate": "/api/prefetcharr/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-prefetcharr-config",
+    "Description": "Effective PREFETCHARR_CONFIG as deployed",
+    "Method": "GET",
+    "PathTemplate": "/api/prefetcharr/config",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-prefetcharr-plex-link-check",
+    "Description": "Confirm Prefetcharr's baked-in Plex URL is current",
+    "Method": "GET",
+    "PathTemplate": "/api/prefetcharr/plex-link-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-lingarr-stats",
+    "Description": "Lifetime Lingarr translation totals",
+    "Method": "GET",
+    "PathTemplate": "/api/lingarr/stats",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-lingarr-movies",
+    "Description": "Movies Lingarr tracks via its Radarr connection",
+    "Method": "GET",
+    "PathTemplate": "/api/lingarr/movies",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "20",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-lingarr-shows",
+    "Description": "Shows Lingarr tracks via its Sonarr connection",
+    "Method": "GET",
+    "PathTemplate": "/api/lingarr/shows",
+    "Query": [
+      {
+        "Key": "limit",
+        "ArgName": "limit",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "20",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-lingarr-logs",
+    "Description": "Tail Lingarr's container logs",
+    "Method": "GET",
+    "PathTemplate": "/api/lingarr/logs",
+    "Query": [
+      {
+        "Key": "lines",
+        "ArgName": "lines",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "lines",
+        "Choices": null,
+        "Optional": true,
+        "Default": "60",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "lingarr"
+  },
+  {
+    "Name": "stack-lingarr-recent-translations",
+    "Description": "Recent individual Lingarr translation events",
+    "Method": "GET",
+    "PathTemplate": "/api/lingarr/recent-translations",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-kometa-status",
+    "Description": "Time until Kometa's next scheduled run",
+    "Method": "GET",
+    "PathTemplate": "/api/kometa/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-kometa-run-now",
+    "Description": "Trigger an immediate Kometa run (detached)",
+    "Method": "POST",
+    "PathTemplate": "/api/kometa/run-now",
+    "Query": null,
+    "Args": null,
+    "Confirm": true,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-kometa-logs",
+    "Description": "Tail Kometa's container logs",
+    "Method": "GET",
+    "PathTemplate": "/api/kometa/logs",
+    "Query": [
+      {
+        "Key": "lines",
+        "ArgName": "lines",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "lines",
+        "Choices": null,
+        "Optional": true,
+        "Default": "100",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": "kometa"
+  },
+  {
+    "Name": "stack-kometa-last-run-result",
+    "Description": "Outcome of Kometa's last completed run",
+    "Method": "GET",
+    "PathTemplate": "/api/kometa/last-run-result",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-kometa-config",
+    "Description": "Which libraries Kometa's config.yml is set to touch",
+    "Method": "GET",
+    "PathTemplate": "/api/kometa/config",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-notifiarr-status",
+    "Description": "Notifiarr client reachability",
+    "Method": "GET",
+    "PathTemplate": "/api/notifiarr/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-notifiarr-test",
+    "Description": "Send a real test Discord notification via Notifiarr's path",
+    "Method": "POST",
+    "PathTemplate": "/api/notifiarr/test",
+    "Query": null,
+    "Args": null,
+    "Confirm": true,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-notifiarr-config",
+    "Description": "Whether NOTIFIARR_API_KEY is set (masked)",
+    "Method": "GET",
+    "PathTemplate": "/api/notifiarr/config",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-notifiarr-integration-check",
+    "Description": "Combined Notifiarr reachable+key-set pass/fail",
+    "Method": "GET",
+    "PathTemplate": "/api/notifiarr/integration-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-newapps-status",
+    "Description": "Health sweep of all 8 2026-07-30 new apps at once",
+    "Method": "GET",
+    "PathTemplate": "/api/newapps/status",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-newapps-backup-check",
+    "Description": "Confirm all 8 new apps are in the latest backup snapshot",
+    "Method": "GET",
+    "PathTemplate": "/api/newapps/backup-check",
+    "Query": null,
+    "Args": null,
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
   }
 ]
