@@ -18,16 +18,31 @@ from pathlib import Path
 # Known FUSE-mount-owning services -> containers that bind-mount their output and
 # must be restarted afterward or they'll keep serving a stale mount handle.
 # Update this when the compose topology changes; it cannot be inferred from
-# docker-compose.yml alone. As of the 2026-07-28 BearMount->nzbdav/nzbdav
-# cutover (see STACK.md's History), the FUSE mount owner is nzbdav_rclone (a
-# stock rclone sidecar), not the nzbdav backend itself - nzbdav is a real
-# upstream prereq for it now (the WebDAV source it mounts) but restarting
-# nzbdav alone doesn't invalidate the kernel-level FUSE mount the way
-# recreating nzbdav_rclone does, so it isn't a cascade key here. Matches
-# control-panel/app.py's own MOUNT_PREREQS/MOUNT_PROVIDERS/MOUNT_DEPENDENTS
-# sets exactly.
+# docker-compose.yml alone.
+#
+# CORRECTION, 2026-07-29: the comment that used to live here claimed nzbdav
+# itself wasn't a cascade dependent because it's only an upstream prereq for
+# nzbdav_rclone (the WebDAV source it mounts). That was wrong - nzbdav's own
+# compose volumes include a direct `/mnt:/mnt` bind, so it holds a FUSE handle
+# into the same mount just like radarr/sonarr/plex/unpackerr/cleanuparr do.
+# Confirmed live: after nzbdav_rclone auto-remounted from an rclone vfs-cache
+# error, nzbdav's own bind went "Socket not connected" and its background
+# health-check/repair sweep mass-deleted 667 library bookkeeping entries
+# because it couldn't tell "transient stale mount" from "file genuinely gone".
+#
+# nzbdav also complicates the restart order: docker-compose.yml has
+# nzbdav_rclone depends_on nzbdav with `restart: true`, so `docker compose
+# restart nzbdav` automatically ALSO restarts nzbdav_rclone as a side effect -
+# which re-stales nzbdav's own bind again, and would re-stale any dependents
+# that had already been restarted before nzbdav in the sequence. Restarting
+# nzbdav via a plain `docker restart` (bypassing `docker compose`, which is
+# what evaluates depends_on/restart:true) avoids triggering that side-cascade,
+# so nzbdav is restarted last, after nzbdav_rclone and every other dependent
+# have already settled on their final mount instance. Verified live 2026-07-29.
+FUSE_MOUNT_DEPENDENTS = ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"]
 CASCADE_MAP = {
-    "nzbdav_rclone": ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"],
+    "nzbdav_rclone": FUSE_MOUNT_DEPENDENTS,
+    "nzbdav": FUSE_MOUNT_DEPENDENTS,
 }
 
 
@@ -47,11 +62,21 @@ def cmd_restart(compose_dir: Path, service: str, no_cascade: bool) -> None:
     targets = [service]
     dependents = CASCADE_MAP.get(service, [])
     if dependents and not no_cascade:
-        print(f"[cascade] {service} owns a FUSE mount consumed by: {', '.join(dependents)}")
-        print("[cascade] restarting owner first, then dependents in order")
-        compose(compose_dir, "restart", service)
+        print(f"[cascade] {service} shares a FUSE mount with: {', '.join(dependents)}")
+        print("[cascade] restarting mount owner, then dependents, then re-binding nzbdav last")
+        # Anchor on nzbdav_rclone regardless of which cascade key was passed
+        # (nzbdav or nzbdav_rclone) - it's the actual FUSE mount owner, and
+        # restarting it is what produces a fresh mount instance for everyone
+        # else to bind to.
+        compose(compose_dir, "restart", "nzbdav_rclone")
         for dep in dependents:
             compose(compose_dir, "restart", dep)
+        # nzbdav itself bind-mounts /mnt too, so it needs re-binding after the
+        # above like any other dependent - but `docker compose restart nzbdav`
+        # would trigger nzbdav_rclone's depends_on(restart:true) and re-stale
+        # everything just restarted above. A plain `docker restart` skips
+        # compose's dependency evaluation entirely, so it can safely run last.
+        subprocess.run(["docker", "restart", "nzbdav"], check=True)
         return
     compose(compose_dir, "restart", *targets)
 
