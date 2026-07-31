@@ -156,7 +156,6 @@ CONTAINER_LABELS = {
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
-    "recyclarr": ("Recyclarr", "TRaSH Guides custom-format/quality-profile sync, Radarr/Sonarr only"),
     "tautulli": ("Tautulli", "Plex watch-stats/history dashboard"),
     "wrapperr": ("Wrapperr", "Tautulli stats wrapper/report dashboard"),
     "maintainerr": ("Maintainerr", "Plex/Radarr/Sonarr library maintenance - installed with zero rules configured"),
@@ -164,7 +163,6 @@ CONTAINER_LABELS = {
     "prefetcharr": ("Prefetcharr", "auto-fetches next Sonarr season from Plex watch progress"),
     "lingarr": ("Lingarr", "subtitle translation, complements Bazarr"),
     "kometa": ("Kometa", "Plex metadata/collections/overlays, scheduled daily 05:30"),
-    "notifiarr": ("Notifiarr", "centralized Discord notification relay"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 
@@ -3943,21 +3941,6 @@ def cleanuparr_instances():
               connected=sorted(connected), gaps=gaps)
 
 
-@app.get("/api/recyclarr/status")
-def recyclarr_status():
-    """Recyclarr is cron-driven with no persistent API of its own (unlike
-    every other app this file talks to), so this is the only way to see
-    its last run: its own container's last log lines, straight from
-    Docker, not a mounted log file."""
-    try:
-        c = docker_client.containers.get("recyclarr")
-    except docker.errors.NotFound:
-        fail("Container 'recyclarr' not found.")
-    lines = c.logs(tail=30).decode("utf-8", errors="replace").splitlines()
-    relevant = [line for line in lines if line.strip()][-15:]
-    return ok(f"Last {len(relevant)} log line(s) from recyclarr.", lines=relevant)
-
-
 ARR_LOG_CONTAINERS = {"radarr", "sonarr", "prowlarr"}
 
 
@@ -4714,14 +4697,13 @@ def plex_recently_added(limit: int = 15):
 
 # ---------------------------------------------------------------------
 # 2026-07-30 awesome-arr additions (tautulli, wrapperr, maintainerr,
-# checkrr, prefetcharr, lingarr, kometa, notifiarr) - see STACK.md for the
-# fit assessment. None of these eight had any API route before this batch.
+# checkrr, prefetcharr, lingarr, kometa) - see STACK.md for the
+# fit assessment. None of these had any API route before this batch.
 # ---------------------------------------------------------------------
 
 TAUTULLI_URL = "http://tautulli:8181"
 MAINTAINERR_URL = "http://maintainerr:6246"
 LINGARR_URL = "http://lingarr:8080"
-NOTIFIARR_URL = "http://notifiarr:5454"
 
 
 def _tautulli_key() -> str | None:
@@ -4854,7 +4836,7 @@ def tautulli_newsletters():
 @app.get("/api/tautulli/notifiers")
 def tautulli_notifiers():
     """Configured notification agents (Discord, etc.) inside Tautulli
-    itself - separate from this stack's own DISCORD_WEBHOOK_URL/Notifiarr."""
+    itself - separate from this stack's own DISCORD_WEBHOOK_URL."""
     data = _tautulli_call("get_notifiers") or []
     items = [{"id": n.get("id"), "agent": n.get("agent_name"), "active": bool(n.get("active"))} for n in data]
     return ok(f"{len(items)} notifier(s) configured." if items else "No notifiers configured.", items=items)
@@ -5349,76 +5331,16 @@ def kometa_config():
               libraries=libraries)
 
 
-@app.get("/api/notifiarr/status")
-def notifiarr_status():
-    """Reachability of Notifiarr's local client API - it's a relay client
-    (talks out to notifiarr.com, not a dashboard with its own data), so
-    this is a health check, not a stats pull."""
-    try:
-        r = httpx.get(f"{NOTIFIARR_URL}/", timeout=10)
-        reachable = r.status_code < 500
-    except httpx.HTTPError:
-        reachable = False
-    return ok("Notifiarr client reachable." if reachable else "Notifiarr client is not responding.", reachable=reachable)
-
-
-@app.post("/api/notifiarr/test")
-def notifiarr_test():
-    """Sends a test message through this stack's existing Discord webhook
-    (same one every backup/health alert already uses) so Notifiarr's
-    integration path can be sanity-checked without waiting for a real
-    Radarr/Sonarr/Prowlarr event to fire it."""
-    if not DISCORD_WEBHOOK_URL:
-        fail("No DISCORD_WEBHOOK_URL configured.", status_code=500)
-    try:
-        r = httpx.post(DISCORD_WEBHOOK_URL, json={"content": "Test notification from Control Panel (Notifiarr integration check)."}, timeout=20)
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"Test notification failed: {e}")
-    return ok("Test notification sent.")
-
-
-@app.get("/api/notifiarr/config")
-def notifiarr_config():
-    """Whether DN_API_KEY is set (masked) - Notifiarr silently no-ops
-    every relay without a valid key, with no obvious error surfaced
-    elsewhere in this stack."""
-    key = os.environ.get("NOTIFIARR_API_KEY")
-    masked = f"{key[:8]}...{key[-4:]}" if key and len(key) > 12 else None
-    return ok("NOTIFIARR_API_KEY is set." if key else "NOTIFIARR_API_KEY is NOT set.", set=bool(key), masked=masked)
-
-
-@app.get("/api/notifiarr/integration-check")
-def notifiarr_integration_check():
-    """Combines notifiarr_status() (client reachable) with the API-key
-    presence check - the two independent things that both have to be true
-    for a real relay to work, surfaced as one pass/fail."""
-    try:
-        r = httpx.get(f"{NOTIFIARR_URL}/", timeout=10)
-        reachable = r.status_code < 500
-    except httpx.HTTPError:
-        reachable = False
-    key_set = bool(os.environ.get("NOTIFIARR_API_KEY"))
-    if reachable and key_set:
-        return ok("Notifiarr client reachable and API key is set.", ready=True)
-    problems = []
-    if not reachable:
-        problems.append("client unreachable")
-    if not key_set:
-        problems.append("no API key set")
-    return ok(f"Notifiarr not fully ready: {', '.join(problems)}.", ready=False)
-
-
-NEW_APP_CONTAINERS = ["tautulli", "wrapperr", "maintainerr", "checkrr", "prefetcharr", "lingarr", "kometa", "notifiarr"]
+NEW_APP_CONTAINERS = ["tautulli", "wrapperr", "maintainerr", "checkrr", "prefetcharr", "lingarr", "kometa"]
 
 
 @app.get("/api/newapps/status")
 def newapps_status():
-    """One-shot health sweep across all 8 2026-07-30 additions - container
+    """One-shot health sweep across all 2026-07-30 additions - container
     running state plus an HTTP reachability probe for the ones with a
     port (prefetcharr and kometa have neither, so those are container-
     status-only)."""
-    ports = {"tautulli": 8181, "wrapperr": 8282, "maintainerr": 6246, "checkrr": 8585, "lingarr": 8080, "notifiarr": 5454}
+    ports = {"tautulli": 8181, "wrapperr": 8282, "maintainerr": 6246, "checkrr": 8585, "lingarr": 8080}
     out = {}
     for name in NEW_APP_CONTAINERS:
         try:

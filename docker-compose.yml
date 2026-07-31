@@ -103,34 +103,6 @@ services:
     mem_reservation: 256m
     cpus: 2
 
-  # Custom Format / Quality Profile sync from TRaSH Guides, for Sonarr and
-  # Radarr. Runs as a persistent daemon on its own cron schedule rather
-  # than a one-shot job, per Recyclarr's own reference docker-compose.yml.
-  # Config lives in config/recyclarr/recyclarr.yml. Reinstalled 2026-07-23
-  # after being removed entirely in v11.2.0 (when both apps were
-  # consolidated to a single "ANY" profile) - by explicit request.
-  recyclarr:
-    image: ghcr.io/recyclarr/recyclarr:latest
-    restart: unless-stopped
-    logging: *common-logging
-    container_name: recyclarr
-    networks: [stacknet]
-    read_only: true
-    tmpfs: [/tmp]
-    user: "${PUID}:${PGID}"
-    environment:
-      TZ: ${TZ}
-      CRON_SCHEDULE: "0 6 * * *"  # once daily, 6am
-      RADARR_API_KEY: ${RADARR_API_KEY}
-      SONARR_API_KEY: ${SONARR_API_KEY}
-    volumes:
-      - ./config/recyclarr:/config
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1
-
-
-
   # ---------------------------------------------------------------------
   # Usenet - streaming, no local disk. Replaced BearMount entirely,
   # 2026-07-28 (full cutover to nzbdav/nzbdav, the "super-fork" - see
@@ -171,7 +143,7 @@ services:
       NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
       NZBDAV_CONFIG__MEDIA__LIBRARY_DIR: "/mnt/remote/nzbdav/completed-symlinks"
       NZBDAV_CONFIG__USENET__PROVIDERS: >-
-        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":35,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":35,"Nickname":"backup"}]}
+        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":50,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":50,"Nickname":"backup"}]}
       NZBDAV_CONFIG__ARR__INSTANCES: >-
         {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"}],"QueueRules":[]}
       # DISABLED 2026-07-29 after a live incident: nzbdav's repair path
@@ -460,6 +432,13 @@ services:
       start_period: 30s
     volumes:
       - ./config/bazarr:/config
+      # nzbdav_rclone's mount point - see radarr's matching mount comment
+      # further up this file. Without this, media symlinks under
+      # ./media/movies|shows that point into the mount resolve as broken
+      # inside this container (os.path.exists() False) even though the
+      # target is fine - Bazarr silently treats every such title as
+      # unscannable instead of missing, so it never searches for subs.
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
     ports:
@@ -537,9 +516,6 @@ services:
       # /api/ratings/imdb, /api/ratings/mdblist - standalone secrets.
       OMDB_KEY: ${OMDB_KEY}
       MDBLIST_KEY: ${MDBLIST_KEY}
-      # /api/notifiarr/config, /api/notifiarr/integration-check - only checks
-      # whether it's set (masked), doesn't call notifiarr.com itself.
-      NOTIFIARR_API_KEY: ${NOTIFIARR_API_KEY}
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # issues restarts, not just reads status. Runs as root in-container (no
@@ -899,32 +875,3 @@ services:
     mem_limit: 2g
     mem_reservation: 256m
     cpus: 4
-
-  # Centralized Discord notification relay for Radarr/Sonarr/Prowlarr,
-  # replacing this stack's several ad hoc per-script webhook calls.
-  # DN_API_KEY is a notifiarr.com account key (NOTIFIARR_API_KEY in .env).
-  notifiarr:
-    restart: unless-stopped
-    logging: *common-logging
-    image: golift/notifiarr:latest
-    container_name: notifiarr
-    networks: [stacknet]
-    healthcheck:
-      # No curl in this image - only wget (confirmed live 2026-07-30).
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5454/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-      DN_API_KEY: ${NOTIFIARR_API_KEY}
-    volumes:
-      - ./config/notifiarr:/config
-      - /var/run/utmp:/var/run/utmp:ro
-      - /etc/machine-id:/etc/machine-id:ro
-    ports:
-      - "5454:5454"
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1

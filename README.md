@@ -206,39 +206,50 @@ Stack/
 
 Every service in `docker-compose.yml`, in the order they appear:
 
-| # | Service | Image | Port(s) | Profile |
-|---|---|---|---|---|
-| 1 | `prowlarr` | `ghcr.io/hotio/prowlarr:release` | 9696 | core |
-| 2 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 | core |
-| 3 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 | core |
-| 4 | `nzbdav` | `ghcr.io/nzbdav/nzbdav:latest` | 3000 | core |
-| 5 | `nzbdav_rclone` | `rclone/rclone:latest` | none | core |
-| 6 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 | core |
-| 7 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host networking) | core |
-| 8 | `recyclarr` | `ghcr.io/recyclarr/recyclarr:latest` | none | extras |
-| 9 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 | extras |
-| 10 | `control-panel` | built from `./control-panel` | 8420 | extras |
-| 11 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none | extras |
-| 12 | `watchtower` | `nickfedor/watchtower:1.19.0` | none | extras |
-| 13 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 | extras |
+There is no `profiles:` split in `docker-compose.yml` (any historical "core"/"extras"
+distinction is gone) - `docker compose up -d` brings up every service below.
+
+| # | Service | Image | Port(s) |
+|---|---|---|---|
+| 1 | `prowlarr` | `ghcr.io/hotio/prowlarr:release` | 9696 |
+| 2 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 |
+| 3 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 |
+| 4 | `nzbdav` | `ghcr.io/nzbdav/nzbdav:latest` | 3000 |
+| 5 | `nzbdav_rclone` | `rclone/rclone:latest` | none |
+| 6 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 |
+| 7 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host networking) |
+| 8 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 |
+| 9 | `control-panel` | built from `./control-panel` | 8420 |
+| 10 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none |
+| 11 | `watchtower` | `nickfedor/watchtower:1.19.0` | none |
+| 12 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 |
+| 13 | `tautulli` | `ghcr.io/tautulli/tautulli:latest` | 8182 |
+| 14 | `wrapperr` | `aunefyren/wrapperr:latest` | 8283 |
+| 15 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 |
+| 16 | `checkrr` | `aetaric/checkrr:latest` | 8585 |
+| 17 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
+| 18 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
+| 19 | `kometa` | `kometateam/kometa:latest` | none |
+
+`recyclarr` was removed entirely a second time in v11.12.0 - see
+[Custom formats and quality profiles](#custom-formats-and-quality-profiles).
 
 **Jellyfin briefly replaced Plex in v11.7.0 and was fully reverted back to Plex the same day**
 (see [History](#history) for the migration and the reversion) - `jellyfin`, `jellystat`, and
 `jellystat-db` were all removed entirely as part of that reversion, and there is no Jellyfin
-anywhere in this stack now. **`tautulli`, `kometa`, and `quickstart` were removed entirely in
-v11.9.0** - compose blocks, config, and every Control Panel/dashboard reference deleted outright
-(see [History](#history) `[11.9.0]`); there is no monitoring dashboard or collections/overlays
-automation of any kind in this stack now. The original NzbDAV was replaced by AltMount
-(2026-07-23), then AltMount's rebrand/fork BearMount (2026-07-24), then finally the current
-`nzbdav`/`nzbdav_rclone` (2026-07-28, a different, unrelated codebase despite the name reuse -
-see [The Usenet pipeline](#the-usenet-pipeline-nzbdavnzbdav)) - unlike AltMount/BearMount's single
-self-mounting container, `nzbdav` needs the separate `nzbdav_rclone` sidecar to do the actual FUSE
-mount, a net +1 row versus the immediately preceding architecture. Service table: 18 → 13 rows.
+anywhere in this stack now. **`tautulli` and `kometa` were removed entirely in v11.9.0, then
+both reinstalled in v11.11.0** (see [History](#history)) - `quickstart`, Kometa's former
+companion, was **not** reinstalled and remains fully removed. The original NzbDAV was replaced
+by AltMount (2026-07-23), then AltMount's rebrand/fork BearMount (2026-07-24), then finally the
+current `nzbdav`/`nzbdav_rclone` (2026-07-28, a different, unrelated codebase despite the name
+reuse - see [The Usenet pipeline](#the-usenet-pipeline-nzbdavnzbdav)) - unlike AltMount/BearMount's
+single self-mounting container, `nzbdav` needs the separate `nzbdav_rclone` sidecar to do the
+actual FUSE mount.
 
-`docker compose up -d` brings up the 7 core services; `docker compose --profile extras up
--d` adds the other 7. Both are safe to re-run; Compose only recreates what is out of sync with
-`docker-compose.yml`. (Torrent/debrid - Decypharr, Zurg, rclone-alldebrid, Zilean,
-zilean-postgres, Byparr - were removed entirely; see [History](#history).)
+`docker compose up -d` brings up every service in the table above - re-running it is always
+safe, Compose only recreates what is out of sync with `docker-compose.yml`. (Torrent/debrid -
+Decypharr, Zurg, rclone-alldebrid, Zilean, zilean-postgres, Byparr - were removed entirely; see
+[History](#history).)
 
 ## The *arr apps
 
@@ -727,32 +738,26 @@ back would require both a manager and a reader again regardless of media server.
 
 ## Custom formats and quality profiles
 
-Radarr and Sonarr were consolidated to a single quality profile each in v11.2.0, named
-**`ANY`** on both apps (not `Unlimited` - renamed as part of that consolidation; see
-[History](#history)). Recyclarr (the daily TRaSH-Guides sync that had managed a narrower set
-of hygiene custom formats since v10.5.0) was removed entirely in the same pass - there is no
-scheduled custom-format sync of any kind on either app anymore; every custom format below is
-hand-maintained via each app's API, not templated from an external guide.
+Radarr and Sonarr were first consolidated to a single quality profile each in v11.2.0
+(named `ANY`), then Recyclarr was reinstalled 2026-07-23 and both apps moved to genuine
+TRaSH-Guides stock profiles (Sonarr: `WEB-1080p`/`WEB-2160p`/`Low Quality`; Radarr:
+`HD Bluray + WEB`/`Remux + WEB 2160p`/`Low Quality`). **As of v11.12.0 both apps are
+consolidated again, this time to a single profile named `Anything`** (all qualities
+allowed, `upgradeAllowed: false`) - see [History](#history) `[11.12.0]`. Recyclarr was
+removed entirely a second time in the same pass; there is no scheduled custom-format sync
+of any kind on either app anymore, and every custom format score is hand-maintained via
+each app's API rather than templated from an external guide.
 
-Custom format highlights on both apps (not exhaustive - check `GET /api/v3/customformat`
-against either app for the full current list):
-
-- **"Block - Sample, Russian, Low-Quality Sources"** (`-10000`, hard reject): sample releases,
-  Russian audio/text (including Cyrillic/Hangul Unicode ranges so wrong language metadata
-  doesn't slip through), and a blocklist of low-trust sources/groups.
-- **"Block: Foreign Audio w/o English Subs"** (`-10000`, added v11.3.0): matches when audio
-  language is not English *and* the release title carries no subtitle-availability tag
-  (`ENG SUB`, `MULTI...SUB`, `ENGDL`, etc). A release-title-regex approximation, not a
-  substitute for Bazarr actually managing subtitles post-download - see
-  [Bazarr](#bazarr-subtitle-management) for why neither app can do better than this
-  pre-download.
-- **"Prefer Season Packs"** (Sonarr only, `+25`, re-added v11.3.0 after being lost in v11.2.0's
-  profile consolidation): `ReleaseTypeSpecification` = Season Pack, so Sonarr favors a season
-  pack over single/multi-episode releases when both are available.
-- All anime-specific custom formats (BD/Web tier ladders, fansub versioning, dual-audio,
-  anime-exclusive streaming services) were removed from both apps in the same v11.3.0 session,
-  following the anime library removal itself (v10.19.0) - the CF definitions had outlived the
-  content they scored.
+Fourteen custom formats carry a hard `-10000` reject score on Sonarr's `Anything` profile;
+eleven of the same names carry the same score on Radarr's `Anything` profile (three are
+TV-only concepts with no movie equivalent - `BR-DISK (BTN)`, `Season Pack Blocked` - or were
+deliberately not created for Radarr - `Language: Not Original`):
+`AV1`, `BR-DISK`, `Bad Dual Groups`,
+`Blocklist: Unwanted Groups/Sources, RU-CN Audio, Blu-ray`, `Extras`, `LQ`,
+`LQ (Release Title)`, `Language: Not English`, `Upscaled`, `x265 (HD)`,
+`x265 (no HDR/DV)` (both apps), plus `BR-DISK (BTN)`, `Language: Not Original`, and
+`Season Pack Blocked` (Sonarr only). Not exhaustive - check `GET /api/v3/customformat`
+against either app for the full current list and live scores.
 
 Check what a release title scores with each app's parse endpoint:
 
@@ -764,9 +769,11 @@ curl -s -H "X-Api-Key: $RADARR_API_KEY" \
 
 ## Automation extras: Cleanuparr, Unpackerr, Watchtower
 
-**Kometa and its Quickstart companion were removed entirely in v11.9.0** (see
-[History](#history) `[11.9.0]`) - no automated Plex collections, overlays, or
-metadata-enrichment tool of any kind runs in this stack now.
+**Kometa was removed entirely in v11.9.0, then reinstalled in v11.11.0** (see
+[History](#history) `[11.9.0]`/`[11.11.0]`) - a from-scratch, Plex-only minimal config
+(TMDb/MDBList only, no Trakt/GitHub credentials), running its own built-in scheduler
+(`KOMETA_TIMES`) rather than the old placeholder pattern. Its Quickstart companion was
+**not** reinstalled and remains fully removed.
 
 **NeutArr was removed entirely 2026-07-24** (see [History](#history)), by explicit
 request, after its missing-content hunting repeatedly built up large grab backlogs that,
@@ -792,6 +799,30 @@ table; the container was stopped first to avoid a live WAL-mode write, zero orph
 every referencing table confirmed before deleting). Prowlarr's application-sync entry for
 each was deleted via its own API in the same pass. When auditing "is X wired to Y," check the
 receiving app's own config or API for a real instance entry, not just network reachability.
+
+## Plex-connected companions (added v11.11.0)
+
+Six additional apps, all configured post-boot via their own web UI unless noted:
+
+- **Tautulli** (`ghcr.io/tautulli/tautulli:latest`, port 8182) - Plex watch-stats/history
+  dashboard.
+- **Wrapperr** (`aunefyren/wrapperr:latest`, port 8283) - stats wrapper/report dashboard on
+  top of Tautulli; needs Tautulli's URL and an API key generated via Tautulli's own
+  **Settings > Web Interface > API Key**.
+- **Maintainerr** (`ghcr.io/maintainerr/maintainerr:latest`, port 6246) - Plex/Radarr/Sonarr
+  library maintenance (stale-content cleanup rules). Installed deliberately with **zero
+  rules configured** - this stack has a documented history of 3+ mass-deletion incidents
+  (stale FUSE mounts, `autoEmptyTrash`, bad bind-mounts; see `STACK.md`). Do not create an
+  auto-delete rule without reading that history first.
+- **Checkrr** (`aetaric/checkrr:latest`, port 8585) - corrupt-media scanner, triggers a
+  Radarr/Sonarr re-search on bad files. Config is a YAML file
+  (`config/checkrr/checkrr.yaml`), not env vars.
+- **Prefetcharr** (`phueber/prefetcharr:latest`, no web UI) - auto-fetches the next Sonarr
+  season as a Plex viewer nears the end of the current one. Config is a single TOML blob via
+  `PREFETCHARR_CONFIG`, not CLI flags.
+- **Lingarr** (`ghcr.io/lingarr-translate/lingarr:latest`, port 9876) - subtitle translation,
+  complements Bazarr (which only fetches existing subs) rather than replacing it. SQLite
+  backend, no separate DB container.
 
 **Unpackerr** (`golift/unpackerr@sha256:4ec141...`) auto-extracts RAR'd releases for the
 two `*arr` apps:
@@ -2633,3 +2664,55 @@ removed; the `stack-cli-usenet-queue` skill updated to drop NeutArr entirely. Cl
 own strike/malware/stalled-download cleanup is unaffected and remains the only queue
 automation in this stack - there is no automated missing-content/quality-upgrade hunting
 of any kind now.
+
+**v11.11.0**: Six Plex-connected companion apps added from the awesome-arr list, all
+configured post-boot via their own web UI - Tautulli (Plex watch-stats/history), Wrapperr
+(Tautulli stats wrapper, needs a Tautulli API key), Maintainerr (Plex/Radarr/Sonarr library
+maintenance, installed with **zero rules configured** given this stack's mass-deletion
+incident history), Checkrr (corrupt-media scanner, YAML config not env vars), Prefetcharr
+(auto-fetches the next Sonarr season from Plex watch progress, no web UI), and Lingarr
+(subtitle translation, SQLite backend, complements rather than replaces Bazarr). Kometa was
+also reinstalled in the same pass (see `[11.9.0]` for its first removal) - a from-scratch,
+Plex-only minimal config (TMDb/MDBList only), running its own built-in `KOMETA_TIMES`
+scheduler; its former Quickstart companion was **not** reinstalled. See
+[Plex-connected companions](#plex-connected-companions-added-v11110) for per-app detail.
+
+**v11.12.0**: All Star Trek content removed from Sonarr and NzbDAV, by explicit request,
+after several episodes across multiple series failed with "Missing articles... likely
+DMCA'd or expired." Sonarr: all 9 Star Trek series deleted with files (deleteFiles=true,
+no recycle bin configured so permanent) plus import-list exclusions added for all 9 TVDB
+IDs so none get auto-re-added by a list sync. NzbDAV: 206 Star Trek download-history
+entries deleted via its SABnzbd-compatible API, and - the less obvious part - 268 orphaned
+content-store entries also deleted. Sonarr's `deleteFiles=true` only removes the *arr-side
+symlink under `/data/shows`; NzbDAV's own WebDAV-backed content store
+(`/mnt/remote/nzbdav/content/tv/...`) is a separate, independent copy that survives an
+Arr-side deletion untouched. Removing it required NzbDAV's native (non-SABnzbd) API -
+`POST /api/delete-webdav-item` (form field `path`, header `X-Api-Key`) - which 403s by
+default behind a `webdav.enforce-readonly` config flag (a deliberate safety setting,
+"Make the WebDAV /content folder read-only so clients cannot delete files there"); flipped
+off via `POST /api/update-config` (form-encoded `configName`/`configValue` pairs, matching
+the existing `POST /api/get-config` gotcha already documented in `CLAUDE.md`) for the
+duration of the deletion pass, then restored to `true` afterward and confirmed behaviorally
+(a follow-up delete attempt correctly 403'd again).
+
+Separately, by explicit request: Radarr and Sonarr were consolidated from their
+TRaSH-Guides stock profiles (reinstated in the 2026-07-23 Recyclarr reinstall - see the
+`[11.2.0]` entry for the profile lineage) down to a single profile per app, named
+`Anything` (all qualities allowed, `upgradeAllowed: false`). Sonarr's `Anything` profile
+carries a `-10000` reject score on 14 custom formats pulled from whichever of its prior
+profiles had them; Radarr's newly-created `Anything` profile carries the same score on the
+11 of those 14 that have a same-named equivalent in Radarr (`BR-DISK (BTN)` and
+`Season Pack Blocked` are TV-only concepts with no movie equivalent; `Language: Not
+Original` was deliberately not created for Radarr). All 4,171 Sonarr series and all 10,482
+Radarr movies were reassigned via each app's bulk `series`/`movie` editor endpoint. Neither
+app's API allows deleting an in-use profile - the actual holdouts blocking deletion were
+each app's import lists (each carries its own default quality profile for newly-added
+items: 15 on Sonarr, 42 on Radarr) and, Radarr-only, all 903 Collections (no bulk editor
+exists for these; updated one at a time via `PUT /api/v3/collection/{id}`, ~15s for all
+903 with 8 concurrent workers). Recyclarr - the daily-cron TRaSH-Guides sync that managed
+the now-deleted profiles - was removed entirely a second time in the same pass (see
+`[11.2.0]` for the first removal and its later 2026-07-23 reinstatement): container
+stopped and removed, `docker-compose.yml` service block deleted, `config/recyclarr/` kept
+on disk as inert historical state (not deleted), Control Panel's `CONTAINER_LABELS` entry
+and `/api/recyclarr/status` route removed, its `commands.json` entry removed, control-panel
+rebuilt and redeployed with the changes confirmed live (the removed route now 404s).

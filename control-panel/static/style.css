@@ -444,3 +444,43 @@ table.result-table td.num { text-align: right; font-family: var(--font-mono); wh
   .dot.pending { animation: none; }
   .btn-danger.armed, .btn-ghost.armed, .btn-icon.armed { animation: none; }
 }
+
+/* ---------- Mobile (phone-width) ----------
+   Confirmed live at a real 390px CSS viewport (an iframe, since this host's tiling
+   window manager won't let a real browser window shrink that far) - not guessed from
+   reading the desktop CSS. Fixed four real bugs, not just cosmetics: the topbar's HUD
+   overflowed the page horizontally (605px content in a 390px viewport, forcing the
+   whole page to scroll sideways); the 4-up vitals row did the same (450px, no wrap);
+   a fleet row's health badge visually overlapped a long, multi-line container note
+   (align-items:center centers per flex-line, and the badge shared a line with a
+   .rule-main that had wrapped to 3 lines internally); and the poster-sync dock
+   positioned itself via `right: calc(var(--log-w) + 20px)`, which assumes the log
+   console is still docked to the side - on mobile it stacks below instead, so the
+   whole dock rendered 360px off the left edge of the screen, completely inaccessible. */
+@media (max-width: 640px) {
+  #topbar { flex-wrap: wrap; height: auto; padding: 8px 12px; row-gap: 6px; }
+  .hud { flex-basis: 100%; margin-left: 0; justify-content: flex-end; flex-wrap: wrap; }
+  .palette-hint { flex: 1; }
+  .palette-hint .kbd { display: none; } /* Ctrl/K badges are meaningless without a physical keyboard */
+
+  #col-main { padding: 16px 14px 50px; }
+
+  .vitals-row { flex-wrap: wrap; }
+  .vital { flex: 1 1 calc(50% - 1px); min-width: 0; }
+  .vital-wide { flex: 1 1 100%; }
+
+  /* Force the name/image block onto its own full-width row so later siblings
+     (health badge, CPU/MEM, actions) always wrap below it instead of sharing a
+     flex line with content that may have wrapped internally to several lines. */
+  .rule-row.fleet-row .rule-main { flex-basis: 100%; }
+  .fleet-row-health { align-self: flex-start; }
+
+  /* Touch targets - 26px icon buttons are below the ~44px comfortable-tap guideline. */
+  .btn-icon { width: 34px; height: 34px; }
+  .btn-ghost, .btn-primary, .btn-danger { padding: 9px 14px; }
+
+  .poster-dock { right: 12px; left: 12px; width: auto; bottom: 12px; }
+  .poster-dock:has(#poster-review-grid:not([hidden])) { width: auto; }
+
+  #palette-overlay { padding-top: 4vh; padding-left: 10px; padding-right: 10px; }
+}
