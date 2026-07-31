@@ -7,6 +7,15 @@ HEAD at `fd95e6b` (release 0.9.4, 2026-07-31).
 **Promise:** the top-ranked security finding below will be verified FIRST,
 before any other finding in this list is acted on. Do not defer this check.
 
+**Status, 2026-07-31: FIXED locally, not upstreamed.** The CreateAccountController
+TOCTOU (single-admin race) is patched in this local clone - filtered unique index
+`IX_Accounts_SingleAdmin` + application-level pre-check + DbUpdateException
+backstop, all covered by `tests/NzbWebDAV.Tests/Api/CreateAccountControllerTests.cs`
+(4 new tests, full suite 1420/1420 passing). This patch has NOT been submitted
+upstream to `nzbdav/nzbdav` as a PR - do that explicitly if you want the fix to
+outlive this local clone, since `sync-nzbdav-upstream.sh` will discard it on
+the next `git reset --hard origin/main`.
+
 Note on a separate, unrelated project: `nzbdav-dev/nzbdav` (the original,
 now-superseded upstream this fork descends from) disclosed an unauthenticated
 auth-bypass affecting its versions 0.2.46-0.6.1, patched 2026-03-18 (no CVE ID

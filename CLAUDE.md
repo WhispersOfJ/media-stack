@@ -146,6 +146,10 @@ to work. **`STACK.md`** is the operational/incident memory for Claude Code speci
 — read it for how things have actually broken, what's currently true vs. historical, and the
 gotchas that aren't visible from reading the code alone.
 
+Version is release-please-managed as of v11.12.0 (see STACK.md) — write conventional commits
+(`feat:`/`fix:`/`chore:`/etc.) on `main`, never hand-edit `CHANGELOG.md`, README's version line,
+or `.release-please-manifest.json`.
+
 **`FIXES.md`** now only holds historical record of the BearMount FUSE read-hang investigation
 (50GB+ REMUX files, `ffprobe` deadlocks in D-state) — closed as moot when BearMount itself was
 removed 2026-07-28 (see STACK.md's History). Its automated mitigation endpoint

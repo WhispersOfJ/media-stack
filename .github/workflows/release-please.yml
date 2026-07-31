@@ -1,0 +1,25 @@
+name: release-please
+
+# Watches conventional-commit messages on main and maintains a standing
+# "release PR" that accumulates them into CHANGELOG.md and bumps the
+# version in release-please-config.json's extra-files (currently just
+# README's "Current version" line). Merging that PR cuts the actual
+# GitHub Release + tag, which publish-installer.yml then builds against.
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
