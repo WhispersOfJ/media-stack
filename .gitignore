@@ -21,6 +21,10 @@ backups/
 # scripts/audit-tmdb-links.py's default --csv output - regenerated report, not source
 tmdb_audit_report.csv
 
+# Vendored upstream clone (nzbdav source, for security/code review) - large,
+# re-cloneable via vendor/sync-nzbdav-upstream.sh, not this repo's source
+vendor/nzbdav/
+
 # Misc
 *.log
 .DS_Store
