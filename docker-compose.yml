@@ -143,7 +143,18 @@ services:
       NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
       NZBDAV_CONFIG__MEDIA__LIBRARY_DIR: "/mnt/remote/nzbdav/completed-symlinks"
       NZBDAV_CONFIG__USENET__PROVIDERS: >-
-        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":50,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":50,"Nickname":"backup"}]}
+        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":50,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":50,"Priority":1,"Nickname":"backup"}]}
+      # Settings audit 2026-07-31 (every settings page/config key checked against
+      # backend/Config/ConfigManager.cs - see STACK.md): cascade defaulted off, which
+      # meant primary/backup were raw-load-balanced by spare connection count instead of
+      # primary-preferred with backup as genuine fallback - the whole point of having a
+      # backup provider. Enabling this alone does nothing without the explicit Priority
+      # fields added above (both defaulted to 0, so they'd tie even with cascade on).
+      # play.*/grab.*/watchtower.*/warden.*/preflight.*/indexers.*/profiles.* intentionally
+      # left untouched - all part of NzbDAV's own indexer-search "addon play" feature,
+      # confirmed inert here (indexers.instances and profiles.instances are both empty;
+      # this stack routes everything through Prowlarr->Sonarr/Radarr instead).
+      NZBDAV_CONFIG__USENET__CASCADE__ENABLED: "true"
       NZBDAV_CONFIG__ARR__INSTANCES: >-
         {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"}],"QueueRules":[]}
       # DISABLED 2026-07-29 after a live incident: nzbdav's repair path
