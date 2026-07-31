@@ -2488,9 +2488,20 @@ real GitHub Release/tag exists for every version. Manual re-runs need an explici
 
 README's "## History" section is frozen as of v11.12.0 (the manifest's seed value) - past
 entries are kept as a condensed record, but nothing gets appended there going forward.
-`CHANGELOG.md` is the authoritative changelog from this point on. First real release-please PR
-hasn't landed yet as of this entry (config just merged) - if `CHANGELOG.md` doesn't exist yet
-or looks empty, that's expected until the first conventional commit lands on `main` after this.
+`CHANGELOG.md` is the authoritative changelog from this point on.
+
+**Bootstrap gotchas hit on the first real run, both now fixed:**
+1. Repo-owned Actions can't open PRs by default - `release-please` failed with "GitHub Actions
+   is not permitted to create or approve pull requests" until `Settings → Actions → General →
+   Workflow permissions → Allow GitHub Actions to create and approve pull requests` was enabled
+   (`gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f
+   default_workflow_permissions=write -F can_approve_pull_request_reviews=true`).
+2. With that fixed, the very next run walked all 325 historical commits (no existing tag
+   matched release-please's bookkeeping) and produced a misleading v11.13.0 PR mixing
+   months-old BearMount-era work into a "new" release - closed unmerged. Fixed by tagging the
+   seed commit itself as `v11.12.0` (matching the manifest exactly), which made release-please
+   correctly report "Considering: 0 commits" on the next run. Any future re-bootstrap of
+   release-please on this repo (or a fork) needs that same tag-the-seed-commit step first.
 
 NzbDAV exposes its own native (non-SABnzbd-compatible) API for managing this content store,
 undocumented anywhere public-facing - found by reading the compiled frontend JS bundle

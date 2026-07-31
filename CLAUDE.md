@@ -150,6 +150,10 @@ Version is release-please-managed as of v11.12.0 (see STACK.md) — write conven
 (`feat:`/`fix:`/`chore:`/etc.) on `main`, never hand-edit `CHANGELOG.md`, README's version line,
 or `.release-please-manifest.json`.
 
+A repo-owned GitHub Action opening its own PRs (release-please, etc.) needs "Allow GitHub
+Actions to create and approve pull requests" enabled in repo settings — off by default, fails
+silently otherwise. Check: `gh api repos/OWNER/REPO/actions/permissions/workflow`.
+
 **`FIXES.md`** now only holds historical record of the BearMount FUSE read-hang investigation
 (50GB+ REMUX files, `ffprobe` deadlocks in D-state) — closed as moot when BearMount itself was
 removed 2026-07-28 (see STACK.md's History). Its automated mitigation endpoint
