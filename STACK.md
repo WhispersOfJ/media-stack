@@ -2462,6 +2462,36 @@ then noticing 268 Star Trek entries still present in `content/tv` afterward - re
 data, not a display artifact. `completed-symlinks/tv` was already clean by the time this was
 checked, apparently auto-swept by Cleanuparr independently.
 
+## Versioning switched to release-please, 2026-07-31
+
+Version tracking for this repo was fully manual before this: README's top-line "Current
+version" string and its "## History" section were both hand-edited on every notable change,
+and `publish-installer.yml` regex-extracted that top line to tag the installer image. The two
+had already drifted out of sync by this point (top line said v11.9.0 while History's last
+entry was v11.12.0) - nothing was enforcing they matched.
+
+Replaced with [release-please](https://github.com/googleapis/release-please)
+(`release-please-config.json`, `.release-please-manifest.json`,
+`.github/workflows/release-please.yml`): it watches conventional-commit messages
+(`feat:`/`fix:`/`chore:`/etc.) pushed to `main`, maintains a standing release PR that
+accumulates them into `CHANGELOG.md`, and bumps README's version line itself via the
+`extra-files` generic-replacer mechanism - the version number in README.md:3 is now wrapped in
+`<!-- x-release-please-version -->` sentinel comments release-please rewrites in place, so
+don't hand-edit that number or the comments around it.
+
+`publish-installer.yml` was switched from `push`-with-path-filters to trigger on `release:
+published` (the event release-please's merge produces), pulling the version straight from
+`github.event.release.tag_name` instead of grepping README - the grep still would have worked
+since release-please keeps that line in sync, but the tag is the more direct source now that a
+real GitHub Release/tag exists for every version. Manual re-runs need an explicit
+`workflow_dispatch` `tag` input now, since there's no push event to infer a version from.
+
+README's "## History" section is frozen as of v11.12.0 (the manifest's seed value) - past
+entries are kept as a condensed record, but nothing gets appended there going forward.
+`CHANGELOG.md` is the authoritative changelog from this point on. First real release-please PR
+hasn't landed yet as of this entry (config just merged) - if `CHANGELOG.md` doesn't exist yet
+or looks empty, that's expected until the first conventional commit lands on `main` after this.
+
 NzbDAV exposes its own native (non-SABnzbd-compatible) API for managing this content store,
 undocumented anywhere public-facing - found by reading the compiled frontend JS bundle
 (`/app/frontend/build/server/assets/*.js` inside the `nzbdav` container, searched via

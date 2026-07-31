@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v11.9.0**
+Current version: **v<!-- x-release-please-version -->11.12.0<!-- x-release-please-version -->**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet through **nzbdav/nzbdav** - streamed via a FUSE mount (a separate `nzbdav_rclone`
@@ -1624,8 +1624,10 @@ what is new.
 
 ## History
 
-Condensed chronological record. Full detail lived in `CHANGELOG.md` before it was merged into
-this document.
+Condensed chronological record through **v11.12.0**, frozen as of that release. From v11.12.0
+onward, [release-please](https://github.com/googleapis/release-please) generates `CHANGELOG.md`
+automatically from conventional-commit messages on `main` - that file is now the authoritative
+changelog going forward; this section is no longer hand-updated.
 
 **v1.x**: initial build. Prowlarr, Zilean, Decypharr, Radarr, Sonarr, Lidarr, Readarr,
 Whisparr, NZBGet, Seerr, Homepage, Recyclarr/TRaSH-Guides, passwordless-sudo/CI baseline.
