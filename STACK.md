@@ -2539,6 +2539,48 @@ exist as a flag in this rclone build) decodes an rclone-obscured password from
 directly against `nzbdav`'s own port, before the `X-Api-Key` header path was found and
 made that unnecessary.
 
+## Sonarr/Radarr silently drop a freshly-added series/movie's first import, 2026-07-31
+
+**Root cause**: `createEmptySeriesFolders` (Sonarr) and `createEmptyMovieFolders` (Radarr) -
+`/api/v3/config/mediamanagement` - both defaulted to `false`. A series/movie's own destination
+folder (`/data/shows/<Series> (Year) {tmdb-N}` / `/data/movies/<Movie> (Year) {tmdb-N}`) is
+never created at add-time, only implicitly by the first successful import. When that first
+download completes before the folder exists, Sonarr's own scan code throws
+`System.IO.DirectoryNotFoundException: Could not find a part of the path '...'` - both from
+`ManualImportService.GetMediaFiles` (when a `seriesId`/`movieId` is passed - scan without one
+instead, letting Sonarr identify the release from the filename, and it works even without the
+folder existing) and from the background `ProcessMonitoredDownloads` command, which does NOT
+fail cleanly on this - it hangs in `started` state indefinitely (`DELETE
+/api/v3/command/{id}` then 409s with "Unable to cancel task"), and Sonarr's command executor
+has limited concurrency, so every other queued command (searches, further imports, RSS sync)
+backs up behind it. Same root cause as the earlier MasterChef Australia incident this repo's
+history references, just now root-caused precisely and fixed at the source instead of worked
+around per-item.
+
+**Fix applied** (both retroactive and forward-looking):
+1. `PUT /api/v3/config/mediamanagement/1` with `createEmptySeriesFolders`/
+   `createEmptyMovieFolders` set `true` on both Sonarr and Radarr - every future add now gets
+   its folder immediately, before any download can complete.
+2. Swept every currently-monitored series/movie's `path` for existence
+   (`docker exec sonarr|radarr sh -c 'while read p; do [ -d "$p" ] || echo "$p"; done'`) -
+   found **1045 of 1152** monitored Sonarr series and **414 of 1949** monitored Radarr movies
+   missing their folder. All were latent copies of this same bug, waiting for their first
+   completed download to trigger it. Bulk-created every missing one
+   (`mkdir -p && chown hotio:hotio && chmod 775`, matching this stack's existing folder
+   convention - confirmed via `stat` on a real existing folder before assuming ownership,
+   not guessed) via the same batched shell-loop approach, verified zero missing afterward.
+3. **The only-if-stuck recovery, if this pattern recurs from some other cause**: creating the
+   missing folder does not unstick a command already hung in `started` state (confirmed - it
+   was already past the failure point) and it can't be cancelled via the API. `docker restart
+   sonarr` (or `radarr`) clears the deadlocked command queue - this is a plain app-process
+   restart, not touching the FUSE mount, so none of the nzbdav_rclone cascade rules apply; a
+   normal `docker restart` is safe here, unlike for `nzbdav`/`nzbdav_rclone` themselves.
+
+Neither of these Sonarr/Radarr settings nor the folder creation went through any tracked file
+in this repo - both apps store `createEmptySeriesFolders`/`createEmptyMovieFolders` in their
+own internal SQLite config, and the folders themselves live on the `/data` bind mount, not in
+git. Nothing to commit for this fix; this section is the only record of it.
+
 ## Workflow playbook: recurring task types
 
 Add to this section as new recurring task shapes come up. Goal: the next session facing

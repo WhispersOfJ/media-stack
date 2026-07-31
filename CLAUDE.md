@@ -140,6 +140,10 @@ See `fish-functions/README.md` for the full list of what's available. `/api/arr/
 scans queue items one at a time, sequentially — a 50+ item queue can legitimately take several
 minutes; that's not a hang.
 
+Sonarr/Radarr `createEmptySeriesFolders`/`createEmptyMovieFolders` (media-management config)
+are enabled — do not disable. See STACK.md 2026-07-31 for why (a false default there silently
+drops a freshly-added series/movie's first import and hangs Sonarr's command queue).
+
 **`README.md`** is the only end-user documentation in this repo (long, organized by subsystem
 with a linked table of contents) — read the relevant section there for how a feature is meant
 to work. **`STACK.md`** is the operational/incident memory for Claude Code specifically
