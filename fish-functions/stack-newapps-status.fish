@@ -1,7 +1,7 @@
 # Usage: stack-newapps-status
-# One-shot health sweep across all 8 apps added 2026-07-30 (tautulli,
-# wrapperr, maintainerr, checkrr, prefetcharr, lingarr, kometa, notifiarr).
-function stack-newapps-status --description 'Health sweep of all 8 new apps'
+# One-shot health sweep across all apps added 2026-07-30 (tautulli,
+# wrapperr, maintainerr, checkrr, prefetcharr, lingarr, kometa).
+function stack-newapps-status --description 'Health sweep of the new apps'
     set -l host_ip 192.168.4.105
     curl -sS "http://$host_ip:8420/api/newapps/status" | python3 -c "
 import json, sys

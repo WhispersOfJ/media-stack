@@ -4,6 +4,8 @@ Skip files over 100KB unless required.
 No sycophantic openers or closing fluff.
 No emojis or em-dashes.
 Do not guess APIs, versions, flags, commit SHAs, or package names. Verify by reading code or docs before asserting.
+Before a destructive action (delete/blocklist/remove), verify the user's stated reason against
+actual system state — don't act on an unverified claim alone.
 Any outbound `urllib` request in `scripts/*.py` needs an explicit `User-Agent` header — several
 Cloudflare-fronted endpoints (Discord's webhook included) 403 the bare `Python-urllib/3.x` default.
 
@@ -87,6 +89,8 @@ relevant sections, not loaded in full every turn. Before making any change to th
 # `docker inspect`'s running container environments.)
 test -f .env || cp .env.example .env
 docker compose config --quiet
+# No `profiles:` split exists in docker-compose.yml (all services always start) - this
+# second invocation is redundant but CI runs it too, so kept for parity.
 docker compose --profile extras config --quiet
 
 # Lint (what CI runs, no repo-local ruff config — defaults)
@@ -101,9 +105,8 @@ docker compose up -d control-panel
 # control-panel reads .env at container-*create* time only — needs force-recreate, not restart
 docker compose up -d --force-recreate control-panel
 
-# Bring up the stack: core services, or everything (extras profile)
+# Bring up the stack - every service, no profile split exists
 docker compose up -d
-docker compose --profile extras up -d
 
 # MANDATORY before recreating/restarting/stopping nzbdav or nzbdav_rclone for ANY reason —
 # see STACK.md. NzbDAV's own db.sqlite schema is unconfirmed, so this goes through its SAB
@@ -159,6 +162,7 @@ bug. Don't assume this class of hang still applies before re-reading that histor
 - Avoid full `/library/sections/{id}/refresh` scans when a usenet provider is degraded — a scan hitting a slow/timed-out read can falsely mark unrelated shows `deletedAt` even though files are intact. Prefer narrow per-item `/library/metadata/{key}/refresh`.
 - To fully stop Plex from scanning, check ALL independent triggers: `ScheduledLibraryUpdatesEnabled`, `FSEventLibraryUpdatesEnabled`, `ButlerTaskRefreshLibraries`, `ButlerTaskRefreshPeriodicMetadata` (via `/:/prefs`) — AND Bazarr's own `plex.update_series_library`/`update_movie_library`, which fires independently on every subtitle grab.
 - Bazarr's `POST /api/system/settings` silently no-ops (returns 204 but doesn't persist) with a JSON body — use form-urlencoded (`--data-urlencode "settings-plex-update_series_library=false"`).
-- Sonarr/Radarr `autoRedownloadFailed`/`autoRedownloadFailedFromInteractiveSearch` (`/api/v3/config/downloadclient`) causes retry storms when a provider has widespread missing segments — disable rather than trying to blocklist individual queue items (the queue is transient; items cycle out before you can act on them).
+- Sonarr/Radarr `autoRedownloadFailed`/`autoRedownloadFailedFromInteractiveSearch` (`/api/v3/config/downloadclient`) causes retry storms when a provider has widespread missing segments — disable that setting rather than trying to blocklist items during the storm itself (they cycle out before you can act). Separately, a stable backlog of dead `failedPending` items (missing articles, DMCA'd) should be bulk-blocklisted, not left to accumulate: `DELETE /api/v3/queue/bulk?removeFromClient=true&blocklist=true&skipRedownload=false` with `{"ids":[...]}` — do this proactively whenever checking a queue, not just on request.
 - nzbdav/ThunderNews quirk: `STAT` returns `430 No such article` fast for a missing article, but `BODY` on the same article can hang with no response until timeout — this is the actual cause of "mount stalls," not a bug in rclone/nzbdav/Plex.
 - NzbDAV's `POST /api/get-config` must be called as a form-encoded POST (`--data-urlencode config-keys=...`, repeated) — despite the name, a GET with `?config-keys=...` query params 500s with a missing-Content-Type error.
+- Large payloads (e.g. base64-encoded NZB content) passed to `curl -d` can hit shell "argument list too long" — write the JSON body to a file and use `curl --data @file` instead.

@@ -6,6 +6,36 @@ to keep CLAUDE.md small — CLAUDE.md still carries the short-sentence/verificat
 Claude Code must follow; this file is pure reference material, read on demand per-section
 rather than loaded whole every turn.
 
+**CORRECTION, 2026-07-31 — read this before trusting any narrative below about the Usenet
+client or the awesome-arr companion apps, both went through more churn than the prose below
+was ever updated to reflect:**
+- **Usenet client, current state**: `nzbdav`/`nzbdav_rclone` (added 2026-07-28), NOT
+  AltMount and NOT BearMount — those are two generations stale. Full lineage: original
+  NzbDAV → **AltMount** (2026-07-23) → AltMount's rebrand/fork **BearMount** (2026-07-24) →
+  current **`nzbdav`/`nzbdav_rclone`** (2026-07-28, a different, unrelated codebase despite
+  the name reuse — WebDAV-only, no native FUSE mount, hence the separate `nzbdav_rclone`
+  sidecar). See CLAUDE.md's Commands section and this file's own later, dated entries for
+  `nzbdav`-specific gotchas (SAB-API queue checks, the FUSE-mount cascade rules, the native
+  `/api/delete-webdav-item`/`/api/update-config` endpoints found 2026-07-31 — see this file's
+  entry near that date).
+- **Tautulli and Kometa are back**: removed entirely in v11.9.0 (see README History), both
+  **reinstalled 2026-07-30** as part of a 6-app "awesome-arr companions" addition (Tautulli,
+  Wrapperr, Maintainerr, Checkrr, Prefetcharr, Lingarr) plus Kometa reinstalled separately
+  in the same window — all running now, confirmed live via `docker compose ps`. Kometa's
+  former Quickstart companion was **not** reinstalled and remains genuinely gone. Do not
+  trust any older line below claiming Tautulli/Kometa's removal is "complete and final" —
+  that claim is superseded.
+- **Recyclarr and quality profiles**: Recyclarr was reinstalled 2026-07-23 (targeting
+  TRaSH-Guides stock profiles), then **removed entirely a second time 2026-07-31**, in the
+  same pass that consolidated both Radarr and Sonarr down to a single quality profile each
+  named `Anything`. See README History `[11.12.0]` for the full detail, including the two
+  non-obvious holdouts that blocked profile deletion (import lists' own default-profile
+  setting, and — Radarr-only — all 903 Collections, no bulk editor exists for those).
+
+When in doubt about current app inventory, `docker compose ps` / `docker-compose.yml`
+itself is ground truth — this file's prose narrative has drifted stale multiple times
+across this repo's history and will likely do so again.
+
 ## What this is
 
 A Docker Compose media-acquisition-and-serving stack, one `docker-compose.yml`: indexes content
@@ -80,10 +110,18 @@ this repo's `control-panel/app.py` — nothing to mirror anywhere.
 
 ## Full service inventory (all 17, by subsystem)
 
-Not a duplicate of README's service table (image/port/profile) — this is the *relationship*
-map: what each service actually talks to, so a question about any one container can be
-answered without re-reading `docker-compose.yml` end to end. `core` = no `profiles:` line,
-comes up on a bare `docker compose up -d`; `extras` = needs `--profile extras`.
+**Stale, multi-generational — see the CORRECTION block near the top of this file first.**
+This section still describes Jellyfin as the media server, `nzbdav` on the wrong port/mount
+path, and the old TRaSH-tier quality profiles (superseded 2026-07-31 by a single `Anything`
+profile per app) — predates the Jellyfin-to-Plex revert and everything after it. Kept as
+relationship-map narrative for the services that *haven't* changed shape since, not as a
+source of current facts; `docker-compose.yml` plus README's service table are ground truth
+for current inventory. Not a duplicate of README's service table (image/port/profile) — this
+is the *relationship* map: what each service actually talks to, so a question about any one
+container can be answered without re-reading `docker-compose.yml` end to end. `core` = no
+`profiles:` line, comes up on a bare `docker compose up -d`; `extras` = needs `--profile
+extras`. **Also stale**: no `profiles:` split exists in `docker-compose.yml` at all anymore —
+every service starts on a bare `docker compose up -d`.
 
 **Indexing** — `prowlarr` (core, indexer manager, pushes indexers to Radarr/Sonarr via
 `fullSync`; Usenet indexers only as of v11.0.0 — every torrent indexer, plus the `Zilean`
@@ -2413,6 +2451,52 @@ a real reimplementation via the SAB API rather than direct sqlite, test rewritte
 `/api/plex/restart-cascade`, `/api/plex/unstick`, `_restart_bearmount_cascade` - tests deleted
 outright, no equivalent feature exists to test). These had been failing since the cutover was
 first made (uncommitted, predating this session) - would have broken CI on the first push.
+
+## NzbDAV's own content store is separate from Arr-side symlinks, and its native deletion API, 2026-07-31
+
+Sonarr's `DELETE /api/v3/series/{id}?deleteFiles=true` only removes the Arr-side symlink
+under `/data/shows/...` - it does **not** touch NzbDAV's own WebDAV-backed content store
+(`/mnt/remote/nzbdav/content/tv/...`, distinct from `/mnt/remote/nzbdav/completed-symlinks/`
+which Cleanuparr does sweep on its own). Found by deleting all Star Trek series via Sonarr,
+then noticing 268 Star Trek entries still present in `content/tv` afterward - real leftover
+data, not a display artifact. `completed-symlinks/tv` was already clean by the time this was
+checked, apparently auto-swept by Cleanuparr independently.
+
+NzbDAV exposes its own native (non-SABnzbd-compatible) API for managing this content store,
+undocumented anywhere public-facing - found by reading the compiled frontend JS bundle
+(`/app/frontend/build/server/assets/*.js` inside the `nzbdav` container, searched via
+Node's own `fs`/string search since the container has no `grep`/`python3`, only `node`):
+
+- `POST /api/delete-webdav-item` - form-encoded body, single field `path` (WebDAV-relative,
+  e.g. `/content/tv/Show.Name.S01E01/Show.Name.S01E01.mkv`), auth via `X-Api-Key` header
+  using the same key as `FRONTEND_BACKEND_API_KEY`/the SAB API. Returns
+  `{"status":true,"error":null}` on success.
+- This 403s by default: `{"status":false,"error":"WebDAV is read-only. Disable 'Enforce
+  Read-Only' in Settings → WebDAV."}` - a deliberate safety setting
+  (`webdav.enforce-readonly`, default `"true"`) that also explains why a raw `rm -rf`
+  through the `nzbdav_rclone` FUSE mount fails with a generic `I/O error` (the mount is
+  WebDAV-backed - see `config/nzbdav-rclone/rclone.conf` - so a filesystem `rm` becomes a
+  WebDAV `DELETE` under the hood, which NzbDAV's own backend then rejects the same way).
+- `POST /api/update-config` toggles it - form-encoded `configName`/`configValue` pairs
+  (confirmed via the same JS bundle: `body: form(...configItems.map(item =>
+  [item.configName, item.configValue]))`), e.g. `webdav.enforce-readonly=false`. Same
+  pattern as the already-documented `POST /api/get-config` gotcha in CLAUDE.md (form-encoded
+  POST, not a GET with query params) - both use the identical `configName`/`configValue`
+  (or `config-keys`, for reads) form-field convention.
+- **Always toggle it back to `true` after the deletion pass** - it's a deliberate guard, not
+  an oversight, and this stack has a documented history of mass-deletion incidents from
+  exactly this class of safety toggle being left off (Plex's `autoEmptyTrash`, same idea).
+  Verify the restore worked *behaviorally*, not just by checking the API returned 200 -
+  `GET /api/get-config` returned an empty `configItems` array for this key when tested
+  (cause not fully diagnosed - possibly a param-encoding mismatch on the read side
+  specifically), so the only confirmed-reliable check is a real follow-up delete attempt
+  correctly 403'ing again.
+
+Separately: `rclone reveal <obscured-string>` (not `rclone obscure --reveal`, which doesn't
+exist as a flag in this rclone build) decodes an rclone-obscured password from
+`rclone.conf` back to plaintext - needed once to get WebDAV Basic-Auth credentials working
+directly against `nzbdav`'s own port, before the `X-Api-Key` header path was found and
+made that unnecessary.
 
 ## Workflow playbook: recurring task types
 

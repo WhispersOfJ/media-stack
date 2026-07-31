@@ -193,7 +193,7 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-flatpak-updates [--apply]`** — list, or apply, pending Flatpak updates.
 - **`stack-log-levels [reset]`** — check, or reset, every Servarr app's log level.
 
-## 2026-07-30 additions — Tautulli, Wrapperr, Maintainerr, Checkrr, Prefetcharr, Lingarr, Kometa, Notifiarr
+## 2026-07-30 additions — Tautulli, Wrapperr, Maintainerr, Checkrr, Prefetcharr, Lingarr, Kometa
 
 ### Tautulli
 
@@ -260,14 +260,7 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-kometa-last-run-result`** — outcome of the last completed run.
 - **`stack-kometa-config`** — which libraries/collections `config.yml` is set to touch.
 
-### Notifiarr
-
-- **`stack-notifiarr-status`** — client reachability.
-- **`stack-notifiarr-test`** — send a real test Discord notification through it.
-- **`stack-notifiarr-config`** — whether its API key is set (masked).
-- **`stack-notifiarr-integration-check`** — combined reachable + key-set pass/fail.
-
 ### Cross-app
 
-- **`stack-newapps-status`** — health sweep of all eight new apps at once.
-- **`stack-newapps-backup-check`** — confirms all eight are present in the latest local backup snapshot.
+- **`stack-newapps-status`** — health sweep of all new apps at once.
+- **`stack-newapps-backup-check`** — confirms all new apps are present in the latest local backup snapshot.

@@ -836,18 +836,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-recyclarr-status",
-    "Description": "Show Recyclarr recent log output (last sync result)",
-    "Method": "GET",
-    "PathTemplate": "/api/recyclarr/status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-notify-test",
     "Description": "Send a test notification to the stack Discord webhook",
     "Method": "POST",
