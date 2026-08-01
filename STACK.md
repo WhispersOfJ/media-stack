@@ -2700,3 +2700,47 @@ call instead of a multi-step curl script.
   2026-08-01 after 3 consecutive cycles). A user-added `alternateTitles` entry does **not**
   persist via `PUT /api/v3/movie/{id}` — Radarr silently drops non-`tmdb`-sourced entries on
   save, so that's not a working fix either.
+
+## NzbDAV `(2)`-suffix dedup bug — real root cause of most `importBlocked` loops, fixed 2026-08-01
+
+What looked like ~10 separate "bad title match" cases in one `queue-autofix` session (POTC:
+Dead Man's Chest, Naked Gun 2½, TMZ Diddy specials x3, Hell House LLC II, plus earlier
+Fellowship of the Ring, Return of the Jedi, SpongeBob SquarePants Movie, Space Chimps 2, Land
+Before Time VII/XIII, Hey Arnold: The Jungle Movie, High Strung Free Dance) was actually one
+systemic bug, not per-movie bad releases:
+
+- NzbDAV's config key `api.duplicate-nzb-behavior` (frontend: Settings → SABnzbd → "Behavior
+  for Duplicate NZBs") defaults to `increment`. When an NZB's destination folder name has ever
+  been used before — even if that folder was since deleted/cleaned up, NzbDAV's registry of
+  assigned names is independent of the current filesystem contents — it appends ` (2)`, ` (3)`,
+  etc. to the new symlink folder/file name instead of reusing the name or failing outright.
+- That ` (2)` suffix in the actual filename breaks Radarr's release-name parser during import.
+  Confirmed via `POST /api/v3/manualimport?folder=...`: the scan returned `"movie": null`,
+  rejection `"Unknown Movie"` — Radarr can't parse the title at all from a name ending in
+  ` (2).mkv`/`.mp4`. This forces Radarr's "matched by ID via grab history" fallback path,
+  which requires manual import confirmation and reports as `importBlocked`.
+  `queue-autofix`'s blocklist+research response can never fix this — every re-search just
+  grabs a new release that lands with yet another incrementing suffix, so the movie loops
+  forever regardless of how many different releases actually exist.
+- **The file itself is fine** — confirmed by manually running `ManualImport` with an explicit
+  `movieId` against the ` (2)`-suffixed path (bypassing Radarr's broken auto-parse): Naked Gun
+  2½ imported successfully, `hasFile` flipped to `true`. Every movie that hit this pattern
+  before the fix was NOT bad content — the earlier round of "unmonitor after 2 cycles" fixes
+  applied to some of these (Fellowship of the Ring, Return of the Jedi, SpongeBob SquarePants
+  Movie, Space Chimps 2, Land Before Time VII/XIII, Hey Arnold: The Jungle Movie, High Strung
+  Free Dance) were masking this bug, not fixing bad releases — all 7 were remonitored after
+  the real fix went in (Crow: City of Angels, movie 14374, stayed unmonitored — that one's
+  root cause was a genuine mistyped-release/alternate-title mismatch, unrelated to this bug,
+  and it already has a satisfied file so re-monitoring would just resume needless upgrade
+  churn).
+- **Fix applied**: `POST /api/update-config` with form field `api.duplicate-nzb-behavior=mark-failed`
+  (only two values exist in the NzbDAV UI: `increment` or `mark-failed`). Now a name collision
+  fails the download cleanly (`failedPending`, not a broken `importBlocked` import) instead of
+  producing an unparseable suffixed file — `queue-autofix`'s existing failedPending
+  blocklist+research handles that correctly, so a colliding re-grab just moves on to a
+  genuinely different release instead of hitting the parser wall every time.
+- **Signature to watch for** if this class of loop recurs despite the fix: `importBlocked`
+  item whose queue `outputPath` ends in ` (2)`, ` (3)`, etc. — check that before assuming it's
+  a title-mismatch case needing unmonitor; verify with `docker exec radarr ls` on the actual
+  completed-symlinks path and a manual `POST /api/v3/manualimport?folder=...` scan for
+  `"movie": null` / `"Unknown Movie"` before concluding anything.
