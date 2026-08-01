@@ -51,6 +51,7 @@ Not stack-specific — general-purpose fish helpers.
 - **`stack-arr-import-all <radarr|sonarr>`** — import every candidate in one call instead of one at a time.
 - **`stack-arr-missing-aired <radarr|sonarr>`** — monitored items with no file that have already aired/released, filtering out upcoming ones.
 - **`stack-arr-queue-errors`** — queue items across every app already flagged as a problem by the app itself.
+- **`stack-queue-autofix`** — blocklists+re-searches `failedPending` items in Radarr/Sonarr and Radarr's `importBlocked` items (always remove+research, no manual-import attempt first), disables `autoRedownloadFailed` if a retry storm is detected (≥15 failedPending in one pass), and reports NzbDAV queue health. Distinct from `unstick` — `unstick` only catches `trackedDownloadStatus warning/error`, which `failedPending` items don't set. Powers the recurring 5-minute queue-monitoring loop.
 - **`stack-arr-blocklist <radarr|sonarr> [limit]`** — recent blocklisted releases.
 - **`stack-arr-blocklist-clear <radarr|sonarr> [-y|--yes]`** — clear every blocklisted release; confirms first unless `-y`.
 - **`stack-arr-list-implementations <radarr|sonarr>`** — every import-list type the app's build supports, configured or not.

@@ -2348,6 +2348,122 @@ def arr_unstick_importing(app_name: str):
     return ok(message, results=results)
 
 
+# ---------------------------------------------------------------------
+# Queue autofix - the recurring 5-minute loop's workflow, promoted from an
+# ad hoc curl sequence to a real endpoint 2026-08-01. Distinct from Unstick
+# above: Unstick only catches trackedDownloadStatus warning/error.
+# failedPending items keep trackedDownloadStatus "ok" (only
+# trackedDownloadState flips), so Unstick never touches them - confirmed
+# live, a queue full of dead-article failedPending releases sat untouched
+# through repeated Unstick calls. This also fires an *explicit* per-item
+# search command after blocklisting rather than relying solely on the
+# implicit skipRedownload=false search, and folds in NzbDAV's own queue
+# health and an autoRedownloadFailed retry-storm guard.
+# ---------------------------------------------------------------------
+FAILED_PENDING_STORM_THRESHOLD = 15
+
+
+def _blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str], list[str]]:
+    cfg = ARR_APPS[app_name]
+    fixed, errors = [], []
+    search_ids: list[int] = []
+    id_field = "movieId" if app_name == "radarr" else "episodeId"
+    for q in items:
+        title = q.get("title") or str(q["id"])
+        try:
+            r = httpx.delete(
+                f"{cfg['url']}/api/{cfg['api']}/queue/{q['id']}",
+                params={"removeFromClient": "true", "blocklist": "true", "skipRedownload": "false"},
+                headers={"X-Api-Key": cfg["key"]},
+                timeout=20,
+            )
+            r.raise_for_status()
+            fixed.append(title)
+            target_id = q.get(id_field)
+            if target_id is not None:
+                search_ids.append(target_id)
+        except httpx.HTTPError as e:
+            errors.append(f"{title}: {e}")
+    if search_ids:
+        command_name = "MoviesSearch" if app_name == "radarr" else "EpisodeSearch"
+        command_field = "movieIds" if app_name == "radarr" else "episodeIds"
+        try:
+            r = httpx.post(
+                f"{cfg['url']}/api/{cfg['api']}/command",
+                json={"name": command_name, command_field: search_ids},
+                headers={"X-Api-Key": cfg["key"]},
+                timeout=20,
+            )
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            errors.append(f"search trigger failed for {len(search_ids)} item(s): {e}")
+    return fixed, errors
+
+
+def _disable_autoredownload_if_storm(app_name: str, failed_pending_count: int) -> bool:
+    if failed_pending_count < FAILED_PENDING_STORM_THRESHOLD:
+        return False
+    cfg = ARR_APPS[app_name]
+    try:
+        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/config/downloadclient", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+        current = r.json()
+        if not current.get("autoRedownloadFailed"):
+            return False
+        current["autoRedownloadFailed"] = False
+        r = httpx.put(
+            f"{cfg['url']}/api/{cfg['api']}/config/downloadclient/{current['id']}",
+            json=current,
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        r.raise_for_status()
+        return True
+    except httpx.HTTPError:
+        return False
+
+
+@app.post("/api/arr/queue-autofix")
+def arr_queue_autofix():
+    per_app = {}
+    for app_name in QUEUE_ARR_APPS:
+        items = arr_queue(app_name)
+        failed = [q for q in items if q.get("trackedDownloadState") == "failedPending"]
+        # importBlocked handling is Radarr-only per explicit user direction
+        # 2026-08-01 - always remove+research every cycle, never try
+        # manual-import first, even though some importBlocked items are
+        # perfectly good completed downloads that just need a manual import
+        # trigger (confirmed case: "Found matching movie via grab history,
+        # but release was matched to movie by ID"). Movies that are already
+        # satisfied (hasFile) and keep re-triggering this should be
+        # unmonitored instead - autofix does not do that automatically.
+        blocked = [q for q in items if app_name == "radarr" and q.get("trackedDownloadState") == "importBlocked"]
+        fixed, errors = _blocklist_and_research(app_name, failed + blocked)
+        storm_disabled = _disable_autoredownload_if_storm(app_name, len(failed))
+        per_app[app_name] = {
+            "failed_pending": len(failed),
+            "import_blocked": len(blocked),
+            "fixed": fixed,
+            "errors": errors,
+            "autoredownload_disabled": storm_disabled,
+        }
+
+    nz = nzbdav_api("queue").get("queue", {})
+    nzbdav_health = {"slots": len(nz.get("slots", [])), "paused": bool(nz.get("paused"))}
+
+    total_fixed = sum(len(r["fixed"]) for r in per_app.values())
+    total_errors = sum(len(r["errors"]) for r in per_app.values())
+    storms = [a for a, r in per_app.items() if r["autoredownload_disabled"]]
+    parts = [f"Fixed {total_fixed} stuck queue item(s) across radarr/sonarr."]
+    if total_errors:
+        parts.append(f"{total_errors} error(s).")
+    if storms:
+        parts.append(f"Disabled autoRedownloadFailed (retry storm) for: {', '.join(storms)}.")
+    if nzbdav_health["paused"]:
+        parts.append("WARNING: NzbDAV queue is paused.")
+    return ok(" ".join(parts), radarr=per_app.get("radarr"), sonarr=per_app.get("sonarr"), nzbdav=nzbdav_health)
+
+
 @app.get("/api/arr/{app_name}/manual-import")
 def arr_manual_import_candidates(app_name: str):
     """Every importable file the arr app can see across all currently

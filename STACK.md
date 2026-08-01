@@ -2642,3 +2642,61 @@ Prowlarr/NzbDAV keys, after one turned up hardcoded in `.claude/settings.local.j
      container-*create* time (see the Commands section above).
 3. Test each consumer's connection afterward via its own `/test`-style endpoint rather than
    assuming the write took — most of the endpoints above have one.
+
+## WebTools-NG added as a local (non-Dockerized) Plex maintenance tool, 2026-08-01
+
+`WebTools-NG` (https://github.com/WebTools-NG/WebTools-NG) is an Electron desktop GUI for
+Plex maintenance (export/import playlists, poster management, collections, etc.) — not a
+headless service. It ships only as a Windows/Linux/Mac desktop app (AppImage on Linux), so
+it doesn't belong in `docker-compose.yml`; user explicitly asked for it at the local level
+instead.
+
+- Installed to `~/Applications/WebTools-NG-1.2.1.f962812.AppImage` (executable bit set).
+- Required `fuse2` (`sudo pacman -S fuse2`) to be installed system-wide first — AppImages
+  built with the older appimage-runtime need libfuse.so.2, which CachyOS doesn't ship by
+  default. Installed 2026-08-01.
+- Launch via the AppImage directly (double-click in KDE Plasma's file manager, or
+  `~/Applications/WebTools-NG-*.AppImage &` from a terminal) — it's a GUI app, not something
+  Claude Code can drive headlessly.
+- On first launch, point it at this stack's Plex server: URL `http://192.168.4.105:32400`,
+  token from `.env`'s `PLEX_TOKEN`. Both come from the same `.env` Plex already uses — no
+  separate credential needed.
+- No update automation exists for this — it's a manually-downloaded release binary, not
+  pulled by any compose/watchtower mechanism. Re-download from GitHub Releases to upgrade.
+
+## `stack-queue-autofix` added: queue-autofix promoted from ad hoc curl to a real endpoint, 2026-08-01
+
+A recurring 5-minute cron loop had been running the same curl sequence by hand each cycle:
+blocklist `failedPending` Radarr/Sonarr queue items, explicitly trigger a per-item search
+after blocklisting, blocklist+research Radarr's `importBlocked` items every cycle (no
+manual-import attempt first — user explicitly chose this over trying
+`/api/arr/radarr/manual-import-all` first, even though some `importBlocked` items are good
+completed downloads that just need a manual import trigger), and check NzbDAV queue health.
+Promoted to `POST /api/arr/queue-autofix` (`control-panel/app.py`) plus a
+`stack-queue-autofix` fish function wrapping it, so the loop (and any manual check) is one
+call instead of a multi-step curl script.
+
+- **Why not just extend `/api/arr/{app}/unstick`**: `unstick`'s `stuck_queue_items()` filters
+  on `trackedDownloadStatus in (warning, error)`. `failedPending` items keep
+  `trackedDownloadStatus: "ok"` — only `trackedDownloadState` flips — so `unstick` never
+  touches them; confirmed live, a queue of 128 dead-article `failedPending` releases sat
+  untouched through repeated `unstick` calls. `importBlocked` items *do* set
+  `trackedDownloadStatus: "warning"`, so `unstick` would have caught those, but not the
+  `failedPending` half of the problem — hence a separate endpoint rather than widening
+  `unstick`'s filter (which is also used by other callers expecting its narrower scope).
+- **Explicit per-item search, not just `skipRedownload=false`**: user asked for a
+  belt-and-suspenders `EpisodeSearch`/`MoviesSearch` command per blocklisted item's
+  episodeId/movieId, not relying solely on the delete call's implicit search.
+- **`FAILED_PENDING_STORM_THRESHOLD = 15`**: arbitrary but grounded in a real incident
+  (2026-08-01, Sonarr queue hit 128 simultaneous `failedPending` items in one pass — a
+  genuine storm, not noise). Below the threshold, `autoRedownloadFailed` is left alone even
+  if `true`, since a handful of dead articles isn't evidence of a storm.
+- **Known limitation, confirmed live**: a movie stuck in `importBlocked` because the release
+  is mistyped (e.g. "City Of Angles" vs "City of Angels" — Radarr can't string-match to the
+  title/alternate-titles table, only via grab-history ID, which always trips
+  `importBlocked`) will loop forever if the movie is monitored — every cycle re-downloads a
+  multi-GB file for nothing. `queue-autofix` does not detect or break this; the actual fix is
+  unmonitoring the movie (confirmed: movie 14374, The Crow: City of Angels 1996, unmonitored
+  2026-08-01 after 3 consecutive cycles). A user-added `alternateTitles` entry does **not**
+  persist via `PUT /api/v3/movie/{id}` — Radarr silently drops non-`tmdb`-sourced entries on
+  save, so that's not a working fix either.
