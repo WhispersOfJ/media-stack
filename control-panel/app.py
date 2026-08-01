@@ -2106,10 +2106,12 @@ def require_queue_app(app_name: str) -> dict:
 
 def arr_queue(app_name: str) -> list[dict]:
     cfg = ARR_APPS[app_name]
+    params = {"pageSize": 250, "includeUnknownMovieItems": "true"}
+    params["includeMovie" if app_name == "radarr" else "includeEpisode"] = "true"
     try:
         r = httpx.get(
             f"{cfg['url']}/api/{cfg['api']}/queue",
-            params={"pageSize": 250, "includeUnknownMovieItems": "true"},
+            params=params,
             headers={"X-Api-Key": cfg["key"]},
             timeout=20,
         )
@@ -2363,6 +2365,18 @@ def arr_unstick_importing(app_name: str):
 FAILED_PENDING_STORM_THRESHOLD = 15
 
 
+def _item_is_monitored(app_name: str, q: dict) -> bool:
+    # unmonitored movies/episodes should never be re-searched by the loop -
+    # a stale/in-flight queue item grabbed before the unmonitor took effect
+    # would otherwise get re-blocklisted and immediately re-searched forever,
+    # defeating the point of unmonitoring it (confirmed live 2026-08-01: "90
+    # Day Fiance" S11E06 got re-grabbed seconds after being unmonitored).
+    embedded = q.get("movie") if app_name == "radarr" else q.get("episode")
+    if embedded is None:
+        return True
+    return bool(embedded.get("monitored", True))
+
+
 def _blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str], list[str]]:
     cfg = ARR_APPS[app_name]
     fixed, errors = [], []
@@ -2370,17 +2384,18 @@ def _blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str]
     id_field = "movieId" if app_name == "radarr" else "episodeId"
     for q in items:
         title = q.get("title") or str(q["id"])
+        monitored = _item_is_monitored(app_name, q)
         try:
             r = httpx.delete(
                 f"{cfg['url']}/api/{cfg['api']}/queue/{q['id']}",
-                params={"removeFromClient": "true", "blocklist": "true", "skipRedownload": "false"},
+                params={"removeFromClient": "true", "blocklist": "true", "skipRedownload": str(not monitored).lower()},
                 headers={"X-Api-Key": cfg["key"]},
                 timeout=20,
             )
             r.raise_for_status()
             fixed.append(title)
             target_id = q.get(id_field)
-            if target_id is not None:
+            if monitored and target_id is not None:
                 search_ids.append(target_id)
         except httpx.HTTPError as e:
             errors.append(f"{title}: {e}")
