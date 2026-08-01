@@ -263,11 +263,18 @@ services:
         --links
         --use-cookies
         --vfs-cache-mode=full
-        --vfs-cache-max-size=20G
-        --vfs-cache-max-age=24h
+        --vfs-cache-max-size=50G
+        --vfs-cache-max-age=2160h
         --buffer-size=0M
-        --vfs-read-ahead=512M
-        --dir-cache-time=20s
+        --vfs-read-chunk-size=16M
+        --vfs-read-chunk-size-limit=512M
+        --no-modtime
+        --no-checksum
+        --dir-cache-time=1h
+        --poll-interval=0
+        --timeout=30s
+        --contimeout=15s
+        --low-level-retries=3
         --rc
         --rc-addr=:5572
         --rc-user=rclone
