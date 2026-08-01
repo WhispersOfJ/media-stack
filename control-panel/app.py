@@ -2365,16 +2365,30 @@ def arr_unstick_importing(app_name: str):
 FAILED_PENDING_STORM_THRESHOLD = 15
 
 
-def _item_is_monitored(app_name: str, q: dict) -> bool:
+def _item_is_monitored(app_name: str, q: dict, cfg: dict, id_field: str) -> bool:
     # unmonitored movies/episodes should never be re-searched by the loop -
     # a stale/in-flight queue item grabbed before the unmonitor took effect
     # would otherwise get re-blocklisted and immediately re-searched forever,
     # defeating the point of unmonitoring it (confirmed live 2026-08-01: "90
     # Day Fiance" S11E06 got re-grabbed seconds after being unmonitored).
+    # The queue response's embedded movie/episode object is NOT reliable -
+    # confirmed live 2026-08-01: "Blindspot" S05E04 sat with episode: null
+    # for 8+ seconds straight (not just a momentary race), which would have
+    # silently defaulted to "monitored" and kept re-searching an unmonitored
+    # episode forever. Always confirm via a direct lookup by id instead.
     embedded = q.get("movie") if app_name == "radarr" else q.get("episode")
-    if embedded is None:
+    if embedded is not None:
+        return bool(embedded.get("monitored", True))
+    target_id = q.get(id_field)
+    if target_id is None:
         return True
-    return bool(embedded.get("monitored", True))
+    endpoint = "movie" if app_name == "radarr" else "episode"
+    try:
+        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/{endpoint}/{target_id}", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+        return bool(r.json().get("monitored", True))
+    except httpx.HTTPError:
+        return True
 
 
 def _blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str], list[str]]:
@@ -2384,7 +2398,7 @@ def _blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str]
     id_field = "movieId" if app_name == "radarr" else "episodeId"
     for q in items:
         title = q.get("title") or str(q["id"])
-        monitored = _item_is_monitored(app_name, q)
+        monitored = _item_is_monitored(app_name, q, cfg, id_field)
         try:
             r = httpx.delete(
                 f"{cfg['url']}/api/{cfg['api']}/queue/{q['id']}",
