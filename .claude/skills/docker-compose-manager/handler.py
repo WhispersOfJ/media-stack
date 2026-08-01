@@ -13,6 +13,7 @@ Usage:
 import argparse
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Known FUSE-mount-owning services -> containers that bind-mount their output and
@@ -58,25 +59,89 @@ def cmd_status(compose_dir: Path, service: str | None) -> None:
     compose(compose_dir, *args)
 
 
+MOUNT_PATH = "/mnt/remote/nzbdav"
+
+
+def _mount_up(timeout: int = 30) -> bool:
+    """Poll the host mount until `ls` succeeds or timeout elapses."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["ls", MOUNT_PATH], capture_output=True, timeout=5
+        )
+        if result.returncode == 0:
+            return True
+        time.sleep(2)
+    return False
+
+
+def _force_recreate(compose_dir: Path, service: str) -> None:
+    compose(compose_dir, "up", "-d", "--force-recreate", service)
+
+
 def cmd_restart(compose_dir: Path, service: str, no_cascade: bool) -> None:
     targets = [service]
     dependents = CASCADE_MAP.get(service, [])
     if dependents and not no_cascade:
         print(f"[cascade] {service} shares a FUSE mount with: {', '.join(dependents)}")
-        print("[cascade] restarting mount owner, then dependents, then re-binding nzbdav last")
+        print("[cascade] force-recreating mount owner, verifying mount, then dependents, then re-binding nzbdav last")
+        # `restart` reuses the container's existing mount namespace and never
+        # picks up a fresh FUSE mount - it must be --force-recreate, for the
+        # owner AND every dependent, or dependents silently keep a stale
+        # handle. Confirmed live 2026-08-01 (a mount already gone stale before
+        # any restart, on a plain `docker compose restart plex`, crashed with
+        # "Transport endpoint is not connected" - exit 128).
+        #
         # Anchor on nzbdav_rclone regardless of which cascade key was passed
         # (nzbdav or nzbdav_rclone) - it's the actual FUSE mount owner, and
-        # restarting it is what produces a fresh mount instance for everyone
+        # recreating it is what produces a fresh mount instance for everyone
         # else to bind to.
-        compose(compose_dir, "restart", "nzbdav_rclone")
+        _force_recreate(compose_dir, "nzbdav_rclone")
+
+        if not _mount_up():
+            print(
+                f"[cascade] {MOUNT_PATH} still not responding after recreate - "
+                f"trying `sudo umount -l {MOUNT_PATH}` then recreating again.",
+                file=sys.stderr,
+            )
+            subprocess.run(["sudo", "umount", "-l", MOUNT_PATH], check=False)
+            _force_recreate(compose_dir, "nzbdav_rclone")
+            if not _mount_up():
+                print(
+                    f"[cascade] ABORTING: {MOUNT_PATH} did not come up after "
+                    "umount+recreate. Not touching dependents against a dead "
+                    "mount - investigate manually before retrying.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
         for dep in dependents:
-            compose(compose_dir, "restart", dep)
+            _force_recreate(compose_dir, dep)
+            check = subprocess.run(
+                ["docker", "exec", dep, "ls", MOUNT_PATH], capture_output=True
+            )
+            if check.returncode != 0:
+                print(
+                    f"[cascade] WARNING: {dep} can't see {MOUNT_PATH} after "
+                    f"recreate: {check.stderr.decode().strip()}",
+                    file=sys.stderr,
+                )
+
         # nzbdav itself bind-mounts /mnt too, so it needs re-binding after the
         # above like any other dependent - but `docker compose restart nzbdav`
-        # would trigger nzbdav_rclone's depends_on(restart:true) and re-stale
-        # everything just restarted above. A plain `docker restart` skips
-        # compose's dependency evaluation entirely, so it can safely run last.
+        # (or --force-recreate via compose) would trigger nzbdav_rclone's
+        # depends_on(restart:true) and re-stale everything just recreated
+        # above. A plain `docker restart` skips compose's dependency
+        # evaluation entirely, so it can safely run last. A container restart
+        # (not compose restart) re-establishes its bind mounts on start, so
+        # this is sufficient without --force-recreate.
         subprocess.run(["docker", "restart", "nzbdav"], check=True)
+
+        leak_count = subprocess.run(
+            ["sh", "-c", f"mount | grep -c '{MOUNT_PATH.lstrip('/')}'"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        print(f"[cascade] mount-table entries for {MOUNT_PATH}: {leak_count} (should be 1)")
         return
     compose(compose_dir, "restart", *targets)
 
