@@ -3,32 +3,32 @@
    rows (no cards, no boxes, no tabs) and a permanently pinned right-hand
    log console. Navigation between "screens" doesn't exist — every rail
    lives on the one continuous page; the only overlay is the command
-   palette, which is transient by design. Light, cool-neutral ground,
-   one steel-teal accent, square corners throughout. */
+   palette, which is transient by design. Warm parchment/espresso ground,
+   one crimson accent, square corners throughout. */
 
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg: #eef1f3;
-  --surface: #ffffff;
-  --surface-2: #e4e9ec;
-  --line: #ccd5db;
-  --line-strong: #a9b5bd;
-  --ink: #1b2530;
-  --ink-soft: #47535e;
-  --ink-faint: #7c8894;
-  --accent: #1f6f6b;
-  --accent-hover: #185651;
+  --bg: #f5ece4;
+  --surface: #fffaf6;
+  --surface-2: #ede0d5;
+  --line: #d9c3b3;
+  --line-strong: #b89680;
+  --ink: #2c1b13;
+  --ink-soft: #5c4233;
+  --ink-faint: #8a6f5d;
+  --accent: #8c1d2b;
+  --accent-hover: #6e1520;
   --accent-ink: #ffffff;
-  --accent-tint: rgba(31, 111, 107, 0.09);
-  --accent-tint-strong: rgba(31, 111, 107, 0.18);
-  --good: #2e7d4f;
-  --good-tint: rgba(46, 125, 79, 0.1);
-  --warn: #916313;
-  --warn-tint: rgba(145, 99, 19, 0.1);
-  --bad: #ad3a3a;
-  --bad-tint: rgba(173, 58, 58, 0.09);
-  --unknown: #8b96a0;
+  --accent-tint: rgba(140, 29, 43, 0.09);
+  --accent-tint-strong: rgba(140, 29, 43, 0.18);
+  --good: #3f7d4a;
+  --good-tint: rgba(63, 125, 74, 0.1);
+  --warn: #a15c17;
+  --warn-tint: rgba(161, 92, 23, 0.1);
+  --bad: #c0392b;
+  --bad-tint: rgba(192, 57, 43, 0.09);
+  --unknown: #9c8879;
   --font-ui: "IBM Plex Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --log-w: 380px;
@@ -37,38 +37,38 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #10151a;
-    --surface: #171e25;
-    --surface-2: #1e2731;
-    --line: #2b3640;
-    --line-strong: #3d4b56;
-    --ink: #e7edf1;
-    --ink-soft: #aab7c1;
-    --ink-faint: #74838d;
-    --accent: #4fb3ad;
-    --accent-hover: #6fc4bf;
-    --accent-ink: #08201e;
-    --accent-tint: rgba(79, 179, 173, 0.12);
-    --accent-tint-strong: rgba(79, 179, 173, 0.22);
-    --good: #4caf76;
-    --good-tint: rgba(76, 175, 118, 0.14);
-    --warn: #d1a13f;
-    --warn-tint: rgba(209, 161, 63, 0.14);
-    --bad: #d9716c;
-    --bad-tint: rgba(217, 113, 108, 0.14);
-    --unknown: #5c6a75;
+    --bg: #1a120e;
+    --surface: #251813;
+    --surface-2: #2f1e17;
+    --line: #4a3128;
+    --line-strong: #634235;
+    --ink: #f3e6db;
+    --ink-soft: #ccb2a0;
+    --ink-faint: #8f7566;
+    --accent: #dc4f57;
+    --accent-hover: #e7767c;
+    --accent-ink: #2a0a0c;
+    --accent-tint: rgba(220, 79, 87, 0.14);
+    --accent-tint-strong: rgba(220, 79, 87, 0.24);
+    --good: #6fbf7a;
+    --good-tint: rgba(111, 191, 122, 0.14);
+    --warn: #dba24a;
+    --warn-tint: rgba(219, 162, 74, 0.14);
+    --bad: #e8776e;
+    --bad-tint: rgba(232, 119, 110, 0.14);
+    --unknown: #6b5548;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #10151a; --surface: #171e25; --surface-2: #1e2731;
-  --line: #2b3640; --line-strong: #3d4b56;
-  --ink: #e7edf1; --ink-soft: #aab7c1; --ink-faint: #74838d;
-  --accent: #4fb3ad; --accent-hover: #6fc4bf; --accent-ink: #08201e;
-  --accent-tint: rgba(79, 179, 173, 0.12); --accent-tint-strong: rgba(79, 179, 173, 0.22);
-  --good: #4caf76; --good-tint: rgba(76, 175, 118, 0.14);
-  --warn: #d1a13f; --warn-tint: rgba(209, 161, 63, 0.14);
-  --bad: #d9716c; --bad-tint: rgba(217, 113, 108, 0.14);
-  --unknown: #5c6a75;
+  --bg: #1a120e; --surface: #251813; --surface-2: #2f1e17;
+  --line: #4a3128; --line-strong: #634235;
+  --ink: #f3e6db; --ink-soft: #ccb2a0; --ink-faint: #8f7566;
+  --accent: #dc4f57; --accent-hover: #e7767c; --accent-ink: #2a0a0c;
+  --accent-tint: rgba(220, 79, 87, 0.14); --accent-tint-strong: rgba(220, 79, 87, 0.24);
+  --good: #6fbf7a; --good-tint: rgba(111, 191, 122, 0.14);
+  --warn: #dba24a; --warn-tint: rgba(219, 162, 74, 0.14);
+  --bad: #e8776e; --bad-tint: rgba(232, 119, 110, 0.14);
+  --unknown: #6b5548;
 }
 
 * { box-sizing: border-box; }
@@ -210,7 +210,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .btn-danger { padding: 7px 14px; font-size: 0.79rem; color: #fff; background: var(--bad); }
-.btn-danger:hover { background: #8f2e2e; }
+.btn-danger:hover { background: #7a1f1f; }
 .btn-danger:disabled { opacity: 0.5; cursor: wait; }
 .btn-danger.armed, .btn-ghost.armed, .btn-icon.armed {
   background: var(--bad-tint); border-color: var(--bad); color: var(--bad); animation: armed-flash 700ms ease-in-out infinite;
@@ -224,7 +224,7 @@ input::placeholder { color: var(--ink-faint); }
 input:focus { border-color: var(--accent); }
 select {
   padding: 6px 26px 6px 9px; font-size: 0.79rem; background-color: var(--surface); border: 1px solid var(--line);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%231f6f6b'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238c1d2b'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 9px center;
 }
 select:focus { border-color: var(--accent); }
@@ -436,7 +436,7 @@ table.result-table td.num { text-align: right; font-family: var(--font-mono); wh
 .poster-review-thumb img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--surface); display: block; }
 .poster-review-thumb-label { font-size: 0.6rem; color: var(--ink-faint); text-align: center; }
 .poster-review-thumb:hover { border-color: var(--line-strong); }
-.poster-review-thumb.poster-review-picked { border-color: var(--accent, #4fb3ad); }
+.poster-review-thumb.poster-review-picked { border-color: var(--accent, #8c1d2b); }
 .poster-review-status { margin-top: 4px; font-size: 0.66rem; font-family: var(--font-mono); color: var(--ink-faint); min-height: 1em; }
 
 @media (prefers-reduced-motion: reduce) {

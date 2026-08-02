@@ -2815,3 +2815,42 @@ Now retries once on timeout and tolerates a 404 on the delete, matching the patt
 
 No auto-polling — the panel is on-demand (`Rescan` button) like Manual Import, not another
 cron loop layered on top of the hourly `queue-autofix` one.
+
+## Control Panel: stale-reference cleanup + crimson/brown retheme, 2026-08-02
+
+Audit found three real stale-reference bugs in the frontend, none catastrophic (the app
+degrades gracefully — an unmatched `FLEET_GROUPS`/`CONTAINER_LABELS` key just falls into
+"Other", per app.py's own documented staleness tolerance) but all worth fixing:
+
+- `static/commands.json` still named four live NzbDAV commands `stack-bearmount-*`
+  (`delete-failures`/`history`/`queue`/`stats`) even though their `PathTemplate`s correctly
+  point at `/api/nzbdav/*` and the matching fish functions were already renamed to
+  `stack-nzbdav-*` back when BearMount was cut over (2026-07-28) — only the palette manifest
+  entry was missed. Renamed to match.
+- **Notifiarr was never real.** `reference.js` (quicklink + doc-link), `fleet.js`
+  (`FLEET_GROUPS`), and `commands.json` (4 `stack-notifiarr-*` entries hitting
+  `/api/notifiarr/*`) all referenced it, but no `notifiarr` service exists in
+  `docker-compose.yml`, no `/api/notifiarr/*` route exists in `app.py`, and no mention of it
+  exists anywhere in README/STACK.md history — not a removed app, a phantom one that was
+  apparently wired into the frontend without ever being backed by a real container or route.
+  Removed from all three files.
+- `fleet.js`'s `FLEET_GROUPS` also still had a `recyclarr: "Arr apps"` entry — Recyclarr was
+  confirmed removed entirely in v11.12.0 (README's History), and its `CONTAINER_LABELS`/
+  `commands.json`/`/api/recyclarr/status` entries were removed at the time per that entry,
+  but this one `fleet.js` key was missed. Removed.
+
+Also retextured the entire dashboard from the original steel-teal/cool-neutral palette to a
+crimson-accent/warm-espresso-and-parchment one, by request. The whole app is built on CSS
+custom properties (`--bg`/`--surface`/`--ink*`/`--accent*`/`--good`/`--warn`/`--bad`/
+`--unknown`, defined once each for light `:root` and dark `@media (prefers-color-scheme:
+dark)` + `:root[data-theme="dark"]`) — retheming was a matter of swapping those two variable
+blocks, not touching per-component CSS. Only a handful of hardcoded (non-`var()`) colors
+existed outside that system and needed separate fixes: `.btn-danger:hover`'s hardcoded dark
+red, a `var(--accent, #hex)` fallback value, the favicon's inline SVG `data:` URI, and a
+`<select>` dropdown-arrow SVG `data:` URI in `style.css` — both `data:` URIs hardcode their
+fill color since they're not real CSS and can't reference custom properties. Verified live in
+both themes (toggled `data-theme` directly via devtools) after a `docker compose build
+control-panel && up -d --force-recreate` — a stale served-CSS symptom during verification
+turned out to be the browser tab's cached `<link>` stylesheet object, not a deployment bug
+(confirmed by fetching `/style.css` with `cache: 'no-store'` and diffing against the
+container's on-disk file, then forcing a real re-parse by swapping the `<link>` element).
