@@ -2399,20 +2399,40 @@ def _blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str]
     for q in items:
         title = q.get("title") or str(q["id"])
         monitored = _item_is_monitored(app_name, q, cfg, id_field)
-        try:
-            r = httpx.delete(
-                f"{cfg['url']}/api/{cfg['api']}/queue/{q['id']}",
-                params={"removeFromClient": "true", "blocklist": "true", "skipRedownload": str(not monitored).lower()},
-                headers={"X-Api-Key": cfg["key"]},
-                timeout=20,
-            )
-            r.raise_for_status()
-            fixed.append(title)
-            target_id = q.get(id_field)
-            if monitored and target_id is not None:
-                search_ids.append(target_id)
-        except httpx.HTTPError as e:
-            errors.append(f"{title}: {e}")
+        params = {"removeFromClient": "true", "blocklist": "true", "skipRedownload": str(not monitored).lower()}
+        # One retry on timeout, and tolerate 404 - a busy arr instance can
+        # process/clear the item itself between our queue read and this
+        # delete (same benign race arr_unstick_importing already handles
+        # for its shared-downloadId case). Confirmed live 2026-08-02: two
+        # items timed out here mid-large-batch and sat genuinely stuck until
+        # hand-retried; a 404 on retry meant the item had already cleared on
+        # its own, not an error.
+        delete_ok = False
+        for attempt in range(2):
+            try:
+                r = httpx.delete(
+                    f"{cfg['url']}/api/{cfg['api']}/queue/{q['id']}",
+                    params=params,
+                    headers={"X-Api-Key": cfg["key"]},
+                    timeout=20,
+                )
+                if r.status_code not in (200, 404):
+                    r.raise_for_status()
+                delete_ok = True
+                break
+            except httpx.TimeoutException:
+                if attempt == 0:
+                    continue
+                errors.append(f"{title}: timed out")
+            except httpx.HTTPError as e:
+                errors.append(f"{title}: {e}")
+                break
+        if not delete_ok:
+            continue
+        fixed.append(title)
+        target_id = q.get(id_field)
+        if monitored and target_id is not None:
+            search_ids.append(target_id)
     if search_ids:
         command_name = "MoviesSearch" if app_name == "radarr" else "EpisodeSearch"
         command_field = "movieIds" if app_name == "radarr" else "episodeIds"
