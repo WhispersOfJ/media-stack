@@ -2513,6 +2513,235 @@ def arr_queue_autofix():
     return ok(" ".join(parts), radarr=per_app.get("radarr"), sonarr=per_app.get("sonarr"), nzbdav=nzbdav_health)
 
 
+# ---------------------------------------------------------------------
+# Loop remediation toolkit - manual UI for the diagnose-and-fix routine used
+# by hand throughout the 2026-08-01/02 queue-autofix sessions (see
+# ~/.claude/.../memory/feedback_blocklist_failed_pending.md and STACK.md).
+# queue-autofix above only blocklists+re-searches; it never unmonitors or
+# excludes, since those are judgment calls the loop deliberately leaves to a
+# human. This surfaces which titles are actually looping (via Radarr/
+# Sonarr's own downloadFailed history - no new persistence needed) and
+# offers one-click, confirm-armed unmonitor/exclude actions next to each.
+# ---------------------------------------------------------------------
+LOOP_MIN_OCCURRENCES = 2
+LOOP_REVIEW_PROFILE_THRESHOLD = 8
+DEDUP_SUFFIX_RE = re.compile(r"\s\(\d+\)(\.[A-Za-z0-9]+)?$")
+
+
+def _dedup_suffix_hit(name: str | None) -> bool:
+    if not name:
+        return False
+    base = name.rsplit("/", 1)[-1]
+    stem = base.rsplit(".", 1)[0] if "." in base else base
+    return bool(DEDUP_SUFFIX_RE.search(stem))
+
+
+def _get_movie_or_episode(app_name: str, cfg: dict, target_id: int) -> dict | None:
+    endpoint = "movie" if app_name == "radarr" else "episode"
+    try:
+        r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/{endpoint}/{target_id}", headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPError:
+        return None
+
+
+def _current_queue_output_path(app_name: str, target_id: int, id_field: str) -> str | None:
+    for q in arr_queue(app_name):
+        if q.get(id_field) == target_id:
+            return q.get("outputPath")
+    return None
+
+
+@app.get("/api/arr/{app_name}/loop-candidates")
+def arr_loop_candidates(app_name: str, hours: float = 6.0):
+    """Titles/episodes with 2+ downloadFailed history events within the
+    lookback window - the same signal used by hand all session (see
+    history?movieId=/episodeId= in feedback_blocklist_failed_pending.md) to
+    tell a genuine loop from a one-off. Bulk history scan, not one call per
+    candidate - confirmed live 2026-08-02 that eventType=downloadFailed with
+    a large pageSize returns everything needed in one request."""
+    cfg = require_queue_app(app_name)
+    id_field = "movieId" if app_name == "radarr" else "episodeId"
+    try:
+        r = httpx.get(
+            f"{cfg['url']}/api/{cfg['api']}/history",
+            # eventType 4 == downloadFailed on both apps (confirmed live
+            # 2026-08-02 - the string name is rejected with a 400, only the
+            # numeric code works as a query param even though it's what's
+            # echoed back in the response body).
+            params={"eventType": 4, "pageSize": 500, "sortKey": "date", "sortDirection": "descending"},
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} history lookup failed: {e}")
+
+    cutoff = datetime.now(timezone.utc).timestamp() - hours * 3600
+    groups: dict[int, dict] = {}
+    for rec in r.json().get("records", []):
+        target_id = rec.get(id_field)
+        if target_id is None:
+            continue
+        date_str = rec.get("date", "")
+        try:
+            ts = datetime.fromisoformat(date_str.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+        if ts < cutoff:
+            continue
+        g = groups.setdefault(target_id, {"releases": [], "count": 0})
+        g["count"] += 1
+        title = rec.get("sourceTitle")
+        if title and title not in g["releases"]:
+            g["releases"].append(title)
+
+    candidates = [
+        {"id": tid, **g} for tid, g in groups.items() if g["count"] >= LOOP_MIN_OCCURRENCES
+    ]
+
+    # Sonarr: group by seriesId so a whole-series REMUX-style batch (Batwoman/
+    # Billions/Jack Ryan shape) can be flagged for profile review as one unit
+    # rather than N individual "unmonitor" suggestions.
+    series_counts: Counter = Counter()
+    detail_by_id: dict[int, dict] = {}
+    for c in candidates:
+        detail = _get_movie_or_episode(app_name, cfg, c["id"])
+        detail_by_id[c["id"]] = detail or {}
+        if app_name == "sonarr" and detail:
+            series_counts[detail.get("seriesId")] += 1
+
+    rows = []
+    for c in candidates:
+        detail = detail_by_id[c["id"]]
+        monitored = bool(detail.get("monitored", True))
+        has_file = bool(detail.get("hasFile", False))
+        title = detail.get("title") or (c["releases"][0] if c["releases"] else str(c["id"]))
+        if app_name == "sonarr" and detail:
+            ep_num = detail.get("episodeNumber")
+            season_num = detail.get("seasonNumber")
+            scene_ep = detail.get("sceneEpisodeNumber")
+            scene_season = detail.get("sceneSeasonNumber")
+            scene_mismatch = bool(
+                (scene_ep is not None and scene_ep != ep_num)
+                or (scene_season is not None and scene_season != season_num)
+            )
+            title = f"{detail.get('series', {}).get('title', '')} S{season_num:02d}E{ep_num:02d} - {title}".strip(" -")
+        else:
+            scene_mismatch = False
+        output_path = _current_queue_output_path(app_name, c["id"], id_field)
+        suffix_hit = _dedup_suffix_hit(output_path)
+
+        if not monitored:
+            suggested, reason = "none", "Already unmonitored."
+        elif suffix_hit:
+            suggested, reason = "suffix-bug", "outputPath has a ' (N)' dedup suffix - NzbDAV's duplicate-nzb-behavior may have reverted to 'increment'. Check config, don't unmonitor."
+        elif app_name == "sonarr" and series_counts.get(detail.get("seriesId"), 0) >= LOOP_REVIEW_PROFILE_THRESHOLD:
+            suggested, reason = "review-profile", f"{series_counts[detail.get('seriesId')]} episodes of this series are looping - check the quality profile/custom formats before mass-unmonitoring (Batwoman/Billions/Jack Ryan shape)."
+        elif scene_mismatch:
+            suggested, reason = "unmonitor", f"scene numbering mismatch (scene S{scene_season}E{scene_ep} vs Sonarr S{season_num:02d}E{ep_num:02d})."
+        else:
+            suggested, reason = "unmonitor", "genuine repeat failure, no known bug signature - scarcity or title/release mismatch."
+
+        rows.append({
+            "id": c["id"],
+            "title": title,
+            "occurrences": c["count"],
+            "releases": c["releases"],
+            "monitored": monitored,
+            "has_file": has_file,
+            "suggested_action": suggested,
+            "reason": reason,
+        })
+
+    rows.sort(key=lambda r: r["occurrences"], reverse=True)
+    return ok(f"{cfg['label']}: {len(rows)} looping candidate(s) in the last {hours:g}h.", app=app_name, candidates=rows)
+
+
+class UnmonitorRequest(BaseModel):
+    ids: list[int]
+
+
+@app.post("/api/arr/{app_name}/unmonitor")
+def arr_unmonitor(app_name: str, body: UnmonitorRequest):
+    """Batched unmonitor for confirmed loop candidates. Radarr:
+    PUT /movie/editor accepts a movieIds array in one call (confirmed live
+    2026-08-02 - got a DB-lookup 500 on a fake id, past body validation).
+    Sonarr: PUT /episode/monitor, already used this way all session."""
+    cfg = require_queue_app(app_name)
+    if not body.ids:
+        fail("No ids given.", status_code=400)
+    if app_name == "radarr":
+        payload = {"movieIds": body.ids, "monitored": False}
+        url = f"{cfg['url']}/api/{cfg['api']}/movie/editor"
+    else:
+        payload = {"episodeIds": body.ids, "monitored": False}
+        url = f"{cfg['url']}/api/{cfg['api']}/episode/monitor"
+    try:
+        r = httpx.put(url, json=payload, headers={"X-Api-Key": cfg["key"]}, timeout=20)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Unmonitor failed: {e}")
+    return ok(f"Unmonitored {len(body.ids)} item(s) in {cfg['label']}.", ids=body.ids)
+
+
+class ExcludeRequest(BaseModel):
+    movieId: int
+
+
+@app.post("/api/arr/radarr/exclude")
+def arr_radarr_exclude(body: ExcludeRequest):
+    """The durable fix for movies that keep getting silently re-monitored by
+    an import list's periodic sync - plain unmonitor only holds until the
+    next sync (confirmed live 2026-08-02: Urban Legends/Mannequin Two both
+    resurfaced monitored:true hours after being unmonitored). No Sonarr
+    equivalent exists."""
+    cfg = ARR_APPS["radarr"]
+    movie = _get_movie_or_episode("radarr", cfg, body.movieId)
+    if movie is None:
+        fail(f"Movie {body.movieId} not found in Radarr.", status_code=404)
+    try:
+        r = httpx.post(
+            f"{cfg['url']}/api/{cfg['api']}/exclusions",
+            json={"tmdbId": movie.get("tmdbId"), "movieTitle": movie.get("title"), "movieYear": movie.get("year")},
+            headers={"X-Api-Key": cfg["key"]},
+            timeout=20,
+        )
+        if r.status_code not in (200, 201, 400, 409):
+            r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Exclusion failed: {e}")
+    return ok(f"Excluded \"{movie.get('title')}\" from Radarr import lists.", movieId=body.movieId)
+
+
+@app.get("/api/nzbdav/dedup-config-check")
+def nzbdav_dedup_config_check():
+    """One-off diagnostic for the 2026-08-01 dedup-suffix fix - confirms
+    api.duplicate-nzb-behavior is still mark-failed (not reverted to
+    increment, which is what caused the original importBlocked-loop bug).
+    Uses get-config directly (form-encoded POST, not nzbdav_api()'s
+    mode=-based SAB surface - a GET with query params 500s here, see
+    CLAUDE.md)."""
+    if not NZBDAV_API_KEY:
+        fail("NzbDAV isn't configured (FRONTEND_BACKEND_API_KEY not set)", status_code=503)
+    try:
+        r = httpx.post(
+            f"{NZBDAV_REST_URL}/api/get-config",
+            data={"config-keys": "api.duplicate-nzb-behavior"},
+            headers={"X-Api-Key": NZBDAV_API_KEY},
+            timeout=15,
+        )
+        r.raise_for_status()
+        items = r.json().get("configItems", [])
+        value = items[0].get("configValue") if items else None
+    except httpx.HTTPError as e:
+        fail(f"NzbDAV config lookup failed: {e}")
+    healthy = value == "mark-failed"
+    message = "NzbDAV dedup config OK (mark-failed)." if healthy else f"NzbDAV dedup config is '{value}' - should be 'mark-failed', or the (2)/(3)-suffix importBlocked bug can return."
+    return ok(message, value=value, healthy=healthy)
+
+
 @app.get("/api/arr/{app_name}/manual-import")
 def arr_manual_import_candidates(app_name: str):
     """Every importable file the arr app can see across all currently

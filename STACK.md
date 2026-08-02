@@ -2764,3 +2764,54 @@ entirely, which survives re-monitoring attempts that a plain unmonitor doesn't.
 Given how many movies got unmonitored for this loop across 2026-08-01/02 (~60), expect
 more of them to resurface the same way over time as list syncs run — when one does,
 exclude it rather than just re-unmonitoring.
+
+## Loop remediation toolkit added to the Control Panel, 2026-08-02
+
+`stack-queue-autofix`'s automated loop only blocklists + re-searches `failedPending`/
+`importBlocked` queue items — it deliberately never unmonitors or excludes, since telling
+a genuine loop (scarcity, title mismatch, scene-number mismatch, a REMUX/quality-profile
+rejection affecting a whole series) from an in-progress scan burst is a judgment call, not
+something safe to automate. Across 2026-08-01/02 that judgment call was made by hand, over
+and over, using `history?movieId=`/`episodeId=` on a suspected title, checking for the
+NzbDAV `(2)`/`(3)` dedup-suffix bug signature, checking Sonarr's `sceneEpisodeNumber` vs
+`episodeNumber`, and applying the resulting fix through raw `curl` calls — see
+`feedback_blocklist_failed_pending.md` in Claude's memory for the full decision tree and
+~60 individually-diagnosed cases. None of that was available to click through in the
+dashboard itself.
+
+Added a "Loop remediation" panel (`control-panel/static/js/loop-remediation.js`) under the
+existing Radarr/Sonarr fleet section, backed by new `app.py` endpoints:
+
+- `GET /api/arr/{app}/loop-candidates` — the detector. Pulls
+  `GET /api/v3/history?eventType=downloadFailed&pageSize=500` (one bulk call, not one per
+  title — confirmed this returns everything needed), groups by movieId/episodeId, keeps
+  groups with 2+ occurrences in the lookback window (default 6h), and classifies each
+  against the same decision tree used by hand: dedup-suffix signature found → flag as
+  `suffix-bug` (no action — means the NzbDAV `mark-failed` config reverted, see above);
+  Sonarr scene-number mismatch → suggest `unmonitor`; 8+ episodes of the same series
+  looping together → `review-profile` (the Batwoman/Billions/Jack Ryan REMUX-batch shape,
+  no safe one-click fix); otherwise → suggest `unmonitor`. No new persistence — Radarr/
+  Sonarr's own history already has everything needed.
+- `POST /api/arr/{app}/unmonitor` — batched unmonitor. Radarr uses
+  `PUT /api/v3/movie/editor` with a `movieIds` array (confirmed live 2026-08-02 via a
+  deliberate 500 on a fake id — the call got past body validation before failing on the
+  DB lookup, proving the shape); Sonarr uses the already-battle-tested
+  `PUT /api/v3/episode/monitor`.
+- `POST /api/arr/radarr/exclude` — the durable fix from the section above, now one click
+  instead of a manual `tmdbId` lookup + curl. Radarr-only; no Sonarr Exclusions equivalent
+  exists, and the UI doesn't fake one.
+- `GET /api/nzbdav/dedup-config-check` — confirms `api.duplicate-nzb-behavior` is still
+  `mark-failed`. Uses its own form-encoded POST to `get-config` directly rather than
+  `nzbdav_api()`'s helper, since that helper only wraps the SAB-compatible `mode=` GET
+  surface and a GET with query params against `get-config` 500s (see CLAUDE.md).
+
+Also fixed in the same pass: `_blocklist_and_research()` (the function behind
+`queue-autofix` itself) used `raise_for_status()` unconditionally on its blocklist DELETE
+call, so a benign race — Radarr/Sonarr's own concurrent import processing clearing the
+queue item first — landed in `errors[]` same as a real failure. Confirmed live: two items
+timed out mid-batch on 2026-08-02 (13:03 cycle) and needed a hand retry before clearing.
+Now retries once on timeout and tolerates a 404 on the delete, matching the pattern
+`arr_unstick_importing` already used for its shared-`downloadId` case.
+
+No auto-polling — the panel is on-demand (`Rescan` button) like Manual Import, not another
+cron loop layered on top of the hourly `queue-autofix` one.

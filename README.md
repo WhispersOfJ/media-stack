@@ -1001,6 +1001,11 @@ QUEUE_ARR_APPS = ("radarr", "sonarr")
 | `/api/arr/{app}/manual-import` | GET/POST | Lists importable files across stuck queue items; POST executes one |
 | `/api/arr/{app}/manual-import-all` | POST | Bulk-imports every candidate the GET lists |
 | `/api/arr/{app}/missing-aired` | GET | Monitored + no file + already-aired (see [The *arr apps](#the-arr-apps)) |
+| `/api/arr/queue-autofix` | POST | Blocklists + re-searches `failedPending`/`importBlocked` queue items; disables `autoRedownloadFailed` on a retry storm |
+| `/api/arr/{app}/loop-candidates` | GET | Titles/episodes with 2+ `downloadFailed` history events in the last N hours (`?hours=`), each with a suggested unmonitor/exclude/review-profile action |
+| `/api/arr/{app}/unmonitor` | POST | `{"ids": [...]}` → batched unmonitor (Radarr movie ids / Sonarr episode ids) for a confirmed loop candidate |
+| `/api/arr/radarr/exclude` | POST | `{"movieId": N}` → adds the movie to Radarr's Exclusions, the durable fix for titles re-monitored by import-list syncs after a plain unmonitor |
+| `/api/nzbdav/dedup-config-check` | GET | Confirms NzbDAV's `api.duplicate-nzb-behavior` is still `mark-failed` (guards against the `(2)`/`(3)`-suffix importBlocked bug returning) |
 | `/api/container/{name}/start` \| `/stop` \| `/restart` | POST | Individual container control, validated against the live compose project |
 | `/api/stack/restart-all` | POST | Restarts everything except itself, mount providers first (see below) |
 

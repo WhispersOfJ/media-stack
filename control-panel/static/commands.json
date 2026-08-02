@@ -2543,5 +2543,102 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": ""
+  },
+  {
+    "Name": "stack-loop-candidates",
+    "Description": "Titles/episodes looping in the queue-autofix history (2+ downloadFailed in the last N hours) with a suggested remediation",
+    "Method": "GET",
+    "PathTemplate": "/api/arr/{1}/loop-candidates",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-loop-unmonitor",
+    "Description": "Unmonitor a movie (Radarr) or episode (Sonarr) by id \u2014 confirmed loop candidate",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/unmonitor",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": true,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "ids",
+        "ArgName": "id",
+        "Array": true
+      }
+    ],
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-loop-exclude",
+    "Description": "Add a Radarr movie to Exclusions \u2014 durable fix for movies re-monitored by import-list syncs after unmonitor",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/radarr/exclude",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "movie-id",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": true,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "movieId",
+        "ArgName": "movie-id",
+        "Array": false
+      }
+    ],
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-nzbdav-dedup-check",
+    "Description": "Verify NzbDAV api.duplicate-nzb-behavior is still mark-failed (guards against the (2)/(3)-suffix importBlocked bug returning)",
+    "Method": "GET",
+    "PathTemplate": "/api/nzbdav/dedup-config-check",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
   }
 ]
