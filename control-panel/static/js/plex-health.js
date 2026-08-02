@@ -10,6 +10,25 @@ const PLEX_HEALTH_HISTORY_MAX = 60; // ~15 min at 15s polling
 const plexProgressHistory = [];
 const plexBusyDbHistory = [];
 
+// stalled_suspected trend confirmation - app.py's /api/plex/scan-health is
+// stateless per call (its own docstring says so) and its scanner_lines
+// check only detects the standalone "Plex Media Scanner" subprocess, not an
+// in-process library.update.section refresh - confirmed live 2026-08-02: a
+// large show (38+ seasons) refreshing already-seen seasons showed real
+// climbing progress (98.4% -> 98.5% within one poll) with zero D-state
+// threads and mount_ok true, yet still got flagged stalled_suspected every
+// single poll. Rather than widen the backend's process-name check (fragile,
+// version-specific), confirm the trend client-side using the one signal
+// that's actually reliable regardless of which code path is scanning:
+// whether the activity's own progress number is advancing between polls.
+// Only escalate the badge after PLEX_STALL_CONFIRM_POLLS consecutive polls
+// where the backend says stalled_suspected AND progress hasn't moved -
+// matches the "no progress observed" pattern app.py already uses for
+// queue-item stall classification.
+const PLEX_STALL_CONFIRM_POLLS = 3; // ~45s at 15s polling
+let lastScanProgress = null;
+let stalledPollStreak = 0;
+
 function renderSparkline(svgEl, samples, { min = 0, max = 100 } = {}) {
   if (!samples.length) {
     svgEl.innerHTML = "";
@@ -96,16 +115,33 @@ export async function refreshPlexHealth() {
     return;
   }
 
+  const scanActivity = data.activities.find(a => a.type === "library.update.section");
+  const progress = scanActivity ? scanActivity.progress : null;
+
+  // hung_confirmed (D-state/mount failure) is trustworthy on a single poll -
+  // only stalled_suspected needs trend confirmation, since it's the state
+  // the backend's own process-detection heuristic can false-positive on.
+  let displayState = data.state;
+  if (data.state === "stalled_suspected") {
+    const progressed = progress !== null && progress !== lastScanProgress;
+    stalledPollStreak = progressed ? 0 : stalledPollStreak + 1;
+    if (progressed || stalledPollStreak < PLEX_STALL_CONFIRM_POLLS) {
+      displayState = "scanning";
+    }
+  } else {
+    stalledPollStreak = 0;
+  }
+  if (progress !== null) lastScanProgress = progress;
+
   const stateEl = document.getElementById("plex-health-state");
-  stateEl.textContent = data.state.replace(/_/g, " ");
-  stateEl.className = `vital-value ${plexHealthStateBadgeClass(data.state)}`;
+  stateEl.textContent = displayState.replace(/_/g, " ");
+  stateEl.className = `vital-value ${plexHealthStateBadgeClass(displayState)}`;
   document.getElementById("plex-health-state-sub").textContent =
     data.dstate_threads.length ? `${data.dstate_threads.length} D-state thread(s)` :
     !data.mount_ok ? "mount unresponsive" :
+    displayState === "stalled_suspected" ? `no progress for ${PLEX_STALL_CONFIRM_POLLS} polls` :
     data.fuse_waiting > 3 ? `${data.fuse_waiting} FUSE requests waiting` : "";
 
-  const scanActivity = data.activities.find(a => a.type === "library.update.section");
-  const progress = scanActivity ? scanActivity.progress : null;
   document.getElementById("plex-health-progress").textContent = progress === null ? "idle" : `${progress}%`;
   document.getElementById("plex-health-progress-sub").textContent = scanActivity ? (scanActivity.subtitle || scanActivity.title) : "";
 

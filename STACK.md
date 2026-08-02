@@ -2854,3 +2854,31 @@ control-panel && up -d --force-recreate` — a stale served-CSS symptom during v
 turned out to be the browser tab's cached `<link>` stylesheet object, not a deployment bug
 (confirmed by fetching `/style.css` with `cache: 'no-store'` and diffing against the
 container's on-disk file, then forcing a real re-parse by swapping the `<link>` element).
+
+## Plex Health `stalled_suspected` false-positive on large-show section refreshes, 2026-08-02
+
+`/api/plex/scan-health`'s `stalled_suspected` branch (`app.py:3259`) trusts
+`_plex_scanner_processes()` — a `ps aux` grep for the literal `Plex Media Scanner` child
+process — to tell a genuine stall from a healthy-but-slow scan. Confirmed live: a
+`library.update.section` refresh walking a 38+ season show ("Ridiculousness") ran entirely
+in-process (no `Plex Media Scanner` subprocess spawned), with progress climbing normally
+(98.4% → 98.5% within one poll), zero D-state threads, `mount_ok: true` — but still got
+labeled `stalled_suspected` on every single poll, same blind spot the `analysis_active`
+check (line 3252) was already added for on the Media Analyzer's batch cycles.
+
+**Fix, frontend-side (`static/js/plex-health.js`)**: rather than widen the backend's
+fragile process-name check further, confirm the trend client-side using the one signal
+that's reliable regardless of which code path is scanning — whether the activity's own
+`progress` value is advancing between polls. The badge only escalates to `stalled_suspected`
+styling after `PLEX_STALL_CONFIRM_POLLS` (3, ~45s at the 15s poll cadence) consecutive polls
+where the backend says `stalled_suspected` *and* progress hasn't moved; any poll where
+progress ticks forward resets the streak and displays `scanning` instead. `hung_confirmed`
+(D-state/mount failure) bypasses this smoothing entirely and stays trustworthy on a single
+poll, matching how these two states already differ in urgency.
+
+This also fixes a documentation/implementation gap: the module's own header comment claimed
+"the frontend keeps its own ring buffer for 'stuck for N polls' trend detection", but no such
+smoothing actually existed before this — the state badge was just the raw single-poll
+backend value, redisplayed as-is every 15s. Verified the reducer logic directly (progress
+climbing across 5 polls → always `scanning`; progress frozen for 3 consecutive polls →
+correctly escalates to `stalled_suspected` on the 3rd) before deploying.
