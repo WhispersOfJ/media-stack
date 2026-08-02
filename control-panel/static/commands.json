@@ -848,7 +848,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-bearmount-delete-failures",
+    "Name": "stack-nzbdav-delete-failures",
     "Description": "Delete all Failed entries from NzbDAV history",
     "Method": "POST",
     "PathTemplate": "/api/nzbdav/delete-failures",
@@ -860,7 +860,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-bearmount-history",
+    "Name": "stack-nzbdav-history",
     "Description": "Show NzbDAV's recent download history (completed/failed)",
     "Method": "GET",
     "PathTemplate": "/api/nzbdav/history",
@@ -886,7 +886,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-bearmount-queue",
+    "Name": "stack-nzbdav-queue",
     "Description": "Show NzbDAV's current Usenet download queue",
     "Method": "GET",
     "PathTemplate": "/api/nzbdav/queue",
@@ -898,7 +898,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-bearmount-stats",
+    "Name": "stack-nzbdav-stats",
     "Description": "Show aggregate NzbDAV queue/history stats",
     "Method": "GET",
     "PathTemplate": "/api/nzbdav/stats",
@@ -2465,54 +2465,6 @@
     "Description": "Which libraries Kometa's config.yml is set to touch",
     "Method": "GET",
     "PathTemplate": "/api/kometa/config",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-notifiarr-status",
-    "Description": "Notifiarr client reachability",
-    "Method": "GET",
-    "PathTemplate": "/api/notifiarr/status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-notifiarr-test",
-    "Description": "Send a real test Discord notification via Notifiarr's path",
-    "Method": "POST",
-    "PathTemplate": "/api/notifiarr/test",
-    "Query": null,
-    "Args": null,
-    "Confirm": true,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-notifiarr-config",
-    "Description": "Whether NOTIFIARR_API_KEY is set (masked)",
-    "Method": "GET",
-    "PathTemplate": "/api/notifiarr/config",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-notifiarr-integration-check",
-    "Description": "Combined Notifiarr reachable+key-set pass/fail",
-    "Method": "GET",
-    "PathTemplate": "/api/notifiarr/integration-check",
     "Query": null,
     "Args": null,
     "Confirm": false,

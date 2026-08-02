@@ -20,7 +20,6 @@ const QUICK_LINKS = [
   { id: "maintainerr", label: "Maintainerr", port: 6246 },
   { id: "checkrr", label: "Checkrr", port: 8585 },
   { id: "lingarr", label: "Lingarr", port: 9876 },
-  { id: "notifiarr", label: "Notifiarr", port: 5454 },
   // No quicklink for kometa/prefetcharr - neither publishes a port
   // (kometa is a scheduled batch job, prefetcharr a headless poller).
 ];
@@ -47,7 +46,6 @@ const DOC_LINKS = [
   { app: "Cleanuparr", desc: "queue strikes/malware-block/stalled cleanup", urls: [["Source", "https://github.com/Cleanuparr/Cleanuparr"]] },
   { app: "Unpackerr", desc: "RAR extraction for Radarr/Sonarr downloads", urls: [["Source", "https://github.com/Unpackerr/unpackerr"]] },
   { app: "Watchtower", desc: "container auto-update (maintained fork)", urls: [["Source", "https://github.com/nicholas-fedor/watchtower"]] },
-  { app: "Recyclarr", desc: "syncs TRaSH Guides quality profiles/custom formats to Radarr/Sonarr", urls: [["Source", "https://github.com/recyclarr/recyclarr"]] },
   { app: "Tautulli", desc: "Plex watch-stats/history dashboard", urls: [["Source", "https://github.com/Tautulli/Tautulli"]] },
   { app: "Wrapperr", desc: "Tautulli stats wrapper/report dashboard", urls: [["Source", "https://github.com/aunefyren/wrapperr"]] },
   { app: "Maintainerr", desc: "Plex/Radarr/Sonarr library maintenance rules (installed with zero rules configured)", urls: [["Source", "https://github.com/Maintainerr/Maintainerr"]] },
@@ -55,7 +53,6 @@ const DOC_LINKS = [
   { app: "Prefetcharr", desc: "auto-fetches next Sonarr season from Plex watch progress", urls: [["Source", "https://github.com/p-hueber/prefetcharr"]] },
   { app: "Lingarr", desc: "subtitle translation, complements Bazarr", urls: [["Source", "https://github.com/lingarr-translate/lingarr"]] },
   { app: "Kometa", desc: "Plex metadata/collections/overlays automation", urls: [["Wiki", "https://metamanager.wiki/"], ["Source", "https://github.com/Kometa-Team/Kometa"]] },
-  { app: "Notifiarr", desc: "centralized Discord notification relay for Radarr/Sonarr/Prowlarr", urls: [["Source", "https://github.com/Notifiarr/notifiarr"]] },
 ];
 
 export function buildDocLinks() {

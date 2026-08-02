@@ -11,17 +11,15 @@ import { renderStatusDots } from "./status.js";
 
 const FLEET_GROUPS = {
   prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
-  recyclarr: "Arr apps",
   nzbdav: "Usenet", nzbdav_rclone: "Usenet", seerr: "Requests", plex: "Media server",
   tautulli: "Media server", wrapperr: "Media server", kometa: "Media server",
   bazarr: "Subtitles", lingarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
   cleanuparr: "Queue cleanup",
   maintainerr: "Library maintenance", checkrr: "Library maintenance", prefetcharr: "Library maintenance",
-  notifiarr: "Notifications",
   "control-panel": "Dashboard",
 };
-const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Post-processing", "Notifications", "Auto-updates", "Dashboard", "Other"];
+const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Post-processing", "Auto-updates", "Dashboard", "Other"];
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem("fleetCollapsed") || "[]"));
 
 function fmtPercent(v) { return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`; }
