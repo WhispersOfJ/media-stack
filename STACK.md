@@ -2744,3 +2744,23 @@ systemic bug, not per-movie bad releases:
   a title-mismatch case needing unmonitor; verify with `docker exec radarr ls` on the actual
   completed-symlinks path and a manual `POST /api/v3/manualimport?folder=...` scan for
   `"movie": null` / `"Unknown Movie"` before concluding anything.
+
+## Radarr import lists silently re-monitor manually-unmonitored movies, 2026-08-02
+
+Unmonitoring a movie to stop the `stack-queue-autofix` loop's blocklist/re-search churn
+(title-mismatch class, see above) is **not permanent** if that movie is a member of an
+enabled Radarr import list. Confirmed live: "Urban Legends: Final Cut" and "Mannequin Two:
+On the Move" were manually unmonitored, then found `monitored: true` again hours later
+(with a fresh grab already in flight) — several enabled import lists (`Horror`, `IMDb Top
+250`, `IMDb Popular Movies`, `A24`, `Mindfuck`, `StevenLu`) have `monitor:
+movieOnly`/`movieAndCollection`, so their periodic sync silently re-adds/re-monitors any
+movie still present in the list.
+
+**Fix**: add the movie to Radarr's Exclusions list, not just unmonitor it —
+`POST /api/v3/exclusions` with `{"tmdbId":..., "movieTitle":..., "movieYear":...}` (get
+`tmdbId` from `GET /api/v3/movie/{id}`). Exclusions make list syncs skip the title
+entirely, which survives re-monitoring attempts that a plain unmonitor doesn't.
+
+Given how many movies got unmonitored for this loop across 2026-08-01/02 (~60), expect
+more of them to resurface the same way over time as list syncs run — when one does,
+exclude it rather than just re-unmonitoring.
