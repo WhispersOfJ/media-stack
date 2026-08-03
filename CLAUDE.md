@@ -48,10 +48,10 @@ The context window is your only control surface over the model. Treat it as a de
 - If you can't state what gets measurably better and how you'll see it, that's a Confusion Protocol stop, not a license to build.
 - Wire in the trace. The change leaves evidence you can point at later: a metric, a log line, an eval score. Compute that produces no measurable, traceable result is theater.
 
-### LLM access — local Claude Code, not the API
+### LLM access — call the API directly, not local Claude Code
 
-- When the software we build needs to call an LLM, do NOT use an LLM API (Anthropic API, OpenAI API, any hosted inference endpoint) unless Bear explicitly instructs it. Route the call through the local Claude Code instead.
-- If no LLM service exists yet in the project, build one. Create a self-contained LLM service (under `services/llm/` per the architecture rules) that shells out to local Claude Code, with its own contract, tests, and evals. Every other service calls that contract, never an external API.
+- When the software we build needs to call an LLM, use the Anthropic API (or another hosted inference endpoint) directly. Do NOT shell out to a local Claude Code instance to serve app-level LLM calls - Bear's setup calls the API directly, there is no local-Claude-Code routing layer to build here.
+- If no LLM service exists yet in the project, build one. Create a self-contained LLM service (under `services/llm/` per the architecture rules) that calls the API directly, with its own contract, tests, and evals. Every other service calls that contract, never the raw API.
 - Always use the best available model by default unless Bear explicitly instructs otherwise. No silent downgrades to a cheaper or smaller model for cost.
 
 ### Tech choice — vanilla by default
