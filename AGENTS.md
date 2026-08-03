@@ -24,3 +24,15 @@ mirror, port, or sync.
 If a future need for a portable/redistributable version resurfaces, that is a new decision to
 make explicitly with the user first (per the 2026-07-21 privatization request), not something
 to default back into by adding files to a new external repo unprompted.
+
+## Coding Tasks
+
+When spawning Claude Code sessions for coding work, tell the session to use gstack skills.
+
+Examples:
+
+- Security audit: "Load gstack. Run /cso"
+- Code review: "Load gstack. Run /review"
+- QA test a URL: "Load gstack. Run /qa https://..."
+- Build a feature end-to-end: "Load gstack. Run /autoplan, implement the plan, then run /ship"
+- Plan before building: "Load gstack. Run /office-hours then /autoplan. Save the plan, don't implement."
