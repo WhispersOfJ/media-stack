@@ -268,7 +268,6 @@ services:
         --buffer-size=0M
         --vfs-read-chunk-size=16M
         --vfs-read-chunk-size-limit=512M
-        --no-modtime
         --no-checksum
         --dir-cache-time=1h
         --poll-interval=0
