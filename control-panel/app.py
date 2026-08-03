@@ -2867,9 +2867,20 @@ def arr_manual_import_all(app_name: str):
     items) in a single ManualImport command, instead of one API call per
     file."""
     cfg = require_queue_app(app_name)
-    files = [c["file"] for c in arr_manual_import_candidates(app_name)]
+    id_field = "movieId" if app_name == "radarr" else "seriesId"
+    all_files = [c["file"] for c in arr_manual_import_candidates(app_name)]
+    # A file with no resolved match (id_field is None) is exactly the
+    # "matched by ID, manual import required" ambiguous case - Radarr/Sonarr
+    # can't deserialize a null id, so ONE unmatched file 500s the whole
+    # batch and silently blocks every other file in it too. Drop those and
+    # import what's actually resolvable instead.
+    files = [f for f in all_files if f.get(id_field) is not None]
+    skipped = len(all_files) - len(files)
     if not files:
-        return ok(f"No importable files in {cfg['label']}.")
+        msg = f"No importable files in {cfg['label']}."
+        if skipped:
+            msg += f" ({skipped} file(s) have no resolved match - needs Manual Import in the {cfg['label']} UI.)"
+        return ok(msg)
     body = {"name": "ManualImport", "files": files}
     try:
         r = httpx.post(f"{cfg['url']}/api/{cfg['api']}/command", json=body, headers={"X-Api-Key": cfg["key"]}, timeout=30)
@@ -2879,7 +2890,10 @@ def arr_manual_import_all(app_name: str):
         fail(f"{cfg['label']} bulk import failed: {detail}")
     except httpx.HTTPError as e:
         fail(f"{cfg['label']} bulk import failed: {e}")
-    return ok(f"Import started for {len(files)} file(s) in {cfg['label']}.", count=len(files))
+    msg = f"Import started for {len(files)} file(s) in {cfg['label']}."
+    if skipped:
+        msg += f" ({skipped} file(s) skipped - no resolved match.)"
+    return ok(msg, count=len(files))
 
 
 # ---------------------------------------------------------------------
