@@ -2882,3 +2882,45 @@ smoothing actually existed before this — the state badge was just the raw sing
 backend value, redisplayed as-is every 15s. Verified the reducer logic directly (progress
 climbing across 5 polls → always `scanning`; progress frozen for 3 consecutive polls →
 correctly escalates to `stalled_suspected` on the 3rd) before deploying.
+
+## New landmine: nzbdav's own EF Core/SQLite connection can deadlock, distinct from FUSE hangs, 2026-08-03
+
+Sonarr's queue showed all 94 tracked items as `downloadClientUnavailable`, Radarr's/Sonarr's
+health both reported "All download clients are unavailable due to failures". Looked like the
+usual FUSE-hang landmine at first, but it wasn't: `ls /mnt/remote/nzbdav` returned instantly,
+mount count was 1 (no leak), no D-state processes blocked on the mount itself (two `ffprobe`
+D-state threads were present but scanning unrelated already-imported files, not evidence of a
+wedged mount).
+
+The actual fault was nzbdav's own SAB-compatible API: `curl` to `/api?mode=queue` hung past an
+8s timeout, and `docker logs nzbdav` showed a `System.Threading.Tasks.TaskCanceledException`
+on every single `GetQueueController` call — EF Core's `RelationalConnection.OpenAsync` never
+completing, i.e. nzbdav's own SQLite connection was deadlocked. Docker's healthcheck still
+reported `healthy` throughout (its healthcheck doesn't exercise the same DB-backed queue path).
+
+**Fix:** plain `docker restart nzbdav` (not `docker compose restart`, same rule as always —
+avoid re-staling `nzbdav_rclone`'s dependents) cleared it immediately; SAB API responded
+normally afterward and nzbdav's own queue showed 0 slots (it had dropped whatever was
+in-flight when the DB deadlocked).
+
+**Sonarr/Radarr both needed manual nudges afterward — the health flag and queue don't
+self-heal just because the client recovers:**
+- `POST /api/v3/downloadclient/test` on the client config clears nothing by itself.
+- Radarr's stale "download clients unavailable" health entry only cleared after an explicit
+  `POST /api/v3/command {"name":"CheckHealth"}`.
+- Sonarr's cleared after `POST /api/v3/command {"name":"RefreshMonitoredDownloads"}`.
+- Sonarr's queue still listed all 94 original items as `downloadClientUnavailable` ghosts
+  (trackedDownloadState: null) even after the client was healthy again, since nzbdav's queue
+  was empty post-restart — these don't correspond to anything nzbdav still knows about.
+  Removing them via `DELETE /api/v3/queue/bulk` in one batch 500'd with `System.
+  InvalidOperationException: Sequence contains no matching element` (Sonarr's
+  `PendingReleaseService.FindPendingRelease` chokes if any id in the batch isn't a real
+  pending release) — worked fine deleting one-by-one via `DELETE /api/v3/queue/{id}` instead.
+  Removed with `blocklist=false` (they're not real failures, just orphaned by the restart,
+  so let them redownload) vs. the 23 genuinely `failedPending` items in the same sweep, which
+  were blocklisted per the existing standing practice.
+
+**Takeaway:** don't assume "all download clients unavailable" + a stuck Sonarr/Radarr queue
+is automatically the FUSE/mount landmine — check the mount independently first (it's a cheap
+check), then check nzbdav's own SAB API responsiveness with a short curl timeout and its logs
+before restarting anything. Docker's `healthy` status does not cover this failure mode.
