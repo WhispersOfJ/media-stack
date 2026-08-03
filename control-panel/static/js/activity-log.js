@@ -4,6 +4,7 @@
    the source select or opened automatically because a palette command
    targets a container. */
 import { escapeHtml, formatLogLine } from "./core.js";
+import { openConsole } from "./settings.js";
 
 const MAX_ACTIVITY_LINES = 80;
 
@@ -40,6 +41,7 @@ export function selectLogSource(name) {
     return;
   }
   lines.textContent = "";
+  openConsole();
   activeLogSource = new EventSource(`/api/container/${encodeURIComponent(name)}/logs/stream`);
   activeLogSource.onmessage = (ev) => {
     lines.textContent += formatLogLine(ev.data) + "\n";

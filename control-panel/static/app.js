@@ -1,14 +1,15 @@
 /* Control Panel front end — no build step, no dependencies.
-   One continuous split-pane workspace: a scrollable left column of
-   rule-divided rails (Overview, Fleet, Host, Reference) and a
-   permanently pinned right-hand log console. There is no page-hiding
-   navigation and no card/box layout — the only overlay is the command
-   palette (Ctrl/Cmd+K), which is transient by design.
+   A scrollable column of rack-module panels (Overview, Fleet, Host,
+   Reference) plus a slide-out log console drawer (closed by default,
+   toggled from the topbar or opened automatically when something starts
+   streaming to it). The only other overlay is the command palette
+   (Ctrl/Cmd+K), which is transient by design.
 
    This file is just the boot sequence; each rail/subsystem lives in its
    own ES module under js/, loaded natively (no bundler) since this is a
    root-mounted static site. */
 import { logLine, wireLogConsole } from "./js/activity-log.js";
+import { initSettings } from "./js/settings.js";
 import { buildPrimaryActions } from "./js/overview.js";
 import { refreshFleet } from "./js/fleet.js";
 import { buildArrFleet } from "./js/arr-fleet.js";
@@ -20,6 +21,7 @@ import { buildPlexUpdateCheck, refreshStatus, tickClock } from "./js/status.js";
 import { wirePalette, loadCommandRegistry } from "./js/palette.js";
 import { buildPlexHealth, refreshPlexHealth } from "./js/plex-health.js";
 
+initSettings();
 wireLogConsole();
 buildQuickLinks();
 buildPrimaryActions();

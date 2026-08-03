@@ -28,6 +28,13 @@
     <span id="clock" aria-live="off"></span>
     <span class="hud-sep">·</span>
     <span id="uptime"></span>
+    <span class="hud-sep">·</span>
+    <label class="switch" title="Toggle dark/light theme">
+      <input type="checkbox" id="theme-switch">
+      <span class="switch-track"></span>
+      <span class="switch-label">Dark</span>
+    </label>
+    <button class="btn-ghost" id="console-toggle" type="button">Console</button>
   </div>
 </header>
 
@@ -149,6 +156,7 @@
       <h2 id="h-log">Log console</h2>
       <select id="log-source" aria-label="Log source"><option value="">Select a source…</option></select>
       <button class="btn-icon" id="log-clear" type="button" title="Clear">✕</button>
+      <button class="btn-ghost" id="log-close" type="button">Close</button>
     </div>
     <pre id="log-lines"><span class="log-empty">Select a container above, or run a command from the palette — its log will stream here.</span></pre>
     <div class="activity-head">Recent activity</div>

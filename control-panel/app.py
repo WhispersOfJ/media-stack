@@ -32,6 +32,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import settings_store
+
 PLEX_URL = (os.environ.get("PLEX_URL") or "").rstrip("/")
 PLEX_TOKEN = os.environ.get("PLEX_TOKEN")
 # NzbDAV (nzbdav-dev) removed entirely 2026-07-23 (unmerged connection-leak
@@ -390,6 +392,23 @@ def fail(message: str, status_code: int = 502):
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+class SettingsPatch(BaseModel):
+    theme: Literal["dark", "light"] | None = None
+    failed_pending_storm_threshold: int | None = None
+    loop_review_profile_threshold: int | None = None
+
+
+@app.get("/api/settings")
+def get_settings():
+    return settings_store.get_settings()
+
+
+@app.patch("/api/settings")
+def patch_settings(body: SettingsPatch):
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    return settings_store.update_settings(patch)
 
 
 @app.get("/api/status")
@@ -1629,6 +1648,25 @@ def arr_search_missing(app_name: str):
     return ok(f"{cfg['label']} search for missing items started.")
 
 
+@app.get("/api/arr/{app_name}/search-status")
+def arr_search_status(app_name: str):
+    """Read half of the search-toggle pair - true only if every indexer
+    currently has both RSS sync and automatic search on, so the UI toggle
+    reflects real state instead of assuming it from the last click."""
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}'.", status_code=404)
+    cfg = ARR_APPS[app_name]
+    url = f"{cfg['url']}/api/{cfg['api']}/indexer"
+    try:
+        r = httpx.get(url, headers={"X-Api-Key": cfg["key"]}, timeout=15)
+        r.raise_for_status()
+        indexers = r.json()
+    except httpx.HTTPError as e:
+        fail(f"{cfg['label']} indexer status check failed: {e}")
+    enabled = bool(indexers) and all(i.get("enableRss") and i.get("enableAutomaticSearch") for i in indexers)
+    return {"enabled": enabled}
+
+
 @app.post("/api/arr/{app_name}/search-toggle")
 def arr_search_toggle(app_name: str, enabled: bool):
     if app_name not in ARR_APPS:
@@ -2362,7 +2400,8 @@ def arr_unstick_importing(app_name: str):
 # implicit skipRedownload=false search, and folds in NzbDAV's own queue
 # health and an autoRedownloadFailed retry-storm guard.
 # ---------------------------------------------------------------------
-FAILED_PENDING_STORM_THRESHOLD = 15
+def _failed_pending_storm_threshold() -> int:
+    return settings_store.get_settings()["failed_pending_storm_threshold"]
 
 
 def _item_is_monitored(app_name: str, q: dict, cfg: dict, id_field: str) -> bool:
@@ -2450,7 +2489,7 @@ def _blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str]
 
 
 def _disable_autoredownload_if_storm(app_name: str, failed_pending_count: int) -> bool:
-    if failed_pending_count < FAILED_PENDING_STORM_THRESHOLD:
+    if failed_pending_count < _failed_pending_storm_threshold():
         return False
     cfg = ARR_APPS[app_name]
     try:
@@ -2524,7 +2563,10 @@ def arr_queue_autofix():
 # offers one-click, confirm-armed unmonitor/exclude actions next to each.
 # ---------------------------------------------------------------------
 LOOP_MIN_OCCURRENCES = 2
-LOOP_REVIEW_PROFILE_THRESHOLD = 8
+
+
+def _loop_review_profile_threshold() -> int:
+    return settings_store.get_settings()["loop_review_profile_threshold"]
 DEDUP_SUFFIX_RE = re.compile(r"\s\(\d+\)(\.[A-Za-z0-9]+)?$")
 
 
@@ -2637,7 +2679,7 @@ def arr_loop_candidates(app_name: str, hours: float = 6.0):
             suggested, reason = "none", "Already unmonitored."
         elif suffix_hit:
             suggested, reason = "suffix-bug", "outputPath has a ' (N)' dedup suffix - NzbDAV's duplicate-nzb-behavior may have reverted to 'increment'. Check config, don't unmonitor."
-        elif app_name == "sonarr" and series_counts.get(detail.get("seriesId"), 0) >= LOOP_REVIEW_PROFILE_THRESHOLD:
+        elif app_name == "sonarr" and series_counts.get(detail.get("seriesId"), 0) >= _loop_review_profile_threshold():
             suggested, reason = "review-profile", f"{series_counts[detail.get('seriesId')]} episodes of this series are looping - check the quality profile/custom formats before mass-unmonitoring (Batwoman/Billions/Jack Ryan shape)."
         elif scene_mismatch:
             suggested, reason = "unmonitor", f"scene numbering mismatch (scene S{scene_season}E{scene_ep} vs Sonarr S{season_num:02d}E{ep_num:02d})."

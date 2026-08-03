@@ -62,6 +62,11 @@ export function buildArrFleet() {
       <div class="arr-head">
         <div class="arr-name"><span class="dot unknown" id="arr-dot-${app.id}"></span>${app.label}</div>
         <a class="arr-link" href="${openUrl}" target="_blank" rel="noopener">open UI ↗</a>
+        <label class="switch" data-search-toggle="${app.id}" title="RSS sync + automatic search, every indexer — click twice to confirm, this fans out to all of them">
+          <input type="checkbox" disabled>
+          <span class="switch-track"></span>
+          <span class="switch-label">Auto search</span>
+        </label>
         <div class="arr-status" id="arr-status-${app.id}">—</div>
       </div>
       <form class="arr-search" data-app="${app.id}">
@@ -109,6 +114,7 @@ export function buildArrFleet() {
 
     setupUnstick(app, block, status);
     setupUnstickImporting(app, block, status);
+    setupSearchToggle(app, block, status);
 
     const searchForm = block.querySelector(".arr-search");
     searchForm.addEventListener("submit", (e) => {
@@ -161,6 +167,58 @@ function setupUnstick(app, block, status) {
     } finally {
       btn.disabled = false;
     }
+  });
+}
+
+async function setupSearchToggle(app, block, status) {
+  const label = block.querySelector("[data-search-toggle]");
+  if (!label) return;
+  const input = label.querySelector("input");
+  const track = label.querySelector(".switch-track");
+
+  try {
+    const res = await fetch(`/api/arr/${app.id}/search-status`);
+    const data = await res.json();
+    if (res.ok) input.checked = data.enabled;
+  } catch (_) { /* leave unchecked, still disabled below until confirmed reachable */ }
+  input.disabled = false;
+
+  // Real read+write state, but the write fans out a PUT to every
+  // indexer - same arm/confirm-within-5s pattern as the other
+  // destructive controls here, just applied to a switch instead of a
+  // button. The checkbox itself never flips on a bare click; only a
+  // confirmed toggle changes it, so it always reflects real state.
+  let armed = false;
+  let disarmTimer = null;
+  const disarm = () => { armed = false; track.classList.remove("armed"); };
+  label.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (input.disabled) return;
+    if (!armed) {
+      armed = true;
+      track.classList.add("armed");
+      disarmTimer = setTimeout(disarm, 5000);
+      return;
+    }
+    clearTimeout(disarmTimer);
+    disarm();
+    const next = !input.checked;
+    (async () => {
+      input.disabled = true;
+      setStatusLine(status, "pending", `${next ? "Enabling" : "Disabling"} auto search…`);
+      logLine("pending", `${app.label} auto search — ${next ? "enable" : "disable"} requested`);
+      try {
+        const data = await postAction(`/api/arr/${app.id}/search-toggle?enabled=${next}`);
+        input.checked = next;
+        setStatusLine(status, "success", data.message);
+        logLine("ok", `${app.label} auto search — ${data.message}`);
+      } catch (err) {
+        setStatusLine(status, "error", err.message);
+        logLine("err", `${app.label} auto search — ${err.message}`);
+      } finally {
+        input.disabled = false;
+      }
+    })();
   });
 }
 

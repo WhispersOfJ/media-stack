@@ -21,6 +21,28 @@ export function buildLoopRemediation() {
   const wrap = document.getElementById("loop-remediation");
   if (!wrap) return;
 
+  const faders = document.createElement("div");
+  faders.className = "arr-actions-row";
+  faders.innerHTML = `
+    <div class="fader" data-fader="failed_pending_storm_threshold">
+      <span class="arr-actions-row-label">Failed-pending storm threshold</span>
+      <div class="fader-row">
+        <input type="range" class="fader-input" min="3" max="50" step="1" disabled>
+        <span class="fader-value">—</span>
+      </div>
+    </div>
+    <div class="fader" data-fader="loop_review_profile_threshold">
+      <span class="arr-actions-row-label">Loop review-profile threshold</span>
+      <div class="fader-row">
+        <input type="range" class="fader-input" min="2" max="30" step="1" disabled>
+        <span class="fader-value">—</span>
+      </div>
+    </div>
+  `;
+  wrap.appendChild(faders);
+  wireFader(faders, "failed_pending_storm_threshold");
+  wireFader(faders, "loop_review_profile_threshold");
+
   const row = document.createElement("div");
   row.className = "arr-actions-row";
   row.innerHTML = `<span class="arr-actions-row-label">Loop remediation</span><button class="btn-ghost" data-rescan type="button">Rescan</button><button class="btn-ghost" data-nzbdav-check type="button">Check NzbDAV dedup config</button>`;
@@ -31,6 +53,37 @@ export function buildLoopRemediation() {
 
   row.querySelector("[data-rescan]").addEventListener("click", () => rescan(panel));
   row.querySelector("[data-nzbdav-check]").addEventListener("click", () => checkNzbdavConfig());
+}
+
+async function wireFader(faders, key) {
+  const wrap = faders.querySelector(`[data-fader="${key}"]`);
+  const input = wrap.querySelector(".fader-input");
+  const value = wrap.querySelector(".fader-value");
+
+  try {
+    const res = await fetch("/api/settings");
+    const settings = await res.json();
+    input.value = settings[key];
+    value.textContent = settings[key];
+    input.disabled = false;
+  } catch (_) { /* leave disabled - settings unreachable */ }
+
+  input.addEventListener("input", () => { value.textContent = input.value; });
+  input.addEventListener("change", async () => {
+    input.disabled = true;
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: Number(input.value) }),
+      });
+      logLine("ok", `${key.replace(/_/g, " ")} — set to ${input.value}`);
+    } catch (e) {
+      logLine("err", `${key.replace(/_/g, " ")} — ${e.message}`);
+    } finally {
+      input.disabled = false;
+    }
+  });
 }
 
 async function checkNzbdavConfig() {

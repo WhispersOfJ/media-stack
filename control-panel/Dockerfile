@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends restic util-lin
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+COPY app.py settings_store.py .
 COPY static ./static
 
 EXPOSE 8420
