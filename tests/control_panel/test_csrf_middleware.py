@@ -16,8 +16,12 @@ async def _call_next(request):
     return SENTINEL
 
 
-def _run(cp_app, method, headers):
-    request = SimpleNamespace(method=method, headers=headers)
+def _run(cp_app, method, headers, client_host="127.0.0.1"):
+    request = SimpleNamespace(
+        method=method,
+        headers=headers,
+        client=SimpleNamespace(host=client_host) if client_host is not None else None,
+    )
     return asyncio.run(cp_app.verify_same_origin(request, _call_next))
 
 
@@ -66,3 +70,20 @@ def test_no_origin_header_is_not_required(cp_app):
     # only Host is checked when Origin is absent.
     result = _run(cp_app, "DELETE", {"host": "127.0.0.1"})
     assert result is SENTINEL
+
+
+def test_rejects_spoofed_localhost_host_from_non_loopback_client(cp_app):
+    # The exact attack this check exists to stop: `curl -H "Host: localhost"
+    # http://<real-host-ip>:8420/...` from a real remote client. The Host
+    # header alone can't be trusted - only the actual TCP source can.
+    result = _run(cp_app, "POST", {"host": "localhost:8420"}, client_host="203.0.113.5")
+    assert result.status_code == 403
+    assert "wasn't actually local" in result.body.decode()
+
+
+def test_missing_client_on_localhost_host_is_rejected(cp_app):
+    # ASGI servers may report request.client as None (e.g. behind certain
+    # proxies/test harnesses) - that must fail closed, not open.
+    result = _run(cp_app, "POST", {"host": "localhost:8420"}, client_host=None)
+    assert result.status_code == 403
+    assert "wasn't actually local" in result.body.decode()
