@@ -213,6 +213,27 @@ docker_client = docker.from_env()
 ALLOWED_HOSTS = {h for h in (HOST_IP, "localhost", "127.0.0.1") if h}
 
 
+def _own_network_gateway() -> str | None:
+    """Published-port traffic (the host curling localhost:8420) arrives with
+    its source NATed to the docker bridge's gateway IP, not 127.0.0.1 - a
+    bare loopback check rejects that legitimate traffic. Not spoofable by a
+    sibling container: Docker doesn't hand its bridge's own gateway address
+    out to a container as its source IP."""
+    try:
+        self_container = docker_client.containers.get(socket.gethostname())
+        for net in self_container.attrs.get("NetworkSettings", {}).get("Networks", {}).values():
+            if net.get("Gateway"):
+                return net["Gateway"]
+    except Exception:
+        pass
+    return None
+
+
+LOOPBACK_IPS = {"127.0.0.1", "::1"}
+if _gw := _own_network_gateway():
+    LOOPBACK_IPS.add(_gw)
+
+
 @app.middleware("http")
 async def verify_same_origin(request: Request, call_next):
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
@@ -222,6 +243,19 @@ async def verify_same_origin(request: Request, call_next):
                 status_code=403,
                 content={"ok": False, "message": "Rejected: Host header did not match this panel's configured HOST_IP."},
             )
+        # A Host header of "localhost"/"127.0.0.1" is client-supplied and proves
+        # nothing about where the request actually came from - only trust it if
+        # the TCP connection itself is actually loopback. Otherwise anyone who
+        # can reach this port bypasses the check entirely with
+        # `curl -H "Host: localhost" http://<real-host-ip>:8420/...`.
+        # See .gstack/security-reports/2026-08-03-174500.json, /cso finding #1.
+        if host in ("localhost", "127.0.0.1"):
+            client_host = request.client.host if request.client else None
+            if client_host not in LOOPBACK_IPS:
+                return JSONResponse(
+                    status_code=403,
+                    content={"ok": False, "message": "Rejected: Host header claimed localhost but the connection wasn't actually local."},
+                )
         origin = request.headers.get("origin")
         if origin:
             origin_host = origin.split("://", 1)[-1].split(":")[0].split("/")[0]
