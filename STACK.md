@@ -2924,3 +2924,80 @@ self-heal just because the client recovers:**
 is automatically the FUSE/mount landmine — check the mount independently first (it's a cheap
 check), then check nzbdav's own SAB API responsiveness with a short curl timeout and its logs
 before restarting anything. Docker's `healthy` status does not cover this failure mode.
+
+## Pi-hole added as network-wide DNS, 2026-08-03 - REMOVED same day, see end of section
+
+**REMOVED 2026-08-03, same day it was added** - user's explicit request ("reverse all
+pi-hole changes and delete it from everywhere, I will take care of network level"). Every
+change below was reverted: `pihole` service block deleted from `docker-compose.yml`,
+`PIHOLE_WEBPASSWORD` removed from `.env`, `config/pihole/` deleted entirely, the
+`CONTAINER_LABELS` dashboard entry removed from `control-panel/app.py` (rebuilt+redeployed),
+and all three host-level DNS changes below undone in reverse order (NetworkManager
+`dns=none` line removed → `/etc/resolv.conf` symlink removed → NetworkManager restarted to
+regenerate the original NM-managed file → the `disable-stub-for-pihole.conf` drop-in deleted
+→ `systemd-resolved` restarted to re-enable the stub listener). Confirmed `ss` shows the
+stub back on `127.0.0.53`/`127.0.0.54`, `/etc/resolv.conf` matches its original pre-Pi-hole
+content, host resolution works, and the whole stack was recreated again (`docker compose up
+-d --force-recreate`, no service name) so every container's baked-in `resolv.conf` matches
+the reverted host file too - same requirement as the original rollout, see below. Mount
+verified clean afterward (1 mount, instant `ls`, no real D-state) since this recreate
+cascade included `nzbdav`/`nzbdav_rclone` again. Router-side revert (whatever DNS setting
+change the user made in Eero, if any) is the user's own responsibility, not done by this
+session - the user was in the middle of that when they decided to reverse course, and
+this repo has no visibility into what state the Eero was actually left in.
+
+**Kept for history, everything below describes the now-removed setup:**
+
+New `pihole` service (`pihole/pihole:latest`), `network_mode: host` - **not** `stacknet` +
+published ports. Bridge mode was tried first and failed for a real, documented reason: every
+query (even from a real LAN client, not just container-to-container traffic) gets NAT'd through
+`docker-proxy` before reaching the container, so Pi-hole's FTL only ever sees the docker bridge
+gateway IP as the source and logs `dnsmasq: ignoring query from non-local network` and drops it.
+Host networking is Pi-hole's own documented recommendation for exactly this reason - confirmed
+live, DNS resolution failed in bridge mode and worked immediately after switching.
+
+**Two host-level changes were required, not just a compose service add** - this is the
+part that makes this addition different from every other service in this stack, which only
+ever needed docker-side changes:
+
+1. `systemd-resolved`'s DNS stub listener had to be disabled
+   (`/etc/systemd/resolved.conf.d/disable-stub-for-pihole.conf`, `DNSStubListener=no`) - it
+   binds `127.0.0.53:53`/`127.0.0.54:53`, and despite `ss` only ever showing those specific
+   loopback addresses (never `0.0.0.0:53`), a real bind attempt to `0.0.0.0:53` failed anyway
+   confirmed via a raw Python socket test. A wildcard bind can't coexist with an existing
+   specific-address bind on the same port - `ss`'s output was technically accurate and still
+   misleading about whether `0.0.0.0:53` was actually free.
+2. `/etc/resolv.conf` (a real file written by NetworkManager, not a symlink) pointed at the
+   now-dead `127.0.0.53` stub. Fixed by setting `dns=none` in `/etc/NetworkManager/NetworkManager.conf`
+   (stops NM from rewriting the file) and symlinking `/etc/resolv.conf` →
+   `/run/systemd/resolve/resolv.conf` (systemd's own non-stub file with the real upstream
+   nameservers, `74.40.74.40`/`74.40.74.41`).
+
+**Real incident caused and fixed in the same session, worth knowing about if this ever needs
+touching again:** disabling the stub broke DNS resolution for every container that bakes in
+`/etc/resolv.conf` from the host at creation time - `plex` (`network_mode: host`, so it reads
+the host file almost directly) and, more broadly, **every bridge-network container**, because
+Docker's embedded resolver (`127.0.0.11` inside each container) bakes in `ExtServers` from the
+host's `/etc/resolv.conf` *at that container's creation time*, not dynamically. Confirmed live:
+`radarr` returned `SERVFAIL` on every external lookup until recreated. The host's own CLI tools
+were never affected because `nsswitch.conf` uses the `resolve` NSS module (talks to
+systemd-resolved directly, bypassing `/etc/resolv.conf` entirely) - so a check that only
+confirms the *host* can still resolve DNS proves nothing about container-side resolution.
+**Fix: `docker compose up -d --force-recreate` (no service name = every service) once the host
+file is corrected**, not just the container being changed. Verified the FUSE mount came back
+clean afterward (1 mount, instant `ls`, no D-state) since this cascade included
+`nzbdav`/`nzbdav_rclone` - see this file's FUSE landmines sections before assuming a full-stack
+recreate is safe to repeat casually.
+
+**Password gotcha:** `WEBPASSWORD`/env-var password seeding only applies on a genuinely fresh
+`/etc/pihole` - a first `up -d` attempt that fails after Pi-hole's first-run setup already
+wrote `pihole.toml` (e.g. the port-bind failure above) leaves a persisted config that silently
+ignores the env var on every later recreate (log: `Password already set in config file`). Fix
+via `docker exec pihole pihole setpassword '<value>'` instead of trusting the env var once any
+config has ever been written to the volume.
+
+**Router-side work still required and NOT done by this session** - see README/AGENTS for the
+end-user Eero steps: this host's IP (`192.168.4.105`, currently DHCP-assigned) needs a DHCP
+reservation, and the router's handed-out DNS server needs to change from its default to this
+host's IP. Until that happens, Pi-hole is fully functional but nothing on the network is
+actually using it yet.

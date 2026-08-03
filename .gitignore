@@ -18,6 +18,9 @@ media/
 # arr-config-sync output (Radarr/Sonarr JSON snapshots) - regenerated, not source
 backups/
 
+# gstack security reports/local state - stays on this machine, not source
+.gstack/
+
 # scripts/audit-tmdb-links.py's default --csv output - regenerated report, not source
 tmdb_audit_report.csv
 
