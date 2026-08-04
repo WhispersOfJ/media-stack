@@ -5,12 +5,28 @@
 # Usage: __stack_api METHOD PATH [JSON_BODY]
 # Exit status mirrors the API's own "ok" field (or the HTTP status if the
 # body isn't JSON at all).
+#
+# Sends X-Api-Key from CONTROL_PANEL_SERVICE_API_KEY (media-stack/.env) on
+# every call. app.py (still live as of Phase 3 of
+# .claude/plans/evolved-control-panel-backend.plan.md) ignores unknown
+# headers, so this is a no-op today - it's here so every stack-* command
+# keeps working the moment the evolved backend (main.py, real auth) cuts
+# over in Phase 5, instead of every one of them silently 401ing that day.
 function __stack_api
     set -l method $argv[1]
     set -l path $argv[2]
     set -l body $argv[3]
     set -l host_ip 192.168.4.105
+    # Hardcoded, not derived from status --current-filename - this function
+    # is deployed as a plain copy at ~/.config/fish/functions/, not a
+    # symlink into the repo (~/.dotfiles doesn't exist on this host as of
+    # 2026-08-04), so a self-relative path would resolve to the wrong place.
+    set -l env_file /home/bear/Claude/media-stack/.env
+    set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat "$env_file" 2>/dev/null))[2]
     set -l curl_opts -sS -X $method -w '\n%{http_code}'
+    if test -n "$service_key"
+        set curl_opts $curl_opts -H "X-Api-Key: $service_key"
+    end
     if test -n "$body"
         set curl_opts $curl_opts -H 'Content-Type: application/json' -d $body
     end
