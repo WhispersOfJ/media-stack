@@ -6,17 +6,71 @@ effect on the live container until that switch happens.
 """
 import importlib
 import os
+import socket
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 import models  # noqa: F401  (registers every table on Base before create_all)
 from core.db import Base, SessionLocal, engine
+from core.docker_client import docker_client
 from core.security import hash_api_key, hash_password
 from models.api_key import ApiKey
 from models.user import User
 
 app = FastAPI(title="Control Panel (evolved backend)")
+
+# Defense-in-depth alongside the real session auth added in Phase 1 - ported
+# 1:1 from app.py's verify_same_origin (fixed under /cso, commit e360961).
+# Session cookies are already SameSite=Lax/httponly, but this Host/Origin
+# check stays: the plan's Phase 1 "Mirror" note requires auth to be at
+# least as strong as this check, not a replacement for it.
+HOST_IP = os.environ.get("HOST_IP")
+ALLOWED_HOSTS = {h for h in (HOST_IP, "localhost", "127.0.0.1") if h}
+
+
+def _own_network_gateway() -> str | None:
+    try:
+        self_container = docker_client.containers.get(socket.gethostname())
+        for net in self_container.attrs.get("NetworkSettings", {}).get("Networks", {}).values():
+            if net.get("Gateway"):
+                return net["Gateway"]
+    except Exception:
+        pass
+    return None
+
+
+LOOPBACK_IPS = {"127.0.0.1", "::1"}
+if _gw := _own_network_gateway():
+    LOOPBACK_IPS.add(_gw)
+
+
+@app.middleware("http")
+async def verify_same_origin(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        host = (request.headers.get("host") or "").split(":")[0]
+        if host not in ALLOWED_HOSTS:
+            return JSONResponse(
+                status_code=403,
+                content={"ok": False, "message": "Rejected: Host header did not match this panel's configured HOST_IP."},
+            )
+        if host in ("localhost", "127.0.0.1"):
+            client_host = request.client.host if request.client else None
+            if client_host not in LOOPBACK_IPS:
+                return JSONResponse(
+                    status_code=403,
+                    content={"ok": False, "message": "Rejected: Host header claimed localhost but the connection wasn't actually local."},
+                )
+        origin = request.headers.get("origin")
+        if origin:
+            origin_host = origin.split("://", 1)[-1].split(":")[0].split("/")[0]
+            if origin_host not in ALLOWED_HOSTS:
+                return JSONResponse(
+                    status_code=403,
+                    content={"ok": False, "message": "Rejected: Origin did not match this panel's host."},
+                )
+    return await call_next(request)
 
 
 def _bootstrap_admin(db) -> None:

@@ -65,6 +65,14 @@ def cp_main_app(monkeypatch, tmp_path):
     db_path = tmp_path / "control-panel-test.db"
     monkeypatch.setenv("CONTROL_PANEL_DB_PATH", str(db_path))
     monkeypatch.setenv("CONTROL_PANEL_SECRET_KEY", "test-secret-key-not-for-prod")
+    # main.py's verify_same_origin middleware (Phase 2) checks the Host
+    # header against HOST_IP - TestClient's default Host is "testserver",
+    # so it needs to be in ALLOWED_HOSTS or every mutating-route test 403s.
+    monkeypatch.setenv("HOST_IP", "testserver")
+    # core.docker_client calls docker.from_env() at import time (imported
+    # transitively via services.host.router) - same real-socket problem
+    # cp_app's fixture solves for app.py, same fix.
+    monkeypatch.setattr("docker.from_env", lambda: MagicMock())
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_PASSWORD", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_SERVICE_API_KEY", raising=False)
