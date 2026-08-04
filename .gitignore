@@ -4,6 +4,11 @@
 # Personal/machine-local Claude Code overrides - can contain live API keys
 # baked into allowlisted permission commands, not meant to be shared repo state
 .claude/settings.local.json
+.claude/hookify.*.local.md
+
+# ECC (Enhanced Claude Code) local state - benchmarks, session cache, etc.
+# machine-local, regenerated, not source
+.ecc/
 
 # Per-app runtime config, databases, caches, logs - all stateful/regenerated,
 # several contain plaintext API keys (decypharr/config.json, recyclarr/recyclarr.yml,
