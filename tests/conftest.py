@@ -55,6 +55,43 @@ def cp_app(monkeypatch):
         httpx._api.request = original_api_request
 
 
+@pytest.fixture
+def cp_main_app(monkeypatch, tmp_path):
+    """Fresh import of control-panel/main.py (the evolved backend, Phase 1
+    of .claude/plans/evolved-control-panel-backend.plan.md) against a
+    throwaway sqlite file - never the real /data mount. Same fresh-import-
+    per-test rationale as cp_app: module-level state (the FastAPI app
+    object, its startup-created engine) shouldn't leak between tests."""
+    db_path = tmp_path / "control-panel-test.db"
+    monkeypatch.setenv("CONTROL_PANEL_DB_PATH", str(db_path))
+    monkeypatch.setenv("CONTROL_PANEL_SECRET_KEY", "test-secret-key-not-for-prod")
+    monkeypatch.delenv("CONTROL_PANEL_ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("CONTROL_PANEL_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("CONTROL_PANEL_SERVICE_API_KEY", raising=False)
+
+    # Must clear every submodule (models.user, models.api_key, ...), not
+    # just the package names - leaving e.g. models.user cached meant its
+    # User class stayed bound to the PREVIOUS test's core.db.Base, so the
+    # next test's Base.metadata.create_all() created tables for an empty,
+    # unrelated metadata object (confirmed live: intermittent "no such
+    # table" failures that depended on test run order).
+    _cp_prefixes = ("main", "core", "models", "services")
+
+    def _clear_cp_modules():
+        for mod_name in list(sys.modules):
+            if mod_name in _cp_prefixes or mod_name.split(".")[0] in _cp_prefixes:
+                sys.modules.pop(mod_name, None)
+
+    sys.path.insert(0, str(CONTROL_PANEL_DIR))
+    _clear_cp_modules()
+    try:
+        module = importlib.import_module("main")
+        yield module
+    finally:
+        _clear_cp_modules()
+        sys.path.remove(str(CONTROL_PANEL_DIR))
+
+
 def _import_script(name: str):
     """Import scripts/<name>.py by file path under a private module-cache
     key. Needed because names like `arr-app-backup` aren't valid Python

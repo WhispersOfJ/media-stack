@@ -18,8 +18,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends restic util-lin
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py settings_store.py .
+COPY app.py settings_store.py main.py alembic.ini .
 COPY static ./static
+# Evolved backend (Phase 1 of .claude/plans/evolved-control-panel-backend.plan.md)
+# - built into the image now so it's testable in-container, but CMD below
+# still runs the existing app.py. Phase 5's cutover flips CMD to main:app.
+COPY core ./core
+COPY models ./models
+COPY services ./services
+COPY migrations ./migrations
 
 EXPOSE 8420
 
