@@ -73,6 +73,12 @@ def cp_main_app(monkeypatch, tmp_path):
     # transitively via services.host.router) - same real-socket problem
     # cp_app's fixture solves for app.py, same fix.
     monkeypatch.setattr("docker.from_env", lambda: MagicMock())
+    # core.arr_client (Phase 3) indexes these directly (os.environ[...], not
+    # .get) to build ARR_APPS at import time - same reasoning as cp_app's
+    # fixture above for app.py's own ARR_APPS.
+    monkeypatch.setenv("RADARR_API_KEY", "test-radarr-key")
+    monkeypatch.setenv("SONARR_API_KEY", "test-sonarr-key")
+    monkeypatch.setenv("PROWLARR_API_KEY", "test-prowlarr-key")
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_PASSWORD", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_SERVICE_API_KEY", raising=False)

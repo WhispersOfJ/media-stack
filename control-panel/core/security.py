@@ -85,9 +85,19 @@ def current_user_or_service(request: Request, db: Session = Depends(get_db)) -> 
     """Accepts either a session cookie or an X-Api-Key header. The
     recurring health-check cron and stack-* scripts can't do an
     interactive login, so a valid service API key is an accepted
-    alternative on read-only routes only - callers are responsible for
-    only using this dependency on routes that don't mutate state.
-    Returns the User for a session, or None for a valid service key."""
+    alternative on:
+      1. every read-only route, and
+      2. a documented, bounded set of automation-invoked mutating routes -
+         Phase 3 extended the contract for these after finding
+         stack-queue-autofix.fish's 5-minute unattended loop (and its
+         sibling unstick/rss-sync/search/blocklist/manual-import actions)
+         has no way to hold an interactive session. Each router that uses
+         this dependency on a mutating route must say so in a comment next
+         to the route, same as services/arr/router.py does.
+    Callers are responsible for NOT using this dependency on any mutating
+    route that isn't part of that documented automation set - those still
+    require current_user. Returns the User for a session, or None for a
+    valid service key."""
     api_key = request.headers.get("X-Api-Key")
     if api_key:
         key_row = _lookup_api_key(db, api_key)
