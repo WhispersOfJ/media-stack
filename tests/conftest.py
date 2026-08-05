@@ -85,6 +85,9 @@ def cp_main_app(monkeypatch, tmp_path):
     # Plex route tests to reach their mocked httpx calls instead of a 503.
     monkeypatch.setenv("PLEX_URL", "http://test-plex:32400")
     monkeypatch.setenv("PLEX_TOKEN", "test-plex-token")
+    # core.nzbdav_client reads this with os.environ.get - same call-time-
+    # not-import-time failure mode as PLEX_URL/PLEX_TOKEN above.
+    monkeypatch.setenv("FRONTEND_BACKEND_API_KEY", "test-nzbdav-key")
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_PASSWORD", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_SERVICE_API_KEY", raising=False)

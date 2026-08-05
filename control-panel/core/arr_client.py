@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from core.nzbdav_client import NZBDAV_API_KEY, NZBDAV_URL, nzbdav_api  # noqa: F401
 from core.responses import fail
 
 # Internal stacknet hostnames - not HOST_IP, since this container reaches
@@ -49,23 +50,10 @@ BAZARR_URL = "http://bazarr:6767"
 HOST_CONFIG_DIR = "/host-config"
 
 # NzbDAV's SABnzbd-compatible API - queue-autofix (below) needs its queue
-# health (paused state) even though NzbDAV itself is Phase 4's integration.
-# Narrow pull-forward of app.py's nzbdav_api() (app.py:1396), just the one
-# call queue-autofix depends on; superseded by services/nzbdav/client.py
-# once Phase 4 lands, not duplicated there.
-NZBDAV_URL = "http://nzbdav:3000/api"
-NZBDAV_API_KEY = os.environ.get("FRONTEND_BACKEND_API_KEY")
-
-
-def nzbdav_api(mode: str, timeout: int = 15, **params) -> dict:
-    if not NZBDAV_API_KEY:
-        fail("NzbDAV isn't configured (FRONTEND_BACKEND_API_KEY not set)", status_code=503)
-    try:
-        r = httpx.get(NZBDAV_URL, params={"mode": mode, "output": "json", "apikey": NZBDAV_API_KEY, **params}, timeout=timeout)
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        fail(f"NzbDAV {mode} lookup failed: {e}")
-    return r.json()
+# health (paused state). Now owned by core/nzbdav_client.py (Phase 4);
+# re-exported here (see the import at the top of the file) only so
+# services/arr/router.py's existing import keeps working without touching
+# every call site.
 
 
 def _bazarr_key() -> str | None:

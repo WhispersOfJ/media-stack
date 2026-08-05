@@ -15,7 +15,7 @@ import docker
 import httpx
 from core.api_hit_counts import install as install_hit_counter
 from core.api_hit_counts import register_host_label
-from core.arr_client import nzbdav_api
+from core.nzbdav_client import nzbdav_api
 from core.docker_client import docker_client
 from core.host_paths import HOST_CONFIG_DIR, HOST_PROC_DIR, HOST_SYS_FUSE_DIR
 from core.plex_client import PLEX_URL, plex_headers, plex_sections
