@@ -609,3 +609,24 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
 
   #palette-overlay { padding-top: 4vh; padding-left: 10px; padding-right: 10px; }
 }
+
+#login-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(2px);
+}
+#login-overlay[hidden] { display: none; }
+#login-form {
+  display: flex; flex-direction: column; gap: 10px;
+  width: 100%; max-width: 320px; padding: 24px;
+  background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+#login-form h2 { margin: 0; color: var(--accent); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; font-size: 1rem; }
+#login-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; color: var(--ink-soft); }
+#login-form input {
+  padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--line-strong); color: var(--ink);
+  font-family: var(--font-ui); font-size: 0.85rem;
+}
+#login-form input:focus { border-color: var(--accent); }
+#login-form .btn-primary { margin-top: 4px; }
+#login-error { min-height: 1em; margin: 0; color: #c0392b; font-size: 0.75rem; }

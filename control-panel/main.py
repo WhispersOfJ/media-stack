@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 import models  # noqa: F401  (registers every table on Base before create_all)
 from core.db import Base, SessionLocal, engine
@@ -143,3 +144,11 @@ def _discover_routers() -> None:
 
 
 _discover_routers()
+
+# Absolute path, not "static" - unlike app.py (which the test fixture
+# chdir()s into control-panel/ before importing), this module's own test
+# fixture (cp_main_app) does not chdir, so a relative path here 500s at
+# import time under pytest even though it works fine from the real
+# container's WORKDIR.
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

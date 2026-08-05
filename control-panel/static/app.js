@@ -20,28 +20,34 @@ import { buildQuickLinks, buildDocLinks, buildSkillsList } from "./js/reference.
 import { buildPlexUpdateCheck, refreshStatus, tickClock } from "./js/status.js";
 import { wirePalette, loadCommandRegistry } from "./js/palette.js";
 import { buildPlexHealth, refreshPlexHealth } from "./js/plex-health.js";
+import { requireSession, wireLogout } from "./js/auth.js";
 
-initSettings();
-wireLogConsole();
-buildQuickLinks();
-buildPrimaryActions();
-buildArrFleet();
-buildLoopRemediation();
-buildHostVitals();
-buildHostActions();
-buildPosterDock();
-buildDocLinks();
-buildSkillsList();
-buildPlexUpdateCheck();
-wirePalette();
-loadCommandRegistry();
-tickClock();
-setInterval(tickClock, 1000);
-refreshStatus();
-setInterval(refreshStatus, 20000);
-refreshFleet();
-setInterval(refreshFleet, 15000);
-buildPlexHealth();
-refreshPlexHealth();
-setInterval(refreshPlexHealth, 15000);
-logLine("ok", "Control panel ready.");
+function bootApp() {
+  initSettings();
+  wireLogConsole();
+  buildQuickLinks();
+  buildPrimaryActions();
+  buildArrFleet();
+  buildLoopRemediation();
+  buildHostVitals();
+  buildHostActions();
+  buildPosterDock();
+  buildDocLinks();
+  buildSkillsList();
+  buildPlexUpdateCheck();
+  wirePalette();
+  loadCommandRegistry();
+  tickClock();
+  setInterval(tickClock, 1000);
+  refreshStatus();
+  setInterval(refreshStatus, 20000);
+  refreshFleet();
+  setInterval(refreshFleet, 15000);
+  buildPlexHealth();
+  refreshPlexHealth();
+  setInterval(refreshPlexHealth, 15000);
+  logLine("ok", "Control panel ready.");
+}
+
+wireLogout();
+requireSession(bootApp);

@@ -40,8 +40,24 @@
       <span class="switch-label">Dark</span>
     </label>
     <button class="btn-ghost" id="console-toggle" type="button">Console</button>
+    <button class="btn-ghost" id="logout-btn" type="button">Log out</button>
   </div>
 </header>
+
+<div id="login-overlay" hidden>
+  <form id="login-form">
+    <h2>Control Panel</h2>
+    <p class="hint">Sign in to continue.</p>
+    <label>Username
+      <input type="text" id="login-username" autocomplete="username" required>
+    </label>
+    <label>Password
+      <input type="password" id="login-password" autocomplete="current-password" required>
+    </label>
+    <button class="btn-primary" type="submit">Log in</button>
+    <p id="login-error" role="alert"></p>
+  </form>
+</div>
 
 <div id="workspace">
 
