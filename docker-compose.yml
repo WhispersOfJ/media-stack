@@ -533,10 +533,17 @@ services:
       # /api/ratings/imdb, /api/ratings/mdblist - standalone secrets.
       OMDB_KEY: ${OMDB_KEY}
       MDBLIST_KEY: ${MDBLIST_KEY}
-      # Evolved backend (main.py) only - app.py (still live) ignores this.
-      # Service-account key for unattended stack-* fish commands; see
-      # .env's comment and core/security.py's current_user_or_service.
+      # Evolved backend (main.py) - service-account key for unattended
+      # stack-* fish commands; see .env's comment and
+      # core/security.py's current_user_or_service.
       CONTROL_PANEL_SERVICE_API_KEY: ${CONTROL_PANEL_SERVICE_API_KEY}
+      # Session-cookie signing key (core/security.py's create_session_token)
+      # and the single bootstrap admin account (main.py's _bootstrap_admin -
+      # no-op after the first user row exists, so rotating the password here
+      # later requires updating the DB directly, not just this var).
+      CONTROL_PANEL_SECRET_KEY: ${CONTROL_PANEL_SECRET_KEY}
+      CONTROL_PANEL_ADMIN_USERNAME: ${CONTROL_PANEL_ADMIN_USERNAME}
+      CONTROL_PANEL_ADMIN_PASSWORD: ${CONTROL_PANEL_ADMIN_PASSWORD}
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # issues restarts, not just reads status. Runs as root in-container (no

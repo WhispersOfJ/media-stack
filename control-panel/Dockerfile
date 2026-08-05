@@ -20,9 +20,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py settings_store.py main.py alembic.ini .
 COPY static ./static
-# Evolved backend (Phase 1 of .claude/plans/evolved-control-panel-backend.plan.md)
-# - built into the image now so it's testable in-container, but CMD below
-# still runs the existing app.py. Phase 5's cutover flips CMD to main:app.
+# Evolved backend cutover (Phase 5 of
+# .claude/plans/evolved-control-panel-backend.plan.md) - CMD below now runs
+# main.py, not the retired app.py (kept in the image temporarily as a
+# rollback reference, not imported by anything).
 COPY core ./core
 COPY models ./models
 COPY services ./services
@@ -30,4 +31,4 @@ COPY migrations ./migrations
 
 EXPOSE 8420
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8420"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8420"]
