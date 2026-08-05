@@ -79,6 +79,12 @@ def cp_main_app(monkeypatch, tmp_path):
     monkeypatch.setenv("RADARR_API_KEY", "test-radarr-key")
     monkeypatch.setenv("SONARR_API_KEY", "test-sonarr-key")
     monkeypatch.setenv("PROWLARR_API_KEY", "test-prowlarr-key")
+    # core.plex_client reads these with os.environ.get (default "") so
+    # module import never KeyErrors without them, but plex_headers() fails
+    # a real request at call time if either is unset - needed for Phase 4
+    # Plex route tests to reach their mocked httpx calls instead of a 503.
+    monkeypatch.setenv("PLEX_URL", "http://test-plex:32400")
+    monkeypatch.setenv("PLEX_TOKEN", "test-plex-token")
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_PASSWORD", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_SERVICE_API_KEY", raising=False)
