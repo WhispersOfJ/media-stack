@@ -20,8 +20,10 @@ config/
 usenet/
 media/
 
-# arr-config-sync output (Radarr/Sonarr JSON snapshots) - regenerated, not source
-backups/
+# arr-config-sync output (Radarr/Sonarr JSON snapshots) - regenerated, not
+# source. Scoped to the repo root only - control-panel/services/backups/ is
+# real source code (Phase 4 of the evolved backend), not a data dir.
+/backups/
 
 # gstack security reports/local state - stays on this machine, not source
 .gstack/
