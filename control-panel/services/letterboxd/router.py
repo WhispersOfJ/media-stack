@@ -16,12 +16,14 @@ from core.arr_client import (
     radarr_ensure_tags,
     radarr_quality_profile_id_by_name,
     radarr_root_folder_and_profile,
+    sonarr_add_series,
+    sonarr_root_folder_and_profile,
 )
 from core.db import SessionLocal
 from core.responses import fail, ok
 from core.security import current_user_or_service
 from models.letterboxd_cache import LetterboxdTmdbCache
-from services.letterboxd.cache import resolve_tmdb_ids
+from services.letterboxd.cache import resolve_tmdb_ids, resolve_tv_crossovers
 from services.letterboxd.scraping import (
     LETTERBOXD_DISALLOWED_RE,
     LETTERBOXD_GRID_RE,
@@ -117,6 +119,7 @@ class LetterboxdListAddRequest(BaseModel):
     dry_run: bool = False
     rating_quality_map: dict[str, str] | None = None
     tags_as_radarr_tags: bool = False
+    sonarr_crossover: bool = False
 
 
 @router.post("/api/arr/radarr/add-from-letterboxd-list")
@@ -180,6 +183,34 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
         db.close()
     tmdb_ids = list(dict.fromkeys(tmdb_ids))
     print(f"letterboxd-list: resolved {len(tmdb_ids)} tmdb id(s), {len(unmatched)} unmatched, out of {len(slugs)} slug(s)")
+
+    tv_added, tv_already, tv_failed = [], [], []
+    if payload.sonarr_crossover and unmatched:
+        sonarr_cfg = ARR_APPS["sonarr"]
+        db = SessionLocal()
+        try:
+            tv_matches, unmatched = resolve_tv_crossovers(db, unmatched)
+        finally:
+            db.close()
+        if tv_matches:
+            try:
+                sonarr_library = httpx.get(f"{sonarr_cfg['url']}/api/{sonarr_cfg['api']}/series",
+                                            headers={"X-Api-Key": sonarr_cfg["key"]}, timeout=30)
+                sonarr_library.raise_for_status()
+            except httpx.HTTPError as e:
+                fail(f"Couldn't read Sonarr's library: {e}")
+            existing_tvdb_ids = {s["tvdbId"] for s in sonarr_library.json()}
+            sonarr_root_folder_path, sonarr_quality_profile_id = sonarr_root_folder_and_profile(sonarr_cfg, None, None)
+            for tv_match in tv_matches:
+                result = sonarr_add_series(sonarr_cfg, tv_match["tvdb_id"], payload.monitored, payload.search,
+                                            sonarr_root_folder_path, sonarr_quality_profile_id, existing_tvdb_ids,
+                                            dry_run=payload.dry_run)
+                if result["status"] == "already":
+                    tv_already.append(tv_match["title"])
+                elif result["status"] == "added":
+                    tv_added.append(result["title"])
+                else:
+                    tv_failed.append(result["reason"])
 
     try:
         library = httpx.get(f"{cfg['url']}/api/{cfg['api']}/movie", headers={"X-Api-Key": cfg["key"]}, timeout=30)
@@ -257,4 +288,9 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
     summary = f"{len(added)} {verb}, {len(already)} already in Radarr, {len(failed)} failed"
     if unmatched:
         summary += f", {len(unmatched)} had no TMDb match"
-    return ok(summary, added=added, alreadyCount=len(already), failed=failed, unmatched=unmatched, dryRun=payload.dry_run)
+    if tv_added or tv_already or tv_failed:
+        summary += (f"; {len(tv_added)} TV crossover {verb} to Sonarr, "
+                     f"{len(tv_already)} already in Sonarr, {len(tv_failed)} failed")
+    return ok(summary, added=added, alreadyCount=len(already), failed=failed, unmatched=unmatched, dryRun=payload.dry_run,
+              tvCrossoverAdded=tv_added, tvCrossoverAlready=tv_already, tvCrossoverFailed=tv_failed,
+              tvCrossoverCount=len(tv_added) + len(tv_already))

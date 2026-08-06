@@ -201,3 +201,58 @@ def test_letterboxd_list_add_attaches_scraped_tags(cp_main_app, monkeypatch):
     assert resp.status_code == 200
     assert created_tags == ["a24"]  # "rewatch" already existed (id 1), only "a24" needed creating
     assert posted_movies[0]["tags"] == [1, 2]
+
+
+def test_letterboxd_list_add_crosses_over_unmatched_title_to_sonarr(cp_main_app, monkeypatch):
+    list_html = '<html><a href="/page/1/"></a><li><div data-item-slug="a-tv-miniseries"></div></li></html>'
+    film_page_html = '<html><meta property="og:title" content="A TV Miniseries (2022)"/>no tmdb movie link here</html>'
+    sonarr_series_added = []
+
+    def fake_get(url, params=None, headers=None, timeout=None, **kwargs):
+        if "letterboxd.com/bear/list/tv-list" in url and "/film/" not in url:
+            return MagicMock(text=list_html, raise_for_status=MagicMock())
+        if "letterboxd.com/film/a-tv-miniseries" in url:
+            return MagicMock(text=film_page_html, raise_for_status=MagicMock())
+        if url.endswith("/movie") and "radarr" in url:
+            return MagicMock(json=lambda: [], raise_for_status=MagicMock())
+        if url.endswith("/rootfolder") and "radarr" in url:
+            return MagicMock(json=lambda: [{"path": "/data/movies"}], raise_for_status=MagicMock())
+        if url.endswith("/qualityprofile") and "radarr" in url:
+            return MagicMock(json=lambda: [{"id": 1, "name": "Unlimited"}], raise_for_status=MagicMock())
+        if url.endswith("/rootfolder") and "sonarr" in url:
+            return MagicMock(json=lambda: [{"path": "/data/shows"}], raise_for_status=MagicMock())
+        if url.endswith("/qualityprofile") and "sonarr" in url:
+            return MagicMock(json=lambda: [{"id": 2, "name": "Any"}], raise_for_status=MagicMock())
+        if url.endswith("/series") and "sonarr" in url:
+            return MagicMock(json=lambda: [], raise_for_status=MagicMock())
+        if url.endswith("/series/lookup"):
+            # Two callers hit this: resolve_tv_crossovers (Task 6) looks up
+            # by title text, then sonarr_add_series's own internal lookup
+            # (pre-existing core/arr_client.py helper) re-looks-up by
+            # "tvdb:<id>" once it has the tvdbId - both must resolve to the
+            # same series for the crossover to complete.
+            if params["term"] == "A TV Miniseries":
+                return MagicMock(json=lambda: [{"title": "A TV Miniseries", "tvdbId": 777, "year": 2022}], raise_for_status=MagicMock())
+            if params["term"] == "tvdb:777":
+                return MagicMock(json=lambda: [{"title": "A TV Miniseries", "tvdbId": 777, "year": 2022}], raise_for_status=MagicMock())
+            return MagicMock(json=lambda: [], raise_for_status=MagicMock())
+        return MagicMock(json=lambda: {}, raise_for_status=MagicMock())
+
+    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
+        if url.endswith("/series"):
+            sonarr_series_added.append(json)
+            return MagicMock(json=lambda: {**json, "title": json.get("title")}, raise_for_status=MagicMock())
+        return MagicMock(json=lambda: {}, raise_for_status=MagicMock())
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
+    client = TestClient(cp_main_app.app)
+    _login(client, cp_main_app)
+    resp = client.post("/api/arr/radarr/add-from-letterboxd-list", json={
+        "url": "https://letterboxd.com/bear/list/tv-list/",
+        "sonarr_crossover": True,
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["tvCrossoverCount"] == 1
+    assert sonarr_series_added[0]["tvdbId"] == 777
