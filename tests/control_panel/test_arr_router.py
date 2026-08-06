@@ -69,6 +69,9 @@ def _json_response(payload, status_code=200):
     ("GET", "/api/backlog-status"),
     ("GET", "/api/arr/command-queue-summary"),
     ("GET", "/api/arr/queue-errors"),
+    ("GET", "/api/arr/radarr/import-list/implementations"),
+    ("POST", "/api/arr/radarr/import-list/add"),
+    ("POST", "/api/mdblist/import-list"),
 ])
 def test_automation_routes_accept_service_key(cp_main_app, monkeypatch, method, path):
     """Every route stack-queue-autofix.fish (and the stack-cli-arr-fleet
@@ -94,13 +97,16 @@ def test_automation_routes_accept_service_key(cp_main_app, monkeypatch, method, 
 
 
 @pytest.mark.parametrize("method,path,body", [
-    ("GET", "/api/arr/radarr/import-list/implementations", None),
-    ("POST", "/api/arr/radarr/import-list/add", {"implementation": "PlexImport", "name": "x"}),
-    ("POST", "/api/mdblist/import-list", {"list_url": "https://mdblist.com/lists/u/l/"}),
+    ("POST", "/api/arr/radarr/exclude", {"movieId": 1}),
 ])
 def test_manual_only_routes_reject_service_key(cp_main_app, monkeypatch, method, path, body):
     """Routes with no automation caller stay session-only even with a
-    valid service key presented."""
+    valid service key presented - import-list/implementations,
+    import-list/add, and mdblist/import-list moved to
+    test_automation_routes_accept_service_key above (2026-08-06's
+    extend-service-key-auth commit made them automation-invoked too;
+    radarr/exclude is the one route that commit's audit explicitly left
+    current_user-only)."""
     client = TestClient(cp_main_app.app)
     headers = _service_key_header(cp_main_app)
     resp = client.request(method, path, headers=headers, json=body)
