@@ -37,11 +37,19 @@ ARR_APPS = {
         "label": "Sonarr",
         "import_events": ("downloadFolderImported",),
     },
+    "radarr_anime": {
+        "url": "http://radarr-anime:7878",
+        "api": "v3",
+        "key": os.environ["RADARR_ANIME_API_KEY"],
+        "search_command": "MissingMoviesSearch",
+        "label": "Radarr (Anime)",
+        "import_events": ("downloadFolderImported",),
+    },
 }
 
 # Radarr and Sonarr both have a real download queue (NzbDAV wired to each as
 # the sole download client) - Unstick/manual-import work identically on both.
-QUEUE_ARR_APPS = ("radarr", "sonarr")
+QUEUE_ARR_APPS = ("radarr", "sonarr", "radarr_anime")
 
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 PROWLARR_CFG = {"url": "http://prowlarr:9696", "api": "v1", "key": PROWLARR_API_KEY, "label": "Prowlarr"}

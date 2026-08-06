@@ -15,6 +15,10 @@ docker_client = docker.from_env()
 
 CONTAINER_LABELS = {
     "radarr": ("Radarr", None),
+    # Hyphen matches the Docker container name radarr-anime; core/arr_client.py's
+    # ARR_APPS keys it radarr_anime (underscore, Python-identifier convention) -
+    # the two dicts key the same instance differently on purpose.
+    "radarr-anime": ("Radarr (Anime)", "dedicated Radarr instance for anime movies, Usenet-only"),
     "sonarr": ("Sonarr", None),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
