@@ -889,7 +889,7 @@ services:
   # (TMDb/MDBList only) - no Trakt/GitHub credentials, no old config
   # survived the 2026-07-22 removal.
   kometa:
-    restart: unless-stopped
+    restart: "no"
     logging: *common-logging
     image: kometateam/kometa:latest
     container_name: kometa
@@ -897,7 +897,7 @@ services:
     environment:
       TZ: ${TZ}
       KOMETA_CONFIG: /config/config.yml
-      KOMETA_TIMES: "05:30"
+      KOMETA_RUN: "true"
     volumes:
       - ./config/kometa:/config
     mem_limit: 2g
