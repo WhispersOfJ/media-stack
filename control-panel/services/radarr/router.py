@@ -76,7 +76,9 @@ class LetterboxdAddRequest(BaseModel):
 
 
 @router.post("/api/arr/radarr/add-from-letterboxd")
-def radarr_add_from_letterboxd(payload: LetterboxdAddRequest, _=Depends(current_user)):
+# current_user_or_service, not current_user: stack-letterboxd-radarr.fish
+# calls this unattended via __stack_api's service key (2026-08-06).
+def radarr_add_from_letterboxd(payload: LetterboxdAddRequest, _=Depends(current_user_or_service)):
     cfg = ARR_APPS["radarr"]
     url = payload.url.strip()
     if "letterboxd.com/film/" not in url:

@@ -745,7 +745,7 @@ def arr_import_lists(app_name: str, _=Depends(current_user_or_service)):
 
 
 @router.get("/api/arr/{app_name}/import-list/implementations")
-def arr_import_list_implementations(app_name: str, _=Depends(current_user)):
+def arr_import_list_implementations(app_name: str, _=Depends(current_user_or_service)):
     if app_name not in ("radarr", "sonarr"):
         fail("Only radarr and sonarr have import lists.", status_code=400)
     cfg = ARR_APPS[app_name]
@@ -769,7 +769,12 @@ class ImportListAddRequest(BaseModel):
 
 
 @router.post("/api/arr/{app_name}/import-list/add")
-def arr_import_list_add(app_name: str, payload: ImportListAddRequest, _=Depends(current_user)):
+# current_user_or_service, not current_user: stack-plex-rss-import.fish,
+# stack-plex-watchlist-import.fish, stack-radarr-list-import.fish,
+# stack-sonarr-custom-list-import.fish, stack-tmdb-company-import.fish,
+# stack-tmdb-keyword-import.fish, and stack-trakt-list-import.fish all call
+# this unattended via __stack_api's service key (2026-08-06).
+def arr_import_list_add(app_name: str, payload: ImportListAddRequest, _=Depends(current_user_or_service)):
     if app_name not in ("radarr", "sonarr"):
         fail("Only radarr and sonarr have import lists.", status_code=400)
     cfg = ARR_APPS[app_name]
@@ -876,7 +881,9 @@ MDBLIST_URL_RE = re.compile(r"^https://mdblist\.com/lists/([^/]+)/([^/]+)/?$")
 
 
 @router.post("/api/mdblist/import-list")
-def mdblist_import_list(payload: MDBListImportRequest, _=Depends(current_user)):
+# current_user_or_service, not current_user: stack-mdblist-import.fish calls
+# this unattended via __stack_api's service key (2026-08-06).
+def mdblist_import_list(payload: MDBListImportRequest, _=Depends(current_user_or_service)):
     key = os.environ.get("MDBLIST_KEY") or None
     if not key:
         fail("No MDBList API key found (MDBLIST_KEY not set in .env).", status_code=500)

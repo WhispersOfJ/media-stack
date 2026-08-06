@@ -2,14 +2,17 @@
 (lines ~3543-3583) - Phase 3 of
 .claude/plans/evolved-control-panel-backend.plan.md.
 
-Manual UI action, no automation caller - requires current_user.
+Auth policy: current_user_or_service, not current_user - stack-sonarr-monitor-
+episodes-fix.fish calls this unattended via __stack_api's service key
+(2026-08-06 fix; this docstring previously said "no automation caller",
+which was already stale by the time the fish command was added).
 """
 import httpx
 from fastapi import APIRouter, Depends
 
 from core.arr_client import ARR_APPS
 from core.responses import fail, ok
-from core.security import current_user
+from core.security import current_user_or_service
 
 router = APIRouter(tags=["sonarr"])
 
@@ -17,7 +20,7 @@ SERVICE_META = {"label": "Sonarr", "health_check": None}
 
 
 @router.post("/api/arr/sonarr/monitor-episodes-fix")
-def sonarr_monitor_episodes_fix(_=Depends(current_user)):
+def sonarr_monitor_episodes_fix(_=Depends(current_user_or_service)):
     """Every monitored series can drift out of sync with its own episodes -
     an import list add, a partial re-add after a bulk delete, etc. can leave
     individual episodes unmonitored under a monitored series/season. Fixes

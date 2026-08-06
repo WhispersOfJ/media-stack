@@ -82,7 +82,9 @@ def containers_list(_=Depends(current_user_or_service)):
 
 
 @router.post("/api/container/{name}/restart")
-def container_restart(name: str, activated: bool = False, _=Depends(current_user)):
+# current_user_or_service, not current_user: stack-container.fish calls this
+# unattended via __stack_api's service key (2026-08-06).
+def container_restart(name: str, activated: bool = False, _=Depends(current_user_or_service)):
     if name == "plex" and not activated:
         fail(
             "Plex restart requires activated=true - a plain restart click is no longer "
@@ -98,7 +100,9 @@ def container_restart(name: str, activated: bool = False, _=Depends(current_user
 
 
 @router.post("/api/container/{name}/stop")
-def container_stop(name: str, _=Depends(current_user)):
+# current_user_or_service, not current_user: stack-container.fish calls this
+# unattended via __stack_api's service key (2026-08-06).
+def container_stop(name: str, _=Depends(current_user_or_service)):
     c = find_project_container(name, reject_self=True)
     if c.status != "running":
         return ok(f"{container_label(name)} is already {c.status}.")
@@ -110,7 +114,9 @@ def container_stop(name: str, _=Depends(current_user)):
 
 
 @router.post("/api/container/{name}/start")
-def container_start(name: str, _=Depends(current_user)):
+# current_user_or_service, not current_user: stack-container.fish calls this
+# unattended via __stack_api's service key (2026-08-06).
+def container_start(name: str, _=Depends(current_user_or_service)):
     c = find_project_container(name, reject_self=False)
     if c.status == "running":
         return ok(f"{container_label(name)} is already running.")
@@ -135,7 +141,9 @@ def container_logs_stream(name: str, tail: int = 100, _=Depends(current_user_or_
 
 
 @router.post("/api/stack/restart-all")
-def stack_restart_all(_=Depends(current_user)):
+# current_user_or_service, not current_user: stack-restart-all.fish calls
+# this unattended via __stack_api's service key (2026-08-06).
+def stack_restart_all(_=Depends(current_user_or_service)):
     me, containers = project_containers()
     targets = [c for c in containers if c.id != me.id]
     if not targets:
