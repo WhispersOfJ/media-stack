@@ -24,6 +24,7 @@ from core.responses import fail, ok
 from core.security import current_user_or_service
 from models.letterboxd_cache import LetterboxdTmdbCache
 from services.letterboxd.cache import resolve_tmdb_ids, resolve_tv_crossovers
+from services.letterboxd.sync import record_sync_log, recent_sync_logs
 from services.letterboxd.scraping import (
     LETTERBOXD_DISALLOWED_RE,
     LETTERBOXD_GRID_RE,
@@ -284,6 +285,15 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
             failed.append(result["reason"])
             print(f"letterboxd-list: [{i}/{total_movies}] failed - {result['reason']}")
 
+    db = SessionLocal()
+    try:
+        record_sync_log(
+            db, payload.url, matched=len(tmdb_ids), unmatched=len(unmatched), added=len(added),
+            already=len(already), failed=len(failed), tv_crossover=len(tv_added) + len(tv_already),
+        )
+    finally:
+        db.close()
+
     verb = "would be added" if payload.dry_run else "added"
     summary = f"{len(added)} {verb}, {len(already)} already in Radarr, {len(failed)} failed"
     if unmatched:
@@ -294,3 +304,13 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
     return ok(summary, added=added, alreadyCount=len(already), failed=failed, unmatched=unmatched, dryRun=payload.dry_run,
               tvCrossoverAdded=tv_added, tvCrossoverAlready=tv_already, tvCrossoverFailed=tv_failed,
               tvCrossoverCount=len(tv_added) + len(tv_already))
+
+
+@router.get("/api/arr/letterboxd/history")
+def letterboxd_history(_=Depends(current_user_or_service)):
+    db = SessionLocal()
+    try:
+        runs = recent_sync_logs(db)
+    finally:
+        db.close()
+    return ok(f"{len(runs)} recent sync run(s).", runs=runs)
