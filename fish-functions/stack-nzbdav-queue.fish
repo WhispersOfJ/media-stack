@@ -1,6 +1,7 @@
 function stack-nzbdav-queue --description 'Show NzbDAV''s current Usenet download queue'
     set -l host_ip 192.168.4.105
-    curl -sS "http://$host_ip:8420/api/nzbdav/queue" | python3 -c "
+    set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
+    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/nzbdav/queue" | python3 -c "
 import json, sys
 items = json.load(sys.stdin)
 if not items:

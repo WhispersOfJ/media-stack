@@ -12,7 +12,8 @@ function stack-customformat-diff --description 'Diff current Radarr/Sonarr custo
     mkdir -p "$cache_dir"
     set -l cache_file "$cache_dir/customformat-$argv[1].json"
     set -l host_ip 192.168.4.105
-    set -l current (curl -sS "http://$host_ip:8420/api/arr/$argv[1]/customformat-snapshot")
+    set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
+    set -l current (curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/arr/$argv[1]/customformat-snapshot")
     python3 -c "
 import json, sys, os
 

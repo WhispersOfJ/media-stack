@@ -5,11 +5,12 @@ function stack-arr-logs --description 'Tail an *arr app''s container log directl
         return 1
     end
     set -l host_ip 192.168.4.105
+    set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
     set -l lines 100
     if test (count $argv) -ge 2
         set lines $argv[2]
     end
-    curl -sS "http://$host_ip:8420/api/arr/$argv[1]/logs?lines=$lines" | python3 -c "
+    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/arr/$argv[1]/logs?lines=$lines" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 if isinstance(d, dict) and isinstance(d.get('detail'), dict):

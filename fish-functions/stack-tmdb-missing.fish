@@ -4,8 +4,9 @@
 # a rescan tool, not an appending log.
 function stack-tmdb-missing --description 'Find Plex items missing a TMDb link, write ~/missing.txt'
     set -l host_ip 192.168.4.105
+    set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
     set -l out ~/missing.txt
-    curl -sS "http://$host_ip:8420/api/plex/tmdb-missing" | python3 -c "
+    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/plex/tmdb-missing" | python3 -c "
 import json, sys
 
 data = json.load(sys.stdin)
