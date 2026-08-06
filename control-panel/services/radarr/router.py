@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from core.arr_client import ARR_APPS, get_movie_or_episode, radarr_add_movie, radarr_root_folder_and_profile
 from core.responses import fail, ok
-from core.security import current_user
+from core.security import current_user, current_user_or_service
 
 router = APIRouter(tags=["radarr"])
 
@@ -142,7 +142,10 @@ class LetterboxdListAddRequest(BaseModel):
 
 
 @router.post("/api/arr/radarr/add-from-letterboxd-list")
-def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends(current_user)):
+# current_user_or_service, not current_user: stack-letterboxd-radarr-list.fish calls this
+# unattended via __stack_api's service key, same documented exception as
+# services/arr/router.py's automation-invoked mutating routes (2026-08-06).
+def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends(current_user_or_service)):
     cfg = ARR_APPS["radarr"]
     base_url = payload.url.strip().rstrip("/")
     if LETTERBOXD_DISALLOWED_RE.search(base_url + "/"):
