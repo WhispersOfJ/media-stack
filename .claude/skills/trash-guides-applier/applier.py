@@ -19,6 +19,7 @@ from pathlib import Path
 APPS = {
     "radarr": {"port": 7878, "api": "v3"},
     "sonarr": {"port": 8989, "api": "v3"},
+    "radarr_anime": {"port": 7878, "api": "v3"},
 }
 
 
@@ -54,6 +55,37 @@ class AppConfig:
 
 def load_profiles(path: Path) -> dict:
     return json.loads(path.read_text())
+
+
+def _build_profile_items(schema_items: list, wanted_names: set[str]) -> tuple[list, dict]:
+    """Mark schema items allowed/disallowed per wanted_names, preserving the
+    app-defined worst-to-best order. Returns (items, name_to_id) where
+    name_to_id maps every quality name (standalone or nested) to the id used
+    to resolve a cutoff — nested qualities resolve to their parent group id,
+    matching Radarr/Sonarr's own cutoff semantics."""
+    name_to_id: dict[str, int] = {}
+    items = []
+    for item in schema_items:
+        item = dict(item)
+        if "quality" in item:
+            name = item["quality"]["name"]
+            item["allowed"] = name in wanted_names
+            name_to_id[name] = item["quality"]["id"]
+            items.append(item)
+        else:
+            nested = []
+            any_allowed = False
+            for sub in item["items"]:
+                sub = dict(sub)
+                sub_name = sub["quality"]["name"]
+                sub["allowed"] = sub_name in wanted_names
+                any_allowed = any_allowed or sub["allowed"]
+                name_to_id[sub_name] = item["id"]
+                nested.append(sub)
+            item["items"] = nested
+            item["allowed"] = any_allowed
+            items.append(item)
+    return items, name_to_id
 
 
 def cmd_list_current(app_name: str) -> None:
@@ -124,20 +156,36 @@ def cmd_apply(app_name: str, profiles_file: Path) -> None:
                   f"(edit items/cutoff manually in the Arr UI — profile item IDs are app-assigned "
                   f"and not safe to blind-overwrite)")
             continue
-        # Minimal creation payload; Radarr/Sonarr assign real qualityId/item structure
-        # server-side once items reference the app's actual quality definitions.
+        # Radarr/Sonarr reject an empty items array (their QualityProfileController
+        # NullReferenceExceptions trying to resolve a cutoff against nothing) - the
+        # real quality-definition items/ids have to come from this app's own schema
+        # endpoint, then get marked allowed/disallowed per the local JSON's "items".
+        schema = app.request("GET", "/qualityprofile/schema")
+        wanted = set(qp.get("items", []))
+        items, name_to_id = _build_profile_items(schema["items"], wanted)
+        cutoff_name = qp.get("cutoff")
+        if cutoff_name not in name_to_id:
+            print(f"could not create {qp['name']}: cutoff '{cutoff_name}' not found "
+                  f"in {app_name}'s quality definitions", file=sys.stderr)
+            continue
         payload = {
             "name": qp["name"],
             "upgradeAllowed": qp.get("upgrade_allowed", True),
-            "items": [],
+            "items": items,
+            "cutoff": name_to_id[cutoff_name],
             "minFormatScore": qp.get("min_format_score", 0),
             "cutoffFormatScore": qp.get("cutoff_format_score", 0),
+            "minUpgradeFormatScore": schema.get("minUpgradeFormatScore", 1),
+            "language": schema.get("language", {"id": -2, "name": "Original"}),
+            # Radarr/Sonarr's validator NullReferenceExceptions without this -
+            # it cross-references formatItems even on profile creation, so it
+            # must be carried over from the schema response (which already
+            # reflects every custom format that exists on this app).
+            "formatItems": schema.get("formatItems", []),
         }
         try:
             app.request("POST", "/qualityprofile", payload)
-            print(f"created quality profile skeleton: {qp['name']} "
-                  f"(finish item ordering in the Arr UI — TRaSH-Guides item ordering isn't "
-                  f"derivable from this JSON alone)")
+            print(f"created quality profile: {qp['name']}")
         except RuntimeError as e:
             print(f"could not create {qp['name']}: {e}", file=sys.stderr)
 
