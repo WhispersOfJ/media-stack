@@ -78,6 +78,7 @@ def cp_main_app(monkeypatch, tmp_path):
     # fixture above for app.py's own ARR_APPS.
     monkeypatch.setenv("RADARR_API_KEY", "test-radarr-key")
     monkeypatch.setenv("SONARR_API_KEY", "test-sonarr-key")
+    monkeypatch.setenv("RADARR_ANIME_API_KEY", "test-radarr-anime-key")
     monkeypatch.setenv("PROWLARR_API_KEY", "test-prowlarr-key")
     # core.plex_client reads these with os.environ.get (default "") so
     # module import never KeyErrors without them, but plex_headers() fails
