@@ -16,9 +16,13 @@ import urllib.error
 import urllib.request
 
 ARR_APPS = {
-    "radarr": {"port": 7878, "api": "v3", "seerr_kind": "radarr"},
-    "sonarr": {"port": 8989, "api": "v3", "seerr_kind": "sonarr"},
-    "radarr_anime": {"port": 7878, "api": "v3", "seerr_kind": "radarr"},
+    "radarr": {"port": 7878, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr"},
+    "sonarr": {"port": 8989, "api": "v3", "seerr_kind": "sonarr", "hostname": "sonarr"},
+    # hostname differs from the dict key (Docker's real container/service name
+    # uses a hyphen; this dict's key uses an underscore to stay a valid CLI
+    # arg / Python identifier) - confirmed live: "radarr_anime" doesn't
+    # resolve on stacknet, only "radarr-anime" does.
+    "radarr_anime": {"port": 7878, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr-anime"},
 }
 
 
@@ -105,7 +109,7 @@ def cmd_connect(app_name: str, root: str, profile_name: str, label: str | None, 
     # Confirmed live: reusing base_url's host here created a connection Seerr could never reach.
     # This stack's container_name always matches the compose service key (radarr, sonarr), so
     # the app name itself is the correct docker-internal hostname.
-    hostname = app_name
+    hostname = meta["hostname"]
     port = meta["port"]
 
     payload = {
@@ -125,9 +129,11 @@ def cmd_connect(app_name: str, root: str, profile_name: str, label: str | None, 
     # Seerr's schema diverges here: Radarr connections require
     # minimumAvailability, Sonarr connections require enableSeasonFolders
     # instead - confirmed live against each app's own existing connection.
-    if app_name == "radarr":
+    # Keyed off seerr_kind, not app_name, since radarr_anime is also a
+    # "radarr" connection as far as Seerr's schema is concerned.
+    if meta["seerr_kind"] == "radarr":
         payload["minimumAvailability"] = "released"
-    elif app_name == "sonarr":
+    elif meta["seerr_kind"] == "sonarr":
         payload["enableSeasonFolders"] = True
 
     if match:
