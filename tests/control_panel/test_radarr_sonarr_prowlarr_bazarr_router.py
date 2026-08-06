@@ -47,42 +47,9 @@ def _json_response(payload, status_code=200, text=""):
 
 
 # ---------------------------------------------------------------------
-# Radarr: Letterboxd add + exclude
+# Radarr: exclude (Letterboxd add tests moved to test_letterboxd_router.py
+# when Letterboxd became its own services/letterboxd/ package, 2026-08-06)
 # ---------------------------------------------------------------------
-
-def test_letterboxd_add_short_circuits_when_already_in_radarr(cp_main_app, monkeypatch):
-    letterboxd_html = '<html>themoviedb.org/movie/603</html>'
-
-    def fake_get(url, params=None, headers=None, timeout=None, **kwargs):
-        if "letterboxd.com" in url:
-            return MagicMock(text=letterboxd_html, raise_for_status=MagicMock())
-        if "/movie" in url and params and params.get("tmdbId") == 603:
-            return _json_response([{"id": 99, "title": "The Matrix", "year": 1999}])
-        return _json_response({})
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    client = TestClient(cp_main_app.app)
-    _login(client, cp_main_app)
-    resp = client.post("/api/arr/radarr/add-from-letterboxd", json={"url": "https://letterboxd.com/film/the-matrix/"})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["alreadyAdded"] is True
-    assert body["radarrId"] == 99
-
-
-def test_letterboxd_add_rejects_non_letterboxd_url(cp_main_app):
-    client = TestClient(cp_main_app.app)
-    _login(client, cp_main_app)
-    resp = client.post("/api/arr/radarr/add-from-letterboxd", json={"url": "https://example.com/not-letterboxd"})
-    assert resp.status_code == 400
-
-
-def test_letterboxd_add_requires_session_not_service_key(cp_main_app):
-    client = TestClient(cp_main_app.app)
-    headers = _service_key_header(cp_main_app)
-    resp = client.post("/api/arr/radarr/add-from-letterboxd", json={"url": "https://letterboxd.com/film/x/"}, headers=headers)
-    assert resp.status_code == 401
-
 
 def test_radarr_exclude_not_found_404s(cp_main_app, monkeypatch):
     monkeypatch.setattr(httpx, "get", lambda *a, **k: _json_response({}, status_code=404))
@@ -139,11 +106,15 @@ def test_monitor_episodes_fix_skips_season_zero(cp_main_app, monkeypatch):
     assert put_calls[0]["episodeIds"] == [101]
 
 
-def test_monitor_episodes_fix_requires_session(cp_main_app):
+def test_monitor_episodes_fix_accepts_service_key(cp_main_app, monkeypatch):
+    """stack-sonarr-monitor-episodes-fix.fish calls this unattended via the
+    service key (2026-08-06's extend-service-key-auth commit) - was
+    session-only before that."""
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _json_response([]))
     client = TestClient(cp_main_app.app)
     headers = _service_key_header(cp_main_app)
     resp = client.post("/api/arr/sonarr/monitor-episodes-fix", headers=headers)
-    assert resp.status_code == 401
+    assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------
