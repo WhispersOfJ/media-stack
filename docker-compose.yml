@@ -103,6 +103,27 @@ services:
     mem_reservation: 256m
     cpus: 2
 
+  radarr-anime:
+    <<: *common
+    image: ghcr.io/hotio/radarr:release
+    container_name: radarr-anime
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7878/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/radarr-anime:/config
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
+      - ./media/anime-movies:/data/anime-movies
+    ports:
+      - "7879:7878"
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 2
+
   # ---------------------------------------------------------------------
   # Usenet - streaming, no local disk. Replaced BearMount entirely,
   # 2026-07-28 (full cutover to nzbdav/nzbdav, the "super-fork" - see
