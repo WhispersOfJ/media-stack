@@ -230,6 +230,14 @@ distinction is gone) - `docker compose up -d` brings up every service below.
 | 17 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
 | 18 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
 | 19 | `kometa` | `kometateam/kometa:latest` | none |
+| 20 | `radarr-anime` | `ghcr.io/hotio/radarr:release` | 7879 |
+
+**`radarr-anime`** is a second, fully independent Radarr instance for anime movies only
+(2026-08-06) - own root folder (`/data/anime-movies`), own "Anime" quality profile, own Plex
+library ("Anime Movies"), reuses the same 3 Usenet indexers via a second Prowlarr Application
+and the same NzbDAV download client with an `anime-movies` category. See
+[Known gaps and limitations](#known-gaps-and-limitations) for the one accepted gap (no Bazarr
+subtitle coverage).
 
 `recyclarr` was removed entirely a second time in v11.12.0 - see
 [Custom formats and quality profiles](#custom-formats-and-quality-profiles).
@@ -262,6 +270,7 @@ search-missing / unstick / unstick-importing / manual-import for each.
 |---|---|---|---|
 | Radarr | 7878 | `/data/movies` | Movies |
 | Sonarr | 8989 | `/data/shows` | TV |
+| Radarr (Anime) | 7879 | `/data/anime-movies` | Anime movies only |
 
 Radarr and Sonarr were each removed and reinstated at earlier points; Lidarr was reinstated
 in v10.2.0 and removed again in v10.9.9, and Whisparr was removed for the last time in
@@ -1544,6 +1553,12 @@ what is new.
 
 ## Known gaps and limitations
 
+- **Anime movies (`radarr-anime`) have no Bazarr subtitle coverage.** Bazarr's config schema
+  supports only one Radarr connection at a time (`config/bazarr/config/config.yaml` has a single
+  `radarr:` block, not a list), already used by the main Radarr. Anime scene/fansub releases
+  typically ship subtitles embedded in the file, which mitigates this in practice. Revisit if a
+  real gap is found (e.g. a second dedicated Bazarr instance) - not done here to avoid unrequested
+  scope growth. See [History](#history) `[11.3.0]`.
 - **An entire Saint Seiya film collection was repeatedly re-grabbed the same day, unexplained.**
   Found live 2026-07-17 while root-causing the Zurg routing-group incident (see
   [History](#history) `[10.16.0]`): 5 Saint Seiya titles beyond the one actually needed each had
