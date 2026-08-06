@@ -34,6 +34,18 @@
     {"name": "x265 (no HDR/DV)", "score": -1000, "specifications": [{"type": "codec", "value": "x265"}, {"type": "hdr", "value": false}]},
     {"name": "Bad Dual Groups", "score": -10000, "specifications": [{"type": "release_group", "value": "example-bad-group"}]},
     {
+      "name": "Criterion Collection",
+      "score": 25,
+      "note": "TRaSH-Guides trash_id e0c07d59beb37348e975a930d5e50319. Applied live to Radarr on 2026-08-06, id=66, score=25 set on the 'Anything' quality profile (id=16).",
+      "specifications": [
+        {"name": "Bluray", "implementation": "SourceSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 9}]},
+        {"name": "DVD", "implementation": "SourceSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": 5}]},
+        {"name": "Criterion", "implementation": "ReleaseTitleSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": "\\b(Criterion)\\b"}]},
+        {"name": "CC", "implementation": "ReleaseTitleSpecification", "negate": false, "required": false, "fields": [{"name": "value", "value": "\\b(CC)\\b"}]},
+        {"name": "Not Criterion RlsGrp", "implementation": "ReleaseGroupSpecification", "negate": true, "required": true, "fields": [{"name": "value", "value": "^(Criterion)$"}]}
+      ]
+    },
+    {
       "name": "Blocklist: Unwanted Groups/Sources, RU-CN Audio, Blu-ray",
       "score": -10000,
       "note": "Applied live to Radarr on 2026-07-13, id=1, score set on every quality profile. Uses real Radarr customformat API specification shape (implementation/fields), unlike the placeholder entries above.",
