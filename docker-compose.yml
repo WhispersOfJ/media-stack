@@ -157,7 +157,7 @@ services:
       # FRONTEND_BACKEND_API_KEY so *Arr/SAB and the Settings UI agree on
       # one download-client key.
       NZBDAV_CONFIG__API__KEY: ${FRONTEND_BACKEND_API_KEY}
-      NZBDAV_CONFIG__API__CATEGORIES: "tv,movies"
+      NZBDAV_CONFIG__API__CATEGORIES: "tv,movies,anime-movies"
       NZBDAV_CONFIG__API__IMPORT_STRATEGY: "symlinks"
       NZBDAV_CONFIG__WEBDAV__USER: ${NZBDAV_WEBDAV_USER}
       NZBDAV_CONFIG__WEBDAV__PASS: ${NZBDAV_WEBDAV_PASS}
