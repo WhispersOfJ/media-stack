@@ -26,6 +26,7 @@ HTTP_SERVICES = {
     "seerr": (5055, "/api/v1/status"),
     "control-panel": (8420, "/healthz"),
     "plex": (32400, "/identity"),
+    "radarr-anime": (7879, "/ping"),
 }
 
 

@@ -18,6 +18,7 @@ import urllib.request
 ARR_APPS = {
     "radarr": {"port": 7878, "api": "v3", "seerr_kind": "radarr"},
     "sonarr": {"port": 8989, "api": "v3", "seerr_kind": "sonarr"},
+    "radarr_anime": {"port": 7878, "api": "v3", "seerr_kind": "radarr"},
 }
 
 
