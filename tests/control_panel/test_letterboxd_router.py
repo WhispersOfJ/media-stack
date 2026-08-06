@@ -97,3 +97,56 @@ def test_letterboxd_add_requires_some_auth(cp_main_app):
     client = TestClient(cp_main_app.app)
     resp = client.post("/api/arr/radarr/add-from-letterboxd", json={"url": "https://letterboxd.com/film/x/"})
     assert resp.status_code == 401
+
+
+def test_letterboxd_list_add_applies_rating_quality_map(cp_main_app, monkeypatch):
+    list_html = '''
+    <html>
+      <a href="/page/1/"></a>
+      <li><div data-item-slug="high-rated-film"></div>
+        <p class="poster-viewingdata"><span class="rating -micro -darker rated-10">★★★★★</span></p></li>
+      <li><div data-item-slug="low-rated-film"></div>
+        <p class="poster-viewingdata"><span class="rating -micro -darker rated-2">★</span></p></li>
+    </html>
+    '''
+    film_pages = {
+        "high-rated-film": "themoviedb.org/movie/111",
+        "low-rated-film": "themoviedb.org/movie/222",
+    }
+    quality_profiles = [{"id": 5, "name": "Remux-1080p"}, {"id": 9, "name": "HD-1080p"}]
+    posted_movies = []
+
+    def fake_get(url, params=None, headers=None, timeout=None, **kwargs):
+        if "/bear/films" in url and "/film/" not in url:
+            return MagicMock(text=list_html, raise_for_status=MagicMock())
+        for slug, tmdb_html in film_pages.items():
+            if f"/film/{slug}/" in url and "bear" not in url:
+                return MagicMock(text=tmdb_html, raise_for_status=MagicMock())
+        if url.endswith("/rootfolder"):
+            return MagicMock(json=lambda: [{"path": "/data/movies"}], raise_for_status=MagicMock())
+        if url.endswith("/qualityprofile"):
+            return MagicMock(json=lambda: quality_profiles, raise_for_status=MagicMock())
+        if url.endswith("/movie/lookup/tmdb"):
+            tmdb_id = params["tmdbId"]
+            return MagicMock(json=lambda tmdb_id=tmdb_id: {"title": f"Film {tmdb_id}", "year": 2020, "tmdbId": tmdb_id},
+                              raise_for_status=MagicMock())
+        if url.endswith("/movie"):
+            return MagicMock(json=lambda: [], raise_for_status=MagicMock())
+        return MagicMock(json=lambda: {}, raise_for_status=MagicMock())
+
+    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
+        posted_movies.append(json)
+        return MagicMock(json=lambda: {**json, "title": json.get("title")}, raise_for_status=MagicMock())
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
+    client = TestClient(cp_main_app.app)
+    _login(client, cp_main_app)
+    resp = client.post("/api/arr/radarr/add-from-letterboxd-list", json={
+        "url": "https://letterboxd.com/bear/films/",
+        "rating_quality_map": {"10": "Remux-1080p", "2": "HD-1080p"},
+    })
+    assert resp.status_code == 200
+    by_tmdb = {m["tmdbId"]: m for m in posted_movies}
+    assert by_tmdb[111]["qualityProfileId"] == 5
+    assert by_tmdb[222]["qualityProfileId"] == 9

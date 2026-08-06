@@ -396,6 +396,14 @@ def radarr_root_folder_and_profile(cfg, root_folder: str | None, quality_profile
     return root_folder_path, quality_profile_id
 
 
+def radarr_quality_profile_id_by_name(cfg: dict, name: str) -> int | None:
+    try:
+        profiles = httpx.get(f"{cfg['url']}/api/{cfg['api']}/qualityprofile", headers={"X-Api-Key": cfg["key"]}, timeout=15).json()
+    except httpx.HTTPError:
+        return None
+    return next((p["id"] for p in profiles if p["name"] == name), None)
+
+
 def sonarr_root_folder_and_profile(cfg, root_folder: str | None, quality_profile: str | None) -> tuple[str, int]:
     try:
         folders = httpx.get(f"{cfg['url']}/api/{cfg['api']}/rootfolder", headers={"X-Api-Key": cfg["key"]}, timeout=15).json()

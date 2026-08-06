@@ -10,10 +10,16 @@ import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from core.arr_client import ARR_APPS, radarr_add_movie, radarr_root_folder_and_profile
+from core.arr_client import (
+    ARR_APPS,
+    radarr_add_movie,
+    radarr_quality_profile_id_by_name,
+    radarr_root_folder_and_profile,
+)
 from core.db import SessionLocal
 from core.responses import fail, ok
 from core.security import current_user_or_service
+from models.letterboxd_cache import LetterboxdTmdbCache
 from services.letterboxd.cache import resolve_tmdb_ids
 from services.letterboxd.scraping import (
     LETTERBOXD_DISALLOWED_RE,
@@ -23,6 +29,7 @@ from services.letterboxd.scraping import (
     LETTERBOXD_TMDB_RE,
     fetch_page,
     fetch_page_or_none,
+    scrape_slugs_with_ratings,
 )
 
 router = APIRouter(tags=["letterboxd"])
@@ -106,6 +113,7 @@ class LetterboxdListAddRequest(BaseModel):
     quality_profile: str | None = None
     limit: int | None = None
     dry_run: bool = False
+    rating_quality_map: dict[str, str] | None = None
 
 
 @router.post("/api/arr/radarr/add-from-letterboxd-list")
@@ -133,14 +141,25 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
     first_page = fetch_page(base_url + "/")
     last_page = min(max((int(n) for n in LETTERBOXD_LIST_PAGE_RE.findall(first_page)), default=1), 10)
 
-    slugs = list(dict.fromkeys(LETTERBOXD_ITEM_SLUG_RE.findall(first_page)))
-    for page_num in range(2, last_page + 1):
-        page_html = fetch_page_or_none(f"{base_url}/page/{page_num}/")
-        if page_html is None:
-            break
-        slugs.extend(LETTERBOXD_ITEM_SLUG_RE.findall(page_html))
-        time.sleep(0.2)
-    slugs = list(dict.fromkeys(slugs))
+    if payload.rating_quality_map:
+        slug_ratings: dict[str, int | None] = dict(scrape_slugs_with_ratings(first_page))
+        for page_num in range(2, last_page + 1):
+            page_html = fetch_page_or_none(f"{base_url}/page/{page_num}/")
+            if page_html is None:
+                break
+            slug_ratings.update(dict(scrape_slugs_with_ratings(page_html)))
+            time.sleep(0.2)
+        slugs = list(slug_ratings.keys())
+    else:
+        slug_ratings = {}
+        slugs = list(dict.fromkeys(LETTERBOXD_ITEM_SLUG_RE.findall(first_page)))
+        for page_num in range(2, last_page + 1):
+            page_html = fetch_page_or_none(f"{base_url}/page/{page_num}/")
+            if page_html is None:
+                break
+            slugs.extend(LETTERBOXD_ITEM_SLUG_RE.findall(page_html))
+            time.sleep(0.2)
+        slugs = list(dict.fromkeys(slugs))
     if not slugs:
         fail(
             "No films found on that Letterboxd page. Some pages (e.g. /films/popular/) render their "
@@ -168,10 +187,37 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
 
     root_folder_path, quality_profile_id = radarr_root_folder_and_profile(cfg, payload.root_folder, payload.quality_profile)
 
+    rating_profile_ids: dict[str, int] = {}
+    if payload.rating_quality_map:
+        for rating_str, profile_name in payload.rating_quality_map.items():
+            pid = radarr_quality_profile_id_by_name(cfg, profile_name)
+            if pid is not None:
+                rating_profile_ids[rating_str] = pid
+
+    # slug -> resolved tmdb_id, needed to look back up a film's rating when
+    # choosing its quality profile - resolve_tmdb_ids only returns the ids,
+    # not which slug produced which id, so track that mapping here too.
+    slug_to_tmdb: dict[str, int] = {}
+    if payload.rating_quality_map:
+        db = SessionLocal()
+        try:
+            for slug in slugs:
+                cached = db.query(LetterboxdTmdbCache).filter_by(slug=slug).first()
+                if cached and cached.tmdb_id is not None:
+                    slug_to_tmdb[slug] = cached.tmdb_id
+        finally:
+            db.close()
+
     added, already, failed = [], [], []
     total_movies = len(tmdb_ids)
     for i, tmdb_id in enumerate(tmdb_ids, 1):
-        result = radarr_add_movie(cfg, tmdb_id, payload.monitored, payload.search, root_folder_path, quality_profile_id,
+        film_quality_profile_id = quality_profile_id
+        if payload.rating_quality_map:
+            slug = next((s for s, t in slug_to_tmdb.items() if t == tmdb_id), None)
+            rating = slug_ratings.get(slug) if slug else None
+            if rating is not None and str(rating) in rating_profile_ids:
+                film_quality_profile_id = rating_profile_ids[str(rating)]
+        result = radarr_add_movie(cfg, tmdb_id, payload.monitored, payload.search, root_folder_path, film_quality_profile_id,
                                    existing_tmdb_ids, dry_run=payload.dry_run)
         if result["status"] == "already":
             already.append(tmdb_id)
