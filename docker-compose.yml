@@ -331,7 +331,7 @@ services:
     # channel on the official image is the more conservative choice for a
     # containerized production library anyway.
     # Bump this tag deliberately, not via Watchtower (see below).
-    image: plexinc/pms-docker:1.43.3.10828-00f62d37d
+    image: plexinc/pms-docker:1.43.3.10861-07dfddaeb
     container_name: plex
     # Plex's own guidance for Docker: GDM auto-discovery, DLNA, and
     # remote-access NAT-PMP/UPnP negotiation are all unreliable on bridge
