@@ -14,6 +14,7 @@ import { buildPrimaryActions } from "./js/overview.js";
 import { refreshFleet } from "./js/fleet.js";
 import { buildArrFleet } from "./js/arr-fleet.js";
 import { buildLoopRemediation } from "./js/loop-remediation.js";
+import { buildLetterboxdPanel } from "./js/letterboxd.js";
 import { buildHostVitals, buildHostActions } from "./js/host.js";
 import { buildPosterDock } from "./js/poster-sync.js";
 import { buildQuickLinks, buildDocLinks, buildSkillsList } from "./js/reference.js";
@@ -29,6 +30,7 @@ function bootApp() {
   buildPrimaryActions();
   buildArrFleet();
   buildLoopRemediation();
+  buildLetterboxdPanel();
   buildHostVitals();
   buildHostActions();
   buildPosterDock();
