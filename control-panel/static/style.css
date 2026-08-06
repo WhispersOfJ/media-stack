@@ -567,6 +567,82 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
 .poster-review-thumb.poster-review-picked { border-color: var(--accent); }
 .poster-review-status { margin-top: 4px; font-size: 0.66rem; font-family: var(--font-mono); color: var(--ink-faint); min-height: 1em; }
 
+/* ---------- Letterboxd: the one subsystem drawn as film instead of pipe.
+   Same hairline/mono-stamp language as the rest of the sheet — no rounded
+   cards, no drop shadows — but the instrument itself borrows from actual
+   35mm stock: a sprocket-hole edge on every tracked-list frame, and
+   Letterboxd's own tri-dot logomark (orange/green/blue, its real brand
+   colors) standing in for the conic-gradient brand-mark the topbar uses
+   for the same "this is the thing's identity" role. ---------- */
+.lb-mark { display: inline-flex; align-items: center; margin-right: 6px; }
+.lb-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.lb-dot-a { background: #ff8000; margin-right: -2px; }
+.lb-dot-b { background: #00e054; margin-right: -2px; z-index: 1; mix-blend-mode: normal; }
+.lb-dot-c { background: #40bcf4; }
+.lb-track-form .arr-actions-row-label { display: inline-flex; align-items: center; }
+.lb-track-btn { margin-left: auto; }
+
+.lb-filmstrip { display: flex; flex-direction: column; gap: 8px; }
+
+.lb-frame {
+  display: flex; align-items: center; gap: 12px; position: relative;
+  background: var(--surface-2); border: 1px solid var(--line);
+  padding: 9px 12px 9px 4px; transition: border-color 120ms ease, transform 120ms ease;
+}
+.lb-frame:hover { border-color: var(--accent); transform: translateX(2px); }
+.lb-frame-sprocket {
+  flex: none; align-self: stretch; width: 10px;
+  background-image: radial-gradient(circle, var(--line-strong) 1.4px, transparent 1.6px);
+  background-size: 10px 12px; background-position: center;
+  border-right: 1px dashed var(--line);
+}
+.lb-frame-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.lb-frame-title { font-weight: 600; font-size: 0.85rem; }
+.lb-frame-url {
+  font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none;
+}
+.lb-frame-url:hover { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent); }
+
+.lb-pill {
+  flex: none; font-family: var(--font-mono); font-size: 0.64rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; padding: 3px 8px; border: 1px solid var(--line-strong); color: var(--ink-faint);
+  white-space: nowrap;
+}
+.lb-pill-fresh { color: var(--good); border-color: var(--good-tint); background: var(--good-tint); }
+.lb-pill-stale { color: var(--warn); border-color: var(--warn-tint); background: var(--warn-tint); }
+.lb-pill-cold { color: var(--ink-faint); }
+
+.lb-run {
+  display: flex; align-items: flex-start; gap: 10px; position: relative;
+  background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--unknown);
+  padding: 9px 12px;
+}
+.lb-run-ok { border-left-color: var(--good); }
+.lb-run-bad { border-left-color: var(--bad); }
+.lb-run-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; background: var(--good); }
+.lb-run-bad .lb-run-dot { background: var(--bad); }
+.lb-run-main { flex: 1; min-width: 0; }
+.lb-run-title { font-weight: 600; font-size: 0.83rem; }
+.lb-run-time { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-faint); margin-top: 1px; }
+.lb-run-error { font-family: var(--font-mono); font-size: 0.68rem; color: var(--bad); margin-top: 4px; }
+.lb-run-chips { flex: none; display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; max-width: 46%; }
+
+.lb-chip {
+  font-family: var(--font-mono); font-size: 0.64rem; font-weight: 700; padding: 2px 7px;
+  border: 1px solid var(--line-strong); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.lb-chip-added { color: var(--good); border-color: var(--good-tint); background: var(--good-tint); }
+.lb-chip-crossover { color: var(--accent); border-color: var(--accent-tint); background: var(--accent-tint); }
+.lb-chip-already { color: var(--ink-faint); }
+.lb-chip-unmatched { color: var(--warn); border-color: var(--warn-tint); background: var(--warn-tint); }
+.lb-chip-failed { color: var(--bad); border-color: var(--bad-tint); background: var(--bad-tint); }
+
+@media (max-width: 640px) {
+  .lb-run { flex-wrap: wrap; }
+  .lb-run-chips { max-width: 100%; justify-content: flex-start; }
+}
+
 /* ---------- Title-block stamp grid (topbar) ---------- */
 .stampgrid {
   display: grid; grid-template-columns: repeat(3, auto); font-family: var(--font-mono);
