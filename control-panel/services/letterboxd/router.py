@@ -11,8 +11,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from core.arr_client import ARR_APPS, radarr_add_movie, radarr_root_folder_and_profile
+from core.db import SessionLocal
 from core.responses import fail, ok
 from core.security import current_user_or_service
+from services.letterboxd.cache import resolve_tmdb_ids
 from services.letterboxd.scraping import (
     LETTERBOXD_DISALLOWED_RE,
     LETTERBOXD_GRID_RE,
@@ -149,19 +151,13 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
     limit = min(payload.limit, 720) if payload.limit else 720
     slugs = slugs[:limit]
 
-    tmdb_ids = []
-    unmatched = []
-    total_slugs = len(slugs)
-    for i, slug in enumerate(slugs, 1):
-        match = LETTERBOXD_TMDB_RE.search(fetch_page(f"https://letterboxd.com/film/{slug}/"))
-        if match:
-            tmdb_ids.append(int(match.group(1)))
-            print(f"letterboxd-list: [{i}/{total_slugs}] matched {slug} -> tmdb {match.group(1)}")
-        else:
-            unmatched.append(slug)
-            print(f"letterboxd-list: [{i}/{total_slugs}] no TMDb match for {slug}")
-        time.sleep(0.2)
+    db = SessionLocal()
+    try:
+        tmdb_ids, unmatched = resolve_tmdb_ids(db, slugs)
+    finally:
+        db.close()
     tmdb_ids = list(dict.fromkeys(tmdb_ids))
+    print(f"letterboxd-list: resolved {len(tmdb_ids)} tmdb id(s), {len(unmatched)} unmatched, out of {len(slugs)} slug(s)")
 
     try:
         library = httpx.get(f"{cfg['url']}/api/{cfg['api']}/movie", headers={"X-Api-Key": cfg["key"]}, timeout=30)
