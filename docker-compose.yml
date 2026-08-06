@@ -386,6 +386,7 @@ services:
       - ./config/plex-transcode:/transcode
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
+      - ./media/anime-movies:/data/anime-movies
       # Root folders were symlinks into the original NzbDAV's WebDAV
       # filesystem, then AltMount's, then BearMount's - each cutover broke
       # every prior symlink since none of them share an ID scheme (see
