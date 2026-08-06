@@ -256,3 +256,55 @@ def test_letterboxd_list_add_crosses_over_unmatched_title_to_sonarr(cp_main_app,
     body = resp.json()
     assert body["tvCrossoverCount"] == 1
     assert sonarr_series_added[0]["tvdbId"] == 777
+
+
+def test_track_untrack_and_list_tracked_letterboxd_lists(cp_main_app):
+    client = TestClient(cp_main_app.app)
+    _login(client, cp_main_app)
+
+    resp = client.post("/api/arr/letterboxd/track", json={"url": "https://letterboxd.com/bear/watchlist/", "label": "Bear's watchlist"})
+    assert resp.status_code == 200
+    list_id = resp.json()["id"]
+
+    resp = client.get("/api/arr/letterboxd/tracked")
+    assert resp.status_code == 200
+    lists = resp.json()["lists"]
+    assert any(x["id"] == list_id and x["label"] == "Bear's watchlist" for x in lists)
+
+    resp = client.post("/api/arr/letterboxd/untrack", json={"url": "https://letterboxd.com/bear/watchlist/"})
+    assert resp.status_code == 200
+
+    resp = client.get("/api/arr/letterboxd/tracked")
+    assert resp.json()["lists"] == []
+
+
+def test_track_rejects_duplicate_url(cp_main_app):
+    client = TestClient(cp_main_app.app)
+    _login(client, cp_main_app)
+    resp = client.post("/api/arr/letterboxd/track", json={"url": "https://letterboxd.com/bear/watchlist/"})
+    assert resp.status_code == 200
+    resp = client.post("/api/arr/letterboxd/track", json={"url": "https://letterboxd.com/bear/watchlist/"})
+    assert resp.status_code == 409
+
+
+def test_sync_tick_requires_service_key_or_session(cp_main_app):
+    client = TestClient(cp_main_app.app)
+    resp = client.post("/api/arr/letterboxd/sync-tick")
+    assert resp.status_code == 401
+
+
+def test_sync_tick_runs_every_tracked_list(cp_main_app, monkeypatch):
+    client = TestClient(cp_main_app.app)
+    _login(client, cp_main_app)
+    client.post("/api/arr/letterboxd/track", json={"url": "https://letterboxd.com/bear/watchlist/"})
+
+    calls = []
+
+    def fake_run_list_sync(url, **kwargs):
+        calls.append(url)
+        return {"added": [], "already": [], "failed": [], "unmatched": [], "tvAdded": [], "tvAlready": [], "tvFailed": [], "matched": 0}
+
+    monkeypatch.setattr("services.letterboxd.router._run_list_sync", fake_run_list_sync)
+    resp = client.post("/api/arr/letterboxd/sync-tick")
+    assert resp.status_code == 200
+    assert calls == ["https://letterboxd.com/bear/watchlist/"]
