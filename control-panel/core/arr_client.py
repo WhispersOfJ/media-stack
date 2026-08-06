@@ -404,6 +404,36 @@ def radarr_quality_profile_id_by_name(cfg: dict, name: str) -> int | None:
     return next((p["id"] for p in profiles if p["name"] == name), None)
 
 
+def radarr_ensure_tags(cfg: dict, tag_names: list[str]) -> list[int]:
+    """Returns the Radarr tag ids for tag_names, creating any that don't
+    exist yet. Radarr's v3 tag API requires creating a tag via POST /tag
+    before it can be referenced by id on a movie - there's no
+    create-on-attach shortcut."""
+    if not tag_names:
+        return []
+    try:
+        existing = httpx.get(f"{cfg['url']}/api/{cfg['api']}/tag", headers={"X-Api-Key": cfg["key"]}, timeout=15).json()
+    except httpx.HTTPError as e:
+        fail(f"Couldn't read Radarr's tags: {e}")
+    by_label = {t["label"]: t["id"] for t in existing}
+
+    ids = []
+    for name in tag_names:
+        if name in by_label:
+            ids.append(by_label[name])
+            continue
+        try:
+            created = httpx.post(f"{cfg['url']}/api/{cfg['api']}/tag", json={"label": name},
+                                  headers={"X-Api-Key": cfg["key"]}, timeout=15)
+            created.raise_for_status()
+        except httpx.HTTPError as e:
+            fail(f"Couldn't create Radarr tag '{name}': {e}")
+        new_id = created.json()["id"]
+        by_label[name] = new_id
+        ids.append(new_id)
+    return ids
+
+
 def sonarr_root_folder_and_profile(cfg, root_folder: str | None, quality_profile: str | None) -> tuple[str, int]:
     try:
         folders = httpx.get(f"{cfg['url']}/api/{cfg['api']}/rootfolder", headers={"X-Api-Key": cfg["key"]}, timeout=15).json()
@@ -430,7 +460,7 @@ def sonarr_root_folder_and_profile(cfg, root_folder: str | None, quality_profile
 
 
 def radarr_add_movie(cfg, tmdb_id: int, monitored: bool, search: bool, root_folder_path: str, quality_profile_id: int,
-                      existing_tmdb_ids: set[int], dry_run: bool = False) -> dict:
+                      existing_tmdb_ids: set[int], dry_run: bool = False, tag_ids: list[int] | None = None) -> dict:
     if tmdb_id in existing_tmdb_ids:
         return {"status": "already", "title": None, "tmdbId": tmdb_id}
     try:
@@ -447,6 +477,8 @@ def radarr_add_movie(cfg, tmdb_id: int, monitored: bool, search: bool, root_fold
     movie["rootFolderPath"] = root_folder_path
     movie["monitored"] = monitored
     movie["addOptions"] = {"searchForMovie": search}
+    if tag_ids:
+        movie["tags"] = tag_ids
 
     if dry_run:
         return {"status": "added", "title": movie["title"]}

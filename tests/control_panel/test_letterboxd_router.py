@@ -150,3 +150,54 @@ def test_letterboxd_list_add_applies_rating_quality_map(cp_main_app, monkeypatch
     by_tmdb = {m["tmdbId"]: m for m in posted_movies}
     assert by_tmdb[111]["qualityProfileId"] == 5
     assert by_tmdb[222]["qualityProfileId"] == 9
+
+
+def test_letterboxd_list_add_attaches_scraped_tags(cp_main_app, monkeypatch):
+    list_html = '<html><a href="/page/1/"></a><li><div data-item-slug="tagged-film"></div></li></html>'
+    user_film_html = '''
+    <ul class="tags">
+      <li><a href="/bear/tag/rewatch/films/">rewatch</a></li>
+      <li><a href="/bear/tag/a24/films/">a24</a></li>
+    </ul>
+    '''
+    tags_in_radarr = [{"id": 1, "label": "rewatch"}]
+    posted_movies = []
+    created_tags = []
+
+    def fake_get(url, params=None, headers=None, timeout=None, **kwargs):
+        if "letterboxd.com/bear/list/tagged-list" in url and "/film/" not in url:
+            return MagicMock(text=list_html, raise_for_status=MagicMock())
+        if "letterboxd.com/bear/film/tagged-film" in url:
+            return MagicMock(text=user_film_html, raise_for_status=MagicMock())
+        if "letterboxd.com/film/tagged-film" in url:
+            return MagicMock(text="themoviedb.org/movie/500", raise_for_status=MagicMock())
+        if url.endswith("/rootfolder"):
+            return MagicMock(json=lambda: [{"path": "/data/movies"}], raise_for_status=MagicMock())
+        if url.endswith("/qualityprofile"):
+            return MagicMock(json=lambda: [{"id": 1, "name": "Unlimited"}], raise_for_status=MagicMock())
+        if url.endswith("/tag"):
+            return MagicMock(json=lambda: tags_in_radarr, raise_for_status=MagicMock())
+        if url.endswith("/movie/lookup/tmdb"):
+            return MagicMock(json=lambda: {"title": "Tagged Film", "year": 2021, "tmdbId": 500}, raise_for_status=MagicMock())
+        if url.endswith("/movie"):
+            return MagicMock(json=lambda: [], raise_for_status=MagicMock())
+        return MagicMock(json=lambda: {}, raise_for_status=MagicMock())
+
+    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
+        if url.endswith("/tag"):
+            created_tags.append(json["label"])
+            return MagicMock(json=lambda: {"id": 2, "label": json["label"]}, raise_for_status=MagicMock())
+        posted_movies.append(json)
+        return MagicMock(json=lambda: {**json, "title": json.get("title")}, raise_for_status=MagicMock())
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
+    client = TestClient(cp_main_app.app)
+    _login(client, cp_main_app)
+    resp = client.post("/api/arr/radarr/add-from-letterboxd-list", json={
+        "url": "https://letterboxd.com/bear/list/tagged-list/",
+        "tags_as_radarr_tags": True,
+    })
+    assert resp.status_code == 200
+    assert created_tags == ["a24"]  # "rewatch" already existed (id 1), only "a24" needed creating
+    assert posted_movies[0]["tags"] == [1, 2]

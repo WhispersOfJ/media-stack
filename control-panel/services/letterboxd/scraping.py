@@ -32,13 +32,17 @@ LETTERBOXD_OG_TITLE_RE = re.compile(r'property="og:title" content="([^"(]+?)\s*\
 # scrape_slugs_with_ratings() below.
 LETTERBOXD_RATING_RE = re.compile(r'rated-(\d+)"')
 # Tag chip pattern on a user's own logged/reviewed film page
-# (https://letterboxd.com/<user>/film/<slug>/) - Letterboxd's documented
-# public markup (community scrapers: letterboxdpy, judahpaul16/gruvbox-*).
-# NOT independently confirmed live in this session (the specific user/film
-# pages fetched during research had no tags set) - Task 5's Step 1 must
-# re-verify this against a live page known to carry tags before relying on
-# it, and adjust the pattern if Letterboxd's markup has since changed.
-LETTERBOXD_TAG_RE = re.compile(r'href="/[^/]+/tag/([^/"]+)/"[^>]*class="tag"')
+# (https://letterboxd.com/<user>/film/<slug>/) - confirmed live 2026-08-06
+# against https://letterboxd.com/gemko/film/the-brutalist/, which carries 3
+# tags. Real markup: `<ul class="tags"><li><a href="/<user>/tag/<slug>/
+# films/"><label></a></li>...</ul>` - a `/films/` suffix after the tag
+# slug (not just a trailing `/`), and the anchor itself carries NO class
+# attribute at all (the original guess, `class="tag"` on the <a>, was
+# wrong on both counts). Captures the URL slug (hyphenated, e.g.
+# "press-screening"), not the display label ("press screening") - Radarr
+# tags are lowercase/dash-normalized internally too, so the slug is used
+# directly as the Radarr tag name without decoding back to the spaced form.
+LETTERBOXD_TAG_RE = re.compile(r'href="/[^/]+/tag/([^/"]+)/films/"')
 
 # robots.txt's "User-agent: *" section disallows these sort/filter path
 # segments specifically.

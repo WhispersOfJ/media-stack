@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from core.arr_client import (
     ARR_APPS,
     radarr_add_movie,
+    radarr_ensure_tags,
     radarr_quality_profile_id_by_name,
     radarr_root_folder_and_profile,
 )
@@ -30,6 +31,7 @@ from services.letterboxd.scraping import (
     fetch_page,
     fetch_page_or_none,
     scrape_slugs_with_ratings,
+    scrape_tags,
 )
 
 router = APIRouter(tags=["letterboxd"])
@@ -114,6 +116,7 @@ class LetterboxdListAddRequest(BaseModel):
     limit: int | None = None
     dry_run: bool = False
     rating_quality_map: dict[str, str] | None = None
+    tags_as_radarr_tags: bool = False
 
 
 @router.post("/api/arr/radarr/add-from-letterboxd-list")
@@ -194,11 +197,12 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
             if pid is not None:
                 rating_profile_ids[rating_str] = pid
 
-    # slug -> resolved tmdb_id, needed to look back up a film's rating when
-    # choosing its quality profile - resolve_tmdb_ids only returns the ids,
-    # not which slug produced which id, so track that mapping here too.
+    # slug -> resolved tmdb_id, needed to look back up a film's rating (for
+    # quality-profile mapping) or its owner-page tags - resolve_tmdb_ids
+    # only returns the ids, not which slug produced which id, so track
+    # that mapping here too whenever either feature needs it.
     slug_to_tmdb: dict[str, int] = {}
-    if payload.rating_quality_map:
+    if payload.rating_quality_map or payload.tags_as_radarr_tags:
         db = SessionLocal()
         try:
             for slug in slugs:
@@ -207,6 +211,25 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
                     slug_to_tmdb[slug] = cached.tmdb_id
         finally:
             db.close()
+
+    slug_to_tag_ids: dict[int, list[int]] = {}
+    if payload.tags_as_radarr_tags:
+        # base_url is like https://letterboxd.com/<user>/list/<slug> or
+        # https://letterboxd.com/<user>/watchlist - the owner segment is
+        # always the first path component, valid for every URL shape
+        # LETTERBOXD_GRID_RE allows except the bare films/popular/collection
+        # ones (which have no single owner - tags_as_radarr_tags on those
+        # scrapes zero tags, not an error, since a film with no scraped
+        # tags is a normal outcome for this feature).
+        owner = base_url.replace("https://letterboxd.com/", "").split("/")[0]
+        for slug, tmdb_id in slug_to_tmdb.items():
+            user_film_html = fetch_page_or_none(f"https://letterboxd.com/{owner}/film/{slug}/")
+            if not user_film_html:
+                continue
+            tag_names = scrape_tags(user_film_html)
+            if tag_names:
+                slug_to_tag_ids[tmdb_id] = radarr_ensure_tags(cfg, tag_names)
+            time.sleep(0.2)
 
     added, already, failed = [], [], []
     total_movies = len(tmdb_ids)
@@ -218,7 +241,7 @@ def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends
             if rating is not None and str(rating) in rating_profile_ids:
                 film_quality_profile_id = rating_profile_ids[str(rating)]
         result = radarr_add_movie(cfg, tmdb_id, payload.monitored, payload.search, root_folder_path, film_quality_profile_id,
-                                   existing_tmdb_ids, dry_run=payload.dry_run)
+                                   existing_tmdb_ids, dry_run=payload.dry_run, tag_ids=slug_to_tag_ids.get(tmdb_id))
         if result["status"] == "already":
             already.append(tmdb_id)
             print(f"letterboxd-list: [{i}/{total_movies}] tmdb {tmdb_id} already in Radarr")
