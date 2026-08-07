@@ -15,7 +15,7 @@ import { refreshFleet } from "./js/fleet.js";
 import { buildArrFleet } from "./js/arr-fleet.js";
 import { buildLoopRemediation } from "./js/loop-remediation.js";
 import { buildLetterboxdPanel } from "./js/letterboxd.js";
-import { buildHostVitals, buildHostActions } from "./js/host.js";
+import { buildHostVitals, buildHostActions, buildHostResources, refreshHostResources } from "./js/host.js";
 import { buildPosterDock } from "./js/poster-sync.js";
 import { buildCatalog } from "./js/catalog.js";
 import { buildQuickLinks, buildDocLinks, buildSkillsList } from "./js/reference.js";
@@ -34,6 +34,9 @@ function bootApp() {
   buildLetterboxdPanel();
   buildHostVitals();
   buildHostActions();
+  buildHostResources();
+  refreshHostResources();
+  setInterval(refreshHostResources, 5000);
   buildPosterDock();
   buildCatalog();
   buildDocLinks();

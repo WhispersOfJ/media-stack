@@ -1,10 +1,13 @@
-/* Host rail — two lanes. Vitals are read-only checks this container can
-   genuinely answer from its own mounts (docker.sock, /host-config,
-   /mnt, /host-backups). Package updates / reboot-needed / mem-pressure
-   / zombie-check are deliberately NOT here: this container has no
-   pacman, no pid:host, and no real host /proc — building those as live
-   tiles would show container-scoped or fake data as if it were the
-   host's. They stay terminal-only; see the Reference rail below. */
+/* Host rail — two lanes plus a live resource strip. Vitals are read-only
+   checks this container can genuinely answer from its own mounts
+   (docker.sock, /host-config, /mnt, /host-backups, and - since
+   2026-07-26's Plex Health mount - /host-proc for real host-wide CPU/
+   RAM). Package updates / reboot-needed are still NOT here: pid:host and
+   /host-proc give real *readable* host state, but this container has no
+   pacman and no privileged path to actually change the host (install
+   packages, reboot) - that's a genuine open design question (a host-side
+   helper this panel could trigger but never bypass), not built yet. See
+   the design-treatment artifact's Phase 02/03 risk table. */
 import { escapeHtml, postAction, setStatusLine } from "./core.js";
 import { logLine } from "./activity-log.js";
 import { fetchAndRender } from "./result-render.js";
@@ -17,6 +20,9 @@ const HOST_VITALS = [
   { id: "resource-check", label: "Resource limits", desc: "Containers missing an explicit mem_limit or cpus.", path: "/api/resource-check" },
   { id: "disk-usage", label: "Config disk usage", desc: "Per-app config/ directory size, largest first.", path: "/api/disk-usage" },
   { id: "backup-verify", label: "Backup verify", desc: "Latest restic snapshot age and repo integrity summary.", path: "/api/backup-verify" },
+  { id: "backup-status", label: "Backup history", desc: "Full snapshot history for both repos - catches one that stopped pruning or only ever ran once.", path: "/api/backup-status" },
+  { id: "backup-restore-test", label: "Backup restore test", desc: "Pulls one real file out of the latest snapshot - proves restore actually works, not just that a snapshot exists.", path: "/api/backup-restore-test", method: "POST" },
+  { id: "disk-health", label: "Disk health", desc: "Host mount free space plus reclaimable space from unused Docker images/volumes/build cache.", path: "/api/disk-health" },
 ];
 
 export function buildHostVitals() {
@@ -39,7 +45,7 @@ export function buildHostVitals() {
       btn.disabled = true;
       logLine("pending", `${v.label} — requested`);
       try {
-        await fetchAndRender(result, "GET", v.path);
+        await fetchAndRender(result, v.method || "GET", v.path);
         logLine("ok", `${v.label} — loaded`);
       } catch (e) {
         logLine("err", `${v.label} — ${e.message}`);
@@ -125,4 +131,101 @@ export function buildHostActions() {
       integrityBtn.disabled = false;
     }
   });
+
+  const pruneRow = document.createElement("div");
+  pruneRow.className = "rule-row";
+  pruneRow.innerHTML = `
+    <div class="rule-main">
+      <span class="rule-title">Prune unused Docker space</span>
+      <span class="rule-desc">Dangling images and zero-refcount volumes only - never a running or stopped-but-referenced container's own image/volume.</span>
+    </div>
+    <div class="rule-actions"><button class="btn-ghost" type="button">Prune</button></div>
+    <div class="rule-status" id="status-disk-prune">—</div>
+  `;
+  wrap.appendChild(pruneRow);
+  const pruneBtn = pruneRow.querySelector("button");
+  const pruneStatus = pruneRow.querySelector(".rule-status");
+  armButton(pruneBtn, "Prune", "Click again to confirm", async () => {
+    pruneBtn.disabled = true;
+    setStatusLine(pruneStatus, "pending", "Pruning…");
+    logLine("pending", "Disk prune — requested");
+    try {
+      const data = await postAction("/api/disk-health/prune", { confirm: true });
+      setStatusLine(pruneStatus, "success", data.message);
+      logLine("ok", `Disk prune — ${data.message}`);
+    } catch (e) {
+      setStatusLine(pruneStatus, "error", e.message);
+      logLine("err", `Disk prune — ${e.message}`);
+    } finally {
+      pruneBtn.disabled = false;
+    }
+  });
+}
+
+/* Live resource strip - polls /api/host-resources every 5s and keeps a
+   short rolling buffer per metric to draw as an inline sparkline. Plain
+   polling, not SSE: this is a point-in-time gauge refreshing on a fixed
+   cadence, not a long-running background job streaming progress - SSE
+   earns its keep for poster-sync's kind of job, not this one. */
+const RESOURCE_HISTORY_LEN = 24;
+const cpuHistory = [];
+const memHistory = [];
+
+function sparklinePath(values, height = 34) {
+  if (values.length < 2) return { line: "", fill: "" };
+  const max = Math.max(100, ...values);
+  const stepX = 100 / (values.length - 1);
+  const points = values.map((v, i) => [i * stepX, height - (v / max) * height]);
+  const line = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const fill = `${line} L100,${height} L0,${height} Z`;
+  return { line, fill };
+}
+
+function renderSparkline(svgEl, values) {
+  const { line, fill } = sparklinePath(values);
+  svgEl.querySelector(".sparkline-fill").setAttribute("d", fill);
+  svgEl.querySelector(".sparkline-line").setAttribute("d", line);
+}
+
+export function buildHostResources() {
+  const wrap = document.getElementById("host-resources");
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div class="sparkline-row">
+      <div class="sparkline-block">
+        <span class="sparkline-label">CPU <b id="host-cpu-val">—</b></span>
+        <svg class="sparkline" viewBox="0 0 100 34" preserveAspectRatio="none"><path class="sparkline-fill"></path><path class="sparkline-line"></path></svg>
+      </div>
+      <div class="sparkline-block sparkline-ram">
+        <span class="sparkline-label">RAM <b id="host-ram-val">—</b></span>
+        <svg class="sparkline" viewBox="0 0 100 34" preserveAspectRatio="none"><path class="sparkline-fill"></path><path class="sparkline-line"></path></svg>
+      </div>
+    </div>
+    <p class="hint" id="host-resources-hint"></p>
+  `;
+}
+
+export async function refreshHostResources() {
+  const wrap = document.getElementById("host-resources");
+  if (!wrap || wrap.innerHTML === "") return;
+  try {
+    const res = await fetch("/api/host-resources");
+    if (res.status === 503) {
+      document.getElementById("host-resources-hint").textContent = "Host /proc mount not available.";
+      return;
+    }
+    if (!res.ok) throw new Error(`Request failed (${res.status})`);
+    const data = await res.json();
+    cpuHistory.push(data.cpu_percent);
+    memHistory.push(data.mem_percent);
+    if (cpuHistory.length > RESOURCE_HISTORY_LEN) cpuHistory.shift();
+    if (memHistory.length > RESOURCE_HISTORY_LEN) memHistory.shift();
+    document.getElementById("host-cpu-val").textContent = `${data.cpu_percent}%`;
+    document.getElementById("host-ram-val").textContent = `${data.mem_percent}%`;
+    document.getElementById("host-resources-hint").textContent = `${data.mem_used} / ${data.mem_total} RAM`;
+    renderSparkline(wrap.querySelector(".sparkline-block:not(.sparkline-ram) svg"), cpuHistory);
+    renderSparkline(wrap.querySelector(".sparkline-ram svg"), memHistory);
+  } catch (e) {
+    logLine("err", `Host resources — ${e.message}`);
+  }
 }

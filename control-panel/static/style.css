@@ -286,8 +286,13 @@ input[type="range"].fader-input::-moz-range-thumb {
 /* ---------- Plex Health sparklines ---------- */
 .sparkline-row { display: flex; gap: 16px; margin: 10px 0 6px; flex-wrap: wrap; }
 .sparkline-block { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 4px; }
-.sparkline-label { font-family: var(--font-mono); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
-.sparkline { width: 100%; height: 40px; background: none; border-bottom: none; }
+.sparkline-label { font-family: var(--font-mono); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); display: flex; justify-content: space-between; }
+.sparkline-label b { font-family: var(--font-mono); font-size: 0.95rem; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.sparkline { width: 100%; height: 40px; background: none; border-bottom: none; display: block; }
+.sparkline-fill { fill: var(--accent); opacity: 0.14; }
+.sparkline-line { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.sparkline-ram .sparkline-fill { fill: var(--good); }
+.sparkline-ram .sparkline-line { stroke: var(--good); }
 
 /* ---------- Rule list: a stack of glass rows instead of a flow-line. ---------- */
 .rule-list { display: flex; flex-direction: column; gap: 6px; border-top: none; }

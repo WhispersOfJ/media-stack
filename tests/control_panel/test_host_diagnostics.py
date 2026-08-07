@@ -178,3 +178,92 @@ def test_top_rejects_bad_metric(cp_main_app):
     client = TestClient(cp_main_app.app)
     resp = client.get("/api/top?by=bogus", headers=headers)
     assert resp.status_code == 400
+
+
+def _login(client, main_module, password="correct-horse-battery-staple"):
+    from core.security import hash_password
+    from models.user import User
+
+    db = main_module.SessionLocal()
+    try:
+        db.add(User(username="admin", password_hash=hash_password(password)))
+        db.commit()
+    finally:
+        db.close()
+    resp = client.post("/api/auth/login", json={"username": "admin", "password": password})
+    assert resp.status_code == 200
+
+
+def test_disk_health_reports_mount_and_reclaimable(cp_main_app, monkeypatch, tmp_path):
+    monkeypatch.setattr("services.host.router.HOST_MNT_DIR", str(tmp_path))
+    dc = _docker_client_module(cp_main_app)
+    dc.docker_client.df.return_value = {
+        "Images": [{"Size": 500_000_000, "SharedSize": 0, "Containers": 0}],
+        "Containers": [{"SizeRw": 10_000_000, "State": "exited"}],
+        "Volumes": [{"UsageData": {"Size": 200_000_000, "RefCount": 0}}],
+        "BuildCache": [{"Size": 50_000_000, "InUse": False}],
+    }
+    headers = _service_key_header(cp_main_app)
+    client = TestClient(cp_main_app.app)
+    resp = client.get("/api/disk-health", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["mount"]["path"] == str(tmp_path)
+    assert "MB" in body["reclaimable"]["images"] or "KB" in body["reclaimable"]["images"]
+
+
+def test_disk_health_prune_requires_confirm(cp_main_app):
+    client = TestClient(cp_main_app.app)
+    _login(client, cp_main_app)
+    resp = client.post("/api/disk-health/prune", json={"confirm": False})
+    assert resp.status_code == 400
+
+
+def test_disk_health_prune_requires_session_not_service_key(cp_main_app):
+    headers = _service_key_header(cp_main_app)
+    client = TestClient(cp_main_app.app)
+    resp = client.post("/api/disk-health/prune", headers=headers, json={"confirm": True})
+    assert resp.status_code == 401
+
+
+def test_disk_health_prune_reports_reclaimed_space(cp_main_app):
+    dc = _docker_client_module(cp_main_app)
+    dc.docker_client.images.prune.return_value = {"ImagesDeleted": [{"Deleted": "x"}], "SpaceReclaimed": 1_000_000}
+    dc.docker_client.volumes.prune.return_value = {"VolumesDeleted": ["v1"], "SpaceReclaimed": 500_000}
+    client = TestClient(cp_main_app.app)
+    _login(client, cp_main_app)
+    resp = client.post("/api/disk-health/prune", json={"confirm": True})
+    assert resp.status_code == 200, resp.text
+    assert "Reclaimed" in resp.json()["message"]
+
+
+def test_host_resources_reports_cpu_and_mem(cp_main_app, monkeypatch, tmp_path):
+    (tmp_path / "meminfo").write_text(
+        "MemTotal:       16000000 kB\nMemFree:         2000000 kB\nMemAvailable:    4000000 kB\n"
+    )
+    calls = {"n": 0}
+    stat_lines = ["cpu  100 0 100 800 0 0 0 0 0 0\n", "cpu  110 0 110 850 0 0 0 0 0 0\n"]
+
+    def fake_read_cpu():
+        line = stat_lines[min(calls["n"], 1)]
+        calls["n"] += 1
+        return [int(x) for x in line.split()[1:]]
+
+    monkeypatch.setattr("services.host.router.HOST_PROC_DIR", str(tmp_path))
+    monkeypatch.setattr("services.host.router._read_host_proc_cpu_line", fake_read_cpu)
+    monkeypatch.setattr("services.host.router.time.sleep", lambda s: None)
+    headers = _service_key_header(cp_main_app)
+    client = TestClient(cp_main_app.app)
+    resp = client.get("/api/host-resources", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert 0 <= body["cpu_percent"] <= 100
+    assert body["mem_percent"] > 0
+
+
+def test_host_resources_503s_without_proc_mount(cp_main_app, monkeypatch, tmp_path):
+    monkeypatch.setattr("services.host.router.HOST_PROC_DIR", str(tmp_path / "nope"))
+    headers = _service_key_header(cp_main_app)
+    client = TestClient(cp_main_app.app)
+    resp = client.get("/api/host-resources", headers=headers)
+    assert resp.status_code == 503

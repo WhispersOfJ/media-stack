@@ -14,9 +14,12 @@ same reasoning as services/arr's automation-invoked routes.
 import concurrent.futures
 import os
 import re
+import shutil
 import threading
+import time
 from typing import Literal
 
+import docker
 import httpx
 from core import settings as settings_core
 from core.arr_client import ARR_APPS, PROWLARR_CFG
@@ -32,7 +35,7 @@ from core.docker_client import (
     project_containers,
     wait_for_healthy,
 )
-from core.host_paths import HOST_CONFIG_DIR, HOST_MNT_DIR, HOST_README
+from core.host_paths import HOST_CONFIG_DIR, HOST_MNT_DIR, HOST_PROC_DIR, HOST_README
 from core.responses import fail, now, ok
 from core.security import current_user, current_user_or_service
 from fastapi import APIRouter, Depends
@@ -235,6 +238,125 @@ def resource_check(_=Depends(current_user_or_service)):
     if not missing:
         return ok("Every container has both mem_limit and cpus set.", containers=[])
     return ok(f"{len(missing)} container(s) missing mem_limit and/or cpus.", containers=missing)
+
+
+def _human_bytes(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(n) < 1024:
+            return f"{n:.1f}{unit}" if unit != "B" else f"{n}{unit}"
+        n /= 1024
+    return f"{n:.1f}PB"
+
+
+@router.get("/api/disk-health")
+def disk_health(_=Depends(current_user_or_service)):
+    """Host mount free space (shutil.disk_usage against the read-only
+    /mnt bind - real host filesystem stats, not container-scoped) plus
+    Docker's own reclaimable-space breakdown (client.df(), the same data
+    `docker system df` prints) - the "how much could I get back" half of
+    disk health that the existing per-app disk-usage endpoint doesn't
+    cover (that one sums config/ directory sizes, not what's reclaimable)."""
+    total, used, free = shutil.disk_usage(HOST_MNT_DIR)
+    mount = {
+        "path": HOST_MNT_DIR, "total": _human_bytes(total), "used": _human_bytes(used),
+        "free": _human_bytes(free), "percent": round(used / total * 100, 1) if total else 0.0,
+    }
+    try:
+        df = docker_client.df()
+    except docker.errors.APIError as e:
+        fail(f"Docker df failed: {e}")
+    reclaimable = {
+        "images": sum(i.get("Size", 0) - i.get("SharedSize", 0) for i in df.get("Images") or [] if i.get("Containers") == 0),
+        "containers": sum(c.get("SizeRw", 0) for c in df.get("Containers") or [] if c.get("State") != "running"),
+        "volumes": sum(v.get("UsageData", {}).get("Size", 0) or 0 for v in df.get("Volumes") or [] if (v.get("UsageData") or {}).get("RefCount", 1) == 0),
+        "build_cache": sum(b.get("Size", 0) for b in df.get("BuildCache") or [] if not b.get("InUse")),
+    }
+    reclaimable_human = {k: _human_bytes(v) for k, v in reclaimable.items()}
+    total_reclaimable = sum(reclaimable.values())
+    return ok(f"{mount['path']}: {mount['percent']}% used, {mount['free']} free. "
+              f"{_human_bytes(total_reclaimable)} reclaimable from unused Docker images/volumes/build cache.",
+              mount=mount, reclaimable=reclaimable_human, total_reclaimable=_human_bytes(total_reclaimable))
+
+
+class PruneRequest(BaseModel):
+    confirm: bool = False
+
+
+@router.post("/api/disk-health/prune")
+def disk_health_prune(payload: PruneRequest, _=Depends(current_user)):
+    """Prunes dangling images and unused (zero-refcount) volumes only -
+    never a running or stopped-but-referenced container's own image or
+    volume. Equivalent to `docker image prune` + `docker volume prune`,
+    not the more aggressive `-a` variants."""
+    if not payload.confirm:
+        fail("Set confirm=true to prune - this deletes dangling images and unused volumes.", status_code=400)
+    try:
+        images_result = docker_client.images.prune()
+        volumes_result = docker_client.volumes.prune()
+    except docker.errors.APIError as e:
+        fail(f"Prune failed: {e}")
+    reclaimed = (images_result.get("SpaceReclaimed") or 0) + (volumes_result.get("SpaceReclaimed") or 0)
+    return ok(f"Reclaimed {_human_bytes(reclaimed)} "
+              f"({len(images_result.get('ImagesDeleted') or [])} image(s), "
+              f"{len(volumes_result.get('VolumesDeleted') or [])} volume(s)).")
+
+
+def _read_host_proc_meminfo() -> dict | None:
+    path = os.path.join(HOST_PROC_DIR, "meminfo")
+    if not os.path.isfile(path):
+        return None
+    values = {}
+    with open(path) as f:
+        for line in f:
+            key, _, rest = line.partition(":")
+            try:
+                values[key] = int(rest.strip().split()[0]) * 1024  # kB -> bytes
+            except (ValueError, IndexError):
+                continue
+    return values
+
+
+def _read_host_proc_cpu_line() -> list[int] | None:
+    path = os.path.join(HOST_PROC_DIR, "stat")
+    if not os.path.isfile(path):
+        return None
+    with open(path) as f:
+        first = f.readline()
+    if not first.startswith("cpu "):
+        return None
+    return [int(x) for x in first.split()[1:]]
+
+
+@router.get("/api/host-resources")
+def host_resources(_=Depends(current_user_or_service)):
+    """Real host-wide CPU/RAM, read from /host-proc (bind-mounted for the
+    Plex Health feature, 2026-07-26) - correcting an assumption in the
+    original host.js comment ("this container has no pid:host, and no
+    real host /proc") that was true when written but predates that mount.
+    CPU percent needs two time-separated /proc/stat samples; this takes
+    a short 200ms internal pause rather than relying on the caller to
+    poll twice, so one request returns one real number."""
+    mem = _read_host_proc_meminfo()
+    cpu_before = _read_host_proc_cpu_line()
+    if mem is None or cpu_before is None:
+        fail(f"{HOST_PROC_DIR} not available - host resource stats need the Plex Health proc mount.", status_code=503)
+    time.sleep(0.2)
+    cpu_after = _read_host_proc_cpu_line()
+
+    idle_before, idle_after = cpu_before[3], cpu_after[3]
+    total_before, total_after = sum(cpu_before), sum(cpu_after)
+    total_delta = total_after - total_before
+    idle_delta = idle_after - idle_before
+    cpu_percent = round((1 - idle_delta / total_delta) * 100, 1) if total_delta else 0.0
+
+    mem_total = mem.get("MemTotal", 0)
+    mem_available = mem.get("MemAvailable", mem.get("MemFree", 0))
+    mem_used = mem_total - mem_available
+    mem_percent = round(mem_used / mem_total * 100, 1) if mem_total else 0.0
+
+    return ok(f"CPU {cpu_percent}%, RAM {mem_percent}% ({_human_bytes(mem_used)} / {_human_bytes(mem_total)}).",
+              cpu_percent=cpu_percent, mem_percent=mem_percent,
+              mem_used=_human_bytes(mem_used), mem_total=_human_bytes(mem_total))
 
 
 LOG_LEVEL_APPS = {
