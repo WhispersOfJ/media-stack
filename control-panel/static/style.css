@@ -703,6 +703,21 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
   #palette-overlay { padding-top: 4vh; padding-left: 10px; padding-right: 10px; }
 }
 
+/* ---------- Software Catalog ---------- */
+.catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-bottom: 22px; }
+.catalog-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.catalog-card-top { display: flex; align-items: center; gap: 10px; }
+.catalog-badge {
+  width: 32px; height: 32px; flex: none; border-radius: 9px; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 0.66rem; font-weight: 700; color: var(--accent-ink); background: var(--accent);
+}
+.catalog-card-name { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.catalog-pitch { max-width: none; }
+.catalog-caveat { color: var(--warn); }
+.catalog-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
+.catalog-card-actions button { min-width: 92px; }
+.catalog-status { margin-top: 0; }
+
 #login-overlay {
   position: fixed; inset: 0; z-index: 200;
   display: flex; align-items: center; justify-content: center;

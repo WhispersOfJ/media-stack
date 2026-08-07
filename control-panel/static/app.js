@@ -17,6 +17,7 @@ import { buildLoopRemediation } from "./js/loop-remediation.js";
 import { buildLetterboxdPanel } from "./js/letterboxd.js";
 import { buildHostVitals, buildHostActions } from "./js/host.js";
 import { buildPosterDock } from "./js/poster-sync.js";
+import { buildCatalog } from "./js/catalog.js";
 import { buildQuickLinks, buildDocLinks, buildSkillsList } from "./js/reference.js";
 import { buildPlexUpdateCheck, refreshStatus, tickClock } from "./js/status.js";
 import { wirePalette, loadCommandRegistry } from "./js/palette.js";
@@ -34,6 +35,7 @@ function bootApp() {
   buildHostVitals();
   buildHostActions();
   buildPosterDock();
+  buildCatalog();
   buildDocLinks();
   buildSkillsList();
   buildPlexUpdateCheck();
