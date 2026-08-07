@@ -260,6 +260,7 @@
       <select id="poster-sync-mode">
         <option value="auto">Auto (apply top match)</option>
         <option value="review">Review (pick top 3 per item)</option>
+        <option value="gallery">Gallery (browse + quality scan)</option>
       </select>
     </label>
     <label class="poster-sync-check" id="poster-sync-dry-run-wrap">
@@ -271,6 +272,18 @@
   </form>
   <pre id="poster-log"></pre>
   <div class="poster-review-grid" id="poster-review-grid" hidden></div>
+  <div class="poster-gallery" id="poster-gallery" hidden>
+    <div class="poster-gallery-toolbar">
+      <button class="btn-ghost" type="button" id="poster-gallery-scan">Run quality scan</button>
+      <span class="hint" id="poster-gallery-scan-summary"></span>
+    </div>
+    <div class="poster-gallery-grid" id="poster-gallery-grid"></div>
+    <div class="poster-gallery-pager">
+      <button class="btn-ghost" type="button" id="poster-gallery-prev">&larr; Prev</button>
+      <span class="hint" id="poster-gallery-page-info"></span>
+      <button class="btn-ghost" type="button" id="poster-gallery-next">Next &rarr;</button>
+    </div>
+  </div>
 </div>
 
 <script type="module" src="/app.js"></script>

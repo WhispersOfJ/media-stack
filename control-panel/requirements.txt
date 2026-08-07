@@ -7,3 +7,4 @@ sqlalchemy==2.0.51
 alembic==1.18.5
 argon2-cffi==25.1.0
 itsdangerous==2.2.0
+pillow==11.3.0

@@ -561,6 +561,7 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
   background: var(--glass-strong);
 }
 .poster-dock:has(#poster-review-grid:not([hidden])) { width: 720px; }
+.poster-dock:has(#poster-gallery:not([hidden])) { width: 780px; max-width: calc(100vw - 40px); }
 .poster-dock-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--glass-border); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; font-size: 0.78rem; }
 .poster-sync-form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; padding: 12px 14px; }
 .poster-sync-form label { display: flex; flex-direction: column; gap: 3px; font-family: var(--font-mono); font-size: 0.66rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.03em; }
@@ -587,11 +588,48 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
   flex: 1; display: flex; flex-direction: column; gap: 3px; border: 2px solid transparent; border-radius: var(--radius-sm); background: none;
   padding: 2px; cursor: pointer; font-family: var(--font-mono);
 }
-.poster-review-thumb img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--surface); display: block; border-radius: 6px; }
 .poster-review-thumb-label { font-size: 0.6rem; color: var(--ink-faint); text-align: center; }
 .poster-review-thumb:hover { border-color: var(--glass-border); }
 .poster-review-thumb.poster-review-picked { border-color: var(--accent); }
 .poster-review-status { margin-top: 4px; font-size: 0.66rem; font-family: var(--font-mono); color: var(--ink-faint); min-height: 1em; }
+
+/* Before/after hover compare - shared by review candidate thumbs (the
+   "after" a click would apply, hover reveals the "before" - the item's
+   current Plex poster, fetched once per card through /api/posters/thumb)
+   and gallery cards (the "before" is the only image until a manual paste
+   URL supplies an "after" to preview). Two stacked <img>, top layer fades
+   out on hover so the bottom layer shows through - no JS swap needed. */
+.poster-compare { position: relative; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--surface); }
+.poster-compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.poster-compare-after { z-index: 1; transition: opacity 150ms ease; }
+.poster-compare:hover .poster-compare-after { opacity: 0; }
+.poster-compare-label {
+  position: absolute; left: 4px; bottom: 4px; z-index: 2; font-family: var(--font-mono); font-size: 0.56rem;
+  text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 100px;
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent); color: var(--ink-faint); pointer-events: none;
+  opacity: 0; transition: opacity 150ms ease;
+}
+.poster-compare:hover .poster-compare-label { opacity: 1; }
+
+/* ---------- Poster gallery (Phase 04 "Poster Studio") ---------- */
+.poster-gallery-toolbar { display: flex; align-items: center; gap: 10px; padding: 0 14px 10px; }
+.poster-gallery-grid {
+  margin: 0 14px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px; max-height: 60vh; overflow-y: auto;
+}
+.poster-gallery-card { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.poster-gallery-title { font-size: 0.72rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poster-gallery-flags { display: flex; flex-wrap: wrap; gap: 4px; min-height: 1.2em; }
+.poster-gallery-override { display: flex; gap: 4px; }
+.poster-gallery-override input {
+  flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 0.6rem; padding: 3px 6px;
+  border-radius: var(--radius-sm); border: 1px solid var(--glass-border); background: var(--surface-2); color: var(--ink);
+}
+.poster-gallery-override button { flex: none; padding: 2px 8px; font-size: 0.62rem; }
+.poster-gallery-status { font-size: 0.62rem; font-family: var(--font-mono); color: var(--ink-faint); min-height: 1em; }
+.poster-gallery-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 14px 14px; }
+.poster-flag-pill { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-tint); }
+.poster-flag-pill-placeholder, .poster-flag-pill-no_poster { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); background: var(--bad-tint); }
 
 /* ---------- Letterboxd: deliberately redesigned, not just recolored.
    Tri-dot logomark stays — it's Letterboxd's own brand identity, not

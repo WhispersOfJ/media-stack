@@ -19,10 +19,11 @@ import httpx
 from core.plex_client import PLEX_URL, plex_headers, plex_sections
 from core.responses import fail, ok
 from core.security import current_user_or_service
-from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from services.posters.candidates import FANART_KEY, TMDB_KEY, TVDB_KEY, omdb_key, resolve_poster_candidates
+from services.posters.quality import scan_item_quality
 from services.posters.state import POSTER_STATE_LOCK, load_poster_state, poster_cooldown_remaining, save_poster_state
 
 router = APIRouter(tags=["posters"])
@@ -44,6 +45,10 @@ class PosterReviewRequest(BaseModel):
 class PosterApplyRequest(BaseModel):
     rating_key: str
     url: str
+
+
+class PosterScanRequest(BaseModel):
+    library: str
 
 
 def _require_source_configured(source: str) -> None:
@@ -359,3 +364,183 @@ def posters_apply(payload: PosterApplyRequest, _=Depends(current_user_or_service
         state[payload.rating_key] = time.time()
         save_poster_state(state)
     return ok("Poster updated.")
+
+
+# ---------------------------------------------------------------------
+# Gallery - paginated grid of an item's *currently applied* poster, for
+# Phase 04 of the v3 treatment (.claude/plans/control-panel-v3-redesign.plan.md).
+# Distinct from review's candidate thumbs (which show TMDb/Fanart/etc
+# *options*, fetched from those services' own public image CDNs) - the
+# gallery shows what's actually on Plex right now, which requires Plex's
+# token and is proxied through /api/posters/thumb rather than ever handing
+# PLEX_TOKEN to the browser.
+# ---------------------------------------------------------------------
+GALLERY_PAGE_MAX = 200
+
+
+@router.get("/api/posters/gallery")
+def posters_gallery(
+    library: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(60, ge=1, le=GALLERY_PAGE_MAX),
+    _=Depends(current_user_or_service),
+):
+    """One page of a library's items, each with a `thumbUrl` pointing at
+    our own /api/posters/thumb proxy (never a raw Plex URL+token) - the
+    frontend just <img src>s it directly."""
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        fail(f"Could not read Plex libraries: {e}")
+    section = next((s for s in sections if s["title"].lower() == library.lower()), None)
+    if not section or section.get("type") not in ("movie", "show"):
+        fail(f"No movie/show library found matching '{library}'.", status_code=404)
+
+    try:
+        r = httpx.get(
+            f"{PLEX_URL}/library/sections/{section['key']}/all"
+            f"?X-Plex-Container-Start={offset}&X-Plex-Container-Size={limit}"
+            "&sort=titleSort",
+            headers=plex_headers(), timeout=30,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Could not list '{library}': {e}")
+
+    container = r.json()["MediaContainer"]
+    total = container.get("totalSize", container.get("size", 0))
+    items = [
+        {
+            "ratingKey": item["ratingKey"],
+            "title": item.get("title", "Unknown"),
+            "year": item.get("year"),
+            "thumbUrl": f"/api/posters/thumb/{item['ratingKey']}" if item.get("thumb") else None,
+        }
+        for item in container.get("Metadata", [])
+    ]
+    return {"items": items, "total": total, "offset": offset, "limit": limit, "library": library, "type": section["type"]}
+
+
+@router.get("/api/posters/thumb/{rating_key}")
+def posters_thumb(rating_key: str, _=Depends(current_user_or_service)):
+    """Streams an item's current poster image bytes through the panel -
+    the only way the browser gets to see a Plex-hosted poster without
+    PLEX_TOKEN ever reaching client-side JS/HTML (unlike TMDb/Fanart
+    candidate URLs above, which are public and safe to link directly)."""
+    try:
+        r = httpx.get(f"{PLEX_URL}/library/metadata/{rating_key}/thumb", headers=plex_headers(), timeout=15)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        fail(f"Could not fetch poster for {rating_key}: {e}", status_code=404)
+    return Response(content=r.content, media_type=r.headers.get("content-type", "image/jpeg"))
+
+
+# ---------------------------------------------------------------------
+# Bulk quality scan - walks a library flagging posters that are low-res,
+# Plex's own generated placeholder, or likely the wrong language, per
+# Phase 04's third scoped sub-feature. Same SSE-stream job shape as sync
+# and review above (one job at a time, in-memory queue).
+# ---------------------------------------------------------------------
+POSTER_SCAN_LOCK = threading.Lock()
+POSTER_SCAN_STATE = {"running": False, "queue": None}
+
+
+def run_poster_scan(library_title: str, q: queue.Queue):
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        q.put(json.dumps({"type": "error", "message": f"Could not read Plex libraries: {e}"}))
+        return
+    section = next((s for s in sections if s["title"].lower() == library_title.lower()), None)
+    if not section or section.get("type") not in ("movie", "show"):
+        q.put(json.dumps({"type": "error", "message": f"No movie/show library found matching '{library_title}'."}))
+        return
+    media_type = section["type"]
+
+    try:
+        r = httpx.get(
+            f"{PLEX_URL}/library/sections/{section['key']}/all?X-Plex-Container-Size=100000",
+            headers=plex_headers(), timeout=60,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        q.put(json.dumps({"type": "error", "message": f"Could not list '{library_title}': {e}"}))
+        return
+
+    items = r.json()["MediaContainer"].get("Metadata", [])
+    total = len(items)
+    q.put(json.dumps({"type": "start", "total": total, "library": library_title}))
+
+    flagged = 0
+    for i, item in enumerate(items, 1):
+        rating_key = item["ratingKey"]
+        title = item.get("title", "Unknown")
+        year = item.get("year")
+        if not item.get("thumb"):
+            q.put(json.dumps({"type": "item", "i": i, "total": total, "ratingKey": rating_key,
+                               "title": title, "year": year, "flags": ["no_poster"]}))
+            flagged += 1
+            continue
+
+        try:
+            meta_r = httpx.get(f"{PLEX_URL}/library/metadata/{rating_key}", headers=plex_headers(), timeout=15)
+            meta_r.raise_for_status()
+            meta = meta_r.json()["MediaContainer"]["Metadata"][0]
+            img_r = httpx.get(f"{PLEX_URL}/library/metadata/{rating_key}/thumb", headers=plex_headers(), timeout=20)
+            img_r.raise_for_status()
+        except httpx.HTTPError:
+            q.put(json.dumps({"type": "item", "i": i, "total": total, "ratingKey": rating_key,
+                               "title": title, "year": year, "flags": [], "error": "could not fetch"}))
+            continue
+
+        flags = scan_item_quality(meta, media_type, img_r.content)
+        if flags:
+            flagged += 1
+        q.put(json.dumps({"type": "item", "i": i, "total": total, "ratingKey": rating_key,
+                           "title": title, "year": year, "flags": flags}))
+        time.sleep(0.1)
+
+    q.put(json.dumps({"type": "done", "flagged": flagged, "total": total}))
+
+
+@router.post("/api/posters/scan")
+def posters_scan(payload: PosterScanRequest, _=Depends(current_user_or_service)):
+    plex_headers()  # raises 503 if Plex isn't configured
+
+    with POSTER_SCAN_LOCK:
+        if POSTER_SCAN_STATE["running"]:
+            fail("A poster quality scan is already running - wait for it to finish.", status_code=409)
+        q = queue.Queue()
+        POSTER_SCAN_STATE["running"] = True
+        POSTER_SCAN_STATE["queue"] = q
+
+    def worker():
+        try:
+            run_poster_scan(payload.library, q)
+        finally:
+            with POSTER_SCAN_LOCK:
+                POSTER_SCAN_STATE["running"] = False
+
+    threading.Thread(target=worker, daemon=True).start()
+    return ok(f"Poster quality scan started for '{payload.library}'.")
+
+
+@router.get("/api/posters/scan/stream")
+def posters_scan_stream(_=Depends(current_user_or_service)):
+    """SSE feed of per-item quality-flag JSON lines - same single-shared-
+    queue tradeoff as the sync/review streams above."""
+    q = POSTER_SCAN_STATE["queue"]
+    if q is None:
+        fail("No poster quality scan has been started yet.", status_code=404)
+
+    def generate():
+        while True:
+            try:
+                line = q.get(timeout=1)
+            except queue.Empty:
+                if not POSTER_SCAN_STATE["running"]:
+                    break
+                continue
+            yield f"data: {line}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

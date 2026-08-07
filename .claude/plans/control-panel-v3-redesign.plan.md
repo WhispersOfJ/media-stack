@@ -11,14 +11,41 @@ artifact URLs) at the start of the next session if the visual language needs
 re-grounding — it has the full mockups, the phase roadmap, the 20-program catalog
 research, and the risk table this plan builds on.
 
-## Status: 3 of 4 phases shipped
+## Status: 4 of 4 phases shipped
 
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 01 — Design system (dark-glass) | ✅ Done | `c57cebf` | Full CSS re-skin, zero JS markup changes |
 | 02 — Software catalog | ✅ Done | `22d00cb` | 20 programs, Docker SDK not compose-file |
 | 03 — Maintenance & backups | ✅ Done | `321a8be` | Disk health, live resources, backup UI |
-| 04 — Poster Studio | ⬜ Not started | — | This document's main remaining scope |
+| 04 — Poster Studio | ✅ Done | (this commit) | Gallery grid, before/after hover, paste-URL override, bulk quality scan |
+
+### Phase 04 implementation notes (2026-08-07)
+
+- **Gallery**: `GET /api/posters/gallery` (paginated, 60/page) + `GET /api/posters/thumb/{rating_key}`
+  proxies Plex's poster bytes server-side — PLEX_TOKEN never reaches the browser, unlike
+  the TMDb/Fanart candidate URLs (those are already public). New "Gallery" option added
+  to the existing mode select in the poster-sync dock, not a new page.
+- **Before/after hover**: shared `.poster-compare` CSS pattern (two stacked `<img>`,
+  top layer fades out on `:hover`) used both in the gallery (current poster is the
+  only layer until a paste-URL preview supplies an "after") and in review-mode
+  candidate thumbs (candidate on top, current Plex poster - fetched via the new thumb
+  proxy - revealed on hover).
+- **Manual override**: paste-URL box per gallery card, reuses `/api/posters/apply`
+  directly — no file upload, no new backend, per the plan's own "check before building"
+  note.
+- **Bulk quality scan**: `POST /api/posters/scan` + `/api/posters/scan/stream` (SSE,
+  same job shape as sync/review). Flags in `services/posters/quality.py`:
+  `placeholder` (small file + near-uniform grey via Pillow), `low_res` (short side
+  <300px), `no_poster` (no `thumb` field at all), `language_mismatch` (item's primary
+  audio language vs. TMDb's top-voted poster `iso_639_1` - a heuristic proxy, not a
+  literal read of what's applied on Plex, documented as such in the code). Pillow added
+  as a new dependency (`requirements.txt`).
+- Full suite green (460 tests) before deploy; browser-QA'd live in both themes
+  (real Movies library, 14,936 items) - gallery pagination, hover compare, live scan
+  flag badges, and error states (already-running 409) all confirmed working. Did not
+  click a real Apply during QA against the live Plex library - manual-apply mutation
+  path is covered by existing/new unit tests instead, not live production data.
 
 All three shipped phases: full test suite green (438 tests as of `321a8be`), browser-QA'd
 live against the real stack in both themes before commit, no known regressions.
