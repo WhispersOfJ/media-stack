@@ -2,12 +2,12 @@
    checks this container can genuinely answer from its own mounts
    (docker.sock, /host-config, /mnt, /host-backups, and - since
    2026-07-26's Plex Health mount - /host-proc for real host-wide CPU/
-   RAM). Package updates / reboot-needed are still NOT here: pid:host and
-   /host-proc give real *readable* host state, but this container has no
-   pacman and no privileged path to actually change the host (install
-   packages, reboot) - that's a genuine open design question (a host-side
-   helper this panel could trigger but never bypass), not built yet. See
-   the design-treatment artifact's Phase 02/03 risk table. */
+   RAM). Reboot/pacman sync/pacman upgrade are real host-changing actions,
+   brokered through the optional controlpanel-helper daemon (see
+   core/host_helper_client.py and
+   .claude/plans/host-privileged-helper.plan.md) - this container never
+   gets a privileged path to the host directly, only three fixed verbs
+   through that daemon's Unix socket. */
 import { escapeHtml, postAction, setStatusLine } from "./core.js";
 import { logLine } from "./activity-log.js";
 import { fetchAndRender } from "./result-render.js";
@@ -160,6 +160,53 @@ export function buildHostActions() {
       pruneBtn.disabled = false;
     }
   });
+
+  const hostActionRow = (title, desc, path, idleLabel, statusId, danger) => {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+    row.innerHTML = `
+      <div class="rule-main">
+        <span class="rule-title">${escapeHtml(title)}</span>
+        <span class="rule-desc">${escapeHtml(desc)}</span>
+      </div>
+      <div class="rule-actions"><button class="${danger ? "btn-danger" : "btn-ghost"}" type="button">${escapeHtml(idleLabel)}</button></div>
+      <div class="rule-status" id="${statusId}">—</div>
+    `;
+    wrap.appendChild(row);
+    const btn = row.querySelector("button");
+    const status = row.querySelector(".rule-status");
+    armButton(btn, idleLabel, "Click again to confirm", async () => {
+      btn.disabled = true;
+      setStatusLine(status, "pending", "Running…");
+      logLine("pending", `${title} — requested`);
+      try {
+        const data = await postAction(path, { confirm: true });
+        setStatusLine(status, "success", data.message);
+        logLine("ok", `${title} — ${data.message}`);
+      } catch (e) {
+        setStatusLine(status, "error", e.message);
+        logLine("err", `${title} — ${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  };
+
+  hostActionRow(
+    "Sync package database",
+    "Refreshes pacman's package database only — no packages are installed or changed. Requires the host-side helper daemon (see scripts/host-helper/README.md).",
+    "/api/host/pacman-sync", "Sync", "status-pacman-sync", false,
+  );
+  hostActionRow(
+    "Upgrade packages",
+    "Runs a full host system upgrade (pacman -Syu) — can take a while and may need a reboot afterward. Requires the host-side helper daemon.",
+    "/api/host/pacman-upgrade", "Upgrade", "status-pacman-upgrade", true,
+  );
+  hostActionRow(
+    "Reboot host",
+    "Reboots the physical machine this entire stack runs on — every container, including this panel, goes down and back up. Requires the host-side helper daemon.",
+    "/api/host/reboot", "Reboot", "status-host-reboot", true,
+  );
 }
 
 /* Live resource strip - polls /api/host-resources every 5s and keeps a

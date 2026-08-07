@@ -611,6 +611,17 @@ services:
       # timestamp per Plex ratingKey) so the 48h-per-movie gate survives a
       # container restart/recreate instead of resetting every deploy.
       - ./config/control-panel:/data
+      # Host-privileged-action helper (reboot / pacman sync / pacman
+      # upgrade) - see .claude/plans/host-privileged-helper.plan.md and
+      # scripts/host-helper/README.md. Commented out by default: this
+      # mount only works once the host-side controlpanel-helper daemon is
+      # installed (systemd socket unit owns /run/controlpanel-helper.sock
+      # on the host). Until then /api/host/reboot, /api/host/pacman-sync,
+      # and /api/host/pacman-upgrade return a clear 503, not a crash -
+      # this feature is optional. Uncomment the line below AFTER running
+      # the install steps in the README, then `docker compose up -d
+      # --force-recreate control-panel`.
+      # - /run/controlpanel-helper.sock:/host-helper.sock
     # No prior ceiling despite having docker.sock exec/restart access - a
     # light Flask app, but cheap insurance given its elevated blast radius.
     ports:
