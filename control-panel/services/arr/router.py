@@ -29,6 +29,7 @@ from core.arr_client import (
     BAZARR_URL,
     PROWLARR_CFG,
     QUEUE_ARR_APPS,
+    RADARR_APPS,
     RECENT_IMPORT_LOOKBACK_HOURS,
     arr_command,
     arr_queue,
@@ -257,7 +258,7 @@ def arr_queue_autofix(_=Depends(current_user_or_service)):
     for app_name in QUEUE_ARR_APPS:
         items = arr_queue(app_name)
         failed = [q for q in items if q.get("trackedDownloadState") == "failedPending"]
-        blocked = [q for q in items if app_name == "radarr" and q.get("trackedDownloadState") == "importBlocked"]
+        blocked = [q for q in items if app_name in RADARR_APPS and q.get("trackedDownloadState") == "importBlocked"]
         fixed, errors = blocklist_and_research(app_name, failed + blocked)
         storm_disabled = disable_autoredownload_if_storm(app_name, len(failed), threshold)
         per_app[app_name] = {
@@ -287,7 +288,7 @@ LOOP_MIN_OCCURRENCES = 2
 @router.get("/api/arr/{app_name}/loop-candidates")
 def arr_loop_candidates(app_name: str, hours: float = 6.0, _=Depends(current_user_or_service)):
     cfg = require_queue_app(app_name)
-    id_field = "movieId" if app_name == "radarr" else "episodeId"
+    id_field = "movieId" if app_name in RADARR_APPS else "episodeId"
     try:
         r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/history",
                        params={"eventType": 4, "pageSize": 500, "sortKey": "date", "sortDirection": "descending"},
@@ -377,7 +378,7 @@ def arr_unmonitor(app_name: str, body: UnmonitorRequest, _=Depends(current_user_
     cfg = require_queue_app(app_name)
     if not body.ids:
         fail("No ids given.", status_code=400)
-    if app_name == "radarr":
+    if app_name in RADARR_APPS:
         payload = {"movieIds": body.ids, "monitored": False}
         url = f"{cfg['url']}/api/{cfg['api']}/movie/editor"
     else:
@@ -413,7 +414,7 @@ def arr_manual_import_candidates(app_name: str, _=Depends(current_user_or_servic
                 "path": f.get("path"), "folderName": f.get("folderName"), "quality": f.get("quality"),
                 "languages": f.get("languages"), "releaseGroup": f.get("releaseGroup"), "downloadId": f.get("downloadId"),
             }
-            if app_name == "radarr":
+            if app_name in RADARR_APPS:
                 file_payload["movieId"] = match.get("id") if match else None
             elif app_name == "sonarr":
                 file_payload["seriesId"] = (match or {}).get("id") or (episodes[0]["seriesId"] if episodes else None)
@@ -468,7 +469,7 @@ def arr_manual_import_execute(app_name: str, payload: ManualImportFile, _=Depend
 def arr_manual_import_all(app_name: str, _=Depends(current_user_or_service)):
     # Automation-invoked: stack-cli-arr-fleet skill's manual-import-all command.
     cfg = require_queue_app(app_name)
-    id_field = "movieId" if app_name == "radarr" else "seriesId"
+    id_field = "movieId" if app_name in RADARR_APPS else "seriesId"
     all_files = [c["file"] for c in arr_manual_import_candidates(app_name)]
     files = [f for f in all_files if f.get(id_field) is not None]
     skipped = len(all_files) - len(files)
@@ -506,7 +507,7 @@ def arr_missing_aired(app_name: str, _=Depends(current_user_or_service)):
         fail(f"Unknown app '{app_name}'.", status_code=404)
     cfg = ARR_APPS[app_name]
 
-    if app_name == "radarr":
+    if app_name in RADARR_APPS:
         try:
             r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/movie", headers={"X-Api-Key": cfg["key"]}, timeout=30)
             r.raise_for_status()

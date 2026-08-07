@@ -51,6 +51,13 @@ ARR_APPS = {
 # the sole download client) - Unstick/manual-import work identically on both.
 QUEUE_ARR_APPS = ("radarr", "sonarr", "radarr_anime")
 
+# radarr_anime is a second Radarr instance (movies, movieId), not a Sonarr
+# one - every "app_name == 'radarr'" branch below means "this is a
+# movie-shaped app" and must include it too, or radarr_anime's queue items
+# silently get treated as episodes (wrong id field, wrong search command)
+# and never resolve.
+RADARR_APPS = ("radarr", "radarr_anime")
+
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 PROWLARR_CFG = {"url": "http://prowlarr:9696", "api": "v1", "key": PROWLARR_API_KEY, "label": "Prowlarr"}
 
@@ -133,7 +140,7 @@ def require_queue_app(app_name: str) -> dict:
 def arr_queue(app_name: str) -> list[dict]:
     cfg = ARR_APPS[app_name]
     params = {"pageSize": 250, "includeUnknownMovieItems": "true"}
-    params["includeMovie" if app_name == "radarr" else "includeEpisode"] = "true"
+    params["includeMovie" if app_name in RADARR_APPS else "includeEpisode"] = "true"
     try:
         r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/queue", params=params, headers={"X-Api-Key": cfg["key"]}, timeout=20)
         r.raise_for_status()
@@ -161,7 +168,7 @@ def import_candidate_queue_items(app_name: str) -> list[dict]:
 
 
 def get_movie_or_episode(app_name: str, cfg: dict, target_id: int) -> dict | None:
-    endpoint = "movie" if app_name == "radarr" else "episode"
+    endpoint = "movie" if app_name in RADARR_APPS else "episode"
     try:
         r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/{endpoint}/{target_id}", headers={"X-Api-Key": cfg["key"]}, timeout=20)
         r.raise_for_status()
@@ -175,13 +182,13 @@ def item_is_monitored(app_name: str, q: dict, cfg: dict, id_field: str) -> bool:
     # the queue response's embedded movie/episode object is NOT reliable
     # (confirmed live: can sit null for 8+ seconds straight), so always
     # confirm via a direct lookup by id instead of trusting it blindly.
-    embedded = q.get("movie") if app_name == "radarr" else q.get("episode")
+    embedded = q.get("movie") if app_name in RADARR_APPS else q.get("episode")
     if embedded is not None:
         return bool(embedded.get("monitored", True))
     target_id = q.get(id_field)
     if target_id is None:
         return True
-    endpoint = "movie" if app_name == "radarr" else "episode"
+    endpoint = "movie" if app_name in RADARR_APPS else "episode"
     try:
         r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/{endpoint}/{target_id}", headers={"X-Api-Key": cfg["key"]}, timeout=20)
         r.raise_for_status()
@@ -194,7 +201,7 @@ def blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str],
     cfg = ARR_APPS[app_name]
     fixed, errors = [], []
     search_ids: list[int] = []
-    id_field = "movieId" if app_name == "radarr" else "episodeId"
+    id_field = "movieId" if app_name in RADARR_APPS else "episodeId"
     for q in items:
         title = q.get("title") or str(q["id"])
         monitored = item_is_monitored(app_name, q, cfg, id_field)
@@ -222,8 +229,8 @@ def blocklist_and_research(app_name: str, items: list[dict]) -> tuple[list[str],
         if monitored and target_id is not None:
             search_ids.append(target_id)
     if search_ids:
-        command_name = "MoviesSearch" if app_name == "radarr" else "EpisodeSearch"
-        command_field = "movieIds" if app_name == "radarr" else "episodeIds"
+        command_name = "MoviesSearch" if app_name in RADARR_APPS else "EpisodeSearch"
+        command_field = "movieIds" if app_name in RADARR_APPS else "episodeIds"
         try:
             r = httpx.post(f"{cfg['url']}/api/{cfg['api']}/command", json={"name": command_name, command_field: search_ids},
                             headers={"X-Api-Key": cfg["key"]}, timeout=20)
