@@ -621,7 +621,7 @@ services:
       # this feature is optional. Uncomment the line below AFTER running
       # the install steps in the README, then `docker compose up -d
       # --force-recreate control-panel`.
-      # - /run/controlpanel-helper.sock:/host-helper.sock
+      - /run/controlpanel-helper.sock:/host-helper.sock
     # No prior ceiling despite having docker.sock exec/restart access - a
     # light Flask app, but cheap insurance given its elevated blast radius.
     ports:
