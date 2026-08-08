@@ -1,4 +1,4 @@
-# Usage: stack-letterboxd-radarr-list-random [--no-search] [--no-monitor] [--limit N] [--dry-run]
+# Usage: stack-letterboxd-radarr-list-random [--no-search] [--no-monitor] [--limit N] [--dry-run] [--anime] [--sonarr-anime]
 # Picks one random URL out of ~/.cache/letterboxd_lists.txt (built by
 # scripts/scrape_letterboxd.py off https://letterboxd.com/lists/featured/),
 # removes it from the file so a future run won't repeat it, then runs

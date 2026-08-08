@@ -1,13 +1,13 @@
-# Usage: stack-letterboxd-radarr-track <letterboxd-list-url> [--label TEXT] [--anime] [--sonarr-anime]
-# Registers a Letterboxd list for the nightly diff-only sync
-# (systemd/stack-letterboxd-sync.timer, 04:00 daily). Adding, then never
-# untracking, is how a list stays synced indefinitely - untrack with
-# stack-letterboxd-radarr-untrack when done.
-function stack-letterboxd-radarr-track --description 'Register a Letterboxd list for nightly diff-only sync'
+# Usage: stack-mdblist-radarr-track <mdblist-list-url> [--label TEXT] [--anime] [--sonarr-anime]
+# Registers an MDBList list for the nightly diff-only sync
+# (mirrors stack-letterboxd-radarr-track). Adding, then never untracking,
+# is how a list stays synced indefinitely - untrack with
+# stack-mdblist-radarr-untrack when done.
+function stack-mdblist-radarr-track --description 'Register an MDBList list for nightly diff-only sync'
     argparse 'label=' 'anime' 'sonarr-anime' -- $argv
     or return 1
     if test (count $argv) -ne 1
-        echo "Usage: stack-letterboxd-radarr-track <letterboxd-list-url> [--label TEXT] [--anime] [--sonarr-anime]" >&2
+        echo "Usage: stack-mdblist-radarr-track <mdblist-list-url> [--label TEXT] [--anime] [--sonarr-anime]" >&2
         return 1
     end
     set -l url $argv[1]
@@ -25,5 +25,5 @@ if label:
     payload['label'] = label
 print(json.dumps(payload))
 " "$url" "$label" "$app" "$sonarr_app")
-    __stack_api POST "/api/arr/letterboxd/track" "$body"
+    __stack_api POST "/api/mdblist/track" "$body"
 end
