@@ -14,6 +14,8 @@ from pydantic import BaseModel
 
 from core.arr_client import (
     ARR_APPS,
+    RADARR_APPS,
+    SONARR_APPS,
     radarr_add_movie,
     radarr_ensure_tags,
     radarr_quality_profile_id_by_name,
@@ -45,8 +47,21 @@ router = APIRouter(tags=["letterboxd"])
 SERVICE_META = {"label": "Letterboxd", "health_check": None}
 
 
+def _radarr_cfg(app: str) -> dict:
+    if app not in RADARR_APPS:
+        fail(f"Unknown Radarr app '{app}' - expected one of {list(RADARR_APPS)}.", status_code=400)
+    return ARR_APPS[app]
+
+
+def _sonarr_cfg(app: str) -> dict:
+    if app not in SONARR_APPS:
+        fail(f"Unknown Sonarr app '{app}' - expected one of {list(SONARR_APPS)}.", status_code=400)
+    return ARR_APPS[app]
+
+
 class LetterboxdAddRequest(BaseModel):
     url: str
+    app: str = "radarr"
     monitored: bool = True
     search: bool = True
     root_folder: str | None = None
@@ -59,7 +74,7 @@ class LetterboxdAddRequest(BaseModel):
 # calls this unattended via __stack_api's service key (2026-08-06, carried
 # over unchanged from services/radarr/router.py).
 def radarr_add_from_letterboxd(payload: LetterboxdAddRequest, _=Depends(current_user_or_service)):
-    cfg = ARR_APPS["radarr"]
+    cfg = _radarr_cfg(payload.app)
     url = payload.url.strip()
     if "letterboxd.com/film/" not in url:
         fail("Not a Letterboxd film URL - expected something like https://letterboxd.com/film/<slug>/.", status_code=400)
@@ -115,6 +130,7 @@ def radarr_add_from_letterboxd(payload: LetterboxdAddRequest, _=Depends(current_
 
 class LetterboxdListAddRequest(BaseModel):
     url: str
+    app: str = "radarr"
     monitored: bool = True
     search: bool = True
     root_folder: str | None = None
@@ -124,12 +140,14 @@ class LetterboxdListAddRequest(BaseModel):
     rating_quality_map: dict[str, str] | None = None
     tags_as_radarr_tags: bool = False
     sonarr_crossover: bool = False
+    sonarr_app: str = "sonarr"
 
 
-def _run_list_sync(url: str, *, monitored: bool = True, search: bool = True, root_folder: str | None = None,
-                    quality_profile: str | None = None, limit: int | None = None, dry_run: bool = False,
-                    rating_quality_map: dict[str, str] | None = None, tags_as_radarr_tags: bool = False,
-                    sonarr_crossover: bool = False) -> dict:
+def _run_list_sync(url: str, *, app: str = "radarr", monitored: bool = True, search: bool = True,
+                    root_folder: str | None = None, quality_profile: str | None = None, limit: int | None = None,
+                    dry_run: bool = False, rating_quality_map: dict[str, str] | None = None,
+                    tags_as_radarr_tags: bool = False, sonarr_crossover: bool = False,
+                    sonarr_app: str = "sonarr") -> dict:
     """The add-from-letterboxd-list flow, callable from both that HTTP
     route and sync-tick (Task 8's tracked-list scheduler) - both need the
     identical scrape/resolve/add logic, just with the request payload's
@@ -138,7 +156,7 @@ def _run_list_sync(url: str, *, monitored: bool = True, search: bool = True, roo
     envelope) so callers can build their own summary/telemetry from it -
     added, already, failed, unmatched, tvAdded, tvAlready, tvFailed,
     matched."""
-    cfg = ARR_APPS["radarr"]
+    cfg = _radarr_cfg(app)
     base_url = url.strip().rstrip("/")
     if LETTERBOXD_DISALLOWED_RE.search(base_url + "/"):
         fail(
@@ -197,7 +215,7 @@ def _run_list_sync(url: str, *, monitored: bool = True, search: bool = True, roo
 
     tv_added, tv_already, tv_failed = [], [], []
     if sonarr_crossover and unmatched:
-        sonarr_cfg = ARR_APPS["sonarr"]
+        sonarr_cfg = _sonarr_cfg(sonarr_app)
         db = SessionLocal()
         try:
             tv_matches, unmatched = resolve_tv_crossovers(db, unmatched)
@@ -308,10 +326,11 @@ def _run_list_sync(url: str, *, monitored: bool = True, search: bool = True, roo
 # over unchanged from services/radarr/router.py).
 def radarr_add_from_letterboxd_list(payload: LetterboxdListAddRequest, _=Depends(current_user_or_service)):
     result = _run_list_sync(
-        payload.url, monitored=payload.monitored, search=payload.search, root_folder=payload.root_folder,
-        quality_profile=payload.quality_profile, limit=payload.limit, dry_run=payload.dry_run,
-        rating_quality_map=payload.rating_quality_map, tags_as_radarr_tags=payload.tags_as_radarr_tags,
-        sonarr_crossover=payload.sonarr_crossover,
+        payload.url, app=payload.app, monitored=payload.monitored, search=payload.search,
+        root_folder=payload.root_folder, quality_profile=payload.quality_profile, limit=payload.limit,
+        dry_run=payload.dry_run, rating_quality_map=payload.rating_quality_map,
+        tags_as_radarr_tags=payload.tags_as_radarr_tags, sonarr_crossover=payload.sonarr_crossover,
+        sonarr_app=payload.sonarr_app,
     )
     db = SessionLocal()
     try:
@@ -348,23 +367,28 @@ def letterboxd_history(_=Depends(current_user_or_service)):
 
 class TrackRequest(BaseModel):
     url: str
+    app: str = "radarr"
     label: str | None = None
     root_folder: str | None = None
     quality_profile: str | None = None
     rating_quality_map: dict[str, str] | None = None
     tags_as_radarr_tags: bool = False
+    sonarr_app: str = "sonarr"
 
 
 @router.post("/api/arr/letterboxd/track")
 def letterboxd_track(payload: TrackRequest, _=Depends(current_user)):
+    _radarr_cfg(payload.app)
+    _sonarr_cfg(payload.sonarr_app)
     db = SessionLocal()
     try:
         existing = db.query(LetterboxdTrackedList).filter_by(url=payload.url).first()
         if existing is not None:
             fail(f"'{payload.url}' is already tracked (id {existing.id}).", status_code=409)
         row = LetterboxdTrackedList(
-            url=payload.url, label=payload.label, root_folder=payload.root_folder,
+            url=payload.url, app=payload.app, label=payload.label, root_folder=payload.root_folder,
             quality_profile=payload.quality_profile, tags_as_radarr_tags=payload.tags_as_radarr_tags,
+            sonarr_app=payload.sonarr_app,
             rating_quality_map_json=_json.dumps(payload.rating_quality_map) if payload.rating_quality_map else None,
         )
         db.add(row)
@@ -399,7 +423,8 @@ def letterboxd_tracked(_=Depends(current_user_or_service)):
     try:
         rows = db.query(LetterboxdTrackedList).order_by(LetterboxdTrackedList.created_at).all()
         lists = [
-            {"id": r.id, "url": r.url, "label": r.label, "lastSyncedAt": r.last_synced_at.isoformat() if r.last_synced_at else None}
+            {"id": r.id, "url": r.url, "app": r.app, "sonarrApp": r.sonarr_app, "label": r.label,
+             "lastSyncedAt": r.last_synced_at.isoformat() if r.last_synced_at else None}
             for r in rows
         ]
         return ok(f"{len(lists)} tracked list(s).", lists=lists)
@@ -421,8 +446,9 @@ def letterboxd_sync_tick(_=Depends(current_user_or_service)):
             rating_quality_map = _json.loads(row.rating_quality_map_json) if row.rating_quality_map_json else None
             try:
                 result = _run_list_sync(
-                    row.url, root_folder=row.root_folder, quality_profile=row.quality_profile,
+                    row.url, app=row.app, root_folder=row.root_folder, quality_profile=row.quality_profile,
                     rating_quality_map=rating_quality_map, tags_as_radarr_tags=row.tags_as_radarr_tags,
+                    sonarr_crossover=False, sonarr_app=row.sonarr_app,
                 )
                 record_sync_log(
                     db, row.url, matched=result["matched"], unmatched=len(result["unmatched"]),

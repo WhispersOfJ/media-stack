@@ -66,6 +66,10 @@ QUEUE_ARR_APPS = ("radarr", "sonarr", "radarr_anime", "sonarr_anime")
 # and never resolve.
 RADARR_APPS = ("radarr", "radarr_anime")
 
+# Sonarr counterpart to RADARR_APPS above - used by Letterboxd's sonarr_crossover
+# and MDBList's TV-side import to pick which Sonarr instance to target.
+SONARR_APPS = ("sonarr", "sonarr_anime")
+
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 PROWLARR_CFG = {"url": "http://prowlarr:9696", "api": "v1", "key": PROWLARR_API_KEY, "label": "Prowlarr"}
 
