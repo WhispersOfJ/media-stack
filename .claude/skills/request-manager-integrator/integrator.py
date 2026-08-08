@@ -16,13 +16,21 @@ import urllib.error
 import urllib.request
 
 ARR_APPS = {
-    "radarr": {"port": 7878, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr"},
-    "sonarr": {"port": 8989, "api": "v3", "seerr_kind": "sonarr", "hostname": "sonarr"},
+    # "port" is the docker-internal port (what Seerr's payload uses to reach the
+    # app over the compose network - same for every app here, since they each
+    # listen on their own internal port regardless of host mapping). "host_port"
+    # is only the host-fallback default this script's own direct API calls use
+    # (RADARR_ANIME_URL etc, when unset) - it differs from "port" wherever the
+    # host-published port differs from the container-internal one.
+    "radarr": {"port": 7878, "host_port": 7878, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr"},
+    "sonarr": {"port": 8989, "host_port": 8989, "api": "v3", "seerr_kind": "sonarr", "hostname": "sonarr"},
     # hostname differs from the dict key (Docker's real container/service name
     # uses a hyphen; this dict's key uses an underscore to stay a valid CLI
     # arg / Python identifier) - confirmed live: "radarr_anime" doesn't
-    # resolve on stacknet, only "radarr-anime" does.
-    "radarr_anime": {"port": 7878, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr-anime"},
+    # resolve on stacknet, only "radarr-anime" does. host_port (7879) differs
+    # from port (7878) because docker-compose.yml maps 7879:7878 for this app -
+    # unlike this dict's other two entries, whose host and container ports match.
+    "radarr_anime": {"port": 7878, "host_port": 7879, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr-anime"},
 }
 
 
@@ -62,7 +70,7 @@ def arr_api(app_name: str) -> Api:
         raise ValueError(f"unknown app '{app_name}', expected one of {list(ARR_APPS)}")
     meta = ARR_APPS[app_name]
     env_prefix = app_name.upper()
-    base = os.environ.get(f"{env_prefix}_URL", f"http://localhost:{meta['port']}")
+    base = os.environ.get(f"{env_prefix}_URL", f"http://localhost:{meta['host_port']}")
     key = os.environ.get(f"{env_prefix}_API_KEY")
     if not key:
         raise RuntimeError(f"{env_prefix}_API_KEY is not set in the environment")
@@ -125,16 +133,29 @@ def cmd_connect(app_name: str, root: str, profile_name: str, label: str | None, 
         "is4k": False,
         "isDefault": not existing,
         "tags": [],
+        # Seerr's route handlers do zero server-side defaulting (confirmed against
+        # seerr's own settings/radarr.js and sonarr.js - req.body is stored as-is) -
+        # any field omitted here is simply absent from stored config, not defaulted
+        # to False. syncEnabled absent means availabilitySync.js/downloadtracker.js
+        # filter this connection out entirely: requests still get sent to the Arr
+        # app, but Seerr never learns the item became available and never tracks
+        # download progress. Confirmed live: an existing connection created by an
+        # earlier version of this script without these fields was silently broken
+        # exactly this way.
+        "syncEnabled": True,
+        "preventSearch": False,
+        "tagRequests": False,
     }
     # Seerr's schema diverges here: Radarr connections require
-    # minimumAvailability, Sonarr connections require enableSeasonFolders
-    # instead - confirmed live against each app's own existing connection.
-    # Keyed off seerr_kind, not app_name, since radarr_anime is also a
+    # minimumAvailability, Sonarr connections require enableSeasonFolders and
+    # monitorNewItems instead - confirmed live against each app's own existing
+    # connection. Keyed off seerr_kind, not app_name, since radarr_anime is also a
     # "radarr" connection as far as Seerr's schema is concerned.
     if meta["seerr_kind"] == "radarr":
         payload["minimumAvailability"] = "released"
     elif meta["seerr_kind"] == "sonarr":
         payload["enableSeasonFolders"] = True
+        payload["monitorNewItems"] = "all"
 
     if match:
         # id is read-only on Seerr's PUT - confirmed live, a 400 if present in the body at all,

@@ -6,13 +6,13 @@ description: Exact fish CLI command reference for Plex operations against this s
 # Stack CLI: Plex
 
 <skill_scope skill="stack-cli-plex-kometa">
-This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every Plex terminal command in this stack is already known, without reading `~/.config/fish/functions/stack-plex*.fish` fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/app.py`. Kometa and Tautulli were removed entirely from this stack - their commands (`stack-kometa-run`, `stack-tautulli-history`, `stack-tautulli-stats`) no longer exist.
+This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every Plex terminal command in this stack is already known, without reading `~/.config/fish/functions/stack-plex*.fish` fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/main.py` plus the relevant `control-panel/services/<name>/router.py` (`services/plex/router.py` for the commands below). Kometa and Tautulli are both deployed and live in this stack - see the `stack-cli-usenet-queue`/other skills or `services/kometa/router.py` and `services/tautulli/router.py` for their commands; they were never removed.
 </skill_scope>
 
 ## Calling convention
 
 <calling_convention>
-Most commands here `curl` their endpoint directly and pipe through an inline `python3 -c "..."` formatter that unwraps FastAPI's `{"detail": {...}}` shape if present, then prints `data['message']` followed by any list items. A few bare ones (`stack-plex-libraries`) go through the `__stack_api` helper instead and just print the raw `message`.
+Most commands here `curl` their endpoint directly and pipe through an inline `python3 -c "..."` formatter that unwraps FastAPI's `{"detail": {...}}` shape if present, then prints `data['message']` followed by any list items. A few bare ones (`stack-plex-libraries`) go through the `__stack_api` helper instead; for `/api/plex/libraries` specifically the response has no `message` key (it's a bare JSON array of `{key, title}` objects), so `__stack_api`'s fallback prints the full indented JSON array rather than a message string.
 
 None of these read a `STACK_HOST_IP` environment variable - the Control Panel URL is a literal hardcoded string in every function.
 
@@ -27,13 +27,13 @@ Every `stack-plex-<butler-task-name>` command (`stack-plex-clean-cache-files`, `
 | `stack-plex` | `<scan\|empty-trash\|optimize-db\|clean-bundles>` | One Plex maintenance action: `scan` refreshes every library section for new files, `empty-trash` permanently removes already-deleted items, `optimize-db` runs Plex's own DB optimization, `clean-bundles` removes metadata bundles Plex no longer needs. |
 | `stack-plex-libraries` | none | Lists Plex library names - the input `stack-plex-empty-trash` takes. |
 | `stack-plex-updates` | none | Checks whether Plex has a newer release on its current channel. Check only - this stack pins Plex's image deliberately and never auto-applies an update. |
-| `stack-plex-empty-trash` | `[library name ...]` (none = every library) | Empty trash scoped to one or more named libraries (case-insensitive match against the Plex title, e.g. `"TV Shows"`) instead of everything. |
+| `stack-plex-empty-trash` | `[library name]` (none = every library) | Empty trash scoped to one named library (case-insensitive match against the Plex title; quote multi-word titles, e.g. `"TV Shows"` - all args are joined into a single library name, not iterated as separate targets) instead of everything. |
 | `stack-plex-duplicates` | `[min_gb]` (default 5.0) | Flags movies whose combined file size looks like more than one real release stacked up (well beyond a single legitimate multi-version upgrade). Real incident: found ~700GB of redundant duplicate releases in one session this way. |
 | `stack-plex-sessions` | none | Who's watching what right now - user, title, direct-play vs. transcode decision, progress, per session. |
 | `stack-plex-recently-added` | `[limit]` (default 15) | What actually finished importing and became visible in Plex. Distinct from `stack-recently-added` (see the `stack-cli-arr-fleet` skill), which shows what was added *to Radarr/Sonarr's management*, not necessarily downloaded or visible yet. |
 | `stack-tmdb-missing` | none | Scans every movie/show library for items with no TMDb link (neither the new nor legacy Plex agent's Guid) and writes them to `~/missing.txt`. Overwrites on every run - a rescan tool, not an appending log. |
 | `stack-plex-butler` | `<task>` | Fires any named Plex Butler task; run with no args or an unknown task to print the full accepted-task list (kept only in `control-panel/app.py`'s `PLEX_BUTLER_TASKS`, not duplicated here, so it can't drift). `optimize-db`/`clean-bundles` are NOT in this list - they're `stack-plex` subcommands instead. |
-| `stack-plex-analyze` | `[library name ...]` (none = every library) | Queues Plex's per-item deep analysis (loudness, chapter thumbs, intro/credits/ad markers, voice activity) scoped to one or more named libraries via `PUT /library/sections/{key}/analyze`. Narrower than the Butler `deep-media-analysis` task below - use this to re-analyze just the library whose settings changed. |
+| `stack-plex-analyze` | `[library name]` (none = every library) | Queues Plex's per-item deep analysis (loudness, chapter thumbs, intro/credits/ad markers, voice activity) scoped to one named library (quote multi-word titles) via `PUT /library/sections/{key}/analyze`. Narrower than the Butler `deep-media-analysis` task below - use this to re-analyze just the library whose settings changed. |
 | `stack-plex-deep-media-analysis` | none | Butler task `DeepMediaAnalysis` - runs full deep analysis (loudness, chapter thumbs, markers, voice activity) server-wide in one Plex-side pass. Not a fish-level composite that calls the individual `generate-*`/`loudness-analysis` commands below one by one - it's a single Butler task Plex itself bundles those into. |
 | `stack-plex-upgrade-media-analysis` | none | Butler task `UpgradeMediaAnalysis` - re-runs analysis server-wide for items whose analysis version is outdated. Same relationship to the individual tasks as `deep-media-analysis` above: one bundled Plex-side task, not a fish loop over the others. |
 | `stack-plex-loudness-analysis` | none | Butler task: analyze audio loudness for volume leveling. |
@@ -77,5 +77,5 @@ Every `stack-plex-<butler-task-name>` command (`stack-plex-clean-cache-files`, `
 <resources>
 **Local:**
 - `~/.config/fish/functions/stack-plex*.fish`, `stack-tmdb-missing.fish` - the actual fish source these commands wrap (the `stack-plex*` glob already covers every Butler-task, analysis, and import-list wrapper added above - no per-file listing needed)
-- `control-panel/app.py` in this repo - the real behavior behind every endpoint these commands call
+- `control-panel/main.py` + `services/plex/router.py` in this repo - the real behavior behind every endpoint these commands call
 </resources>

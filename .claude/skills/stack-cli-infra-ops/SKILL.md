@@ -6,7 +6,7 @@ description: Exact fish CLI command reference for container control, backups, an
 # Stack CLI: Infra & Ops
 
 <skill_scope skill="stack-cli-infra-ops">
-This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every container-control/backup/diagnostic terminal command in this stack is already known, without reading the fish source fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/app.py`.
+This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every container-control/backup/diagnostic terminal command in this stack is already known, without reading the fish source fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/main.py` plus `services/host/router.py` and `services/backups/router.py` (`app.py` is retired dead code, not the live source).
 
 **Related skills:**
 - `docker-compose-manager` operates one layer lower - it runs `docker compose` directly on the host with FUSE-mount cascade awareness (restarting `nzbdav_rclone`'s dependents in the right order). `stack-container`/`stack-restart-all` below go through Control Panel's own HTTP API instead, which has its own (separately maintained) mount-ordering logic for the whole-stack restart specifically, but no cascade awareness for a single-container restart. Prefer `docker-compose-manager` when a FUSE-mount-owning container needs restarting; either works for a plain application container.
@@ -30,7 +30,7 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 |---|---|---|
 | `stack-status` | none | Live state/health of every container in the stack. |
 | `stack-container` | `<restart\|stop\|start> <container-name>` | Controls one container by name. No confirmation prompt - unlike `stack-restart-all`, a single-container action isn't gated. |
-| `stack-restart-all` | `[-y\|--yes]` | Restarts every container in the stack (13). Prompts for confirmation unless `-y`/`--yes` is given, mirroring the arm/confirm double-click the web UI uses for the same "danger zone" action. |
+| `stack-restart-all` | `[-y\|--yes]` | Restarts every container in the stack (~20 services; the exact running count drifts - `kometa` in particular exits after each scheduled run rather than staying up, see `/api/version`'s "N/M containers running" for the live figure). Prompts for confirmation unless `-y`/`--yes` is given, mirroring the arm/confirm double-click the web UI uses for the same "danger zone" action. |
 | `stack-resource-check` | none | Containers missing an explicit `mem_limit`/`cpus` in `docker-compose.yml` - these silently inherit the full host ceiling instead of a real number. |
 | `stack-log-levels` | `[reset]` (no arg = check) | Checks, or resets to default, every Servarr app's log level. |
 | `stack-mount-health` | none | Confirms every known FUSE mountpoint (currently just `nzbdav_rclone`'s) resolves cleanly. |
@@ -71,6 +71,6 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 <resources>
 **Local:**
 - `~/.config/fish/functions/stack-status.fish`, `stack-container.fish`, `stack-restart-all.fish`, `stack-resource-check.fish`, `stack-log-levels.fish`, `stack-mount-health.fish`, `stack-oom-check.fish`, `stack-perms-check.fish`, `stack-image-check.fish`, `stack-disk-usage.fish`, `stack-disk-free.fish`, `stack-docker-disk-usage.fish`, `stack-version.fish`, `stack-backup-*.fish`, `stack-claude-full-backup.fish`, `stack-notify-test.fish`, `stack-top.fish`, `stack-seerr-requests.fish` - the actual fish source these commands wrap
-- `control-panel/app.py` in this repo - the real behavior behind every Control-Panel-backed endpoint these commands call (does not cover `stack-claude-full-backup`, `stack-disk-free`, `stack-docker-disk-usage` - those run local tools directly, see calling_convention)
+- `control-panel/main.py` + `services/host/router.py`, `services/backups/router.py` in this repo - the real behavior behind every Control-Panel-backed endpoint these commands call (does not cover `stack-claude-full-backup`, `stack-disk-free`, `stack-docker-disk-usage` - those run local tools directly, see calling_convention)
 - `scripts/backup-claude-dir.sh` in this repo - the separate, systemd-scheduled, overwrite-in-place tarball script `stack-claude-full-backup` is often confused with; read this file's own comments to see why it's not the same thing
 </resources>

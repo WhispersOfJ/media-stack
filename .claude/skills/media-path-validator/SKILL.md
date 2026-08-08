@@ -12,6 +12,15 @@ sharing the same device ID. This is the single most common Arr-stack misconfigur
 and it's invisible until an import happens (Radarr/Sonarr silently fall back to copy+delete,
 which works but is slow and doubles disk I/O during import).
 
+**Not applicable to this stack's nzbdav path.** `/mnt/remote/nzbdav` (the download source)
+is a remote FUSE mount and `/data/movies`/`/data/shows`/`/data/anime-movies` (the libraries)
+are local bind mounts — confirmed live via `stat`, they permanently report different device
+IDs (`st_dev`). That's why this stack's import is symlink-based, not hardlink-based, by
+design. Running this check against nzbdav-vs-library will *always* report
+`same_filesystem: false` — that's expected, not a misconfiguration. This check is only
+meaningful for comparing two **local** bind-mounted paths against each other (e.g. two
+library root folders that should share a disk), not nzbdav's output against a library.
+
 ## What it checks
 
 1. **Existence** — does the path exist inside the container/host as configured?
@@ -24,18 +33,18 @@ which works but is slow and doubles disk I/O during import).
 ## Usage
 
 ```bash
-python3 validator.py check /downloads/complete /media/movies      # pairwise hardlink check
-python3 validator.py check-all --config paths.json                # check every pair from a config file
-python3 validator.py writable /media/tv
-python3 validator.py exists /downloads/complete /media/movies /media/shows
+python3 validator.py check /data/movies /data/shows                # pairwise same-filesystem check
+python3 validator.py check-all --config paths.json                 # check every pair from a config file
+python3 validator.py writable /data/shows
+python3 validator.py exists /mnt/remote/nzbdav /data/movies /data/shows
 ```
 
-`paths.json` format:
+`paths.json` format (see the note above — pair local library roots against each other,
+not against `/mnt/remote/nzbdav`):
 ```json
 {
   "pairs": [
-    {"download": "/downloads/complete", "library": "/media/movies", "label": "radarr"},
-    {"download": "/downloads/complete", "library": "/media/tv", "label": "sonarr"}
+    {"download": "/data/movies", "library": "/data/anime-movies", "label": "radarr-vs-radarr_anime"}
   ]
 }
 ```

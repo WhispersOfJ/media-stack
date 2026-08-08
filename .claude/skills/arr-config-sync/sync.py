@@ -23,10 +23,13 @@ APPS = {
     "radarr": {"port": 7878, "api": "v3"},
     "sonarr": {"port": 8989, "api": "v3"},
     "prowlarr": {"port": 9696, "api": "v1"},
-    "radarr_anime": {"port": 7878, "api": "v3"},
+    "radarr_anime": {"port": 7879, "api": "v3"},
 }
 
 SECTIONS = ["rootfolder", "downloadclient", "indexer", "notification", "qualityprofile"]
+
+# rootfolder objects have no "name" field (Radarr/Sonarr API) - key on "path" instead.
+SECTION_KEY = {"rootfolder": "path"}
 
 
 class AppConfig:
@@ -103,14 +106,15 @@ def cmd_diff(app_name: str, backup_file: Path) -> None:
         except RuntimeError as e:
             print(f"[{section}] could not fetch current state: {e}")
             continue
-        old_by_name = _index_by_key(old_items, "name")
-        new_by_name = _index_by_key(new_items, "name")
-        added = set(new_by_name) - set(old_by_name)
-        removed = set(old_by_name) - set(new_by_name)
+        key = SECTION_KEY.get(section, "name")
+        old_by_key = _index_by_key(old_items, key)
+        new_by_key = _index_by_key(new_items, key)
+        added = set(new_by_key) - set(old_by_key)
+        removed = set(old_by_key) - set(new_by_key)
         if added or removed:
             print(f"[{section}] added: {sorted(added)} removed: {sorted(removed)}")
         else:
-            print(f"[{section}] no name-level changes")
+            print(f"[{section}] no {key}-level changes")
 
 
 def cmd_restore(app_name: str, backup_file: Path, section: str, apply: bool) -> None:
@@ -122,23 +126,24 @@ def cmd_restore(app_name: str, backup_file: Path, section: str, apply: bool) -> 
     if not isinstance(backed_up_items, list):
         print(f"nothing to restore for section '{section}'")
         return
+    key = SECTION_KEY.get(section, "name")
     current_items = app.request("GET", f"/{section}") or []
-    current_by_name = _index_by_key(current_items, "name")
+    current_by_key = _index_by_key(current_items, key)
 
     to_create, to_update = [], []
     for item in backed_up_items:
-        name = item.get("name")
-        if name in current_by_name:
-            if item != current_by_name[name]:
-                to_update.append((current_by_name[name]["id"], item))
+        item_key = item.get(key)
+        if item_key in current_by_key:
+            if item != current_by_key[item_key]:
+                to_update.append((current_by_key[item_key]["id"], item))
         else:
             to_create.append(item)
 
     print(f"[{section}] would create {len(to_create)}, update {len(to_update)}")
     for item in to_create:
-        print(f"  + create: {item.get('name')}")
+        print(f"  + create: {item.get(key)}")
     for item_id, item in to_update:
-        print(f"  ~ update id={item_id}: {item.get('name')}")
+        print(f"  ~ update id={item_id}: {item.get(key)}")
 
     if not apply:
         print("(dry run — pass --apply to actually write these changes)")

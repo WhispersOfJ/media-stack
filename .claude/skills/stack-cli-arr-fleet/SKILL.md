@@ -6,7 +6,7 @@ description: Exact fish CLI command reference for Radarr/Sonarr operations again
 # Stack CLI: Arr Fleet
 
 <skill_scope skill="stack-cli-arr-fleet">
-This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every Radarr/Sonarr terminal command in this stack is already known, without reading `~/.config/fish/functions/stack-arr*.fish` fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`) - the wrapper adds argument validation and human-readable formatting, nothing more; the actual behavior lives in `control-panel/app.py`.
+This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every Radarr/Sonarr terminal command in this stack is already known, without reading `~/.config/fish/functions/stack-arr*.fish` fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`) - the wrapper adds argument validation and human-readable formatting, nothing more; the actual behavior lives in `control-panel/main.py` plus `control-panel/services/arr/router.py`, `services/bazarr/router.py`, and `services/queue/router.py` (`app.py` is retired dead code, not the live source).
 
 **Related skills:** `arr-config-sync` operates at a different layer - it backs up/restores/diffs Radarr/Sonarr *configuration* (root folders, quality profiles, indexers) via their REST APIs directly, not runtime queue/backlog state, and doesn't go through Control Panel or these fish commands at all. Reach for that skill when the question is about config, this one when it's about what's currently happening in the queue/backlog.
 
@@ -74,5 +74,5 @@ None of these commands take a `--host` flag or read a `STACK_HOST_IP` environmen
 <resources>
 **Local:**
 - `~/.config/fish/functions/stack-arr*.fish`, `stack-cutoff-unmet.fish`, `stack-import-lists.fish`, `stack-customformat-diff.fish`, `stack-recently-added.fish`, `stack-command-queue-summary.fish`, `stack-queue-status.fish`, `stack-backlog-status.fish`, `stack-bazarr-*.fish` - the actual fish source these commands wrap
-- `control-panel/app.py` in this repo - the real behavior behind every endpoint these commands call
+- `control-panel/main.py` + `services/arr/router.py`, `services/bazarr/router.py`, `services/queue/router.py` in this repo - the real behavior behind every endpoint these commands call
 </resources>

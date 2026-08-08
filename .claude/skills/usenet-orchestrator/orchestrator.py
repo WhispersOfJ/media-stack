@@ -106,7 +106,10 @@ class Client:
             if not item_id:
                 continue
             if self.kind == "sabnzbd":
-                self._get(self.path, {"mode": "queue", "name": "delete", "value": item_id, "output": "json"})
+                # Failed items live in history (see failed() above), not the active
+                # queue - mode=queue&name=delete only acts on queue items and
+                # silently no-ops against a history-only id.
+                self._get(self.path, {"mode": "history", "name": "delete", "value": item_id, "output": "json"})
             else:
                 self._get(f"/api/v1/queue/{item_id}/delete")
             count += 1

@@ -19,7 +19,11 @@ from pathlib import Path
 APPS = {
     "radarr": {"port": 7878, "api": "v3"},
     "sonarr": {"port": 8989, "api": "v3"},
-    "radarr_anime": {"port": 7878, "api": "v3"},
+    # Host-published port (docker-compose.yml maps 7879:7878) - this is only ever
+    # used as this script's own host-fallback default when RADARR_ANIME_URL is
+    # unset, never sent anywhere else, so unlike request-manager-integrator's
+    # ARR_APPS this needs no separate docker-internal port field.
+    "radarr_anime": {"port": 7879, "api": "v3"},
 }
 
 
@@ -141,13 +145,20 @@ def cmd_apply(app_name: str, profiles_file: Path) -> None:
             "name": cf["name"],
             "specifications": cf.get("specifications", []),
         }
-        if cf["name"] in live_formats:
-            payload["id"] = live_formats[cf["name"]]["id"]
-            app.request("PUT", f"/customformat/{payload['id']}", payload)
-            print(f"updated custom format: {cf['name']}")
-        else:
-            app.request("POST", "/customformat", payload)
-            print(f"created custom format: {cf['name']}")
+        try:
+            if cf["name"] in live_formats:
+                payload["id"] = live_formats[cf["name"]]["id"]
+                app.request("PUT", f"/customformat/{payload['id']}", payload)
+                print(f"updated custom format: {cf['name']}")
+            else:
+                app.request("POST", "/customformat", payload)
+                print(f"created custom format: {cf['name']}")
+        except RuntimeError as e:
+            # One malformed entry must not abort every other format/profile in
+            # the same run - confirmed live: an uncaught error here previously
+            # killed the whole `apply` before it ever reached the quality-profile
+            # loop below, silently skipping everything after the first bad entry.
+            print(f"could not apply custom format {cf['name']}: {e}", file=sys.stderr)
 
     live_profiles = {p["name"]: p for p in (app.request("GET", "/qualityprofile") or [])}
     for qp in local.get("quality_profiles", []):
