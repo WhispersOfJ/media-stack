@@ -20,6 +20,7 @@ CONTAINER_LABELS = {
     # the two dicts key the same instance differently on purpose.
     "radarr-anime": ("Radarr (Anime)", "dedicated Radarr instance for anime movies, Usenet-only"),
     "sonarr": ("Sonarr", None),
+    "sonarr-anime": ("Sonarr (Anime)", "dedicated Sonarr instance for anime shows, Usenet-only"),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
     "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),

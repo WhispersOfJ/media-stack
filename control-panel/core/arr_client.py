@@ -45,11 +45,19 @@ ARR_APPS = {
         "label": "Radarr (Anime)",
         "import_events": ("downloadFolderImported",),
     },
+    "sonarr_anime": {
+        "url": "http://sonarr-anime:8989",
+        "api": "v3",
+        "key": os.environ["SONARR_ANIME_API_KEY"],
+        "search_command": "MissingEpisodeSearch",
+        "label": "Sonarr (Anime)",
+        "import_events": ("downloadFolderImported",),
+    },
 }
 
 # Radarr and Sonarr both have a real download queue (NzbDAV wired to each as
 # the sole download client) - Unstick/manual-import work identically on both.
-QUEUE_ARR_APPS = ("radarr", "sonarr", "radarr_anime")
+QUEUE_ARR_APPS = ("radarr", "sonarr", "radarr_anime", "sonarr_anime")
 
 # radarr_anime is a second Radarr instance (movies, movieId), not a Sonarr
 # one - every "app_name == 'radarr'" branch below means "this is a

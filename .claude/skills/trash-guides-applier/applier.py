@@ -24,6 +24,7 @@ APPS = {
     # unset, never sent anywhere else, so unlike request-manager-integrator's
     # ARR_APPS this needs no separate docker-internal port field.
     "radarr_anime": {"port": 7879, "api": "v3"},
+    "sonarr_anime": {"port": 8990, "api": "v3"},
 }
 
 

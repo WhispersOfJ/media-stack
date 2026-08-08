@@ -24,6 +24,7 @@ APPS = {
     "sonarr": {"port": 8989, "api": "v3"},
     "prowlarr": {"port": 9696, "api": "v1"},
     "radarr_anime": {"port": 7879, "api": "v3"},
+    "sonarr_anime": {"port": 8990, "api": "v3"},
 }
 
 SECTIONS = ["rootfolder", "downloadclient", "indexer", "notification", "qualityprofile"]

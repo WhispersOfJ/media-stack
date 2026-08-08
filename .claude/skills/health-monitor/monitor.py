@@ -27,6 +27,7 @@ HTTP_SERVICES = {
     "control-panel": (8420, "/healthz"),
     "plex": (32400, "/identity"),
     "radarr-anime": (7879, "/ping"),
+    "sonarr-anime": (8990, "/ping"),
     "bazarr": (6767, "/"),
     "tautulli": (8182, "/"),
     "wrapperr": (8283, "/"),

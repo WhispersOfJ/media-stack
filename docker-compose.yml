@@ -124,6 +124,27 @@ services:
     mem_reservation: 256m
     cpus: 2
 
+  sonarr-anime:
+    <<: *common
+    image: ghcr.io/hotio/sonarr:release
+    container_name: sonarr-anime
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8989/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/sonarr-anime:/config
+      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
+      - ./media/anime-shows:/data/anime-shows
+    ports:
+      - "8990:8989"
+    mem_limit: 2g
+    mem_reservation: 256m
+    cpus: 2
+
   # ---------------------------------------------------------------------
   # Usenet - streaming, no local disk. Replaced BearMount entirely,
   # 2026-07-28 (full cutover to nzbdav/nzbdav, the "super-fork" - see
@@ -157,7 +178,7 @@ services:
       # FRONTEND_BACKEND_API_KEY so *Arr/SAB and the Settings UI agree on
       # one download-client key.
       NZBDAV_CONFIG__API__KEY: ${FRONTEND_BACKEND_API_KEY}
-      NZBDAV_CONFIG__API__CATEGORIES: "tv,movies,anime-movies"
+      NZBDAV_CONFIG__API__CATEGORIES: "tv,movies,anime-movies,anime-shows"
       NZBDAV_CONFIG__API__IMPORT_STRATEGY: "symlinks"
       NZBDAV_CONFIG__WEBDAV__USER: ${NZBDAV_WEBDAV_USER}
       NZBDAV_CONFIG__WEBDAV__PASS: ${NZBDAV_WEBDAV_PASS}
@@ -387,6 +408,7 @@ services:
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
       - ./media/anime-movies:/data/anime-movies
+      - ./media/anime-shows:/data/anime-shows
       # Root folders were symlinks into the original NzbDAV's WebDAV
       # filesystem, then AltMount's, then BearMount's - each cutover broke
       # every prior symlink since none of them share an ID scheme (see
@@ -480,6 +502,8 @@ services:
       - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
+      - ./media/anime-movies:/data/anime-movies
+      - ./media/anime-shows:/data/anime-shows
     ports:
       - "6767:6767"
     # No prior baseline to size against (fresh reinstall) - a modest
@@ -532,6 +556,7 @@ services:
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
       RADARR_ANIME_API_KEY: ${RADARR_ANIME_API_KEY}
+      SONARR_ANIME_API_KEY: ${SONARR_ANIME_API_KEY}
       # NzbDAV (nzbdav-dev) removed entirely 2026-07-23, then AltMount removed
       # entirely 2026-07-24, then BearMount removed entirely 2026-07-28 (see
       # STACK.md's History) - nzbdav/nzbdav's shared frontend<->backend proxy
@@ -659,6 +684,8 @@ services:
       UN_RADARR_1_API_KEY: ${RADARR_ANIME_API_KEY}
       UN_SONARR_0_URL: http://sonarr:8989
       UN_SONARR_0_API_KEY: ${SONARR_API_KEY}
+      UN_SONARR_1_URL: http://sonarr-anime:8989
+      UN_SONARR_1_API_KEY: ${SONARR_ANIME_API_KEY}
       # No UN_READARR entry - Bindery replaced Readarr in v10.7.0 and isn't
       # a supported Unpackerr "Starr app" (too new for that fixed list).
       # Low-impact: ebook releases are rarely RAR'd the way video/audio
@@ -841,6 +868,8 @@ services:
       - ./config/checkrr/checkrr.yaml:/etc/checkrr.yaml
       - ./media/movies:/data/movies
       - ./media/shows:/data/shows
+      - ./media/anime-movies:/data/anime-movies
+      - ./media/anime-shows:/data/anime-shows
       - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
     ports:
       - "8585:8585"

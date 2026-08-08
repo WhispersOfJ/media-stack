@@ -31,6 +31,7 @@ ARR_APPS = {
     # from port (7878) because docker-compose.yml maps 7879:7878 for this app -
     # unlike this dict's other two entries, whose host and container ports match.
     "radarr_anime": {"port": 7878, "host_port": 7879, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr-anime"},
+    "sonarr_anime": {"port": 8989, "host_port": 8990, "api": "v3", "seerr_kind": "sonarr", "hostname": "sonarr-anime"},
 }
 
 
