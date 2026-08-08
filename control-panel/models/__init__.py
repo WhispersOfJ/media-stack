@@ -8,3 +8,5 @@ from models.audit_log import AuditLog  # noqa: F401
 from models.letterboxd_cache import LetterboxdTmdbCache  # noqa: F401
 from models.letterboxd_tracked_list import LetterboxdTrackedList  # noqa: F401
 from models.letterboxd_sync_log import LetterboxdSyncLog  # noqa: F401
+from models.mdblist_tracked_list import MDBListTrackedList  # noqa: F401
+from models.mdblist_sync_log import MDBListSyncLog  # noqa: F401
