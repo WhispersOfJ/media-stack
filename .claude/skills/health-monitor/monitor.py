@@ -27,6 +27,13 @@ HTTP_SERVICES = {
     "control-panel": (8420, "/healthz"),
     "plex": (32400, "/identity"),
     "radarr-anime": (7879, "/ping"),
+    "bazarr": (6767, "/"),
+    "tautulli": (8182, "/"),
+    "wrapperr": (8283, "/"),
+    "maintainerr": (6246, "/"),
+    "checkrr": (8585, "/"),
+    "lingarr": (9876, "/"),
+    "nzbdav": (3000, "/"),
 }
 
 
