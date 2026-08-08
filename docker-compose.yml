@@ -159,7 +159,12 @@ services:
   nzbdav:
     restart: unless-stopped
     logging: *common-logging
-    image: ghcr.io/nzbdav/nzbdav:latest
+    # Renamed upstream 2026-08: ghcr.io/nzbdav/nzbdav -> infinidysk/infinidysk.
+    # Same build (identical 16 layers and entrypoint; the old image's own
+    # org.opencontainers.image.source label already pointed at the
+    # infinidysk repo), same /config, same tags. The old path stops
+    # receiving updates after the transition period.
+    image: ghcr.io/infinidysk/infinidysk:latest
     container_name: nzbdav
     networks: [stacknet]
     healthcheck:
