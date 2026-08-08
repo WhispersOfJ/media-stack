@@ -21,6 +21,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from core import import_starvation
 from core import settings as settings_core
 from core.api_hit_counts import install as install_hit_counter, register_host_label
 from core.arr_client import (
@@ -247,11 +248,34 @@ def arr_unstick_importing(app_name: str, _=Depends(current_user_or_service)):
     return ok(message, results=results)
 
 
+@router.get("/api/arr/import-starvation")
+def arr_import_starvation(_=Depends(current_user_or_service)):
+    """Read-only view of core/import_starvation.py's two signals across every
+    queue-bearing app. The mutating counterpart runs inside queue-autofix
+    below - this route exists for a human asking 'why is nothing importing'."""
+    result = import_starvation.check_all(remediate=False)
+    if result["starved"]:
+        message = (f"{len(result['starved'])} app(s) starved of "
+                   f"{import_starvation.REFRESH_COMMAND}: {', '.join(result['starved'])}.")
+    elif result["lagging"]:
+        message = f"{len(result['lagging'])} app(s) lagging on imports: {', '.join(result['lagging'])}."
+    else:
+        message = "Every app is importing in step with its grabs."
+    return ok(message, **result)
+
+
 @router.post("/api/arr/queue-autofix")
 def arr_queue_autofix(_=Depends(current_user_or_service)):
     # Automation-invoked: stack-queue-autofix.fish's 5-minute unattended
     # cron loop - the reason current_user_or_service was extended to cover
     # mutating routes at all (core/security.py's docstring).
+    #
+    # Starvation runs FIRST and every cycle: while an app is starved its
+    # queue reads empty, so every check below it would find nothing wrong
+    # and report a healthy app. Clearing the search backlog here is what
+    # makes the rest of this function's findings meaningful at all.
+    starvation = import_starvation.check_all(remediate=True)
+
     threshold = settings_core.get_settings()["failed_pending_storm_threshold"]
     per_app = {}
     for app_name in QUEUE_ARR_APPS:
@@ -276,9 +300,16 @@ def arr_queue_autofix(_=Depends(current_user_or_service)):
         parts.append(f"{total_errors} error(s).")
     if storms:
         parts.append(f"Disabled autoRedownloadFailed (retry storm) for: {', '.join(storms)}.")
+    if starvation["starved"]:
+        cancelled = sum(r["cancelled"] for r in starvation["remediated"].values())
+        parts.append(f"Cleared {cancelled} queued search(es) starving imports on: "
+                     f"{', '.join(starvation['starved'])}.")
+    if starvation["lagging"]:
+        parts.append(f"WARNING: imports lagging grabs on: {', '.join(starvation['lagging'])}.")
     if nzbdav_health["paused"]:
         parts.append("WARNING: NzbDAV queue is paused.")
-    return ok(" ".join(parts), radarr=per_app.get("radarr"), sonarr=per_app.get("sonarr"), nzbdav=nzbdav_health)
+    return ok(" ".join(parts), radarr=per_app.get("radarr"), sonarr=per_app.get("sonarr"),
+              nzbdav=nzbdav_health, import_starvation=starvation)
 
 
 LOOP_MIN_OCCURRENCES = 2

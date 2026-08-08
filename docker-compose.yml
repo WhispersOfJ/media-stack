@@ -197,8 +197,14 @@ services:
       # confirmed inert here (indexers.instances and profiles.instances are both empty;
       # this stack routes everything through Prowlarr->Sonarr/Radarr instead).
       NZBDAV_CONFIG__USENET__CASCADE__ENABLED: "true"
+      # All four Arr instances, not just the original two. The anime peers
+      # were missing here from their standup until 2026-08-08 - inert while
+      # REPAIR__ENABLE is false below (nothing else reads this list), but it
+      # stops being inert the moment repair is ever re-enabled, and a repair
+      # pass that cannot see an instance treats that instance's library as
+      # unowned. Keep in sync with core/arr_client.py's ARR_APPS.
       NZBDAV_CONFIG__ARR__INSTANCES: >-
-        {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"}],"QueueRules":[]}
+        {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"},{"Host":"http://radarr-anime:7878","ApiKey":"${RADARR_ANIME_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"},{"Host":"http://sonarr-anime:8989","ApiKey":"${SONARR_ANIME_API_KEY}"}],"QueueRules":[]}
       # DISABLED 2026-07-29 after a live incident: nzbdav's repair path
       # (backend/Services/HealthCheckService.cs::Repair) verifies segments
       # directly against the usenet provider (not through the FUSE mount),
