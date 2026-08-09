@@ -190,7 +190,7 @@ services:
       NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
       NZBDAV_CONFIG__MEDIA__LIBRARY_DIR: "/mnt/remote/nzbdav/completed-symlinks"
       NZBDAV_CONFIG__USENET__PROVIDERS: >-
-        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":25,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":25,"Priority":1,"Nickname":"backup"}]}
+        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":50,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":50,"Priority":1,"Nickname":"backup"}]}
       # Settings audit 2026-07-31 (every settings page/config key checked against
       # backend/Config/ConfigManager.cs - see STACK.md): cascade defaulted off, which
       # meant primary/backup were raw-load-balanced by spare connection count instead of
