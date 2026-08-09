@@ -713,7 +713,7 @@ services:
   watchtower:
     restart: unless-stopped
     logging: *common-logging
-    image: nickfedor/watchtower:1.20.2
+    image: nickfedor/watchtower:1.20.3
     container_name: watchtower
     networks: [stacknet]
     # No shell in this image (distroless-style) - uses Watchtower's own
