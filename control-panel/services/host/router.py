@@ -573,19 +573,38 @@ def docs_readme(_=Depends(current_user_or_service)):
 
 @router.post("/api/notify/test")
 def notify_test(_=Depends(current_user_or_service)):
-    """Sends a real test message through the same Discord webhook every
-    backup/health-check alert in this stack already uses - confirms the
-    webhook itself still works without waiting for a real failure to find
-    out it doesn't."""
+    """Sends a real test message through every sink this stack has wired
+    up: the Discord webhook every backup/health-check alert already uses,
+    plus ntfy (added Phase 1 of PLANS.md's 7-service batch) as an
+    additional sink - not a replacement, since Discord stays the existing
+    channel and ntfy is new. Reports both results rather than stopping at
+    the first failure, since one sink being down shouldn't hide whether
+    the other still works."""
+    results = {}
+
     discord_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
     if not discord_webhook_url:
-        fail("DISCORD_WEBHOOK_URL not set.", status_code=503)
+        results["discord"] = "DISCORD_WEBHOOK_URL not set."
+    else:
+        try:
+            r = httpx.post(discord_webhook_url, json={"content": f"Control Panel test notification - {now()}"}, timeout=10)
+            r.raise_for_status()
+            results["discord"] = "sent"
+        except httpx.HTTPError as e:
+            results["discord"] = f"failed: {e}"
+
     try:
-        r = httpx.post(discord_webhook_url, json={"content": f"Control Panel test notification - {now()}"}, timeout=10)
+        r = httpx.post("http://ntfy:80/media-stack-test", content=f"Control Panel test notification - {now()}".encode(), timeout=10)
         r.raise_for_status()
+        results["ntfy"] = "sent"
     except httpx.HTTPError as e:
-        fail(f"Discord webhook test failed: {e}")
-    return ok("Test notification sent to Discord.")
+        results["ntfy"] = f"failed: {e}"
+
+    failures = [name for name, status in results.items() if status != "sent"]
+    if len(failures) == len(results):
+        fail(f"All notification sinks failed: {results}")
+    msg = "Test notification sent." if not failures else f"Sent, but {', '.join(failures)} failed."
+    return ok(msg, results=results)
 
 
 @router.get("/api/top")

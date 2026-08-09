@@ -35,6 +35,7 @@ HTTP_SERVICES = {
     "checkrr": (8585, "/"),
     "lingarr": (9876, "/"),
     "nzbdav": (3000, "/"),
+    "ntfy": (8700, "/v1/health"),
 }
 
 

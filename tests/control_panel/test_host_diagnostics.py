@@ -147,12 +147,31 @@ def test_version_reads_readme_declared_version(cp_main_app, monkeypatch, tmp_pat
     assert body["total"] == 2
 
 
-def test_notify_test_fails_without_webhook_configured(cp_main_app, monkeypatch):
+def test_notify_test_fails_when_all_sinks_fail(cp_main_app, monkeypatch):
+    """No DISCORD_WEBHOOK_URL and no reachable ntfy (unresolvable host in
+    the test environment) - both sinks fail, so the whole route 502s."""
     monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
     headers = _service_key_header(cp_main_app)
     client = TestClient(cp_main_app.app)
     resp = client.post("/api/notify/test", headers=headers)
-    assert resp.status_code == 503
+    assert resp.status_code == 502
+
+
+def test_notify_test_reports_partial_success(cp_main_app, monkeypatch):
+    """Discord unset but ntfy reachable (mocked) - the route succeeds
+    overall and reports which sink failed, rather than an all-or-nothing
+    result hiding that ntfy still worked."""
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    monkeypatch.setattr("services.host.router.httpx.post", lambda *a, **k: mock_resp)
+    headers = _service_key_header(cp_main_app)
+    client = TestClient(cp_main_app.app)
+    resp = client.post("/api/notify/test", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["results"]["discord"] == "DISCORD_WEBHOOK_URL not set."
+    assert body["results"]["ntfy"] == "sent"
 
 
 def test_top_sorts_by_requested_metric(cp_main_app, monkeypatch):

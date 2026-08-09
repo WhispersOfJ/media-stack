@@ -9,10 +9,14 @@ presentation-only): the published Artifact at
 is the canonical one an implementing agent should follow — if the two ever drift,
 this file wins.
 
-**Status as of 2026-08-08: design approved by Bear, not yet implemented.** Nothing
-in this doc has been built. Each phase below gets its own commit(s); update the
-`Status` line at the top of a phase's section to `IN PROGRESS` / `DONE` as work
-lands, and update `MEMORY.md` per the memory-reference note at the bottom.
+**Status as of 2026-08-09: Phase 1 (ntfy) DONE.** Phases 2-7 not started - Bear
+asked for Phase 1 only this round, explicitly out of this doc's stated risk
+order (see its own Phase 1 section for why that's a deliberate deviation, not
+an oversight). See STACK.md's "ntfy added" entry for the full implementation
+record, including two real bugs found and fixed during live verification.
+Each phase below gets its own commit(s); update the `Status` line at the top
+of a phase's section to `IN PROGRESS` / `DONE` as work lands, and update
+`MEMORY.md` per the memory-reference note at the bottom.
 
 ---
 
@@ -71,9 +75,22 @@ phase deviates):**
 
 ## Phase 1 — ntfy
 
-**Status:** NOT STARTED
+**Status:** DONE (2026-08-09)
 **Risk:** low
 **Role:** shared push-notification sink for the whole stack.
+
+Built out of the plan's stated risk order at Bear's explicit request (asked for
+"just step 1" when offered the choice between that and doing Phases 1-5 in
+order). Implemented, live-verified, and committed - see STACK.md's "ntfy
+added" entry for the full record. Two deviations from this section as
+originally written, both discovered during live verification against the
+real running Radarr/Sonarr/Prowlarr, not assumed from docs:
+- 1.4's "Connect settings API call" needed every optional field present in
+  the payload (empty string/list), not omitted - Radarr 400s with a
+  misleading error otherwise.
+- The plan didn't call out that Prowlarr's API is `/api/v1/`, not `/api/v3/`
+  like Radarr/Sonarr - the setup-connections route reads each app's real
+  version from `ARR_APPS`/`PROWLARR_CFG` rather than assuming v3 everywhere.
 
 ### 1.1 Compose
 
@@ -501,6 +518,14 @@ None.
 **Status:** NOT STARTED
 **Risk:** medium — touches Radarr (can push adds) and reads the Plex library
 directly; scan cost against the FUSE mount needs real tuning, not defaults.
+
+**Anime-scope decision, locked in ahead of implementation (2026-08-09):** Bear
+was asked "general Radarr only" (this section's stated default) vs "both
+general and anime" while Phase 1 was being built, and chose **both** — GAPS-2
+should scan and report gaps for `radarr` and `radarr_anime`. This overrides
+5.2's default below; when 5.2 is implemented, wire GAPS-2 (or the
+`stack-gaps2-*` router) against both Radarr instances, not just the general
+one.
 
 ### 5.1 Compose
 

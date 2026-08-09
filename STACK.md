@@ -3001,3 +3001,61 @@ end-user Eero steps: this host's IP (`192.168.4.105`, currently DHCP-assigned) n
 reservation, and the router's handed-out DNS server needs to change from its default to this
 host's IP. Until that happens, Pi-hole is fully functional but nothing on the network is
 actually using it yet.
+
+## ntfy added: shared push-notification sink for the Arr-family apps, 2026-08-09
+
+Phase 1 of `PLANS.md`'s 7-service integration batch. Everything else in that plan (Speedtest
+Tracker, Organizr, Scrutiny, GAPS-2, WatchState, PlexAniSync) is deliberately **not** built yet
+- Bear asked for Phase 1 only this round.
+
+**What it is:** `binwiederhier/ntfy`, container `ntfy`, host port 8700 (container 80). One
+topic per app (`radarr-alerts`, `sonarr-alerts`, `radarr-anime-alerts`, `sonarr-anime-alerts`,
+`prowlarr-alerts`), wired via each app's native Ntfy notification implementation (Radarr/
+Sonarr/Prowlarr all ship one - confirmed against `/api/v3/notification/schema` /
+`/api/v1/notification/schema` on the running instances, not assumed).
+
+**Anonymous access is deliberate, not an oversight:** no auth-file configured. The stack isn't
+exposed publicly, so open publish/subscribe was judged acceptable for this batch. Revisit if
+that changes (port-forwarding, Tailscale exposure, etc).
+
+**Config:** `./config/ntfy/etc/server.yml` (mounted, not baked into the image) sets
+`cache-duration: 72h` - the unbounded default would grow `./config/ntfy/cache/cache.db`
+forever. `./config/ntfy/cache` is the message cache; nothing here needs backing up (it's
+disposable notification history, not state).
+
+**Control Panel wiring:** `control-panel/services/ntfy/router.py` - `POST /api/ntfy/publish`,
+`GET /api/ntfy/topics` (returns this stack's own known topics, not a live ntfy query - ntfy has
+no server-side "list all topics" API by design, since that would leak every topic to anyone
+with server access), `GET /api/ntfy/health`, and `POST /api/ntfy/setup-connections` (the
+one-time - but safe to re-run, skips apps that already have a connection - wiring of all 5
+Arr-family apps' Ntfy notification, done via each app's REST API rather than five rounds of
+manual UI clicking).
+
+**Real bug found and fixed during live verification, not just configured:** Radarr's
+`/api/v3/notification` schema lists `accessToken`/`userName`/`password`/`tags`/`clickUrl` as
+optional fields, but POSTing without them 400s with a misleading `Value cannot be null.
+(Parameter 'source')` instead of naming the actually-missing field. Fix: send every field from
+the schema, empty string/list for the unused optional ones. Also caught and fixed:
+`setup-connections`'s "already configured?" check was hardcoded to `/api/v3/notification` for
+every app, which 404'd against Prowlarr (it's `/api/v1/`) - now reads each app's real API
+version from `ARR_APPS`/`PROWLARR_CFG` instead of assuming v3 everywhere.
+
+**`stack-notify-test` updated, not duplicated:** it previously fired only the Discord webhook;
+now `/api/notify/test` fires both Discord and ntfy (topic `media-stack-test`) and reports each
+sink's result independently, so one sink being down doesn't hide whether the other still works.
+
+**Live-verified, not just deployed:** published/subscribed a real message over ntfy's HTTP API;
+triggered a real Radarr test notification and confirmed it landed on topic `radarr-alerts`
+(payload had `title`/`message`/`priority` as expected); ran `setup-connections` against the
+live stack and confirmed 5/5 apps connected; confirmed `stack-notify-test` reports
+`{"discord": "sent", "ntfy": "sent"}` against the real webhook and the real ntfy container;
+confirmed `health-monitor` reports ntfy green alongside every other service, zero regressions.
+
+**Fish functions:** `stack-ntfy-publish <topic> <message>`, `stack-ntfy-topics`. Deployed as
+plain copies to `~/.config/fish/functions/` (this host's actual deployment mechanism - no
+symlink), confirmed callable from a real fish shell against the running stack.
+
+**GAPS-2 scope decision, recorded ahead of Phase 5 actually being built:** when GAPS-2 (Phase 5)
+is implemented, it scans **both** the general Radarr library and the anime Radarr (`radarr_anime`)
+library for gaps - Bear confirmed this explicitly, overriding PLANS.md's stated default of
+general-only. See `PLANS.md`'s Phase 5.2 for the full context this decision sits inside.

@@ -979,3 +979,29 @@ services:
     mem_limit: 2g
     mem_reservation: 256m
     cpus: 4
+
+  # ---------------------------------------------------------------------
+  # new-services (2026-08) - see PLANS.md for the full 7-service spec this
+  # batch comes from. Each phase is its own commit; this is Phase 1.
+  # ---------------------------------------------------------------------
+
+  ntfy:
+    restart: unless-stopped
+    image: binwiederhier/ntfy
+    container_name: ntfy
+    command: serve
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --tries=1 http://localhost:80/v1/health -O - | grep -q true || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    volumes:
+      - ./config/ntfy/cache:/var/cache/ntfy
+      - ./config/ntfy/etc:/etc/ntfy
+    ports:
+      - "8700:80"
+    mem_limit: 256m
+    mem_reservation: 32m
+    cpus: 1

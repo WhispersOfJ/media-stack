@@ -20,6 +20,7 @@ const QUICK_LINKS = [
   { id: "maintainerr", label: "Maintainerr", port: 6246 },
   { id: "checkrr", label: "Checkrr", port: 8585 },
   { id: "lingarr", label: "Lingarr", port: 9876 },
+  { id: "ntfy", label: "ntfy", port: 8700 },
   // No quicklink for kometa/prefetcharr - neither publishes a port
   // (kometa is a scheduled batch job, prefetcharr a headless poller).
 ];
@@ -53,6 +54,7 @@ const DOC_LINKS = [
   { app: "Prefetcharr", desc: "auto-fetches next Sonarr season from Plex watch progress", urls: [["Source", "https://github.com/p-hueber/prefetcharr"]] },
   { app: "Lingarr", desc: "subtitle translation, complements Bazarr", urls: [["Source", "https://github.com/lingarr-translate/lingarr"]] },
   { app: "Kometa", desc: "Plex metadata/collections/overlays automation", urls: [["Wiki", "https://metamanager.wiki/"], ["Source", "https://github.com/Kometa-Team/Kometa"]] },
+  { app: "ntfy", desc: "shared push-notification sink for Radarr/Sonarr/Prowlarr alerts (anonymous access, not exposed publicly)", urls: [["Docs", "https://docs.ntfy.sh/"], ["Source", "https://github.com/binwiederhier/ntfy"]] },
 ];
 
 export function buildDocLinks() {

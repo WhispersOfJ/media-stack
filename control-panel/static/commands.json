@@ -2592,5 +2592,55 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": ""
+  },
+  {
+    "Name": "stack-ntfy-publish",
+    "Description": "Publish a message to an ntfy topic",
+    "Method": "POST",
+    "PathTemplate": "/api/ntfy/publish",
+    "Query": null,
+    "Args": [
+      {
+        "Name": "topic",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "message",
+        "Choices": null,
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "json",
+    "BodyFields": [
+      {
+        "Key": "topic",
+        "ArgName": "topic",
+        "Array": false
+      },
+      {
+        "Key": "message",
+        "ArgName": "message",
+        "Array": false
+      }
+    ],
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-ntfy-topics",
+    "Description": "List topics this stack publishes to on ntfy",
+    "Method": "GET",
+    "PathTemplate": "/api/ntfy/topics",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
   }
 ]
