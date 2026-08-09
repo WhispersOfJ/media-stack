@@ -752,7 +752,7 @@ services:
   # ---------------------------------------------------------------------
   cleanuparr:
     <<: *common
-    image: ghcr.io/cleanuparr/cleanuparr:2.10.1
+    image: ghcr.io/cleanuparr/cleanuparr:2.10.3
     container_name: cleanuparr
     networks: [stacknet]
     healthcheck:
