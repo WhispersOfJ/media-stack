@@ -197,10 +197,11 @@ services:
       # primary-preferred with backup as genuine fallback - the whole point of having a
       # backup provider. Enabling this alone does nothing without the explicit Priority
       # fields added above (both defaulted to 0, so they'd tie even with cascade on).
-      # play.*/grab.*/watchtower.*/warden.*/preflight.*/indexers.*/profiles.* intentionally
-      # left untouched - all part of NzbDAV's own indexer-search "addon play" feature,
-      # confirmed inert here (indexers.instances and profiles.instances are both empty;
-      # this stack routes everything through Prowlarr->Sonarr/Radarr instead).
+      # play.*/watchtower.*/preflight.*/indexers.*/profiles.* were inert until
+      # 2026-08-11 (indexers.instances and profiles.instances were both empty -
+      # this stack routed everything through Prowlarr->Sonarr/Radarr only).
+      # Now wired up deliberately - see the "InfiniDysk's own search/play
+      # subsystem" block below QUEUE__WORKER_COUNT.
       NZBDAV_CONFIG__USENET__CASCADE__ENABLED: "true"
       # All four Arr instances, not just the original two. The anime peers
       # were missing here from their standup until 2026-08-08 - inert while
@@ -210,28 +211,31 @@ services:
       # unowned. Keep in sync with core/arr_client.py's ARR_APPS.
       NZBDAV_CONFIG__ARR__INSTANCES: >-
         {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"},{"Host":"http://radarr-anime:7878","ApiKey":"${RADARR_ANIME_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"},{"Host":"http://sonarr-anime:8989","ApiKey":"${SONARR_ANIME_API_KEY}"}],"QueueRules":[]}
-      # DISABLED 2026-07-29 after a live incident: nzbdav's repair path
-      # (backend/Services/HealthCheckService.cs::Repair) verifies segments
-      # directly against the usenet provider (not through the FUSE mount),
-      # but when it can't find a matching symlink/strm it falls back to
-      # OrganizedLinksUtil.GetLink, which scans the library dir THROUGH the
-      # FUSE mount via `find`. During the nzbdav_rclone remount incident that
-      # day, that scan either errored outright or silently returned an
-      # incomplete listing - and every branch of Repair() short of a
-      # successful Arr re-search ends in an unconditional delete, with no
-      # retry/backoff/consecutive-failure guard distinguishing "genuinely
-      # orphaned" from "scan was unreliable right now". Result: 667 library
-      # bookkeeping entries auto-deleted, 17 of them before Radarr/Sonarr had
-      # actually imported the file (real loss, not just nzbdav's disposable
-      # webdav-side copy). Disabling this stops the entire health-check loop
-      # (IsRepairJobEnabled() gates PerformHealthCheck in full, not just the
-      # delete branch), which also removes its one useful behavior
-      # (auto-triggering an Arr re-search on real decay) - accepted
-      # trade-off, since Radarr/Sonarr's own missing-file detection is the
-      # real safety net for anything actually missing from the library.
-      # Revisit only alongside an upstream fix that hardens GetLink() against
-      # a transiently-unreadable mount.
-      NZBDAV_CONFIG__REPAIR__ENABLE: "false"
+      # RE-ENABLED 2026-08-11 after re-auditing the actual 2026-07-29 root
+      # cause against the current infinidysk/infinidysk source (not just the
+      # old nzbdav-dev fork this stack ran back then). The exact bug is
+      # fixed upstream now:
+      #   - HealthCheckService.Repair()'s ordinary (non-urgent) path now has
+      #     GetLibraryLinkRepairDisposition() -> a missing GetLink() result
+      #     defers with ActionNeeded instead of deleting ("a FUSE mount can
+      #     temporarily present a successfully empty or partial view").
+      #     Deletion only reaches ForceDelete via an Arr-confirmed,
+      #     blocklisted match (RemoveAndBlocklistSucceeded) - every
+      #     ambiguous case (Arr unreachable, no download history, single
+      #     no-match) defers instead.
+      #   - AUTO_REMOVE_AFTER_FAILURES=0 below keeps the streaming-triggered
+      #     "urgent" force-delete branch (HandleUrgentRepair) permanently
+      #     off - GetUrgentRepairDisposition() short-circuits to
+      #     RepairNormally whenever threshold<=0, which is the only branch
+      #     that could still force-delete off a stale hasLibraryLink read.
+      # Radarr/Sonarr's own missing-file detection remains the backstop;
+      # this only adds proactive segment-decay detection + auto-reblocklist.
+      NZBDAV_CONFIG__REPAIR__ENABLE: "true"
+      NZBDAV_CONFIG__REPAIR__HEALTHCHECK_DEPTH: "standard"
+      NZBDAV_CONFIG__REPAIR__HEALTHCHECK_AGING: "true"
+      NZBDAV_CONFIG__REPAIR__HEALTHCHECK_CONCURRENCY: "50"
+      NZBDAV_CONFIG__REPAIR__AUTO_REMOVE_AFTER_FAILURES: "0"
+      NZBDAV_CONFIG__REPAIR__AUTO_REMOVE_UNLINKED_ONLY: "true"
       # Rclone RC notifications - auto vfs/forget on file add/remove instead of
       # relying purely on --dir-cache-time. Confirmed the RC test-connection
       # endpoint returns "Connection refused" without this, 2026-07-28.
@@ -249,23 +253,113 @@ services:
       NZBDAV_CONFIG__BACKUP__SCHEDULE_ENABLED: "true"
       NZBDAV_CONFIG__BACKUP__SCHEDULE_TIME: "120" # 02:00 local (TZ)
       NZBDAV_CONFIG__BACKUP__RETENTION_COUNT: "7"
-      # ORPHAN CLEANUP LEFT DISABLED, 2026-07-29 (was about to be turned on
-      # by this same audit): RemoveUnlinkedFilesTask.cs uses the identical
-      # OrganizedLinksUtil.GetLibraryDavItemLinks FUSE-scan this stack just
-      # got burned by in the REPAIR__ENABLE incident above - its only
-      # circuit breaker is aborting if fewer than 5 total linked files are
-      # found, which does nothing against a *partial* stale-mount scan
-      # (e.g. 400 of 1000 real links seen). A transient mount blip during
-      # this task's 03:00 run would delete every file it didn't see as
-      # "unlinked", same failure class, no Arr-search-and-recover fallback
-      # at all (unlike Repair()). Enable only once the mount cascade has a
-      # longer track record, and ideally alongside an upstream fix.
+      # STILL DISABLED 2026-08-11, despite the 2026-07-29 partial-scan bug
+      # being fixed upstream (RemoveUnlinkedFilesTask.cs now has a >90%
+      # unlinked-ratio circuit breaker - see the REPAIR__ENABLE comment
+      # above for the same-day re-audit). A live dry-run against this
+      # library (POST /api/remove-unlinked-files/dry-run) hit a DIFFERENT,
+      # harder failure: SymlinkAndStrmUtil.ReadLinuxFindEntry throws an
+      # unhandled InvalidOperationException on a mojibake-encoded filename
+      # under anime-shows ("[DemiHuman] Sound! Euphonium..."), aborting the
+      # whole scan before it reaches the delete phase - fails closed (no
+      # deletions happened) but the task cannot complete on this library at
+      # all right now. Fix: rename that file to strip the corrupted
+      # characters, then re-run the dry-run via Settings -> Maintenance to
+      # confirm a clean pass before flipping this to "true".
       NZBDAV_CONFIG__MAINTENANCE__REMOVE_ORPHANED_SCHEDULE_ENABLED: "false"
       NZBDAV_CONFIG__MAINTENANCE__REMOVE_ORPHANED_SCHEDULE_TIME: "180" # 03:00 local (TZ)
-      # HEALTHCHECK_DEPTH/AGING left out entirely: moot while REPAIR__ENABLE
-      # is false (they configure a loop that no longer runs), and no reason
-      # to have them ready-armed for whenever repair is re-enabled later.
       NZBDAV_CONFIG__QUEUE__WORKER_COUNT: "3"
+      # --- Streaming performance, added 2026-08-11 (all off/default before) ---
+      # Segment cache: decoded article bytes cached to disk so a rewind/reseek
+      # in Plex doesn't re-fetch from Usenet. 20GB against the 122GB free on
+      # /config's filesystem. Needs the restart this recreate already does.
+      NZBDAV_CONFIG__USENET__SEGMENT_CACHE__ENABLED: "true"
+      NZBDAV_CONFIG__USENET__SEGMENT_CACHE__MAX_GB: "20"
+      # Queue-side NNTP pipelining (separate from WebDAV streaming pipelining,
+      # which was already on by default) - batches first-segment BODY requests
+      # during import, should help now that QUEUE__WORKER_COUNT=3 lets several
+      # imports compete for the same provider pool. Depth 8 is the documented
+      # default; run Auto-tune per provider from Settings -> Usenet afterward.
+      NZBDAV_CONFIG__USENET__PIPELINING__ENABLED: "true"
+      NZBDAV_CONFIG__USENET__PIPELINING__DEPTH: "8"
+      # Per-stream connection cap so one heavy stream can't starve a second
+      # concurrent Plex session against the 100-connection pool (2 providers x
+      # 50). Medium = 50% of the streaming budget per stream.
+      NZBDAV_CONFIG__USENET__MAX_DOWNLOAD_CONNECTIONS_PER_STREAM: "true"
+      NZBDAV_CONFIG__USENET__MAX_DOWNLOAD_CONNECTIONS_PER_STREAM_PRESET: "medium"
+      # Import-quality safeguards, both off by default - given this stack's
+      # import-bug history (7z/SharpCompress, symlink mass-deletion), catch a
+      # broken/sample release before it reaches Radarr/Sonarr's import step.
+      NZBDAV_CONFIG__API__ENSURE_IMPORTABLE_VIDEO: "true"
+      NZBDAV_CONFIG__API__SAMPLE_FILTER_ENABLED: "true"
+      # --- InfiniDysk's own search/play subsystem, added 2026-08-11 ---
+      # This is a second, separate search path from Prowlarr->Sonarr/Radarr:
+      # InfiniDysk's own Indexers+Search Profile, used only by Watchdog
+      # (playback failover to alternate releases), Preflight (background
+      # warm-up before a click), and Watchtower (pre-resolve list titles).
+      # Grabbed here, this shares the SAME indexer download-quota as
+      # Sonarr/Radarr (50 grabs/day per indexer, see PROWLARR_API_KEY usage
+      # elsewhere) - every budget below is sized deliberately small against
+      # that shared cap, not left at generous upstream defaults.
+      #
+      # Prowlarr pull-sync is deliberately NOT hardcoded here: the deployed
+      # ghcr.io/infinidysk/infinidysk:latest image (v1.0.1) rejected
+      # NZBDAV_CONFIG__PROWLARR__SYNC_ENABLED at startup as an unknown
+      # variable 2026-08-11 (FTL, backend refused to start, container
+      # falsely showed "healthy" the whole time - /healthz is answered by
+      # the frontend proxy, not the .NET backend, so a dead backend behind
+      # a live frontend does not fail the Docker healthcheck). Root cause:
+      # Prowlarr pull-sync is "since 1.1.0" per infinidysk's own docs, and
+      # 1.1.0 was still an unreleased release-candidate (v1.1.0-rc.2) the
+      # same day - :latest tracks the newest STABLE tag, not main/rc.
+      # Decision (Bear, 2026-08-11): wait for 1.1.0 to leave RC rather than
+      # hand-write indexers.instances now or pin to a pre-release image on
+      # core download/streaming infra. prowlarr.url/api-key/sync-enabled/
+      # sync-interval-minutes ARE saved in nzbdav's SQLite already (set via
+      # /api/update-config, not this file) - inert today, but will self-
+      # activate the moment this image is upgraded past 1.1.0, no further
+      # action needed then. Until that sync actually runs, indexers.instances
+      # stays empty, so WATCHTOWER__ENABLED/PLAY__WATCHDOG_ENABLED/
+      # PREFLIGHT__MODE below are harmless no-ops - same inert state as
+      # before tonight, just now pre-armed for whenever the sync goes live.
+      # Do not re-add these
+      # three lines without confirming the deployed image actually accepts
+      # them first (recreate on a throwaway container name, check logs,
+      # THEN swap the real service).
+      # One profile searching every enabled (synced) indexer - IndexerNames
+      # empty = all, per profiles.md ("Leave all unchecked = every enabled
+      # indexer"). Token is a bearer secret for the adapter URLs; also
+      # referenced by WATCHTOWER__PROFILE_TOKEN below so both features share
+      # the one profile.
+      NZBDAV_CONFIG__PROFILES__INSTANCES: >-
+        {"Profiles":[{"Token":"${NZBDAV_PROFILE_TOKEN}","Name":"Default","IndexerNames":[]}]}
+      # Watchdog: alternate-release failover during playback. STAT-verify
+      # candidates before serving instead of "none" (the default) - cheap
+      # given repair is now also on.
+      NZBDAV_CONFIG__PLAY__WATCHDOG_ENABLED: "true"
+      NZBDAV_CONFIG__PLAY__VERIFY_MODE: "stat"
+      # Preflight: background warm-up on open, before the click. Settings
+      # match what was tuned live via /api/update-config on 2026-08-11
+      # (Option 2/Balanced from that audit) - moved here so they survive a
+      # recreate instead of only living in nzbdav's SQLite.
+      NZBDAV_CONFIG__PREFLIGHT__MODE: "standard"
+      NZBDAV_CONFIG__PREFLIGHT__MAX_ATTEMPTS: "8"
+      NZBDAV_CONFIG__PREFLIGHT__INDEXER_MAX_WAIT_SECONDS: "3"
+      NZBDAV_CONFIG__PREFLIGHT__TTL_SECONDS: "180"
+      # Watchtower: pre-resolves *manually added* list sources (IMDb ids /
+      # Stremio catalogs / URL lists) to a healthy release ahead of demand.
+      # Enabling this + the profile above only makes Watchtower *able* to
+      # run - it still does nothing until sources are added once from
+      # Settings -> Watchtower (sources aren't a ConfigItems key, so they
+      # can't be hardcoded here). Budget kept small on purpose: 15
+      # new-resolves/day and 2 NZB fetches per pass is a soft ceiling well
+      # under the 50/day indexer grab cap Sonarr/Radarr also share.
+      NZBDAV_CONFIG__WATCHTOWER__ENABLED: "true"
+      NZBDAV_CONFIG__WATCHTOWER__PROFILE_TOKEN: ${NZBDAV_PROFILE_TOKEN}
+      NZBDAV_CONFIG__WATCHTOWER__DAILY_RESOLVE_BUDGET: "15"
+      NZBDAV_CONFIG__WATCHTOWER__GRAB_CAP_PER_RESOLVE: "2"
+      NZBDAV_CONFIG__WATCHTOWER__RANKING: "largest"
+      NZBDAV_CONFIG__WATCHTOWER__SEASON_BUNDLE_FALLBACK: "true"
     volumes:
       - ./config/nzbdav:/config
       - /mnt:/mnt
