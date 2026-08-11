@@ -9,11 +9,13 @@ presentation-only): the published Artifact at
 is the canonical one an implementing agent should follow — if the two ever drift,
 this file wins.
 
-**Status as of 2026-08-09: Phase 1 (ntfy) DONE.** Phases 2-7 not started - Bear
-asked for Phase 1 only this round, explicitly out of this doc's stated risk
-order (see its own Phase 1 section for why that's a deliberate deviation, not
-an oversight). See STACK.md's "ntfy added" entry for the full implementation
-record, including two real bugs found and fixed during live verification.
+**Status: see each phase's own `Status:` line — that's the single source of
+truth, not this paragraph.** As of last update (2026-08-11): Phase 1 (ntfy)
+DONE, Phases 2-7 not started. Phase 1 was built out of this doc's stated risk
+order at Bear's explicit request (see its own Phase 1 section for why that's
+a deliberate deviation, not an oversight). See STACK.md's "ntfy added" entry
+for the full implementation record, including two real bugs found and fixed
+during live verification.
 Each phase below gets its own commit(s); update the `Status` line at the top
 of a phase's section to `IN PROGRESS` / `DONE` as work lands, and update
 `MEMORY.md` per the memory-reference note at the bottom.
@@ -57,6 +59,25 @@ phase deviates):**
   `docker-compose.yml:780-784` for the comment-block style to match).
 - Host ports for this batch are pre-allocated in the table below so there is
   no conflict-checking ambiguity mid-implementation.
+- Before hardcoding any `<APP>_CONFIG__*`-style env var (or equivalent
+  headless/env-driven config key) into a new service's compose block based on
+  that project's own GitHub docs, verify the feature's "since vX.Y.Z" against
+  the actually-deployed image tag, not just the docs on `main` — see the
+  `verify-image-version-before-headless-config` skill. A mutable tag like
+  `:latest` tracks the newest *stable* release only; docs on `main` can
+  describe features not yet in any published image. Real incident this rule
+  is from: hardcoding a documented nzbdav/InfiniDysk env var crashed that
+  service's backend outright on recreate, and Docker's own healthcheck stayed
+  green throughout because it was answered by a frontend/proxy layer
+  independent of the crashed backend — don't trust `docker ps` health alone
+  after a config-driven recreate; grep `docker logs <service>` for
+  fatal/unknown-config errors too.
+- For any live-verification step expected to take more than ~30s (a scan, a
+  collector run, a library reconcile), use a background poll (Monitor-style:
+  spawn it, poll on a longer interval, report progress rather than blocking)
+  instead of a blocking wait. Frequent tight-interval polling against a
+  service's own database while it's mid-write can itself add contention and
+  slow the operation down — space polls out (tens of seconds, not sub-10s).
 
 **Host port allocation (checked against every port currently in
 `docker-compose.yml` as of 2026-08-08 — none of 8700–8706 are in use):**
@@ -518,6 +539,16 @@ None.
 **Status:** NOT STARTED
 **Risk:** medium — touches Radarr (can push adds) and reads the Plex library
 directly; scan cost against the FUSE mount needs real tuning, not defaults.
+Concrete numbers from this stack (2026-08-11): a single library-wide
+filesystem walk over the FUSE mount can run tens of minutes on a library this
+size, and Plex's own DB reconcile (`emptyTrash` over ~1,176 items) took ~45
+min with real write contention (`Waited over 10 seconds for a busy database`
+in Plex's log). GAPS-2 doing a full Plex+Radarr cross-reference at scan time
+is the same shape of operation. **Read `fuse-hang-vs-slow-diagnosis` and
+`plex-marked-deleted-db-contention` before picking a scan schedule** — don't
+default to upstream's schedule or assume "check current movie count" alone
+is enough tuning input; also avoid scheduling GAPS-2 scans to overlap a Plex
+library refresh or trash-empty window (see `scoped-plex-library-refresh`).
 
 **Anime-scope decision, locked in ahead of implementation (2026-08-09):** Bear
 was asked "general Radarr only" (this section's stated default) vs "both
@@ -678,6 +709,13 @@ secret-injector.
    confirm default interval and tune it to match Plex's existing library
    refresh cadence already configured elsewhere in this stack — check
    `stack-plex-refresh-libraries`'s schedule for the cadence to mirror).
+   Do not schedule it to overlap a Plex library refresh, backfill, or
+   trash-empty window — this stack has confirmed real SQLite write
+   contention (`busy database` errors) when Plex's DB takes concurrent write
+   pressure from multiple directions at once (see
+   `plex-marked-deleted-db-contention` and `scoped-plex-library-refresh`);
+   pick a clear offset, don't assume WatchState's reads are cheap enough to
+   ignore this.
 2. **Also** configure a Plex webhook pointing at WatchState
    (`http://watchstate:8080/v1/api/webhook/plex` or WatchState's documented
    webhook path — confirm exact path in its docs at implementation time)
@@ -757,7 +795,10 @@ run — check `systemd/` in this repo for the existing example to copy):
 `systemd/plexanisync.timer` (interval matched to WatchState's import
 interval from 6.4, so anime and general watch-state sync don't race each
 other — pick an offset, not the same exact minute, to avoid both hitting
-Plex's API simultaneously).
+Plex's API simultaneously). Same contention risk as 6.4's note applies here
+too: don't let this offset land inside a Plex library refresh or trash-empty
+window either — check `stack-plex-refresh-libraries`'s schedule and any
+backup/maintenance windows before picking the final offset.
 
 ### 7.2 Secrets
 
