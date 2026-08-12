@@ -3650,3 +3650,112 @@ its backup, and its dry run. Full suite **730 passed** (710 before, minus the
 **Restart needed:** `docker compose build control-panel && docker compose up -d
 control-panel` (done). GAPS-2 itself only needed the stop/start around the
 prune.
+
+
+## WatchState added: Plex watch-state sync, 2026-08-12
+
+Phase 6 of PLANS.md's 7-service batch. Keeps its own record of what has been
+watched, fed from Plex two ways at once. Host port **8705**, container port
+8080, image `ghcr.io/arabcoders/watchstate:latest` (v1.10.2 at time of
+writing). Everything provisions headlessly - no browser step anywhere.
+
+### Both feeds stay on, deliberately
+
+A scheduled import (`WS_CRON_IMPORT`) AND a Plex webhook. Upstream's README
+says to keep the scheduled import enabled even when every backend supports
+webhooks, because webhooks drop events. PLANS.md 6.4 says the same
+independently. This is not redundancy to clean up in a later pass - removing
+either one loses watch history silently, which is the failure mode with no
+symptom until someone goes looking for an episode that was never recorded.
+
+Import cadence is `25 0-1,6-23 * * *`: hourly at :25, **skipping 02:00-05:59**.
+That window already holds the poster sync (02:00), the Arr backup (03:40), the
+Letterboxd sync (04:00), the Sunday docker prune (04:30) and Plex's own Butler
+tasks. An import walks every library, and this stack has confirmed SQLite write
+contention when Plex's DB takes concurrent write pressure from several
+directions at once (see `plex-marked-deleted-db-contention`).
+
+Export is off. It writes watch state back *into* Plex, and with Plex as the
+only backend there is nothing to write back from - an accidental export is a
+mass write against the same DB the cadence above exists to protect.
+`stack-watchstate-status` reports `export_enabled` for exactly that reason.
+
+### Four things the API demanded that its errors do not explain
+
+1. **`uuid` is required on `POST /v1/api/backends`.** WatchState sends the
+   backend's uuid as Plex's `X-Plex-Client-Identifier` header. Omit it and the
+   add fails with "X-Plex-Client-Identifier is missing" from a users-list call
+   several layers down. Fetch it from `/v1/api/backends/uuid/plex` first.
+2. **`user` is required too** - the numeric Plex account id - and the users
+   list call needs that same uuid to answer at all. Without it the add fails
+   with `Did not find matching user id '{id}'`: the literal placeholder,
+   unsubstituted. The script picks the **admin** account, not the first one;
+   this server also has a restricted `guest` account, and tracking that one
+   would record whatever the guest watched as Bear's own watch state.
+3. **The webhook URL is the host IP, not `http://watchstate:8080`.** PLANS.md
+   6.4 assumed the docker-network address, but plex runs `network_mode: host`
+   and cannot resolve container names. It is
+   `http://HOST_IP:8705/v1/api/webhook?apikey=<the backend's own webhook
+   token>` - one endpoint serves every backend and the token is what says
+   which one is posting, so it must come from WatchState's own response
+   (`urls.webhook`) rather than being hand-built.
+4. **Registering the webhook is scriptable.** `POST
+   /v1/api/backend/plex/webhook` drives WatchState's AddWebhook action against
+   plex.tv. It appends, leaving the five webhooks already registered there
+   (Trakt, MDBList, and this stack's own) untouched.
+
+`scripts/watchstate-provision.py` does all of it and is safe to re-run: an
+existing backend is reported and **left alone**, never recreated, because a
+fresh add issues a new webhook token and Plex would keep posting to the old
+one - the webhook stops working while everything still reports healthy.
+
+### An import is queued, not run
+
+`POST /v1/api/tasks/import/queue` enqueues an event; a separate dispatcher
+(`events:dispatch`, every minute, hidden and not disableable) runs it. So
+`stack-watchstate-import-now` answers "queued" and never "done", and the
+result shows up in `stack-watchstate-status`. An empty history is a **404 with
+an error body**, not an empty list - the normal state before the first import
+finishes, so the router translates it to zero rather than a failure.
+
+### Auth
+
+`WS_API_KEY` in `.env`, with `WS_SECURE_API_ENDPOINTS: "true"` in the compose
+block - without that flag the entire `/v1/api` surface is unauthenticated to
+anything that can reach the port, including the endpoints that hand back
+backend tokens. Every call sends it as the `X-apikey` header (WatchState also
+accepts `?apikey=` and a bearer token; the header keeps it out of its own
+access log). `WS_SYSTEM_SECRET` signs WatchState's internal tokens. Both are
+env vars rather than self-generated files, same rule Phase 4 landed on, since
+`config/` is gitignored wholesale.
+
+`user: "${PUID}:${PGID}"` in the compose block is load-bearing: the image runs
+rootless and exits outright if it cannot write `/config`.
+
+The healthcheck hits `/v1/api/system/healthcheck`, not `/` - `/` is the bundled
+WebUI and answers 200 with a dead backend behind it, the same failure mode
+Phases 4 and 5 both hit. That endpoint answers 200 unauthenticated even with
+`WS_SECURE_API_ENDPOINTS` on, which is why the health-monitor probe needs no key.
+
+### Live verification
+
+- First import: **100,203 items** tracked, finished 17:58:39.
+- Webhook: 27 `POST /v1/api/webhook` entries from `PlexMediaServer/1.43.3` in
+  WatchState's access log, all 200. A deliberate re-scrobble of an
+  already-watched episode produced a delivery at 18:00:26, seconds later - the
+  webhook path proven separately from the import path, per PLANS.md 6.7.
+- `stack-watchstate-status` → "Idle. 100203 item(s) tracked, last import
+  2026-08-12T17:58:39-04:00, next 2026-08-12T18:25:00-04:00."
+- `stack-watchstate-history "Squid Game" 3` → 15 matches, showing 3.
+- health-monitor sweep green across all 18 HTTP services.
+
+**Tests:** `tests/control_panel/test_watchstate_router.py` (19 cases) and
+`tests/scripts/test_watchstate_provision.py` (12 cases). The interesting ones
+cover the places WatchState's API says something that reads like the opposite
+of what it means: an empty history arriving as a 404, an import that is queued
+rather than run, `updated` being a unix int and `watched` a 0/1 int, and the
+re-run path that must not re-add a backend.
+
+**Restart needed:** `docker compose build control-panel && docker compose up -d
+control-panel` - a new `services/<name>/` directory needs the image rebuilt,
+not just recreated. Done.

@@ -696,6 +696,9 @@ services:
       # wizard, see scripts/organizr-provision.py). Must be exactly 20
       # chars; Organizr's isApprovedRequest gates on strlen before value.
       ORGANIZR_API_KEY: ${ORGANIZR_API_KEY}
+      # Phase 6: WatchState's API key. Every /v1/api call needs it, since
+      # WS_SECURE_API_ENDPOINTS is on.
+      WS_API_KEY: ${WS_API_KEY}
       # Evolved backend (main.py) - service-account key for unattended
       # stack-* fish commands; see .env's comment and
       # core/security.py's current_user_or_service.
@@ -1340,3 +1343,66 @@ services:
     mem_limit: 1024m
     mem_reservation: 128m
     cpus: 2
+
+  # WatchState - Phase 6 of PLANS.md's 7-service batch. Keeps its own record of
+  # what has been watched, fed from Plex by a scheduled import plus a webhook.
+  #
+  # Five things this block encodes that are not obvious:
+  #
+  # 1. user: is load-bearing, not tidiness. The image runs rootless and exits
+  #    outright if it cannot write /config (upstream README calls this out; its
+  #    own example sets user explicitly). PUID/PGID own ./config/watchstate.
+  #
+  # 2. WS_SECURE_API_ENDPOINTS=true. Without it the whole /v1/api surface is
+  #    unauthenticated to anything that can reach the port - including the
+  #    endpoints that hand back backend tokens.
+  #
+  # 3. WS_CRON_IMPORT is on AND a Plex webhook is configured. That redundancy
+  #    is deliberate on both sides: upstream's README says to keep the
+  #    scheduled import enabled even when every backend supports webhooks,
+  #    because webhooks drop events. Do not "optimize" one of them away.
+  #
+  # 4. The import skips 02:00-05:59. That window already holds the poster sync
+  #    (02:00), the Arr backup (03:40), the Letterboxd sync (04:00), the Sunday
+  #    docker prune (04:30) and Plex's own Butler tasks. This stack has
+  #    confirmed SQLite write contention when Plex's DB takes concurrent write
+  #    pressure from several directions (plex-marked-deleted-db-contention),
+  #    and an import walks every library.
+  #
+  # 5. Healthcheck hits /v1/api/system/healthcheck, not "/" - "/" is the
+  #    bundled WebUI and answers 200 with a dead backend behind it, the same
+  #    failure mode Phases 4 and 5 both hit. It needs the API key, since (2)
+  #    makes every API endpoint authenticated.
+  watchstate:
+    restart: unless-stopped
+    image: ghcr.io/arabcoders/watchstate:latest
+    container_name: watchstate
+    user: "${PUID}:${PGID}"
+    environment:
+      TZ: "${TZ}"
+      WS_TZ: "${TZ}"
+      WS_API_KEY: "${WS_API_KEY}"
+      WS_SECURE_API_ENDPOINTS: "true"
+      WS_SYSTEM_SECRET: "${WS_SYSTEM_SECRET}"
+      WS_CRON_IMPORT: "true"
+      WS_CRON_IMPORT_AT: "25 0-1,6-23 * * *"
+      # Export would write watch state back INTO Plex. With Plex as the only
+      # backend there is nothing to write back from, and an accidental export
+      # is a mass-write against the same DB (4) exists to protect.
+      WS_CRON_EXPORT: "false"
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -H \"X-apikey: $${WS_API_KEY}\" http://localhost:8080/v1/api/system/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      # SQLite state DB, backend config and logs. Covered by
+      # stack-claude-full-backup's no-excludes tar of ~/Claude.
+      - ./config/watchstate:/config
+    ports:
+      - "8705:8080"
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 1

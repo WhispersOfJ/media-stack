@@ -46,6 +46,9 @@ HTTP_SERVICES = {
     # 200 even with a dead Flask backend behind it. /api/about is served by
     # the backend and needs no configuration to respond.
     "gaps2": (8704, "/api/about"),
+    # Not "/" - that is the bundled WebUI and answers 200 with a dead backend
+    # behind it. This endpoint needs no auth even with WS_SECURE_API_ENDPOINTS on.
+    "watchstate": (8705, "/v1/api/system/healthcheck"),
 }
 
 

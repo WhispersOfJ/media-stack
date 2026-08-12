@@ -860,7 +860,28 @@ Live after the change: 1,148 gaps across 2 libraries (Movies 929, Shows 219).
 
 ## Phase 6 — WatchState
 
-**Status:** NOT STARTED — but recon is DONE (2026-08-12), see below.
+**Status:** DONE (2026-08-12). Built, live-verified on both the import and the
+webhook path, and committed. Three further corrections beyond 6.0's recon:
+
+- **`uuid` and `user` are required on `POST /v1/api/backends`,** not optional.
+  WatchState sends the backend uuid as Plex's `X-Plex-Client-Identifier`, so
+  omitting it fails several layers down with "X-Plex-Client-Identifier is
+  missing"; omitting `user` (the numeric Plex account id, fetched with that
+  same uuid) fails with the literal unsubstituted placeholder `'{id}'`.
+- **6.4's webhook URL is wrong for this stack.** plex runs `network_mode:
+  host`, so it cannot resolve `watchstate`. The registered URL is
+  `http://HOST_IP:8705/v1/api/webhook?apikey=<the backend's own token>` - and
+  the token is not optional decoration, it is what identifies which backend
+  posted.
+- **Registering the webhook is scriptable**, as 6.0 suspected: `POST
+  /v1/api/backend/plex/webhook` drives WatchState's own AddWebhook action
+  against plex.tv, so there is no browser step anywhere in Phase 6.
+
+Import cadence: `25 0-1,6-23 * * *` - hourly at :25, skipping 02:00-05:59,
+which already holds the poster sync, Arr backup, Letterboxd sync, Sunday
+docker prune and Plex's own Butler window.
+
+### 6.0 Recon findings (2026-08-12) — read before implementing
 **Risk:** medium — writes watch-state data continuously; needs both the
 scheduled import task and Plex webhook configured correctly, or events get
 silently dropped (per WatchState's own documented caveat).
@@ -1001,16 +1022,18 @@ secret-injector.
 
 ### 6.8 Acceptance
 
-- [ ] Container healthy
-- [ ] Plex token configured
-- [ ] Scheduled import enabled and interval tuned
-- [ ] Plex webhook configured and confirmed firing
-- [ ] health-monitor probe green
-- [ ] pytest suite passing
-- [ ] Live watch-state sync verified via both paths (import + webhook)
-- [ ] Fish functions callable
-- [ ] STACK.md entry added
-- [ ] Committed as its own commit
+- [x] Container healthy
+- [x] Plex token configured — headlessly, via scripts/watchstate-provision.py
+- [x] Scheduled import enabled and interval tuned — `25 0-1,6-23 * * *`
+- [x] Plex webhook configured and confirmed firing — registered into plex.tv
+      from the API; PlexMediaServer POSTs landing 200 in WatchState's access log
+- [x] health-monitor probe green
+- [x] pytest suite passing — 31 new cases, full suite 761
+- [x] Live watch-state sync verified via both paths — 100,203 items imported,
+      webhook delivery confirmed after a Plex scrobble
+- [x] Fish functions callable — all three
+- [x] STACK.md entry added
+- [x] Committed as its own commit
 
 ---
 

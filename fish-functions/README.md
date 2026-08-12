@@ -308,3 +308,12 @@ Two things shape how these commands work:
 - **`stack-gaps2-scan [library] [--full]`** — sweep for gaps, both libraries if none named. Returns immediately and runs in the background, since a first full movie scan is minutes of TMDB round-trips. Incremental by default (only newly-added titles get fresh lookups); `--full` re-resolves everything.
 - **`stack-gaps2-missing [library] [limit]`** — the missing titles from each library's most recent scan, each tagged with the Arr instance it would be pushed to.
 - **`stack-gaps2-push <id> <library>`** — add one title to the Arr its library maps to (`Movies` → radarr, `Shows` → sonarr). The library argument is required, not inferred: it decides the target instance and the id type — movies push by TMDB id, shows by TheTVDB id, and the same integer is valid in both namespaces pointing at unrelated titles. One title per call by design — gap lists contain wrong-year matches and short films.
+
+
+### WatchState (Phase 6)
+
+Keeps its own record of what has been watched, fed from Plex by **both** a scheduled import (hourly at :25, skipping 02:00-05:59 so it never overlaps the poster sync, Arr backup, Letterboxd sync or Plex's Butler window) **and** a webhook. Both stay on: upstream warns webhooks drop events, so neither is redundancy to remove.
+
+- **`stack-watchstate-status`** — tracked item count, when the import last ran and when it runs next, whether one is queued. Also reports `export_enabled`, which is off by design — export writes watch state back *into* Plex — so a silent flip shows up here.
+- **`stack-watchstate-import-now`** — queues an out-of-schedule import. Queued, not run: WatchState's dispatcher picks it up within a minute, so the result appears in `stack-watchstate-status`, not in this command's output.
+- **`stack-watchstate-history [title] [limit]`** — watch history, newest first, optionally filtered to matching titles (partial names work). Each row carries `via` (which backend reported it) and `updated_at`, which is how a webhook-delivered event is told apart from one the scheduled import picked up.

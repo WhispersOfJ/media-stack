@@ -25,6 +25,7 @@ const QUICK_LINKS = [
   { id: "organizr", label: "Organizr", port: 8702 },
   { id: "scrutiny", label: "Scrutiny", port: 8703 },
   { id: "gaps2", label: "GAPS-2", port: 8704 },
+  { id: "watchstate", label: "WatchState", port: 8705 },
   // No quicklink for kometa/prefetcharr - neither publishes a port
   // (kometa is a scheduled batch job, prefetcharr a headless poller).
 ];

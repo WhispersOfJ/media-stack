@@ -2828,5 +2828,65 @@
       }
     ],
     "LogContainer": ""
+  },
+  {
+    "Name": "stack-watchstate-status",
+    "Description": "WatchState sync state: tracked items, last and next import",
+    "Method": "GET",
+    "PathTemplate": "/api/watchstate/status",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-watchstate-import-now",
+    "Description": "Queue an out-of-schedule WatchState import from Plex",
+    "Method": "POST",
+    "PathTemplate": "/api/watchstate/import",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "json",
+    "BodyFields": [],
+    "LogContainer": "watchstate"
+  },
+  {
+    "Name": "stack-watchstate-history",
+    "Description": "Watch history, optionally filtered to a title",
+    "Method": "GET",
+    "PathTemplate": "/api/watchstate/history",
+    "Query": [
+      {
+        "Key": "item",
+        "ArgName": "title"
+      },
+      {
+        "Key": "limit",
+        "ArgName": "limit"
+      }
+    ],
+    "Args": [
+      {
+        "Name": "title",
+        "Choices": null,
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "limit",
+        "Choices": null,
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
   }
 ]

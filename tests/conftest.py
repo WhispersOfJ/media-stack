@@ -90,6 +90,10 @@ def cp_main_app(monkeypatch, tmp_path):
     # core.nzbdav_client reads this with os.environ.get - same call-time-
     # not-import-time failure mode as PLEX_URL/PLEX_TOKEN above.
     monkeypatch.setenv("FRONTEND_BACKEND_API_KEY", "test-nzbdav-key")
+    # services/watchstate/router.py indexes this per request (os.environ[...])
+    # to build the X-apikey header - a missing key is a deployment fault, not
+    # something to send an unauthenticated request over.
+    monkeypatch.setenv("WS_API_KEY", "test-watchstate-key")
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_ADMIN_PASSWORD", raising=False)
     monkeypatch.delenv("CONTROL_PANEL_SERVICE_API_KEY", raising=False)
@@ -192,3 +196,8 @@ def gaps2_provision():
 @pytest.fixture(scope="module")
 def gaps2_prune_history():
     return _import_script("gaps2-prune-history")
+
+
+@pytest.fixture(scope="module")
+def watchstate_provision():
+    return _import_script("watchstate-provision")

@@ -23,6 +23,7 @@ const FLEET_GROUPS = {
   "speedtest-tracker": "Monitoring",
   scrutiny: "Monitoring",
   gaps2: "Discovery",
+  watchstate: "Discovery",
 };
 const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Discovery", "Post-processing", "Auto-updates", "Notifications", "Monitoring", "Dashboard", "Other"];
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem("fleetCollapsed") || "[]"));
