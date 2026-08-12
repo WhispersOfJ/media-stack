@@ -33,7 +33,7 @@ def _prefetcharr_log_lines() -> tuple[str | None, list[str]]:
 @router.get("/api/prefetcharr/logs")
 def prefetcharr_logs(lines: int = 60, _=Depends(current_user_or_service)):
     """Tails Prefetcharr's own log file directly (mounted at
-    config/prefetcharr, unlike Checkrr/Kometa which are stdout-only)."""
+    config/prefetcharr, unlike Kometa which is stdout-only)."""
     name, all_lines = _prefetcharr_log_lines()
     if not name:
         return ok("No log file found yet.", lines=[])

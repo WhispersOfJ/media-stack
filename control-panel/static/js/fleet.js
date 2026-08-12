@@ -16,7 +16,7 @@ const FLEET_GROUPS = {
   bazarr: "Subtitles", lingarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
   cleanuparr: "Queue cleanup",
-  maintainerr: "Library maintenance", checkrr: "Library maintenance", prefetcharr: "Library maintenance",
+  maintainerr: "Library maintenance", prefetcharr: "Library maintenance",
   "control-panel": "Dashboard",
   organizr: "Dashboard",
   ntfy: "Notifications",

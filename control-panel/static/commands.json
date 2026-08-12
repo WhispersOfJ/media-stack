@@ -2087,106 +2087,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-checkrr-badfiles",
-    "Description": "Corrupt files Checkrr has flagged (process:false, log only)",
-    "Method": "GET",
-    "PathTemplate": "/api/checkrr/badfiles",
-    "Query": [
-      {
-        "Key": "limit",
-        "ArgName": "limit",
-        "Literal": ""
-      }
-    ],
-    "Args": [
-      {
-        "Name": "limit",
-        "Choices": null,
-        "Optional": true,
-        "Default": "50",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-checkrr-badfiles-count",
-    "Description": "Just the total bad-file count from Checkrr",
-    "Method": "GET",
-    "PathTemplate": "/api/checkrr/badfiles",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-checkrr-scan-status",
-    "Description": "Tail recent Checkrr scan activity",
-    "Method": "GET",
-    "PathTemplate": "/api/checkrr/scan-status",
-    "Query": [
-      {
-        "Key": "lines",
-        "ArgName": "lines",
-        "Literal": ""
-      }
-    ],
-    "Args": [
-      {
-        "Name": "lines",
-        "Choices": null,
-        "Optional": true,
-        "Default": "40",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "checkrr"
-  },
-  {
-    "Name": "stack-checkrr-config",
-    "Description": "Effective Checkrr checkpaths/cron/process flags",
-    "Method": "GET",
-    "PathTemplate": "/api/checkrr/config",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-checkrr-reacquire-guard",
-    "Description": "ALERT if Checkrr's process flag is ever enabled",
-    "Method": "GET",
-    "PathTemplate": "/api/checkrr/reacquire-guard",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-checkrr-recent-scans",
-    "Description": "Checkrr scan-cycle start/finish markers only",
-    "Method": "GET",
-    "PathTemplate": "/api/checkrr/recent-scans",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-prefetcharr-logs",
     "Description": "Tail Prefetcharr's log file",
     "Method": "GET",
@@ -2461,7 +2361,7 @@
   },
   {
     "Name": "stack-loop-unmonitor",
-    "Description": "Unmonitor a movie (Radarr) or episode (Sonarr) by id \u2014 confirmed loop candidate",
+    "Description": "Unmonitor a movie (Radarr) or episode (Sonarr) by id — confirmed loop candidate",
     "Method": "POST",
     "PathTemplate": "/api/arr/{1}/unmonitor",
     "Query": null,
@@ -2497,7 +2397,7 @@
   },
   {
     "Name": "stack-loop-exclude",
-    "Description": "Add a Radarr movie to Exclusions \u2014 durable fix for movies re-monitored by import-list syncs after unmonitor",
+    "Description": "Add a Radarr movie to Exclusions — durable fix for movies re-monitored by import-list syncs after unmonitor",
     "Method": "POST",
     "PathTemplate": "/api/arr/radarr/exclude",
     "Query": null,

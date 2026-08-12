@@ -63,7 +63,7 @@ def test_status_reports_missing_container(cp_main_app, monkeypatch):
     dc = sys.modules["core.docker_client"]
 
     def fake_get(name):
-        if name == "checkrr":
+        if name == "lingarr":
             raise docker.errors.NotFound("not found")
         fake = MagicMock()
         fake.status = "running"
@@ -75,8 +75,8 @@ def test_status_reports_missing_container(cp_main_app, monkeypatch):
     headers = _service_key_header(cp_main_app)
     resp = client.get("/api/newapps/status", headers=headers)
     body = resp.json()
-    assert body["apps"]["checkrr"]["running"] is False
-    assert "checkrr" in body["message"]
+    assert body["apps"]["lingarr"]["running"] is False
+    assert "lingarr" in body["message"]
 
 
 def test_status_reports_unreachable_http(cp_main_app, monkeypatch):

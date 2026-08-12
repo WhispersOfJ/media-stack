@@ -1,6 +1,6 @@
 ---
 name: docker-compose-manager
-description: Manage the media-stack docker compose services safely — start, stop, restart, and inspect containers. Use whenever the user asks to restart a service, bring the stack up/down, check container status, tail logs, or recover from a container crash. Understands the stack's FUSE-mount dependency chain (nzbdav_rclone → radarr/sonarr/radarr-anime/plex/bazarr/checkrr/unpackerr/cleanuparr) so it restarts dependents in the correct order instead of leaving them pointed at a stale mount. Trigger phrases: "restart <service>", "bring the stack up/down", "is <container> healthy", "recreate <service>", "docker compose logs for X", "the mount looks stale".
+description: Manage the media-stack docker compose services safely — start, stop, restart, and inspect containers. Use whenever the user asks to restart a service, bring the stack up/down, check container status, tail logs, or recover from a container crash. Understands the stack's FUSE-mount dependency chain (nzbdav_rclone → radarr/sonarr/radarr-anime/plex/bazarr/unpackerr/cleanuparr) so it restarts dependents in the correct order instead of leaving them pointed at a stale mount. Trigger phrases: "restart <service>", "bring the stack up/down", "is <container> healthy", "recreate <service>", "docker compose logs for X", "the mount looks stale".
 ---
 
 # Docker Compose Manager
@@ -8,7 +8,7 @@ description: Manage the media-stack docker compose services safely — start, st
 Wraps `docker compose` for this stack with one critical safety behavior baked in:
 **mount-owning containers cascade.** `nzbdav_rclone` is the only FUSE-mount-owning
 container in this stack — restart it without also restarting every container that
-bind-mounts its output (`radarr`, `sonarr`, `radarr-anime`, `plex`, `bazarr`, `checkrr`,
+bind-mounts its output (`radarr`, `sonarr`, `radarr-anime`, `plex`, `bazarr`,
 `unpackerr`, `cleanuparr`) and those
 dependents keep serving a stale/broken mount handle until *they* are restarted too — a
 recurring failure class in this stack, confirmed live multiple times. Always use

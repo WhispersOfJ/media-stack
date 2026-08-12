@@ -191,7 +191,7 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-flatpak-updates [--apply]`** — list, or apply, pending Flatpak updates.
 - **`stack-log-levels [reset]`** — check, or reset, every Servarr app's log level.
 
-## 2026-07-30 additions — Tautulli, Wrapperr, Maintainerr, Checkrr, Prefetcharr, Lingarr, Kometa
+## 2026-07-30 additions — Tautulli, Wrapperr, Maintainerr, Prefetcharr, Lingarr, Kometa
 
 ### Tautulli
 
@@ -226,14 +226,6 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-maintainerr-safety-check`** — alerts if any rule is ever active.
 - **`stack-maintainerr-plex-link-check`** — confirms Maintainerr's configured Plex host matches this stack's real Plex.
 
-### Checkrr
-
-- **`stack-checkrr-badfiles [limit]`** — corrupt/unreadable files flagged (scan/log only, no auto-delete/reacquire).
-- **`stack-checkrr-badfiles-count`** — just the total bad-file count.
-- **`stack-checkrr-scan-status [lines]`** — tail recent scan activity.
-- **`stack-checkrr-config`** — effective checkpaths, cron schedule, and per-app process flags.
-- **`stack-checkrr-reacquire-guard`** — alerts if the process flag is ever flipped to enable auto-delete/reacquire.
-- **`stack-checkrr-recent-scans`** — scan-cycle start/finish markers only, for cadence/duration.
 
 ### Prefetcharr
 

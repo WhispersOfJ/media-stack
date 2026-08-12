@@ -5,7 +5,7 @@ auto-discovery never mounted them - see the stack-cleanuparr-strikes fix
 that surfaced this).
 
 Both routes are read-only - current_user_or_service throughout, same
-reasoning as services/checkrr's sqlite-reading routes.
+reasoning as the other sqlite-reading routes.
 """
 import os
 import sqlite3

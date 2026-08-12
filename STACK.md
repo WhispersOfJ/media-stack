@@ -20,7 +20,7 @@ was ever updated to reflect:**
   entry near that date).
 - **Tautulli and Kometa are back**: removed entirely in v11.9.0 (see README History), both
   **reinstalled 2026-07-30** as part of a 6-app "awesome-arr companions" addition (Tautulli,
-  Wrapperr, Maintainerr, Checkrr, Prefetcharr, Lingarr) plus Kometa reinstalled separately
+  Wrapperr, Maintainerr, Prefetcharr, Lingarr) plus Kometa reinstalled separately
   in the same window — all running now, confirmed live via `docker compose ps`. Kometa's
   former Quickstart companion was **not** reinstalled and remains genuinely gone. Do not
   trust any older line below claiming Tautulli/Kometa's removal is "complete and final" —
@@ -3210,7 +3210,7 @@ only reveal their real headers on the post-redirect 200):
 
 | Result | Services |
 |---|---|
-| No framing headers - iframe fine | Plex (`/web`), Seerr, Radarr, Radarr Anime, Sonarr, Sonarr Anime, Prowlarr, Bazarr, Cleanuparr, Maintainerr, Checkrr, Lingarr, Tautulli, Wrapperr, ntfy, Speedtest Tracker, Control Panel |
+| No framing headers - iframe fine | Plex (`/web`), Seerr, Radarr, Radarr Anime, Sonarr, Sonarr Anime, Prowlarr, Bazarr, Cleanuparr, Maintainerr, Lingarr, Tautulli, Wrapperr, ntfy, Speedtest Tracker, Control Panel |
 | `X-Frame-Options: SAMEORIGIN` - refuses framing | **NzbDAV only** |
 
 So NzbDAV is the single `type=2` (New Window) tab; the other 17 are `type=1` (iFrame). Organizr's
@@ -3229,7 +3229,7 @@ route refuses to run at all if `HOST_IP` is unset rather than emitting 18 broken
 Organizr's `image` column accepts either a path into its bundled icon set or a `<pack>::<name>`
 token that `iconPrefix()` (`js/functions.js:555`) expands. The bundled set covers radarr,
 sonarr, prowlarr, bazarr, plex, overseerr, tautulli and speedtest-icon; it has nothing for
-nzbdav, cleanuparr, maintainerr, checkrr, lingarr, wrapperr, ntfy or control-panel, so those use
+nzbdav, cleanuparr, maintainerr, lingarr, wrapperr, ntfy or control-panel, so those use
 FontAwesome 4 names (`fontawesome::bell` etc) rather than shipping image files into its volume.
 
 ### Layout
@@ -3247,7 +3247,7 @@ hand-tweaked in Organizr's UI survives a sync and a deliberately-added stray tab
 reaped. A 409 (name taken) counts as a skip, not a failure.
 
 **Tabs provisioned (18):** Plex, Seerr, Radarr, Radarr Anime, Sonarr, Sonarr Anime, Prowlarr,
-Bazarr, NzbDAV, Cleanuparr, Maintainerr, Checkrr, Lingarr, Tautulli, Wrapperr, ntfy, Speedtest
+Bazarr, NzbDAV, Cleanuparr, Maintainerr, Lingarr, Tautulli, Wrapperr, ntfy, Speedtest
 Tracker, Control Panel. Plus Organizr's own two built-in `type=0` pages (Settings, Homepage),
 which this stack does not manage. Deliberately absent, so a future session doesn't "notice the
 gap": kometa, unpackerr, watchtower, prefetcharr and nzbdav_rclone publish no port and have no

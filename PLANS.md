@@ -1185,7 +1185,7 @@ more still.)
 
 - Verb-order drift: `stack-plex-empty-trash` (verb-noun) vs
   `stack-plex-recently-added` (adjective-noun) vs `stack-arr-search-toggle`
-  (noun-verb) vs `stack-checkrr-reacquire-guard` (verb-noun-noun).
+  (noun-verb) vs `stack-arr-blocklist-clear` (noun-noun-verb).
 - Duplicate/ambiguous pair: top-level `stack-recently-added` vs
   `stack-plex-recently-added` — same concept, unclear which is canonical or
   whether the top-level one is dead code. Resolve during the audit, not

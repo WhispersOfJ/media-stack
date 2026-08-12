@@ -24,7 +24,7 @@ Two things in this table are load-bearing and were measured, not guessed:
 Icons: Organizr's `image` column accepts either a path into its bundled
 icon set or a `<pack>::<name>` token that iconPrefix() (js/functions.js:555)
 expands - `fontawesome::bell` becomes `<i class="fa fa-bell">`. The bundled
-set has no icon for nzbdav/cleanuparr/maintainerr/checkrr/lingarr/wrapperr/
+set has no icon for nzbdav/cleanuparr/maintainerr/lingarr/wrapperr/
 ntfy/control-panel, so those use FontAwesome 4 names (the version Organizr
 ships) instead of shipping our own image files into its volume.
 """
@@ -54,7 +54,6 @@ TABS: list[dict] = [
     {"name": "NzbDAV", "port": 3000, "path": "/", "image": "fontawesome::cloud-download", "tab_type": TYPE_NEW_WINDOW},
     {"name": "Cleanuparr", "port": 11011, "path": "/", "image": "fontawesome::eraser", "tab_type": TYPE_IFRAME},
     {"name": "Maintainerr", "port": 6246, "path": "/", "image": "fontawesome::wrench", "tab_type": TYPE_IFRAME},
-    {"name": "Checkrr", "port": 8585, "path": "/", "image": "fontawesome::stethoscope", "tab_type": TYPE_IFRAME},
     {"name": "Lingarr", "port": 9876, "path": "/", "image": "fontawesome::language", "tab_type": TYPE_IFRAME},
     {"name": "Tautulli", "port": 8182, "path": "/", "image": f"{_BUNDLED}tautulli.png", "tab_type": TYPE_IFRAME},
     {"name": "Wrapperr", "port": 8283, "path": "/", "image": "fontawesome::gift", "tab_type": TYPE_IFRAME},

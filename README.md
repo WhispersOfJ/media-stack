@@ -226,11 +226,10 @@ distinction is gone) - `docker compose up -d` brings up every service below.
 | 13 | `tautulli` | `ghcr.io/tautulli/tautulli:latest` | 8182 |
 | 14 | `wrapperr` | `aunefyren/wrapperr:latest` | 8283 |
 | 15 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 |
-| 16 | `checkrr` | `aetaric/checkrr:latest` | 8585 |
-| 17 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
-| 18 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
-| 19 | `kometa` | `kometateam/kometa:latest` | none |
-| 20 | `radarr-anime` | `ghcr.io/hotio/radarr:release` | 7879 |
+| 16 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
+| 17 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
+| 18 | `kometa` | `kometateam/kometa:latest` | none |
+| 19 | `radarr-anime` | `ghcr.io/hotio/radarr:release` | 7879 |
 
 **`radarr-anime`** is a second, fully independent Radarr instance for anime movies only
 (2026-08-06) - own root folder (`/data/anime-movies`), own "Anime" quality profile, own Plex
@@ -823,9 +822,6 @@ Six additional apps, all configured post-boot via their own web UI unless noted:
   rules configured** - this stack has a documented history of 3+ mass-deletion incidents
   (stale FUSE mounts, `autoEmptyTrash`, bad bind-mounts; see `STACK.md`). Do not create an
   auto-delete rule without reading that history first.
-- **Checkrr** (`aetaric/checkrr:latest`, port 8585) - corrupt-media scanner, triggers a
-  Radarr/Sonarr re-search on bad files. Config is a YAML file
-  (`config/checkrr/checkrr.yaml`), not env vars.
 - **Prefetcharr** (`phueber/prefetcharr:latest`, no web UI) - auto-fetches the next Sonarr
   season as a Plex viewer nears the end of the current one. Config is a single TOML blob via
   `PREFETCHARR_CONFIG`, not CLI flags.
@@ -2653,7 +2649,7 @@ of any kind now.
 configured post-boot via their own web UI - Tautulli (Plex watch-stats/history), Wrapperr
 (Tautulli stats wrapper, needs a Tautulli API key), Maintainerr (Plex/Radarr/Sonarr library
 maintenance, installed with **zero rules configured** given this stack's mass-deletion
-incident history), Checkrr (corrupt-media scanner, YAML config not env vars), Prefetcharr
+incident history), Prefetcharr
 (auto-fetches the next Sonarr season from Plex watch progress, no web UI), and Lingarr
 (subtitle translation, SQLite backend, complements rather than replaces Bazarr). Kometa was
 also reinstalled in the same pass (see `[11.9.0]` for its first removal) - a from-scratch,

@@ -1,6 +1,6 @@
 # Usage: stack-newapps-status
 # One-shot health sweep across all apps added 2026-07-30 (tautulli,
-# wrapperr, maintainerr, checkrr, prefetcharr, lingarr, kometa).
+# wrapperr, maintainerr, prefetcharr, lingarr, kometa).
 function stack-newapps-status --description 'Health sweep of the new apps'
     set -l host_ip 192.168.4.105
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]

@@ -33,7 +33,6 @@ CONTAINER_LABELS = {
     "tautulli": ("Tautulli", "Plex watch-stats/history dashboard"),
     "wrapperr": ("Wrapperr", "Tautulli stats wrapper/report dashboard"),
     "maintainerr": ("Maintainerr", "Plex/Radarr/Sonarr library maintenance - installed with zero rules configured"),
-    "checkrr": ("Checkrr", "corrupt-media scanner - process:false, scan/log only, no auto reacquire"),
     "prefetcharr": ("Prefetcharr", "auto-fetches next Sonarr season from Plex watch progress"),
     "lingarr": ("Lingarr", "subtitle translation, complements Bazarr"),
     "kometa": ("Kometa", "Plex metadata/collections/overlays, scheduled daily 05:30"),

@@ -961,38 +961,6 @@ services:
     mem_reservation: 64m
     cpus: 2
 
-  # Corrupt-media scanner, triggers a Radarr/Sonarr re-search on bad files.
-  # Config is a YAML file (config/checkrr/checkrr.yaml), not env vars - see
-  # that file for Radarr/Sonarr URLs/API keys. Reads the finished library
-  # directly (same mount scope as Radarr/Sonarr/Plex/Cleanuparr) to scan
-  # files for corruption.
-  checkrr:
-    restart: unless-stopped
-    logging: *common-logging
-    image: aetaric/checkrr:latest
-    container_name: checkrr
-    networks: [stacknet]
-    healthcheck:
-      # No curl in this image - only wget (confirmed live 2026-07-30).
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8585/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/checkrr:/config
-      - ./config/checkrr/checkrr.yaml:/etc/checkrr.yaml
-      - ./media/movies:/data/movies
-      - ./media/shows:/data/shows
-      - ./media/anime-movies:/data/anime-movies
-      - ./media/anime-shows:/data/anime-shows
-      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
-    ports:
-      - "8585:8585"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-
   # Auto-fetches the next season in Sonarr as a Plex viewer nears the end
   # of the current one. Headless poller, no web UI/port.
   prefetcharr:

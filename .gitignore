@@ -44,3 +44,10 @@ __pycache__/
 # Local pytest virtualenv (uv), built from control-panel/requirements.txt
 # plus pytest/beautifulsoup4/plexapi - this host has no system httpx.
 .venv-test/
+
+# Output of scripts/checkrr-badfiles-report.py (media paths, arr ids)
+checkrr-redownload.csv
+.checkrr-badfiles.tmp.csv
+
+# checkrr final scan output (media paths + arr API keys)
+data/checkrr-final/

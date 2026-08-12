@@ -17,7 +17,7 @@ router = APIRouter(tags=["newapps"])
 
 SERVICE_META = {"label": "New Apps", "health_check": None}
 
-NEW_APP_CONTAINERS = ["tautulli", "wrapperr", "maintainerr", "checkrr", "prefetcharr", "lingarr", "kometa"]
+NEW_APP_CONTAINERS = ["tautulli", "wrapperr", "maintainerr", "prefetcharr", "lingarr", "kometa"]
 
 
 @router.get("/api/newapps/status")
@@ -26,7 +26,7 @@ def newapps_status(_=Depends(current_user_or_service)):
     running state plus an HTTP reachability probe for the ones with a
     port (prefetcharr and kometa have neither, so those are container-
     status-only)."""
-    ports = {"tautulli": 8181, "wrapperr": 8282, "maintainerr": 6246, "checkrr": 8585, "lingarr": 8080}
+    ports = {"tautulli": 8181, "wrapperr": 8282, "maintainerr": 6246, "lingarr": 8080}
     out = {}
     for name in NEW_APP_CONTAINERS:
         try:

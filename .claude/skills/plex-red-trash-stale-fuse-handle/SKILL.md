@@ -11,17 +11,17 @@ metadata:
 
 ## Problem
 
-Symptom: one or more library sections show the red "marked for deletion" trash-can overlay, often at a scale far beyond the DB-contention variant — e.g. 61,363 of 61,367 items in a Shows section (essentially the whole library), not a partial section. Files are still present, correctly symlinked, and readable through the mount **from every other container** (Radarr, Sonarr, Bazarr, Checkrr, Cleanuparr, Unpackerr) — the breakage is isolated to Plex's own mount namespace.
+Symptom: one or more library sections show the red "marked for deletion" trash-can overlay, often at a scale far beyond the DB-contention variant — e.g. 61,363 of 61,367 items in a Shows section (essentially the whole library), not a partial section. Files are still present, correctly symlinked, and readable through the mount **from every other container** (Radarr, Sonarr, Bazarr, Cleanuparr, Unpackerr) — the breakage is isolated to Plex's own mount namespace.
 
 ```bash
 docker exec plex stat -L "/data/shows/<Title>/<file>.mkv"
 ```
 
-If this returns `Transport endpoint is not connected` (or `Socket not connected` in the Plex log's `boost::filesystem` errors) while the same path stats fine from `radarr`/`sonarr`/`bazarr`/`checkrr`, this is the bug — not a real mount outage, not DB contention.
+If this returns `Transport endpoint is not connected` (or `Socket not connected` in the Plex log's `boost::filesystem` errors) while the same path stats fine from `radarr`/`sonarr`/`bazarr`, this is the bug — not a real mount outage, not DB contention.
 
 ## Root cause
 
-`nzbdav_rclone` is the sole FUSE-mount-owning container in this stack. Every dependent (`radarr`, `sonarr`, `radarr-anime`, `sonarr-anime`, `plex`, `bazarr`, `checkrr`, `unpackerr`, `cleanuparr`) holds a bind-mounted view into that mount. When `nzbdav_rclone` gets recreated (image update, config change, manual restart) without the cascade also restarting every dependent, a dependent that's still running keeps the *old* mount's file handle — which is now defunct. Any filesystem call against it returns `ENOTCONN`.
+`nzbdav_rclone` is the sole FUSE-mount-owning container in this stack. Every dependent (`radarr`, `sonarr`, `radarr-anime`, `sonarr-anime`, `plex`, `bazarr`, `unpackerr`, `cleanuparr`) holds a bind-mounted view into that mount. When `nzbdav_rclone` gets recreated (image update, config change, manual restart) without the cascade also restarting every dependent, a dependent that's still running keeps the *old* mount's file handle — which is now defunct. Any filesystem call against it returns `ENOTCONN`.
 
 Plex is the dependent most likely to actually run a scan against `/data` unattended (scheduled library scans, Butler tasks), so it's usually the one that surfaces this first and worst: the scanner walks the whole library, every `stat()`/`file_size()` call fails, and Plex's scanner treats every one of those as "file is gone" — which mass-flags the section `deleted_at` in the DB. This is Plex behaving correctly given what it observed; the observation itself was wrong because the mount handle was stale.
 
@@ -48,7 +48,7 @@ ERROR - Couldn't get size of file "/data/...": boost::filesystem::file_size: Soc
    ```bash
    docker exec radarr stat -L "/data/<section>/<same file, radarr's path>" 2>&1
    ```
-   If radarr/sonarr/bazarr/checkrr succeed while plex fails, the mount itself is fine — only plex's handle is stale.
+   If radarr/sonarr/bazarr succeed while plex fails, the mount itself is fine — only plex's handle is stale.
 4. Confirm via log grep that this is the socket-error variant, not `busy database`:
    ```bash
    docker exec plex bash -c 'grep -c "Socket not connected" "/config/Plex Media Server/Logs/Plex Media Server.log"'
@@ -63,7 +63,7 @@ ERROR - Couldn't get size of file "/data/...": boost::filesystem::file_size: Soc
 
 ## Fix
 
-1. Check every FUSE-mount dependent for a stale handle first (step 3 above, run for all of `radarr`, `sonarr`, `radarr-anime`, `sonarr-anime`, `bazarr`, `checkrr`, `unpackerr`, `cleanuparr`) — restart only the ones that are actually stale. In the observed incident only `plex` was affected; don't blanket-restart the whole cascade if it isn't necessary.
+1. Check every FUSE-mount dependent for a stale handle first (step 3 above, run for all of `radarr`, `sonarr`, `radarr-anime`, `sonarr-anime`, `bazarr`, `unpackerr`, `cleanuparr`) — restart only the ones that are actually stale. In the observed incident only `plex` was affected; don't blanket-restart the whole cascade if it isn't necessary.
 2. Restart the stale container(s):
    ```bash
    docker restart plex
@@ -90,4 +90,4 @@ ERROR - Couldn't get size of file "/data/...": boost::filesystem::file_size: Soc
 
 ## When to use
 
-Trigger on: Plex library items showing the red "marked for deletion" / unavailable trash-can icon, especially when it affects a very large fraction of a whole section (not just a subset), and `docker exec plex stat -L <file>` returns `Transport endpoint is not connected` while the same file stats fine from Radarr/Sonarr/Bazarr/Checkrr. Check `nzbdav_rclone` vs `plex` container uptime as the first diagnostic step.
+Trigger on: Plex library items showing the red "marked for deletion" / unavailable trash-can icon, especially when it affects a very large fraction of a whole section (not just a subset), and `docker exec plex stat -L <file>` returns `Transport endpoint is not connected` while the same file stats fine from Radarr/Sonarr/Bazarr. Check `nzbdav_rclone` vs `plex` container uptime as the first diagnostic step.

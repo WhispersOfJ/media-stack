@@ -32,7 +32,6 @@ HTTP_SERVICES = {
     "tautulli": (8182, "/"),
     "wrapperr": (8283, "/"),
     "maintainerr": (6246, "/"),
-    "checkrr": (8585, "/"),
     "lingarr": (9876, "/"),
     "nzbdav": (3000, "/"),
     "ntfy": (8700, "/v1/health"),

@@ -54,7 +54,7 @@ def kometa_run_now(_=Depends(current_user_or_service)):
 @router.get("/api/kometa/logs")
 def kometa_logs(lines: int = 100, _=Depends(current_user_or_service)):
     """Tails Kometa's own container logs directly (no log file - stdout
-    only, same as Checkrr)."""
+    only)."""
     try:
         c = docker_client.containers.get("kometa")
     except docker.errors.NotFound:
