@@ -3401,6 +3401,11 @@ confirmed callable against the real running stack.
 
 ## GAPS-2 added: collection/franchise gap detection, 2026-08-12
 
+> **Scope reduced later the same day** — the anime libraries were removed and
+> GAPS-2's own Radarr/Sonarr were wired up. Everything below describes the
+> build as first shipped; see "GAPS-2 scope cut to Movies and Shows" at the
+> end of this file for the current state.
+
 Phase 5 of PLANS.md's 7-service batch. Finds titles that belong to a collection (movies, via
 TMDB) or a franchise (TV, via TheTVDB) where the library owns some entries but not others — the
 third Alien film when you have the other two — and pushes a chosen one into the right Arr
@@ -3555,3 +3560,93 @@ pytest`. `beautifulsoup4` and `plexapi` are needed by `tests/scripts/` and are n
 **Fish functions:** `stack-gaps2-status`, `stack-gaps2-scan [library] [--full]`,
 `stack-gaps2-missing [library] [limit]`, `stack-gaps2-push <id> <library>`. Deployed as plain
 copies to `~/.config/fish/functions/`, all four confirmed callable against the real running stack.
+
+
+## GAPS-2 scope cut to Movies and Shows, 2026-08-12
+
+Bear's call, hours after the section above shipped. GAPS-2 no longer covers
+**Anime Movies** or **Anime Shows**. Collection/franchise detection is a poor
+fit for anime: TMDB collections and TheTVDB franchises model seasons, OVAs,
+specials and recap films inconsistently, so most of the 321 anime gaps the
+first sweep found were metadata artefacts rather than titles worth grabbing.
+
+### The single-instance constraint stopped biting
+
+The whole shape of the original integration came from GAPS-2 holding exactly
+**one** Radarr and **one** Sonarr connection while four Arr instances needed
+covering. Drop the anime libraries and there is one Radarr and one Sonarr in
+scope, which is exactly what GAPS-2 can hold. Two consequences:
+
+1. **GAPS-2's own Radarr/Sonarr are now configured**, reversing the deliberate
+   omission documented above. `scripts/gaps2-provision.py` wires
+   `http://radarr:7878` and `http://sonarr:8989` (docker-network addresses —
+   GAPS-2 is the client, so localhost would resolve to the gaps2 container
+   itself) with the same root folder and quality profile the panel's push
+   picks, so GAPS-2's own Add button and `stack-gaps2-push` land a title in
+   the same place. Live: `/data/movies` + profile "Anything" (id 16) on
+   Radarr, `/data/shows` + "Anything" (id 19) on Sonarr.
+2. **The routing table stays anyway.** `/api/gaps2/push` still goes through
+   `core.arr_client` rather than GAPS-2's `/api/radarr/add`, because that is
+   what names the destination instance in the response, reuses the stack-wide
+   root-folder/profile defaults, and rejects an uncovered library instead of
+   adding it somewhere by default.
+
+`auto_route_by_decade` is explicitly written as `false`. It routes an add to
+whichever root folder's path contains the title's decade; both instances have
+one flat root folder, so leaving it on would make every add depend on a path
+match that never succeeds.
+
+### Removing the libraries was not enough on its own
+
+Taking the anime entries out of `libraries.py` stops the control panel
+scanning, listing or pushing them — every gaps2 route derives its target from
+that table — but GAPS-2 keeps what it already found. Five anime scan-history
+entries stayed in `scan_history.json`, and `last_tv_scan.json` was an "Anime
+Shows" scan, so GAPS-2's own dashboard still rendered 35 anime gaps. Harmless
+before this change; not harmless after it, because those rows now carry a
+working Add button pointed at the general Sonarr.
+
+`scripts/gaps2-prune-history.py` (new) drops them: history entries naming any
+uncovered library go, and a `last_scan.json` / `last_tv_scan.json` belonging
+to one is **deleted rather than emptied** — a missing sidecar reads as "never
+scanned", an empty gap list reads as "scanned, nothing missing", and those
+mean opposite things. Backs up each file first and rewrites via temp file +
+`os.replace`. Run with the gaps2 container stopped; a scan completing
+mid-prune would rewrite the file the script has already read.
+
+Ran live: 5 entries dropped, 4 kept, `last_tv_scan.json` deleted (GAPS-2 now
+falls back to the Shows scan for its TV dashboard). Container healthy after
+restart, no errors in the log.
+
+### Live verification
+
+- `stack-gaps2-status` → "Idle. 1148 missing title(s) across 2 libraries."
+  (Movies 929, Shows 219).
+- `stack-gaps2-missing "Anime Movies"` and `stack-gaps2-push 375177 "Anime
+  Movies"` both → `Unknown library 'Anime Movies'. Known: Movies, Shows.`
+- `stack-gaps2-missing Movies 3` and `stack-gaps2-missing Shows 2` still
+  answer normally.
+- GAPS-2's `/api/radarr/config` and `/api/sonarr/config` both `enabled: true`
+  with the root folder and profile above.
+- `scripts/gaps2-provision.py --dry-run` reports the two Arr connections and
+  writes nothing; a real re-run is a plain overwrite.
+
+The earlier note about root-folder resolution relying on radarr-anime having
+exactly one root folder no longer applies to GAPS-2 — it never reaches the
+anime instances now. It still applies to every other caller of
+`radarr_root_folder_and_profile`.
+
+**Tests:** `tests/control_panel/test_gaps2_router.py` re-cut to two libraries
+(31 cases), including one asserting the anime libraries stay out of the table
+— re-adding one is not a no-op now that a general instance is wired.
+`tests/scripts/test_gaps2_provision.py` (12 cases) covers the Arr wiring, and
+the regression that motivates its two-phase save: GAPS-2's `save_config` is a
+wholesale overwrite, not a merge, and the root-folder/profile lookups read the
+stored config, so the second save has to re-send the credentials or it wipes
+them. `tests/scripts/test_gaps2_prune_history.py` (10 cases) covers the prune,
+its backup, and its dry run. Full suite **730 passed** (710 before, minus the
+2 router cases the smaller table folds away, plus 22 new).
+
+**Restart needed:** `docker compose build control-panel && docker compose up -d
+control-panel` (done). GAPS-2 itself only needed the stop/start around the
+prune.

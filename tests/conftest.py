@@ -182,3 +182,13 @@ def plex_library_report():
 @pytest.fixture(scope="module")
 def poster_sync_fanart():
     return _import_script("poster-sync-fanart")
+
+
+@pytest.fixture(scope="module")
+def gaps2_provision():
+    return _import_script("gaps2-provision")
+
+
+@pytest.fixture(scope="module")
+def gaps2_prune_history():
+    return _import_script("gaps2-prune-history")

@@ -1,6 +1,6 @@
 # Usage: stack-gaps2-scan [plex-library] [--full]
-# Sweeps for collection/franchise gaps. With no library named it sweeps all
-# four (Movies, Anime Movies, Shows, Anime Shows).
+# Sweeps for collection/franchise gaps. With no library named it sweeps both
+# covered libraries (Movies, Shows).
 #
 # Returns as soon as the sweep starts - a first full movie scan is minutes of
 # TMDB round-trips, so it runs in the background. Poll stack-gaps2-status for

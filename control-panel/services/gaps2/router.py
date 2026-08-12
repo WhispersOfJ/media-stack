@@ -15,11 +15,13 @@ established by reading upstream source rather than its docs:
    round-trips, which is what the incremental movie scan exists to avoid.
 
 2. GAPS-2 holds ONE Radarr and ONE Sonarr connection, with no second-instance
-   support. It therefore cannot be trusted to push anything: it would send an
-   anime gap to the general Radarr under the general root folder and quality
-   profile. So `/push` here ignores GAPS-2's own `/api/radarr/add` entirely
-   and calls the correct Arr instance directly via `core.arr_client`. See
-   `libraries.py` for the routing table and why it exists.
+   support. Coverage is Movies and Shows only (the anime libraries were
+   dropped on 2026-08-12, see `libraries.py`), so that single pair is now
+   provisioned and points at radarr/sonarr. `/push` still routes through
+   `core.arr_client` rather than GAPS-2's own `/api/radarr/add`: it is the
+   same destination, but this way the panel names the instance in its
+   response, reuses the stack's root-folder/quality-profile defaults, and
+   rejects an uncovered library instead of adding it somewhere by default.
 
 3. Because of (2), scans run one library at a time. GAPS-2's gap objects carry
    no library field, so a merged multi-library scan produces results that
@@ -344,10 +346,12 @@ def gaps2_push(payload: PushRequest, _=Depends(current_user_or_service)):
     wrong-year matches and short films, so a bulk push would be exactly the
     kind of unreviewed mass action this repo's CLAUDE.md asks to confirm first.
 
-    This does NOT go through GAPS-2's own /api/radarr/add. GAPS-2 knows about
-    a single Radarr and a single Sonarr, so its add would put an anime title
-    into the general instance with the general root folder and quality
-    profile. Routing is decided here, from the library the gap was found in.
+    This does NOT go through GAPS-2's own /api/radarr/add, even though that
+    now points at the same Radarr/Sonarr. Deciding the destination here from
+    the library the gap was found in is what lets this route name the
+    instance back to the caller, reuse the stack-wide root folder and quality
+    profile defaults from core.arr_client, and refuse a library the routing
+    table does not cover instead of adding it somewhere by default.
     """
     arr_name = arr_for_library(payload.library)
     if not arr_name:

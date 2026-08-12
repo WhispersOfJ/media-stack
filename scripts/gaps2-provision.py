@@ -13,20 +13,24 @@ also ships no auth of any kind, so none of these calls need a session.
 So the whole service provisions headlessly from the PLEX_URL / PLEX_TOKEN /
 TMDB_KEY / TVDB_KEY already in .env, with no browser step at all.
 
-Radarr and Sonarr are deliberately NOT configured here
------------------------------------------------------
-GAPS-2 stores exactly one Radarr connection and one Sonarr connection. This
-stack has four Arr instances, split general/anime. If a single Radarr were
-configured, GAPS-2's own web UI would grow an Add button that pushes every
-title - anime included - into that one instance, under its root folder and
-quality profile. That is a silent mis-file, and the UI gives no hint it
-happened.
+Radarr and Sonarr ARE configured here (changed 2026-08-12)
+---------------------------------------------------------
+GAPS-2 stores exactly one Radarr connection and one Sonarr connection. That
+used to be a blocker: with the anime libraries in the routing table there
+were four candidate instances, and configuring one of them would have given
+GAPS-2's own web UI an Add button that files anime titles into the general
+Radarr's root folder under the general quality profile - a silent mis-file
+with no hint in the UI. So both were left unset.
 
-Leaving them unset makes that mis-route structurally impossible rather than
-merely discouraged, and keeps two more API keys out of config.enc. Pushes go
-through the control panel instead (`stack-gaps2-push` ->
-/api/gaps2/push), which picks the instance from the library the gap was found
-in - see control-panel/services/gaps2/libraries.py.
+The anime libraries were dropped from the routing table, leaving Movies ->
+radarr and Shows -> sonarr, which is exactly one Radarr and one Sonarr. The
+ambiguity is gone, so both are now provisioned with the same root folder and
+quality profile the control panel's own push uses. GAPS-2's Add button and
+`stack-gaps2-push` land a title in the same place.
+
+The control panel push route stays the primary path anyway (it names the
+instance in its response and rejects an uncovered library) - see
+control-panel/services/gaps2/libraries.py.
 
 Safe to re-run: every step is a plain overwrite of the same config keys, and
 the script reports what each one already looked like beforehand.
@@ -48,6 +52,41 @@ from services.gaps2.libraries import LIBRARY_NAMES  # noqa: E402
 
 BASE = "http://localhost:8704"
 TIMEOUT = 60
+
+# The two Arr instances GAPS-2 itself gets wired to, one per media type.
+#
+# `url` is the docker-network address, because GAPS-2 is the thing that has to
+# reach it - localhost:7878 works from this script's host but resolves to the
+# gaps2 container itself from inside the network.
+#
+# `root_folder` / `quality_profile` deliberately repeat the defaults in
+# control-panel/core/arr_client.py (radarr_root_folder_and_profile and its
+# Sonarr twin). Same destination whether a title is added from GAPS-2's own UI
+# or via /api/gaps2/push; each falls back to the instance's first entry if the
+# named one is absent, rather than leaving the field blank.
+ARR_TARGETS = (
+    {
+        "service": "radarr",
+        "label": "Radarr",
+        "url": "http://radarr:7878",
+        "env_key": "RADARR_API_KEY",
+        "root_folder": "/data/movies",
+        "quality_profile": "Unlimited",
+        # auto_route_by_decade would send a title to a root folder whose path
+        # contains its decade. This stack has one flat root folder per
+        # instance, so it must stay off or adds would fall back unpredictably.
+        "extra": {"minimum_availability": "released", "auto_route_by_decade": False},
+    },
+    {
+        "service": "sonarr",
+        "label": "Sonarr",
+        "url": "http://sonarr:8989",
+        "env_key": "SONARR_API_KEY",
+        "root_folder": "/data/shows",
+        "quality_profile": "Any",
+        "extra": {"season_folder": True},
+    },
+)
 
 
 def load_env() -> dict:
@@ -150,6 +189,59 @@ def provision_tvdb(env: dict, dry_run: bool) -> None:
     print(f"  tvdb: key saved and verified against TheTVDB")
 
 
+def provision_arr(target: dict, env: dict, dry_run: bool) -> None:
+    """Wire one Arr instance into GAPS-2, in two saves.
+
+    The root-folder and quality-profile lookups run through GAPS-2's own
+    /root-folders and /profiles endpoints, which read the stored config. So
+    the credentials have to be saved before they can be resolved, and the
+    resolved values saved after. Going through GAPS-2 rather than querying
+    Radarr/Sonarr directly from here also proves GAPS-2 can reach the
+    instance over the docker network, which is the connection that matters.
+    """
+    service, label = target["service"], target["label"]
+    api_key = require(env, target["env_key"])
+
+    status, body = request("GET", f"/api/{service}/config")
+    if (body or {}).get("enabled"):
+        print(f"  {service}: already configured ({(body or {}).get('url')}) - overwriting")
+    if dry_run:
+        print(f"  {service}: would connect to {target['url']} and set root folder + quality profile")
+        return
+
+    # test takes the credentials in the body, so a bad key fails here rather
+    # than at the first Add from GAPS-2's UI.
+    status, body = request("POST", f"/api/{service}/test", {"url": target["url"], "api_key": api_key})
+    if status != 200:
+        raise SystemExit(f"  {service}: {label} connection failed ({status}): {(body or {}).get('error') or body}")
+    print(f"  {service}: {(body or {}).get('message')}")
+
+    base_config = {"url": target["url"], "api_key": api_key, "monitored": True, "search_on_add": True, **target["extra"]}
+    status, body = request("POST", f"/api/{service}/config", base_config)
+    if status != 200:
+        raise SystemExit(f"  {service}: saving credentials failed ({status}): {body}")
+
+    status, folders = request("GET", f"/api/{service}/root-folders")
+    if status != 200 or not folders:
+        raise SystemExit(f"  {service}: {label} reports no root folders ({status}): {folders}")
+    paths = [f.get("path") for f in folders]
+    root_folder_path = target["root_folder"] if target["root_folder"] in paths else paths[0]
+
+    status, profiles = request("GET", f"/api/{service}/profiles")
+    if status != 200 or not profiles:
+        raise SystemExit(f"  {service}: {label} reports no quality profiles ({status}): {profiles}")
+    quality_profile = next((p for p in profiles if p.get("name") == target["quality_profile"]), profiles[0])
+
+    status, body = request("POST", f"/api/{service}/config", {
+        **base_config,
+        "root_folder_path": root_folder_path,
+        "quality_profile_id": quality_profile["id"],
+    })
+    if status != 200 or not (body or {}).get("enabled"):
+        raise SystemExit(f"  {service}: saving root folder/profile failed ({status}): {body}")
+    print(f"  {service}: root folder {root_folder_path}, quality profile '{quality_profile['name']}' (id {quality_profile['id']})")
+
+
 def check_libraries(found: list[str]) -> None:
     """Warn if the routing table names a library this Plex server lacks.
 
@@ -183,9 +275,10 @@ def main() -> None:
     found = provision_plex(env, args.dry_run)
     provision_tmdb(env, args.dry_run)
     provision_tvdb(env, args.dry_run)
+    for target in ARR_TARGETS:
+        provision_arr(target, env, args.dry_run)
     check_libraries(found)
 
-    print("  radarr/sonarr: deliberately not configured (see this script's docstring)")
     print("Done." if not args.dry_run else "Dry run complete, nothing written.")
 
 

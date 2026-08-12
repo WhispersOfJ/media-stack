@@ -5,21 +5,24 @@ One definition, imported by both `services/gaps2/router.py` and
 thing that provisions GAPS-2 and the thing that reads its results. Same
 single-definition arrangement as `services/organizr/tabs.py` from Phase 3.
 
-Why this table has to exist at all
-----------------------------------
-GAPS-2 stores exactly ONE Radarr connection and ONE Sonarr connection
-(`CONFIG_KEY = 'radarr'` / `'sonarr'` in its own service modules), with no
-notion of a second instance. This stack has four Arr instances, split
-general/anime. So GAPS-2 cannot be the thing that decides where a found gap
-gets pushed - it would send every gap to whichever single instance it was
-configured with, landing anime titles in the general Radarr's root folder
-under the general quality profile.
+Scope: general libraries only
+-----------------------------
+GAPS-2 covers Movies and Shows. The anime libraries (Anime Movies, Anime
+Shows, on radarr-anime/sonarr-anime) were removed from this table on
+2026-08-12 at Bear's request. Collection/franchise gap detection is a poor
+fit for anime: TMDB collections and TheTVDB franchises model anime seasons,
+OVAs, specials and recap films inconsistently, so a "gap" there is far more
+often a metadata artefact than a title actually worth grabbing.
 
-Instead GAPS-2 is used purely as the gap *detector*, and this table plus the
-push route in `router.py` own the routing decision. Bear chose this over
-running a second `gaps2-anime` container (2026-08-12), because one instance
-can already scan every library and a second container would duplicate the
-scan work for nothing.
+Removing them also collapses the routing problem. With one movie library and
+one show library there is exactly one Radarr and one Sonarr in scope, which
+is precisely what GAPS-2 itself can hold, so GAPS-2's own Radarr/Sonarr
+connections are now provisioned too (`scripts/gaps2-provision.py`) and its
+web UI's Add button lands titles in the same place `/api/gaps2/push` does.
+
+This table stays regardless. It is what makes /missing and /push name their
+destination explicitly, and what rejects a library that is not covered
+instead of silently defaulting to one.
 
 Why scans run one library at a time
 -----------------------------------
@@ -27,8 +30,8 @@ GAPS-2's scan accepts a `libraryNames` LIST and merges the owned titles from
 all of them into a single deduplicated result. Its progress/result structure
 records `libraries` at the scan level and the gap objects themselves carry no
 library field (`services/scan_progress.py`, `services/scan_history.py`), so a
-merged Movies + Anime Movies scan produces gaps that cannot be attributed
-back to a library afterwards - and therefore cannot be routed.
+merged multi-library scan produces gaps that cannot be attributed back to a
+library afterwards - and therefore cannot be routed.
 
 Scanning one library per scan makes each completed scan a scan-history entry
 whose `libraries` field is exactly one name, which is what lets `/missing`
@@ -42,9 +45,7 @@ GAPS-2's own persisted history rather than a cache maintained here.
 # by tvdbId. `arr` is a key into core.arr_client.ARR_APPS.
 LIBRARIES = (
     {"plex_library": "Movies", "kind": "movie", "arr": "radarr"},
-    {"plex_library": "Anime Movies", "kind": "movie", "arr": "radarr_anime"},
     {"plex_library": "Shows", "kind": "show", "arr": "sonarr"},
-    {"plex_library": "Anime Shows", "kind": "show", "arr": "sonarr_anime"},
 )
 
 MOVIE_LIBRARIES = tuple(lib["plex_library"] for lib in LIBRARIES if lib["kind"] == "movie")

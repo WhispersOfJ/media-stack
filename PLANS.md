@@ -369,7 +369,8 @@ cannot be automated via the API before the app has booted once.
 
 ## Phase 3 — Organizr
 
-**Status:** DONE (2026-08-12)
+**Status:** DONE (2026-08-12), scope reduced same day — see "Anime libraries
+removed" below.
 **Risk:** low
 **Role:** single landing dashboard with tabs for every service in the stack
 (existing + all new ones from this batch).
@@ -815,10 +816,10 @@ Entered via GAPS-2's own Settings UI post-boot, not pre-seeded:
       `stack-claude-full-backup`'s no-excludes tar of `~/Claude`, verified
       (restic, which this box originally assumed, was removed 2026-08-12)
 - [x] Plex + TMDB + TheTVDB keys configured — headlessly, no OAuth. Radarr
-      and Sonarr deliberately NOT configured inside GAPS-2, so its own UI
-      can't push anime titles into the general instance
+      and Sonarr were deliberately NOT configured inside GAPS-2 while anime
+      was in scope; they are configured now that it is not (see below)
 - [x] Anime-scope decision made and documented — one container, control panel
-      owns push routing, both general and anime covered
+      owns push routing. Anime coverage reversed later the same day (below)
 - [x] health-monitor probe green
 - [x] pytest suite passing — 33 cases, full suite 710
 - [x] Live scan + one controlled push verified — 1,534 gaps across 4
@@ -827,6 +828,33 @@ Entered via GAPS-2's own Settings UI post-boot, not pre-seeded:
 - [x] Fish functions callable — all four
 - [x] STACK.md entry added
 - [x] Committed as its own commit
+
+### 5.8 Anime libraries removed (2026-08-12, same day)
+
+Bear's call, reversing the anime-scope decision above. GAPS-2 now covers
+**Movies and Shows only**. Collection/franchise detection is a poor fit for
+anime: TMDB collections and TheTVDB franchises model seasons, OVAs, specials
+and recap films inconsistently, so most of the 321 anime gaps found in the
+first sweep were metadata artefacts rather than titles worth grabbing.
+
+What changed:
+
+- `control-panel/services/gaps2/libraries.py` — the routing table is Movies →
+  `radarr`, Shows → `sonarr`. Every gaps2 route derives its target from this
+  table, so `/scan`, `/missing` and `/push` all reject the anime libraries as
+  unknown.
+- **GAPS-2's own Radarr/Sonarr are now configured**, reversing the box above.
+  That was only ever blocked by the four-instance ambiguity; with one Radarr
+  and one Sonarr in scope, `scripts/gaps2-provision.py` wires both with the
+  same root folder and quality profile the panel's push uses, so GAPS-2's own
+  Add button and `stack-gaps2-push` land a title in the same place.
+- `scripts/gaps2-prune-history.py` (new) — deleted the leftover anime scan
+  results out of GAPS-2's data dir. Removing the libraries from the table
+  stops the panel touching them, but GAPS-2 kept the stored gaps, and those
+  rows now carry a working Add button pointed at the general instances. 5
+  history entries dropped, `last_tv_scan.json` (an Anime Shows scan) deleted.
+
+Live after the change: 1,148 gaps across 2 libraries (Movies 929, Shows 219).
 
 ---
 
