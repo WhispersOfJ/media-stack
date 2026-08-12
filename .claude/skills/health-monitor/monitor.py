@@ -37,6 +37,10 @@ HTTP_SERVICES = {
     "nzbdav": (3000, "/"),
     "ntfy": (8700, "/v1/health"),
     "speedtest-tracker": (8701, "/api/healthcheck"),
+    # /api/v2/ping, not "/" - ping is unauthenticated and hard-200s both
+    # before and after Organizr's setup wizard, whereas "/" serves the
+    # wizard pre-setup and 302s to login after.
+    "organizr": (8702, "/api/v2/ping"),
 }
 
 

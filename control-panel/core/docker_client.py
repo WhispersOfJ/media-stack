@@ -39,6 +39,7 @@ CONTAINER_LABELS = {
     "kometa": ("Kometa", "Plex metadata/collections/overlays, scheduled daily 05:30"),
     "control-panel": ("Control Panel", "this dashboard"),
     "ntfy": ("ntfy", "shared push-notification sink - anonymous access, not exposed publicly"),
+    "organizr": ("Organizr", "single landing dashboard, one tab per service - tabs provisioned by script, not by hand"),
 }
 
 # Same FUSE-landmine mount ordering as app.py's stack_restart_all - see

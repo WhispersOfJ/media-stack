@@ -691,6 +691,11 @@ services:
       # why - Sanctum only ever stores a hash, and the image has no
       # tinker), read as a plain env var same as FRONTEND_BACKEND_API_KEY.
       SPEEDTEST_TRACKER_API_TOKEN: ${SPEEDTEST_TRACKER_API_TOKEN}
+      # /api/organizr/* - Organizr's own API key, which this stack chose
+      # rather than had generated for it (it is an input to the setup
+      # wizard, see scripts/organizr-provision.py). Must be exactly 20
+      # chars; Organizr's isApprovedRequest gates on strlen before value.
+      ORGANIZR_API_KEY: ${ORGANIZR_API_KEY}
       # Evolved backend (main.py) - service-account key for unattended
       # stack-* fish commands; see .env's comment and
       # core/security.py's current_user_or_service.
@@ -1152,4 +1157,44 @@ services:
       - "8701:80"
     mem_limit: 512m
     mem_reservation: 64m
+    cpus: 1
+
+  # Phase 3 (PLANS.md) - single landing dashboard with a tab per service.
+  #
+  # Image is ghcr.io/organizr/organizr, NOT the organizr/organizr Docker Hub
+  # name PLANS.md 3.1 specified - the docker-organizr README lists the Hub
+  # path (and organizrtools/organizr-v2 before it) as the legacy name that
+  # ghcr replaced. Same project, current publish target.
+  #
+  # No `fpm` env var: the base image "now set up to use the unix socket
+  # exclusively" per that same README, so the old fpm toggle PLANS.md 3.1
+  # carried over is inert. `branch` is real and still selects the git branch
+  # the entrypoint installs from.
+  #
+  # Healthcheck hits /api/v2/ping rather than /: ping is an unauthenticated
+  # GET that returns "pong" with a hard 200 both before and after the setup
+  # wizard has run (api/v2/routes/ping.php), whereas / serves the wizard
+  # pre-setup and 302s to login post-setup.
+  organizr:
+    restart: unless-stopped
+    image: ghcr.io/organizr/organizr:latest
+    container_name: organizr
+    environment:
+      PUID: "${PUID}"
+      PGID: "${PGID}"
+      TZ: "${TZ}"
+      branch: "v2-master"
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/api/v2/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/organizr:/config
+    ports:
+      - "8702:80"
+    mem_limit: 256m
+    mem_reservation: 32m
     cpus: 1

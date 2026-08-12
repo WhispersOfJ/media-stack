@@ -117,4 +117,13 @@ function stack-help --description 'List all stack-* terminal commands for the me
     echo '  stack-kometa-last-run-result                    outcome of the last completed run'
     echo '  stack-kometa-config                             which libraries config.yml is set to touch'
     echo '  stack-newapps-status                            health sweep of all new apps at once'
+    echo ''
+    echo 'new-services batch (PLANS.md Phases 1-3, 2026-08):'
+    echo '  stack-ntfy-publish <topic> <message>            push a message to an ntfy topic'
+    echo '  stack-ntfy-topics                               list configured ntfy topics'
+    echo '  stack-speedtest-latest                          most recent speedtest (down/up/ping/jitter)'
+    echo '  stack-speedtest-history [days]                  speedtest results over the last N days (default 7)'
+    echo '  stack-speedtest-run-now                         trigger an out-of-schedule speedtest'
+    echo '  stack-organizr-tabs                             Organizr'"'"'s dashboard tabs + which services lack one'
+    echo '  stack-organizr-sync                             add a tab for any service missing one (additive only)'
 end

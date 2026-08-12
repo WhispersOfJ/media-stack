@@ -261,3 +261,25 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 ### Cross-app
 
 - **`stack-newapps-status`** — health sweep of all new apps at once.
+
+## 2026-08 additions — new-services batch (PLANS.md Phases 1–3)
+
+Backfilled 2026-08-12: Phases 1 and 2 shipped without updating this file or
+`stack-help.fish`, so ntfy and Speedtest Tracker are documented here for the
+first time alongside Organizr.
+
+### ntfy (Phase 1)
+
+- **`stack-ntfy-publish <topic> <message>`** — push a message to an ntfy topic.
+- **`stack-ntfy-topics`** — list the topics the server currently has configured.
+
+### Speedtest Tracker (Phase 2)
+
+- **`stack-speedtest-latest`** — most recent completed result (down/up/ping/jitter).
+- **`stack-speedtest-history [days]`** — results over the last N days, newest first (default 7).
+- **`stack-speedtest-run-now`** — trigger a test outside the hourly schedule.
+
+### Organizr (Phase 3)
+
+- **`stack-organizr-tabs`** — every tab Organizr has, plus which stack services are missing one. Includes Organizr's own built-in Settings/Homepage pages, which this stack does not manage.
+- **`stack-organizr-sync`** — add a tab for any service in the canonical table (`control-panel/services/organizr/tabs.py`) that doesn't have one. Additive only: it never edits or deletes an existing tab, so anything hand-tweaked in Organizr's UI survives. Run it after adding a service to the stack.

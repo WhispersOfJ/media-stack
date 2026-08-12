@@ -18,6 +18,7 @@ const FLEET_GROUPS = {
   cleanuparr: "Queue cleanup",
   maintainerr: "Library maintenance", checkrr: "Library maintenance", prefetcharr: "Library maintenance",
   "control-panel": "Dashboard",
+  organizr: "Dashboard",
   ntfy: "Notifications",
   "speedtest-tracker": "Monitoring",
 };

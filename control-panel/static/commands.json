@@ -2631,5 +2631,29 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": ""
+  },
+  {
+    "Name": "stack-organizr-tabs",
+    "Description": "List Organizr's configured dashboard tabs",
+    "Method": "GET",
+    "PathTemplate": "/api/organizr/tabs",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-organizr-sync",
+    "Description": "Add any missing stack service as an Organizr tab",
+    "Method": "POST",
+    "PathTemplate": "/api/organizr/tabs/sync",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
   }
 ]

@@ -10,8 +10,8 @@ is the canonical one an implementing agent should follow — if the two ever dri
 this file wins.
 
 **Status: see each phase's own `Status:` line — that's the single source of
-truth, not this paragraph.** As of last update (2026-08-11): Phases 1 (ntfy)
-and 2 (Speedtest Tracker) DONE, Phases 3-7 not started. Phase 1 was built out
+truth, not this paragraph.** As of last update (2026-08-12): Phases 1 (ntfy),
+2 (Speedtest Tracker) and 3 (Organizr) DONE, Phases 4-7 not started. Phase 1 was built out
 of this doc's stated risk order at Bear's explicit request (see its own
 Phase 1 section for why that's a deliberate deviation, not an oversight).
 See STACK.md's "ntfy added" and "Speedtest Tracker added" entries for the
@@ -361,18 +361,37 @@ cannot be automated via the API before the app has booted once.
 - [x] Live speedtest run + readback verified
 - [x] Fish functions callable
 - [x] STACK.md entry added
-- [ ] Committed as its own commit
+- [x] Committed as its own commit (43ed2fb - this box was left unticked by
+      mistake; the commit landed 2026-08-11 and was pushed the same night)
 
 ---
 
 ## Phase 3 — Organizr
 
-**Status:** NOT STARTED
+**Status:** DONE (2026-08-12)
 **Risk:** low
 **Role:** single landing dashboard with tabs for every service in the stack
 (existing + all new ones from this batch).
 
+Implemented, live-verified, and committed — see STACK.md's "Organizr added"
+entry for the full record. **This section as originally written was wrong in
+four places**, all corrected inline below and all found by reading upstream
+source rather than trusting the docs. The headline one: 3.4's "manual by
+design, do not attempt to script this" was false. Organizr exposes a full
+tabs REST API *and* a bypass-listed setup-wizard endpoint, so the entire
+phase provisions from a bare volume with one command
+(`scripts/organizr-provision.py`) and has no manual step at all.
+
 ### 3.1 Compose
+
+**Corrected at implementation time:** image is `ghcr.io/organizr/organizr`,
+not the `organizr/organizr` Docker Hub path below — the `docker-organizr`
+README lists the Hub name (and `organizrtools/organizr-v2` before it) as the
+legacy name ghcr replaced. `fpm` is also inert: the base image is "now set up
+to use the unix socket exclusively", so that toggle does nothing and was
+dropped. `branch` is real and was kept. Healthcheck hits `/api/v2/ping`
+rather than `/` — ping is unauthenticated and hard-200s both before and after
+the wizard, whereas `/` serves the wizard pre-setup and 302s to login after.
 
 ```yaml
   organizr:
@@ -403,8 +422,20 @@ cannot be automated via the API before the app has booted once.
 
 ### 3.2 Secrets
 
-None required for base operation (single-user setup, auth optional via
-Organizr's own UI).
+~~None required for base operation (single-user setup, auth optional via
+Organizr's own UI).~~
+
+**Wrong.** There is no unauthenticated Organizr: the setup wizard mandates an
+admin account, and every API route past `/ping` runs through
+`qualifyRequest()`. Six `.env` keys were added — `ORGANIZR_API_KEY`,
+`ORGANIZR_HASH_KEY`, `ORGANIZR_ADMIN_USERNAME`, `ORGANIZR_ADMIN_EMAIL`,
+`ORGANIZR_ADMIN_PASSWORD`, `ORGANIZR_REGISTRATION_PASSWORD`.
+
+**Landmine:** `ORGANIZR_API_KEY` must be exactly 20 characters.
+`isApprovedRequest` gates on `strlen($requesterToken) == 20` *before* it
+compares the value (`api/classes/organizr.class.php:4609`), so a wrong-length
+key 401s every write route with a message that reads like a permissions
+problem and is not.
 
 ### 3.3 Health monitor
 
@@ -412,33 +443,70 @@ Organizr's own UI).
 "organizr": (8702, "/"),
 ```
 
-### 3.4 Tab provisioning (manual by design — see design note)
+### 3.4 Tab provisioning (~~manual by design~~ — fully scripted)
 
-Organizr has no tab-provisioning API; all tab state lives in its own SQLite
-DB. Do not attempt to script this. Instead:
+~~Organizr has no tab-provisioning API; all tab state lives in its own SQLite
+DB. Do not attempt to script this.~~
 
-1. On first boot, log into Organizr's setup wizard (documented step, not
-   automatable).
+**Wrong on both counts.** What upstream source actually shows:
+
+- `api/v2/routes/tabs.php` defines a full `GET/POST/PUT/DELETE /api/v2/tabs`.
+- `isApprovedRequest` (`api/classes/organizr.class.php:4596-4623`) accepts a
+  `Token:` header equal to the configured API key, treats that caller as
+  admin, and short-circuits the CSRF formKey check that would otherwise
+  reject any non-browser POST.
+- `POST /api/v2/wizard` is in `$GLOBALS['bypass']` (`api/v2/index.php:41-52`)
+  so first-boot setup needs no auth at all, and it takes the API key as an
+  *input* — we choose it, Organizr doesn't generate it. That is what makes
+  every later step scriptable. `wizardConfig()` self-disables once config and
+  DB exist, so the call is naturally idempotent.
+
+So step 1 below (the "not automatable" wizard) and step 2 (18 tabs by hand)
+are both a single idempotent run of `scripts/organizr-provision.py`, which is
+what PLANS.md 1.4's own rule about scripting repeated click-throughs asks for.
+
+Step 3's framing check was still done, just up front rather than per-tab
+during a manual pass: every live service was swept for `X-Frame-Options` and
+CSP `frame-ancestors`, following redirects. Exactly one service refuses
+framing — nzbdav (`X-Frame-Options: SAMEORIGIN`) — so it is the only
+`type=2` (New Window) tab and the other 17 are `type=1` (iFrame). That result
+is asserted by `test_organizr_router.py::test_nzbdav_is_the_only_new_window_tab`
+rather than only written down, and the full table is in the STACK.md entry.
+
+Original steps, kept for the record:
+
+1. ~~On first boot, log into Organizr's setup wizard (documented step, not
+   automatable).~~
 2. Add one tab per service currently in the stack, using the port table from
    this doc plus the existing `docker-compose.yml` port mappings. Build the
    full tab list from `docker-compose.yml`'s port bindings at implementation
    time — do not hand-copy a stale list into this doc, since ports here can
-   drift.
+   drift. *(Done — the list is derived in `services/organizr/tabs.py`, which
+   both the script and the router import, so there is one definition.)*
 3. For each tab, check whether the target service sets `X-Frame-Options` or
    a restrictive CSP before enabling iframe mode; if it blocks framing, set
    that tab to "open in new tab" mode instead of iframe. Record which
    services needed which mode in the STACK.md entry so a future service
-   addition to Organizr doesn't have to re-discover this per-service.
+   addition to Organizr doesn't have to re-discover this per-service. *(Done
+   — see above.)*
 
 ### 3.5 Fish functions / control panel
 
-- `stack-organizr-tabs` — `GET /api/organizr/tabs`, returns the tab list
-  Organizr currently has configured (read via Organizr's own API if it
-  exposes one for listing tabs; if it genuinely doesn't, this route reads the
-  SQLite DB directly the same way STACK.md documents for other SQLite-backed
-  companion apps — verify Organizr's DB schema at implementation time before
-  writing the query).
-- Fleet/tile/commands.json registration — same pattern as 1.6.
+- `stack-organizr-tabs` — `GET /api/organizr/tabs`. It does expose a listing
+  API (`GET /api/v2/tabs`), so the SQLite-fallback branch below never
+  applied. Also reports which of this stack's services are missing a tab.
+- `stack-organizr-sync` — `POST /api/organizr/tabs/sync`, added beyond this
+  section's plan. Adds a tab for any service in the canonical table that
+  doesn't have one. Additive only: never edits or deletes an existing tab, so
+  a hand-tweaked tab survives and a deliberately-added stray isn't reaped.
+  This is what makes "add a service to the stack" a one-row change.
+- Fleet/tile/commands.json registration — same pattern as 1.6, **except**
+  1.6's `app.py` step no longer exists: routers auto-mount by directory scan
+  (`control-panel/main.py:134-146`), so the real edit sites are
+  `core/docker_client.py`'s fleet dict, `static/js/fleet.js`,
+  `static/js/reference.js` and `static/commands.json`. Note
+  `services/catalog/registry.py` is the *newapps installer* catalog, a
+  different thing — leave it alone.
 
 ### 3.6 Tests
 
@@ -450,13 +518,14 @@ DB. Do not attempt to script this. Instead:
 
 ### 3.7 Acceptance
 
-- [ ] Container healthy
-- [ ] health-monitor probe green
-- [ ] Every existing + new service has a working tab (iframe or direct-link,
-      whichever the per-service framing check calls for)
-- [ ] pytest suite passing for the read-only router
-- [ ] STACK.md entry documents the iframe/direct-link decision per service
-- [ ] Committed as its own commit
+- [x] Container healthy
+- [x] health-monitor probe green
+- [x] Every existing + new service has a working tab (iframe or direct-link,
+      whichever the per-service framing check calls for) — 18 tabs, 17 iframe
+      + nzbdav new-window
+- [x] pytest suite passing for the read-only router — 15 cases, full suite 654
+- [x] STACK.md entry documents the iframe/direct-link decision per service
+- [x] Committed as its own commit
 
 ---
 

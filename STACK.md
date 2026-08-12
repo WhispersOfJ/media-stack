@@ -3148,3 +3148,124 @@ still green after both router changes.
 **Fish functions:** `stack-speedtest-latest`, `stack-speedtest-history [days]`,
 `stack-speedtest-run-now`. Deployed as plain copies to `~/.config/fish/functions/` (this host's
 actual deployment mechanism), confirmed callable against the real running stack.
+
+## Organizr added: single landing dashboard, fully script-provisioned, 2026-08-12
+
+Phase 3 of `PLANS.md`'s 7-service integration batch. Phases 4-7 (Scrutiny, GAPS-2, WatchState,
+PlexAniSync) remain not built.
+
+**What it is:** `ghcr.io/organizr/organizr` (branch `v2-master`, upstream 2.1.5000), container
+`organizr`, host port 8702 (container 80). One landing page with a tab per service, so the
+stack has a front door that isn't a bookmark folder of 18 port numbers.
+
+### Four things PLANS.md 3.x got wrong, all found by reading upstream source rather than docs
+
+**1. "Manual by design" was wrong - tab provisioning is a full REST API.** PLANS.md 3.4 said
+"Organizr has no tab-provisioning API; all tab state lives in its own SQLite DB. Do not attempt
+to script this." `api/v2/routes/tabs.php` defines `GET/POST/PUT/DELETE /api/v2/tabs`.
+`isApprovedRequest` (`api/classes/organizr.class.php:4596-4623`) accepts a `Token:` header equal
+to the configured API key, treats that caller as admin, and short-circuits the CSRF formKey
+check that would otherwise reject any non-browser POST. No SQLite poking needed.
+
+**2. The first-boot wizard is scriptable too.** `POST /api/v2/wizard` is in `$GLOBALS['bypass']`
+(`api/v2/index.php:41-52`), so it needs no auth at all, and `wizardConfig()` self-disables once
+config and DB exist (`organizr.class.php:3016`). Critically, the wizard takes the API key as an
+*input* - we choose it, Organizr doesn't generate it - which is what makes every later step
+scriptable. So there is no manual setup step anywhere in this phase, and Organizr rebuilds from
+a bare volume with one command.
+
+**3. "No secrets required" was wrong.** PLANS.md 3.2 claimed none needed for base operation.
+The wizard mandates an admin account and every route past `/ping` runs through
+`qualifyRequest()`. Six new `.env` keys: `ORGANIZR_API_KEY`, `ORGANIZR_HASH_KEY`,
+`ORGANIZR_ADMIN_USERNAME`, `ORGANIZR_ADMIN_EMAIL`, `ORGANIZR_ADMIN_PASSWORD`,
+`ORGANIZR_REGISTRATION_PASSWORD`.
+
+**4. Wrong image name, and a dead env var.** PLANS.md 3.1 specified `organizr/organizr:latest`;
+the `docker-organizr` README lists that Docker Hub path (and `organizrtools/organizr-v2` before
+it) as the legacy name `ghcr.io/organizr/organizr` replaced. Its `fpm: "false"` is also inert -
+the base image is "now set up to use the unix socket exclusively". Dropped, `branch: v2-master`
+kept because that one is real.
+
+### Landmine: the API key must be exactly 20 characters
+
+`isApprovedRequest` gates on `strlen($requesterToken) == 20` **before** it compares the value
+(`organizr.class.php:4609`). A 19- or 21-char key doesn't produce a "bad key" error, it 401s
+every write route with `Not authorized for current Route`, which reads like a permissions
+problem and is not. Both `scripts/organizr-provision.py` and the control-panel router check the
+length up front and fail with that explanation rather than letting Organizr mislead a future
+session. `.env.example` carries the same warning plus a generator one-liner.
+
+### Healthcheck uses /api/v2/ping, not /
+
+`/api/v2/ping` is unauthenticated and hard-200s both before and after the wizard has run
+(`api/v2/routes/ping.php`). `/` serves the setup wizard pre-setup and 302s to login after, so it
+changes meaning at exactly the moment you'd want a healthcheck to be stable. Both the container
+healthcheck and `health-monitor`'s probe use ping.
+
+### The framing sweep, and why exactly one tab is New Window
+
+PLANS.md 3.4 asked for a per-service `X-Frame-Options`/CSP check before enabling iframe mode.
+That sweep ran against every live service on 2026-08-12, following redirects (several services
+only reveal their real headers on the post-redirect 200):
+
+| Result | Services |
+|---|---|
+| No framing headers - iframe fine | Plex (`/web`), Seerr, Radarr, Radarr Anime, Sonarr, Sonarr Anime, Prowlarr, Bazarr, Cleanuparr, Maintainerr, Checkrr, Lingarr, Tautulli, Wrapperr, ntfy, Speedtest Tracker, Control Panel |
+| `X-Frame-Options: SAMEORIGIN` - refuses framing | **NzbDAV only** |
+
+So NzbDAV is the single `type=2` (New Window) tab; the other 17 are `type=1` (iFrame). Organizr's
+own values are 0=Organizr-internal, 1=iFrame, 2=New Window (`js/functions.js:4628-4641`).
+`test_organizr_router.py::test_nzbdav_is_the_only_new_window_tab` asserts exactly this, so the
+sweep result is encoded in the test suite rather than surviving as folklore in this document.
+
+### Tab URLs use HOST_IP, never container names
+
+Tab URLs are fetched by the *browser*, not by Organizr's PHP, so `http://radarr:7878` would
+resolve inside stacknet and nowhere else. Every tab is `http://${HOST_IP}:<port>`. The sync
+route refuses to run at all if `HOST_IP` is unset rather than emitting 18 broken tabs.
+
+### Icons
+
+Organizr's `image` column accepts either a path into its bundled icon set or a `<pack>::<name>`
+token that `iconPrefix()` (`js/functions.js:555`) expands. The bundled set covers radarr,
+sonarr, prowlarr, bazarr, plex, overseerr, tautulli and speedtest-icon; it has nothing for
+nzbdav, cleanuparr, maintainerr, checkrr, lingarr, wrapperr, ntfy or control-panel, so those use
+FontAwesome 4 names (`fontawesome::bell` etc) rather than shipping image files into its volume.
+
+### Layout
+
+- `scripts/organizr-provision.py` - idempotent bootstrap: wizard, then tabs. Re-running reports
+  "already configured" and "18 already present". Has `--dry-run`.
+- `control-panel/services/organizr/tabs.py` - the canonical tab table, imported by both the
+  provisioning script and the router, so there is exactly one definition. Adding a service to
+  the stack means adding one row here and running `stack-organizr-sync`.
+- `control-panel/services/organizr/router.py` - `GET /api/organizr/tabs`,
+  `POST /api/organizr/tabs/sync`, `GET /api/organizr/health`.
+
+`tabs/sync` is **additive only** by design: it never edits or deletes an existing tab, so a tab
+hand-tweaked in Organizr's UI survives a sync and a deliberately-added stray tab isn't silently
+reaped. A 409 (name taken) counts as a skip, not a failure.
+
+**Tabs provisioned (18):** Plex, Seerr, Radarr, Radarr Anime, Sonarr, Sonarr Anime, Prowlarr,
+Bazarr, NzbDAV, Cleanuparr, Maintainerr, Checkrr, Lingarr, Tautulli, Wrapperr, ntfy, Speedtest
+Tracker, Control Panel. Plus Organizr's own two built-in `type=0` pages (Settings, Homepage),
+which this stack does not manage. Deliberately absent, so a future session doesn't "notice the
+gap": kometa, unpackerr, watchtower, prefetcharr and nzbdav_rclone publish no port and have no
+web UI, and Organizr gets no tab pointing at itself.
+
+All tabs are `group_id: 0` (admin-only). Organizr group levels count *down* to more privilege -
+`qualifyRequest` passes when `userLevel <= needed` - and this is a single-operator stack with no
+guest accounts.
+
+**Tests:** `tests/control_panel/test_organizr_router.py`, 15 cases - auth gating on all three
+routes, the 20-char key constraint, tab-list shaping and missing-tab reporting, additive sync,
+409-as-skip, unset `HOST_IP`, and the three table-integrity tests (nzbdav is the only New Window
+tab, every URL uses HOST_IP, tab names are unique). Full suite 654 passed, no regressions.
+`ruff check control-panel/app.py scripts/*.py` clean.
+
+**Fish functions:** `stack-organizr-tabs`, `stack-organizr-sync`. Deployed as plain copies to
+`~/.config/fish/functions/`, confirmed callable against the real running stack.
+
+**Doc backfill:** Phases 1 and 2 shipped without registering their functions in
+`fish-functions/README.md` or `stack-help.fish`. Both were two phases behind; ntfy's and
+Speedtest Tracker's functions were backfilled alongside Organizr's in this commit.
