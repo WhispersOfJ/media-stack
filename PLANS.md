@@ -11,8 +11,8 @@ this file wins.
 
 **Status: see each phase's own `Status:` line — that's the single source of
 truth, not this paragraph.** As of last update (2026-08-12): Phases 1 (ntfy),
-2 (Speedtest Tracker), 3 (Organizr) and 4 (Scrutiny) DONE, Phases 5-7 not
-started. Phase 1 was built out
+2 (Speedtest Tracker), 3 (Organizr), 4 (Scrutiny) and 5 (GAPS-2) DONE,
+Phases 6-7 not started. Phase 1 was built out
 of this doc's stated risk order at Bear's explicit request (see its own
 Phase 1 section for why that's a deliberate deviation, not an oversight).
 See STACK.md's "ntfy added" and "Speedtest Tracker added" entries for the
@@ -665,9 +665,44 @@ Two more shipped beyond this section:
 
 ## Phase 5 — GAPS-2
 
-**Status:** NOT STARTED
+**Status:** DONE (2026-08-12)
 **Risk:** medium — touches Radarr (can push adds) and reads the Plex library
 directly; scan cost against the FUSE mount needs real tuning, not defaults.
+
+Implemented, live-verified, and committed — see STACK.md's "GAPS-2 added"
+entry for the full record. **The FUSE-mount risk this section leads with does
+not apply**: GAPS-2 reads the owned-title list from Plex's API and then does
+TMDB/TheTVDB lookups, and never touches the mount. The full four-library
+sweep, 16,873 owned movies included, took about four minutes. Four other
+corrections, all from reading upstream source rather than its docs:
+
+- 5.2's Plex "OAuth login flow (interactive, one-time)" is avoidable —
+  `POST /api/plex/connect-manual` takes a plain `{serverUrl, token}`, so the
+  whole service provisions headlessly via `scripts/gaps2-provision.py`.
+- 5.2's `TMDB_API_KEY` is called `TMDB_KEY` here, and `TVDB_KEY` already
+  existed too.
+- 5.3's `/` healthcheck would have been wrong: `/` is the bundled Angular
+  frontend and answers 200 with a dead backend behind it. Both the compose
+  healthcheck and the health-monitor probe use `/api/about`.
+- 5.1's `/app/data` backup note: restic was removed 2026-08-12, but
+  `stack-claude-full-backup` tars all of `~/Claude` with no excludes, so the
+  volume is already covered. Verified, not assumed.
+
+**Scope decisions Bear made at implementation time (2026-08-12):**
+
+- **TV as well as movies**, beyond this section's movies-only scope. GAPS-2
+  ships a full Sonarr blueprint and TheTVDB franchise scanning, and `TVDB_KEY`
+  was already present.
+- **One container, with the control panel owning push routing**, rather than
+  a second `gaps2-anime` instance. GAPS-2 stores only one Radarr and one
+  Sonarr connection, so it cannot honour 5.2's anime-scope decision by
+  itself — see the STACK.md entry for why scans therefore run one library at
+  a time, and why GAPS-2's own Radarr/Sonarr are deliberately left
+  unconfigured.
+- **No notifications.** GAPS-2 supports Discord/Telegram/email only, with no
+  ntfy or generic-webhook provider, so the Phase 1 sink can't be reused
+  without a translation bridge. A missing-title list is advisory, not an
+  alert condition.
 Concrete numbers from this stack (2026-08-11): a single library-wide
 filesystem walk over the FUSE mount can run tens of minutes on a library this
 size, and Plex's own DB reconcile (`emptyTrash` over ~1,176 items) took ~45
@@ -775,16 +810,23 @@ Entered via GAPS-2's own Settings UI post-boot, not pre-seeded:
 
 ### 5.7 Acceptance
 
-- [ ] Container healthy
-- [ ] `/app/data` confirmed covered by existing backup mechanism
-- [ ] Plex OAuth + Radarr + TMDB keys configured
-- [ ] Anime-scope decision made and documented
-- [ ] health-monitor probe green
-- [ ] pytest suite passing
-- [ ] Live scan + one controlled push verified
-- [ ] Fish functions callable
-- [ ] STACK.md entry added
-- [ ] Committed as its own commit
+- [x] Container healthy
+- [x] `/app/data` confirmed covered by existing backup mechanism —
+      `stack-claude-full-backup`'s no-excludes tar of `~/Claude`, verified
+      (restic, which this box originally assumed, was removed 2026-08-12)
+- [x] Plex + TMDB + TheTVDB keys configured — headlessly, no OAuth. Radarr
+      and Sonarr deliberately NOT configured inside GAPS-2, so its own UI
+      can't push anime titles into the general instance
+- [x] Anime-scope decision made and documented — one container, control panel
+      owns push routing, both general and anime covered
+- [x] health-monitor probe green
+- [x] pytest suite passing — 33 cases, full suite 710
+- [x] Live scan + one controlled push verified — 1,534 gaps across 4
+      libraries; "Aria the Avvenire" pushed to radarr-anime and confirmed
+      absent from general radarr
+- [x] Fish functions callable — all four
+- [x] STACK.md entry added
+- [x] Committed as its own commit
 
 ---
 

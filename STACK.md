@@ -3396,3 +3396,162 @@ exit codes, the `success: false` notification path, and the `detail`-key shape t
 **Fish functions:** `stack-scrutiny-summary`, `stack-scrutiny-disk [id]`, `stack-scrutiny-collect`,
 `stack-scrutiny-alert-test`. Deployed as plain copies to `~/.config/fish/functions/`, all four
 confirmed callable against the real running stack.
+
+---
+
+## GAPS-2 added: collection/franchise gap detection, 2026-08-12
+
+Phase 5 of PLANS.md's 7-service batch. Finds titles that belong to a collection (movies, via
+TMDB) or a franchise (TV, via TheTVDB) where the library owns some entries but not others — the
+third Alien film when you have the other two — and pushes a chosen one into the right Arr
+instance. Host port **8704**, container port 4277, image `primetime43/gaps-2:latest` (2.10.0 at
+time of writing).
+
+### The constraint that shaped everything: GAPS-2 is single-instance
+
+GAPS-2 stores exactly **one** Radarr connection and **one** Sonarr connection (`CONFIG_KEY =
+'radarr'` / `'sonarr'` in its own service modules). This stack runs four Arr instances, split
+general/anime. Bear's locked decision from 2026-08-09 was that GAPS-2 must cover both general
+and anime.
+
+Those two facts can't both hold inside GAPS-2, so the integration splits responsibilities:
+**GAPS-2 detects, the control panel routes.** Three consequences worth knowing before touching
+any of this:
+
+1. **GAPS-2's own Radarr/Sonarr are deliberately left unconfigured.** Not an oversight, and not
+   a step the provisioning script forgot. If a single Radarr were configured, GAPS-2's web UI
+   would grow an Add button that files every title — anime included — into that one instance
+   under its root folder and quality profile. The add succeeds; it just lands in the wrong
+   place, with nothing in the UI to indicate it. Leaving them unset makes that mis-file
+   structurally impossible rather than merely discouraged.
+2. **Scans run one Plex library at a time.** GAPS-2's scan accepts a `libraryNames` *list* and
+   merges the owned titles from all of them into one deduplicated result. Its progress and
+   history structures record `libraries` at the scan level, and the gap objects themselves carry
+   no library field (`services/scan_progress.py`, `services/scan_history.py`). So a merged
+   Movies + Anime Movies scan produces gaps that cannot be attributed back to a library and
+   therefore cannot be routed. One library per scan makes each completed scan a scan-history
+   entry tagged with exactly one library name, and that is where attribution comes from —
+   GAPS-2's own persisted history, not a cache maintained on our side.
+3. **`/api/gaps2/push` ignores GAPS-2's `/api/radarr/add` entirely** and calls the correct
+   instance through `core.arr_client`'s existing `radarr_add_movie` / `sonarr_add_series`
+   helpers. The routing table lives in `control-panel/services/gaps2/libraries.py`, imported by
+   both the router and the provisioning script so it has one definition.
+
+| Plex library | Kind | Target instance |
+|---|---|---|
+| Movies | movie | `radarr` |
+| Anime Movies | movie | `radarr_anime` |
+| Shows | show | `sonarr` |
+| Anime Shows | show | `sonarr_anime` |
+
+`test_gaps2_router.py` asserts all four mappings individually rather than spot-checking, because
+a regression there is silent: the add succeeds, it just goes to the wrong library.
+
+### Four things PLANS.md 5 got wrong
+
+All four found by reading upstream source rather than trusting its docs.
+
+- **The scan never touches the FUSE mount.** PLANS.md 5's headline risk was "a single
+  library-wide filesystem walk over the FUSE mount can run tens of minutes", with instructions to
+  read `fuse-hang-vs-slow-diagnosis` before picking a schedule. That is a different shape of
+  operation than the one GAPS-2 performs: it pulls the owned-title list from Plex's own API and
+  then does TMDB/TheTVDB metadata lookups. The real cost is third-party API round-trips. Measured
+  on this stack: the full four-library sweep, including 16,873 owned movies, completed in about
+  four minutes total.
+- **No Plex OAuth.** PLANS.md 5.2 called the Plex credential an "OAuth login flow (interactive,
+  one-time)". `POST /api/plex/connect-manual` takes a plain `{serverUrl, token}` and never touches
+  OAuth, so the existing `PLEX_URL`/`PLEX_TOKEN` seed it. Combined with GAPS-2 shipping no auth of
+  any kind, the entire service provisions headlessly — no browser step anywhere in this phase.
+- **`TMDB_API_KEY` doesn't exist in this stack**; the key is `TMDB_KEY`. `TVDB_KEY` was already
+  present too (poster sync uses it), so the TV scope Bear added on top of PLANS.md's movies-only
+  scope needed no new credential.
+- **PLANS.md 5.3's `/` healthcheck would have been wrong.** `/` is served by the bundled Angular
+  frontend and answers 200 with a dead Flask backend behind it — the exact failure mode PLANS.md's
+  own `verify-image-version-before-headless-config` note warns about. The healthcheck and the
+  health-monitor probe both use `/api/about`, which the backend answers and which needs no
+  configuration. `wget`, not `curl`: the image is `python:3.11-slim` and installs wget (for gosu),
+  never curl.
+
+### Scope: TV as well as movies
+
+PLANS.md 5 scoped this to movies. The image ships a full Sonarr blueprint and TheTVDB franchise
+gap-finding, and Bear chose to enable both (2026-08-12). Movies and TV are separate halves of the
+API throughout — separate scan endpoints, separate progress trackers, separate id fields (`tmdbId`
+vs `tvdbId`) — so `ENDPOINTS` in the router keys them by media kind rather than branching inline.
+Crossing them would send a tvdbId to Radarr's tmdb lookup, which resolves to an unrelated title
+rather than failing; there's a test for that specifically.
+
+### Secrets
+
+`GAPS2_CONFIG_KEY` in `.env`, the Fernet key GAPS-2 uses to encrypt `config.enc`. Set as an env
+var rather than letting it generate its own `data/.config.key`, because this repo gitignores
+`config/` wholesale — a generated keyfile would exist only on this host, and a `config/` wipe
+would strand an undecryptable `config.enc`. `config_store._resolve_key()` checks the env var
+first, then the keyfile, then generates. Verified live: no `.config.key` is created.
+
+Same env-var-over-config-file rule Phase 4 landed on, and the second phase in a row where it
+applied. Worth carrying into Phases 6-7.
+
+### Notifications: none, deliberately
+
+Phase 4 wired Scrutiny's disk alerts into the ntfy sink. GAPS-2 cannot do the same — its
+notification service supports Discord, Telegram and email only, with no ntfy and no generic
+webhook provider (`services/notification_service.py`). Bear's call (2026-08-12) was to skip
+notifications rather than build a translation bridge: a missing-movie list is advisory, not an
+alert condition. Recorded here so a future session doesn't go looking for the wiring or assume
+it was forgotten.
+
+### Backup
+
+`config/gaps2/` holds `config.enc`, which carries the Plex token and both metadata API keys, plus
+the cached scan history. PLANS.md 5.1 flagged this volume as needing backup coverage and 5.7 had
+an acceptance box for confirming it. restic was removed on 2026-08-12, so there was no mechanism
+to confirm against; Bear's instruction was to fold it into `stack-claude-full-backup`. No change
+was needed — that function tars all of `~/Claude` with no excludes, so the directory is covered
+the moment it exists. Verified rather than assumed. Note it is a manual, on-demand backup with no
+timer behind it.
+
+### Root-folder resolution relies on radarr-anime having one root folder
+
+`radarr_root_folder_and_profile` looks for `/data/movies` by name and otherwise falls back to
+`folders[0]`. radarr-anime has exactly one root folder (`/data/anime-movies`), so the fallback
+lands correctly — but by fallback, not by intent. If radarr-anime ever gains a second root folder,
+ordering decides where pushes land. Same applies to sonarr-anime and `/data/shows`.
+
+### Live verification
+
+- All four libraries scanned: Movies 16,873 owned / 994 gaps, Anime Movies 754 / 286, Shows 1,305
+  / 219, Anime Shows 531 / 35. 1,534 gaps total.
+- Attribution confirmed live: every Anime Movies gap tagged `radarr_anime`, TV gaps tagged with
+  `tvdbId` and their Sonarr instance.
+- One controlled push: `stack-gaps2-push 375177 "Anime Movies"` → "Aria the Avvenire" landed in
+  **radarr-anime** at `/data/anime-movies/Aria the Avvenire (2015)`, and was confirmed **absent**
+  from the general Radarr. Both halves checked — landing in the right place and not in the wrong
+  one are different assertions.
+- Container healthy, zero errors in logs, 145 MiB of its 1 GiB limit after the full sweep.
+- health-monitor green; whole-stack sweep shows no regressions elsewhere.
+
+**One real bug, caught only by live verification:** `stack-gaps2-missing "Anime Movies"` built its
+query string by hand and curl rejected the URL outright — three of the four library names contain
+a space. Now built with `urllib.parse.urlencode`. The router was correct in isolation and the
+tests passed; the failure existed only through the CLI. Same class of miss as Phase 4's `detail`
+key.
+
+**Tests:** `tests/control_panel/test_gaps2_router.py`, 33 cases — auth gating on all four routes,
+the routing table (every mapping individually, plus that each named instance really exists in
+`ARR_APPS`), status shaping, never-scanned vs zero-gaps, per-gap Arr attribution, correct id field
+per media type, owned-entry exclusion, multi-library scans being ignored for attribution, limit vs
+total, unknown-library rejection on all three routes, all four push mappings, movie/show path
+crossing, pushing an id from the wrong library, never-scanned push refusal, Arr rejection
+surfacing, blank-library-means-all, and sweep overlap. Full suite **710 passed**, no regressions
+(677 baseline + 33).
+
+**Running the test suite on this host:** there is no system `httpx` and no committed venv. Use
+`uv`: `uv venv .venv-test --python 3.13 && uv pip install --python .venv-test -r
+control-panel/requirements.txt pytest beautifulsoup4 plexapi`, then `.venv-test/bin/python -m
+pytest`. `beautifulsoup4` and `plexapi` are needed by `tests/scripts/` and are not in
+`control-panel/requirements.txt`. `.venv-test/` is gitignored.
+
+**Fish functions:** `stack-gaps2-status`, `stack-gaps2-scan [library] [--full]`,
+`stack-gaps2-missing [library] [limit]`, `stack-gaps2-push <id> <library>`. Deployed as plain
+copies to `~/.config/fish/functions/`, all four confirmed callable against the real running stack.

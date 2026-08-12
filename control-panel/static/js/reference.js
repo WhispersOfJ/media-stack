@@ -24,6 +24,7 @@ const QUICK_LINKS = [
   { id: "speedtest-tracker", label: "Speedtest Tracker", port: 8701 },
   { id: "organizr", label: "Organizr", port: 8702 },
   { id: "scrutiny", label: "Scrutiny", port: 8703 },
+  { id: "gaps2", label: "GAPS-2", port: 8704 },
   // No quicklink for kometa/prefetcharr - neither publishes a port
   // (kometa is a scheduled batch job, prefetcharr a headless poller).
 ];
@@ -61,6 +62,7 @@ const DOC_LINKS = [
   { app: "Speedtest Tracker", desc: "hourly ISP speed monitoring + history, so link degradation is visible before it's blamed on downloads/streaming", urls: [["Docs", "https://docs.speedtest-tracker.dev/"], ["Source", "https://github.com/alexjustesen/speedtest-tracker"]] },
   { app: "Organizr", desc: "single landing dashboard, one tab per service - wizard and tabs both provisioned by scripts/organizr-provision.py, nothing set up by hand", urls: [["Docs", "https://docs.organizr.app/"], ["Source", "https://github.com/causefx/Organizr"]] },
   { app: "Scrutiny", desc: "S.M.A.R.T. trending for the host's single NVMe, collector daily at midnight - complements the raw-smartctl stack-disk-health check, doesn't replace it", urls: [["Source", "https://github.com/AnalogJ/scrutiny"]] },
+  { app: "GAPS-2", desc: "finds movies/shows missing from a collection or franchise the library partly owns - scans one Plex library at a time so every gap can be routed to the right Arr instance; its own Radarr/Sonarr are deliberately left unconfigured so nothing can be pushed to the wrong one", urls: [["Source", "https://github.com/primetime43/GAPS-2"]] },
 ];
 
 export function buildDocLinks() {

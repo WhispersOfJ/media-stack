@@ -41,6 +41,7 @@ CONTAINER_LABELS = {
     "ntfy": ("ntfy", "shared push-notification sink - anonymous access, not exposed publicly"),
     "organizr": ("Organizr", "single landing dashboard, one tab per service - tabs provisioned by script, not by hand"),
     "scrutiny": ("Scrutiny", "S.M.A.R.T. trending for the host's single NVMe - collector runs daily at midnight"),
+    "gaps2": ("GAPS-2", "finds titles missing from a collection/franchise - detection only, pushes route through the panel to the right Arr instance"),
 }
 
 # Same FUSE-landmine mount ordering as app.py's stack_restart_all - see

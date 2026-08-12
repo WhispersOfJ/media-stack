@@ -42,6 +42,10 @@ HTTP_SERVICES = {
     # wizard pre-setup and 302s to login after.
     "organizr": (8702, "/api/v2/ping"),
     "scrutiny": (8703, "/api/health"),
+    # /api/about, not "/" - "/" is the bundled Angular frontend and answers
+    # 200 even with a dead Flask backend behind it. /api/about is served by
+    # the backend and needs no configuration to respond.
+    "gaps2": (8704, "/api/about"),
 }
 
 

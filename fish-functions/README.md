@@ -292,3 +292,17 @@ Complements `stack-disk-health` (raw `smartctl`, right now) with Scrutiny's tren
 - **`stack-scrutiny-disk [uuid|name|serial]`** — per-disk SMART detail, including the wear attributes that actually predict end-of-life (`percentage_used`, `available_spare`, `media_errors`, `critical_warning`) and anything Scrutiny has flagged. The argument is optional on a single-disk host.
 - **`stack-scrutiny-collect`** — run the collector now rather than waiting for its midnight cron. Returns the collector's own output.
 - **`stack-scrutiny-alert-test`** — fire Scrutiny's test notification through its configured sink, which here is ntfy topic `scrutiny-alerts`. Proves the disk-failure alert path works before a disk actually fails.
+
+### GAPS-2 (Phase 5)
+
+Finds titles that belong to a collection (movies, via TMDB) or a franchise (TV, via TheTVDB) where the library owns some entries but not others — the third Alien film when you have the other two, a spin-off series you missed.
+
+Two things shape how these commands work, both consequences of GAPS-2 storing only **one** Radarr and **one** Sonarr connection while this stack runs four Arr instances:
+
+- **Scans run one Plex library at a time.** GAPS-2's gap objects carry no library field, so a merged multi-library scan produces results that can't be attributed back to a library and therefore can't be routed. One library per scan makes each result a history entry tagged with exactly one library name.
+- **GAPS-2's own Radarr/Sonarr are deliberately left unconfigured**, so its web UI grows no Add button that could push an anime title into the general Radarr. Every push goes through `stack-gaps2-push`, which picks the instance from the library the gap was found in.
+
+- **`stack-gaps2-status`** — whether a sweep is running and which library it's on, plus each library's last scan time and gap count. Reports "never scanned" separately from "zero gaps"; a bare count of 0 reads identically for both and they mean opposite things.
+- **`stack-gaps2-scan [library] [--full]`** — sweep for gaps, all four libraries if none named. Returns immediately and runs in the background, since a first full movie scan is minutes of TMDB round-trips. Incremental by default (only newly-added titles get fresh lookups); `--full` re-resolves everything.
+- **`stack-gaps2-missing [library] [limit]`** — the missing titles from each library's most recent scan, each tagged with the Arr instance it would be pushed to.
+- **`stack-gaps2-push <id> <library>`** — add one title to the Arr its library maps to (`Movies` → radarr, `Anime Movies` → radarr-anime, `Shows` → sonarr, `Anime Shows` → sonarr-anime). The library argument is required, not inferred: it decides the target instance, and guessing would mis-file the title under the wrong root folder with no visible error. One title per call by design — gap lists contain wrong-year matches and short films.

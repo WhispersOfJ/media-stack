@@ -130,4 +130,8 @@ function stack-help --description 'List all stack-* terminal commands for the me
     echo '  stack-scrutiny-disk [uuid|name|serial]          per-disk SMART detail (omit arg for the only disk)'
     echo '  stack-scrutiny-collect                          run the SMART collector now, not at midnight'
     echo '  stack-scrutiny-alert-test                       fire Scrutiny'"'"'s test alert through ntfy'
+    echo '  stack-gaps2-status                              GAPS-2 sweep state + last scan per library'
+    echo '  stack-gaps2-scan [library] [--full]             sweep for collection/franchise gaps (all libraries if none named)'
+    echo '  stack-gaps2-missing [library] [limit]           missing titles, each tagged with its target Arr'
+    echo '  stack-gaps2-push <id> <library>                 add one missing title to the Arr its library maps to'
 end

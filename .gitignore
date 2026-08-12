@@ -40,3 +40,7 @@ vendor/nzbdav/
 .DS_Store
 __pycache__/
 *.pyc
+
+# Local pytest virtualenv (uv), built from control-panel/requirements.txt
+# plus pytest/beautifulsoup4/plexapi - this host has no system httpx.
+.venv-test/
