@@ -832,10 +832,58 @@ Entered via GAPS-2's own Settings UI post-boot, not pre-seeded:
 
 ## Phase 6 — WatchState
 
-**Status:** NOT STARTED
+**Status:** NOT STARTED — but recon is DONE (2026-08-12), see below.
 **Risk:** medium — writes watch-state data continuously; needs both the
 scheduled import task and Plex webhook configured correctly, or events get
 silently dropped (per WatchState's own documented caveat).
+
+### 6.0 Recon findings (2026-08-12) — read before implementing
+
+Upstream source was read at `arabcoders/watchstate` (PHP, 1.5k stars, active).
+No code was written; this section exists so a fresh session can skip straight
+to building. **Four corrections to the subsections below, which were written
+from assumption.**
+
+1. **Everything is env-driven** (`config/config.php`): `WS_API_KEY`,
+   `WS_SECURE_API_ENDPOINTS`, `WS_SYSTEM_SECRET`, `WS_AUTH_TOKEN_EXPIRY`,
+   `WS_WEBHOOK_TOKEN_LENGTH`. This satisfies Phase 4's env-var-over-config-file
+   rule directly — set the API key in `.env`, do not let it self-generate into
+   the gitignored `config/`.
+
+2. **6.2 is wrong that secrets must be entered via a setup CLI/UI.** The API
+   exposes `POST /v1/api/backends` (`src/API/Backends/Add.php`), alongside
+   `Discover.php`, `PlexToken.php`, `Users.php` and `AccessToken.php`. So the
+   Plex backend seeds headlessly from the existing `PLEX_URL`/`PLEX_TOKEN` via
+   a `scripts/watchstate-provision.py`, exactly as Phase 5 did. Note there is
+   **no** `backends:add` console command (only `Backend/RestoreCommand.php` and
+   `Backend/TestCommand.php`), so the API is the only scriptable path — a
+   `docker exec` approach will not work.
+
+3. **Real route paths**, resolved from the `URL` constants against
+   `api.prefix` = `/v1/api`:
+   - health: `/v1/api/system/healthcheck` (`src/API/System/HealthCheck.php`) —
+     use this for 6.3, **not** `/`. A real backend endpoint, same reasoning as
+     Phases 4 and 5.
+   - webhook: `/v1/api/webhook` (`src/API/WebHook.php`, accepts GET/POST/PUT)
+     — **not** 6.4's guessed `/v1/api/webhook/plex`. There is one endpoint for
+     every backend type; the backend is identified by its own webhook token,
+     not by the path.
+   - backends: `GET`/`POST /v1/api/backends`.
+
+4. **6.1's compose block would likely fail to start.** The container runs
+   rootless and *exits* if it cannot write `/config`; upstream's README calls
+   this out and its own example sets `user: "${UID:-1000}:${UID:-1000}"`. The
+   block below has no `user:` line at all. Set it to match the owner of
+   `./config/watchstate` (this stack's `PUID`/`PGID`).
+
+Also confirmed rather than assumed: upstream's README independently states to
+keep the scheduled import enabled even when every backend supports webhooks,
+which is exactly 6.4's caveat. The redundancy is deliberate on both sides.
+
+`src/Backends/Plex/Action/AddWebhook.php` exists, so WatchState may be able to
+register the webhook into Plex itself rather than needing it configured from
+the Plex side — worth checking first when implementing 6.4, since it would
+make that step scriptable too.
 
 ### 6.1 Compose
 
@@ -870,7 +918,9 @@ secret-injector.
 ### 6.3 Health monitor
 
 ```python
-"watchstate": (8705, "/"),
+# Corrected by 6.0's recon - "/" would be served by the WebUI and can answer
+# with a dead backend behind it, the same failure mode Phases 4 and 5 both hit.
+"watchstate": (8705, "/v1/api/system/healthcheck"),
 ```
 
 ### 6.4 Import task + webhook
@@ -887,8 +937,9 @@ secret-injector.
    pick a clear offset, don't assume WatchState's reads are cheap enough to
    ignore this.
 2. **Also** configure a Plex webhook pointing at WatchState
-   (`http://watchstate:8080/v1/api/webhook/plex` or WatchState's documented
-   webhook path — confirm exact path in its docs at implementation time)
+   (`http://watchstate:8080/v1/api/webhook` — confirmed against
+   `src/API/WebHook.php` by 6.0's recon; there is no per-backend `/plex`
+   suffix, the backend is identified by its webhook token)
    for near-real-time updates. Keep the scheduled import running regardless
    — WatchState's own docs warn webhooks alone can drop events, do not
    disable the import task as an "optimization."
