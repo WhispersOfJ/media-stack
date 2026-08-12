@@ -283,3 +283,12 @@ first time alongside Organizr.
 
 - **`stack-organizr-tabs`** — every tab Organizr has, plus which stack services are missing one. Includes Organizr's own built-in Settings/Homepage pages, which this stack does not manage.
 - **`stack-organizr-sync`** — add a tab for any service in the canonical table (`control-panel/services/organizr/tabs.py`) that doesn't have one. Additive only: it never edits or deletes an existing tab, so anything hand-tweaked in Organizr's UI survives. Run it after adding a service to the stack.
+
+### Scrutiny (Phase 4)
+
+Complements `stack-disk-health` (raw `smartctl`, right now) with Scrutiny's trended view. This host has one physical disk, a 954GB NVMe, so these are really about wear tracking on the disk the whole stack runs on.
+
+- **`stack-scrutiny-summary`** — all-disk status at a glance: model, temperature, power-on hours, healthy or failing.
+- **`stack-scrutiny-disk [uuid|name|serial]`** — per-disk SMART detail, including the wear attributes that actually predict end-of-life (`percentage_used`, `available_spare`, `media_errors`, `critical_warning`) and anything Scrutiny has flagged. The argument is optional on a single-disk host.
+- **`stack-scrutiny-collect`** — run the collector now rather than waiting for its midnight cron. Returns the collector's own output.
+- **`stack-scrutiny-alert-test`** — fire Scrutiny's test notification through its configured sink, which here is ntfy topic `scrutiny-alerts`. Proves the disk-failure alert path works before a disk actually fails.

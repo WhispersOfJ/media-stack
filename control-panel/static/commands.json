@@ -2655,5 +2655,66 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": ""
+  },
+  {
+    "Name": "stack-scrutiny-summary",
+    "Description": "All-disk SMART status at a glance",
+    "Method": "GET",
+    "PathTemplate": "/api/scrutiny/summary",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-scrutiny-disk",
+    "Description": "Per-disk SMART detail (uuid, device name or serial; omit for the only disk)",
+    "Method": "GET",
+    "PathTemplate": "/api/scrutiny/disk",
+    "Query": [
+      {
+        "Key": "disk_id",
+        "ArgName": "disk_id"
+      }
+    ],
+    "Args": [
+      {
+        "Name": "disk-uuid/name/serial",
+        "Choices": null,
+        "Optional": true,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-scrutiny-collect",
+    "Description": "Run the SMART collector now instead of waiting for midnight",
+    "Method": "POST",
+    "PathTemplate": "/api/scrutiny/collect",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-scrutiny-alert-test",
+    "Description": "Fire Scrutiny's test notification through the ntfy sink",
+    "Method": "POST",
+    "PathTemplate": "/api/scrutiny/alert-test",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
   }
 ]

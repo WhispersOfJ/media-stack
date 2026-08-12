@@ -21,6 +21,7 @@ const FLEET_GROUPS = {
   organizr: "Dashboard",
   ntfy: "Notifications",
   "speedtest-tracker": "Monitoring",
+  scrutiny: "Monitoring",
 };
 const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Post-processing", "Auto-updates", "Notifications", "Monitoring", "Dashboard", "Other"];
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem("fleetCollapsed") || "[]"));

@@ -1198,3 +1198,76 @@ services:
     mem_limit: 256m
     mem_reservation: 32m
     cpus: 1
+
+  # Phase 4 (PLANS.md) - S.M.A.R.T. health trending and failure prediction,
+  # layered on top of (not replacing) the raw-smartctl stack-disk-health check.
+  #
+  # This host has exactly ONE physical disk, contrary to PLANS.md 4.1's
+  # two-SATA-disk example: a 954GB NVMe (Bestoss GM988H). Everything else the
+  # stack serves lives on the Usenet-backed FUSE mount, which has no SMART
+  # data to trend. So the value here is NVMe wear tracking (percentage_used,
+  # media errors, unsafe shutdowns) on the single disk the whole stack runs
+  # on, not array-wide failure prediction.
+  #
+  # `devices` is /dev/nvme0, the NVMe *controller character device*, because
+  # that is what `smartctl --scan` reports on this host - NOT the /dev/sdX-
+  # style block device PLANS.md's example used. Upstream's README says to
+  # pass exactly what --scan lists. /dev/nvme0n1 is passed too so the
+  # collector can also read block-device metadata via udev.
+  #
+  # SYS_ADMIN is on top of SYS_RAWIO because this disk is NVMe: smartctl
+  # needs the NVMe admin passthrough ioctl, which SYS_RAWIO alone doesn't
+  # cover (upstream README, and AnalogJ/scrutiny#26). Without it Scrutiny
+  # registers the device and then reports no SMART data at all. This is a
+  # real privilege grant to this container - it is the documented minimum
+  # for NVMe, and is still narrower than --privileged.
+  scrutiny:
+    restart: unless-stopped
+    image: ghcr.io/analogj/scrutiny:latest-omnibus
+    container_name: scrutiny
+    environment:
+      TZ: "${TZ}"
+      # Upstream's own default (daily at midnight), set explicitly so the
+      # schedule is visible here rather than implied. SMART trending does not
+      # need to run more often, and midnight is clear of watchtower (04:00)
+      # and Kometa (05:30).
+      COLLECTOR_CRON_SCHEDULE: "0 0 * * *"
+      # Disk-failure alerts route into the ntfy sink from Phase 1 rather
+      # than standing up a second notification channel for one service.
+      #
+      # Set as an env var, NOT in scrutiny.yaml, deliberately: this repo
+      # gitignores config/ wholesale, so a config-file version of this
+      # wiring exists only on this host and silently vanishes on a rebuild.
+      # Scrutiny's config is viper-backed with SetEnvPrefix("SCRUTINY") and
+      # a "." -> "_" key replacer, and notify.urls has a registered default
+      # (webapp/backend/pkg/config/config.go:42), so AutomaticEnv resolves
+      # this key. Everything else Scrutiny needs is already its own default.
+      #
+      # scheme=http is required: shoutrrr's ntfy service defaults to
+      # https/443 and stacknet has no TLS.
+      SCRUTINY_NOTIFY_URLS: "ntfy://ntfy:80/scrutiny-alerts?scheme=http"
+    cap_add:
+      - SYS_RAWIO
+      - SYS_ADMIN
+    devices:
+      - "/dev/nvme0:/dev/nvme0"
+      - "/dev/nvme0n1:/dev/nvme0n1"
+    networks: [stacknet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/scrutiny/config:/opt/scrutiny/config
+      - ./config/scrutiny/influxdb:/opt/scrutiny/influxdb
+      # Device metadata for the collector. Read-only.
+      - /run/udev:/run/udev:ro
+    ports:
+      - "8703:8080"
+    # Omnibus bundles InfluxDB, so this needs more headroom than the other
+    # companion apps - 512m is upstream's own suggested floor for the bundle.
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 1

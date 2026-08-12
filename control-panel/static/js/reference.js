@@ -23,6 +23,7 @@ const QUICK_LINKS = [
   { id: "ntfy", label: "ntfy", port: 8700 },
   { id: "speedtest-tracker", label: "Speedtest Tracker", port: 8701 },
   { id: "organizr", label: "Organizr", port: 8702 },
+  { id: "scrutiny", label: "Scrutiny", port: 8703 },
   // No quicklink for kometa/prefetcharr - neither publishes a port
   // (kometa is a scheduled batch job, prefetcharr a headless poller).
 ];
@@ -59,6 +60,7 @@ const DOC_LINKS = [
   { app: "ntfy", desc: "shared push-notification sink for Radarr/Sonarr/Prowlarr alerts (anonymous access, not exposed publicly)", urls: [["Docs", "https://docs.ntfy.sh/"], ["Source", "https://github.com/binwiederhier/ntfy"]] },
   { app: "Speedtest Tracker", desc: "hourly ISP speed monitoring + history, so link degradation is visible before it's blamed on downloads/streaming", urls: [["Docs", "https://docs.speedtest-tracker.dev/"], ["Source", "https://github.com/alexjustesen/speedtest-tracker"]] },
   { app: "Organizr", desc: "single landing dashboard, one tab per service - wizard and tabs both provisioned by scripts/organizr-provision.py, nothing set up by hand", urls: [["Docs", "https://docs.organizr.app/"], ["Source", "https://github.com/causefx/Organizr"]] },
+  { app: "Scrutiny", desc: "S.M.A.R.T. trending for the host's single NVMe, collector daily at midnight - complements the raw-smartctl stack-disk-health check, doesn't replace it", urls: [["Source", "https://github.com/AnalogJ/scrutiny"]] },
 ];
 
 export function buildDocLinks() {

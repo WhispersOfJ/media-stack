@@ -11,7 +11,8 @@ this file wins.
 
 **Status: see each phase's own `Status:` line — that's the single source of
 truth, not this paragraph.** As of last update (2026-08-12): Phases 1 (ntfy),
-2 (Speedtest Tracker) and 3 (Organizr) DONE, Phases 4-7 not started. Phase 1 was built out
+2 (Speedtest Tracker), 3 (Organizr) and 4 (Scrutiny) DONE, Phases 5-7 not
+started. Phase 1 was built out
 of this doc's stated risk order at Bear's explicit request (see its own
 Phase 1 section for why that's a deliberate deviation, not an oversight).
 See STACK.md's "ntfy added" and "Speedtest Tracker added" entries for the
@@ -531,12 +532,32 @@ Original steps, kept for the record:
 
 ## Phase 4 — Scrutiny
 
-**Status:** NOT STARTED
+**Status:** DONE (2026-08-12)
 **Risk:** low
 **Role:** disk S.M.A.R.T. health trending and failure prediction, layered on
 top of (not replacing) the existing `stack-disk-health` raw-`smartctl` check.
 
+Implemented, live-verified, and committed — see STACK.md's "Scrutiny added"
+entry for the full record.
+
+**Scope reality this section did not anticipate:** this host has exactly ONE
+physical disk, a 954GB NVMe. `zram0` is compressed RAM swap, not a disk, and
+everything else the stack serves lives on the Usenet-backed FUSE mount, which
+has no SMART data. The two-SATA-disk shape below is not this machine.
+
 ### 4.1 Compose
+
+**Corrected at implementation time, three ways:**
+
+- The device to pass is `/dev/nvme0`, the NVMe *controller character device*,
+  because that is what `smartctl --scan` reports here. Upstream says to pass
+  exactly what `--scan` lists; the `/dev/sdX` block-device shape below would
+  have registered nothing. `/dev/nvme0n1` is passed too for udev metadata.
+- `SYS_ADMIN` is **mandatory**, not the conditional "if any host disk is
+  NVMe" below — every disk here is NVMe. Without it Scrutiny registers the
+  device and then silently reports no SMART data at all.
+- Healthcheck and API paths in 4.3/4.4 were verified correct against
+  `webapp/backend/pkg/web/server.go` and needed no change.
 
 ```yaml
   scrutiny:
@@ -586,8 +607,17 @@ None.
 
 - `stack-scrutiny-summary` — `GET /api/scrutiny/summary` (proxies Scrutiny's
   own `/api/summary`), all-disk status at a glance.
-- `stack-scrutiny-disk <disk_id>` — `GET /api/scrutiny/disk/<disk_id>`
-  (proxies `/api/device/{id}/details`), per-disk SMART attribute history.
+- `stack-scrutiny-disk [disk_id]` — `GET /api/scrutiny/disk?disk_id=<id>`
+  (proxies `/api/device/{uuid}/details`), per-disk SMART attributes. Scrutiny
+  only accepts its internal UUID, so the router resolves a device name or
+  serial first; the argument is optional entirely on a single-disk host.
+
+Two more shipped beyond this section:
+
+- `stack-scrutiny-collect` — runs the collector now. Without it the only way
+  to know collection works is to wait for the midnight cron.
+- `stack-scrutiny-alert-test` — fires Scrutiny's own test notification
+  through the ntfy sink from Phase 1 (see 4.5).
 
 ### 4.5 Control panel
 
@@ -598,6 +628,16 @@ None.
 - STACK.md entry: relationship to existing `stack-disk-health`, the explicit
   device list decision (why not `--privileged`), cron schedule (default
   daily, leave as-is — SMART trending doesn't need to run more often).
+- **Beyond this section:** disk-failure alerts wired into the Phase 1 ntfy
+  sink via Scrutiny's native shoutrrr support, as the `SCRUTINY_NOTIFY_URLS`
+  env var in `docker-compose.yml` (`scheme=http` required, shoutrrr defaults
+  to https/443). Env var, not a config file, because this repo gitignores
+  `config/` wholesale — anything under there exists only on the live host and
+  vanishes on a rebuild. **Worth generalising to Phases 5-7: prefer an env
+  var over a file under `config/` whenever the app supports it.** Verified
+  end-to-end by polling the topic, not assumed. Note Scrutiny answers HTTP
+  200 with `success: false` on a broken notify URL, so check the body, not
+  the status.
 
 ### 4.6 Tests
 
@@ -612,13 +652,14 @@ None.
 
 ### 4.7 Acceptance
 
-- [ ] Container healthy
-- [ ] Every physical disk has SMART data populated
-- [ ] health-monitor probe green
-- [ ] pytest suite passing
-- [ ] Fish functions callable
-- [ ] STACK.md entry added
-- [ ] Committed as its own commit
+- [x] Container healthy
+- [x] Every physical disk has SMART data populated — the one NVMe: 5% used,
+      100% spare, 0 media errors, 43C, 2083h
+- [x] health-monitor probe green
+- [x] pytest suite passing — 23 cases, full suite 677
+- [x] Fish functions callable — all four
+- [x] STACK.md entry added
+- [x] Committed as its own commit
 
 ---
 

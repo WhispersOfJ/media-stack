@@ -40,6 +40,7 @@ CONTAINER_LABELS = {
     "control-panel": ("Control Panel", "this dashboard"),
     "ntfy": ("ntfy", "shared push-notification sink - anonymous access, not exposed publicly"),
     "organizr": ("Organizr", "single landing dashboard, one tab per service - tabs provisioned by script, not by hand"),
+    "scrutiny": ("Scrutiny", "S.M.A.R.T. trending for the host's single NVMe - collector runs daily at midnight"),
 }
 
 # Same FUSE-landmine mount ordering as app.py's stack_restart_all - see

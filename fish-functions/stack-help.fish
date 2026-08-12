@@ -126,4 +126,8 @@ function stack-help --description 'List all stack-* terminal commands for the me
     echo '  stack-speedtest-run-now                         trigger an out-of-schedule speedtest'
     echo '  stack-organizr-tabs                             Organizr'"'"'s dashboard tabs + which services lack one'
     echo '  stack-organizr-sync                             add a tab for any service missing one (additive only)'
+    echo '  stack-scrutiny-summary                          all-disk SMART status at a glance'
+    echo '  stack-scrutiny-disk [uuid|name|serial]          per-disk SMART detail (omit arg for the only disk)'
+    echo '  stack-scrutiny-collect                          run the SMART collector now, not at midnight'
+    echo '  stack-scrutiny-alert-test                       fire Scrutiny'"'"'s test alert through ntfy'
 end

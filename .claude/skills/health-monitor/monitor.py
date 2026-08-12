@@ -41,6 +41,7 @@ HTTP_SERVICES = {
     # before and after Organizr's setup wizard, whereas "/" serves the
     # wizard pre-setup and 302s to login after.
     "organizr": (8702, "/api/v2/ping"),
+    "scrutiny": (8703, "/api/health"),
 }
 
 

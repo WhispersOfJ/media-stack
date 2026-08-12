@@ -3269,3 +3269,130 @@ tab, every URL uses HOST_IP, tab names are unique). Full suite 654 passed, no re
 **Doc backfill:** Phases 1 and 2 shipped without registering their functions in
 `fish-functions/README.md` or `stack-help.fish`. Both were two phases behind; ntfy's and
 Speedtest Tracker's functions were backfilled alongside Organizr's in this commit.
+
+## Scrutiny added: S.M.A.R.T. trending for the host's single NVMe, 2026-08-12
+
+Phase 4 of `PLANS.md`'s 7-service integration batch. Phases 5-7 (GAPS-2, WatchState,
+PlexAniSync) remain not built.
+
+**What it is:** `ghcr.io/analogj/scrutiny:latest-omnibus` (v0.9.3 at deploy time), container
+`scrutiny`, host port 8703 (container 8080). Omnibus bundles the web UI, API and the metrics
+collector, plus its own InfluxDB for the time-series data. Collector runs daily at midnight.
+
+Layered on top of, not replacing, the existing `stack-disk-health` raw-`smartctl` check: that
+one answers "is the disk okay right now", Scrutiny answers "is it getting worse".
+
+### Scope reality: this host has exactly one physical disk
+
+PLANS.md 4.1 assumed a multi-disk SATA array and used `/dev/sda` + `/dev/sdb` as its example.
+`lsblk -d` on this host shows a single 954GB NVMe (Bestoss GM988H 1TB, serial
+UB988KH7Q261KN00098) plus `zram0`, which is compressed RAM swap and not a real disk. Everything
+else the stack serves lives on the Usenet-backed FUSE mount, which has no SMART data to trend.
+
+So the value here is narrower than the plan imagined but still real: wear tracking on the one
+disk the entire stack runs on. Baseline at deploy: **5% used, 100% spare remaining, 0 media
+errors, 0 critical warnings, 43C, 2083 power-on hours, 31 unsafe shutdowns.** That last number
+is consistent with this stack's FUSE-hang-and-reboot history and is worth watching, though
+nothing about it is currently alarming.
+
+### Three PLANS.md 4.x corrections
+
+**1. The device to pass through is `/dev/nvme0`, not a block device.** `smartctl --scan` on this
+host returns `/dev/nvme0 -d nvme` — the NVMe *controller character device*. Upstream's README
+says to pass exactly what `--scan` lists. PLANS.md's `/dev/sdX` block-device shape would have
+registered nothing. `/dev/nvme0n1` is passed as well so the collector can read block-device
+metadata via udev, but `/dev/nvme0` is the one that matters.
+
+**2. `SYS_ADMIN` is mandatory here, not conditional.** PLANS.md 4.1 said "If any host disk is
+NVMe, also add `cap_add: [SYS_ADMIN]`". Every disk here is NVMe, so it is required:
+`smartctl` needs the NVMe admin passthrough ioctl, which `SYS_RAWIO` alone does not cover
+(upstream README, `AnalogJ/scrutiny#26`). Without it Scrutiny registers the device and then
+reports no SMART data at all — a silent-empty failure, not an error. This is a genuine
+privilege grant to the container; it is the documented minimum for NVMe and still narrower
+than `--privileged`.
+
+**3. Four fish functions shipped, not 4.4's two.** `stack-scrutiny-collect` exists because
+otherwise the only way to see whether collection works is to wait until midnight.
+`stack-scrutiny-alert-test` exists because of the notification wiring below.
+
+### Beyond the plan: disk-failure alerts route into ntfy
+
+Not in PLANS.md at all, but Phase 1 built a notification sink and Scrutiny speaks shoutrrr
+natively, so `docker-compose.yml` carries:
+
+```yaml
+SCRUTINY_NOTIFY_URLS: "ntfy://ntfy:80/scrutiny-alerts?scheme=http"
+```
+
+`scheme=http` is required because shoutrrr's ntfy service defaults to https/443 and stacknet has
+no TLS.
+
+**This started as a `config/scrutiny/config/scrutiny.yaml` file and was moved to an env var
+mid-implementation, for a reason worth reusing:** this repo gitignores `config/` wholesale
+(`.gitignore:16`), so any wiring that lives in a config file under there exists only on this
+host and silently vanishes on a rebuild. The same is quietly true of ntfy's own
+`config/ntfy/etc/server.yml` from Phase 1. Scrutiny's config is viper-backed with
+`SetEnvPrefix("SCRUTINY")` and a `.`→`_` key replacer, and `notify.urls` has a registered
+default (`webapp/backend/pkg/config/config.go:42`), which is what makes `AutomaticEnv` resolve
+`SCRUTINY_NOTIFY_URLS`. Every other setting Scrutiny needs is already its own default, so the
+config file was deleted entirely rather than kept for two keys — Scrutiny now boots on
+`No configuration file found ... Using Defaults` plus that one env var, and the whole service
+is reproducible from the committed compose file.
+
+**Prefer an env var over a file under `config/` whenever the app supports it.** Verified
+end-to-end after the switch, not assumed: `stack-scrutiny-alert-test` fires Scrutiny's own
+`POST /api/health/notify`, and the message was confirmed landing on the `scrutiny-alerts` topic
+by polling `http://localhost:8700/scrutiny-alerts/json?poll=1`. Scrutiny's test payload
+references a fake `/dev/sda` with serial `FAKEWDDJ324KSO` — that is upstream's hardcoded test
+device, not a real disk on this host.
+
+Note Scrutiny answers **HTTP 200 with `success: false`** when a notify URL is broken, so the
+router checks the body rather than relying on `raise_for_status`. A bare status check would
+report a working alert path that silently isn't.
+
+### Landmine: `detail` is a reserved key in this stack's API responses
+
+Real bug, caught live during verification and *not* by the router's own tests. `__stack_api`
+(`fish-functions/__stack_api.fish`) unwraps any top-level `detail` dict as FastAPI's
+`HTTPException` envelope. A **success** payload carrying `detail` is therefore mistaken for an
+error body, and the CLI prints raw JSON instead of the message. The alert-test route originally
+returned `detail=body`; renamed to `scrutiny_response`.
+
+The router was correct in isolation and only wrong through the CLI, which is the interesting
+part — no unit test of that route would have caught it. There is now a shape test
+(`test_no_success_route_returns_a_top_level_detail_key`) asserting that no Scrutiny success
+response carries a top-level `detail` key. **Any new route in any service should avoid `detail`
+as a response key.**
+
+### Convenience: disk identifiers resolve
+
+Scrutiny's own API only accepts its internal UUID (`500c6e6d-9dcd-584c-81e9-32a13f8f55c1` here),
+which nobody has memorised and which changes if a device is re-registered.
+`GET /api/scrutiny/disk` accepts a UUID, a device name (`nvme0`), or a serial, case-insensitive,
+and resolves it against the summary first. With exactly one disk registered the argument is
+optional entirely. With more than one it becomes required and the error names the candidates.
+
+`stack-scrutiny-disk` surfaces only the six attributes that actually predict end-of-life
+(`critical_warning`, `available_spare`, `percentage_used`, `media_errors`, `unsafe_shutdowns`,
+`num_err_log_entries`) out of the 16 Scrutiny tracks for NVMe. The rest are raw counters
+(`host_reads`, `data_units_written`) that only mean something as a trend line in the web UI.
+Anything Scrutiny itself flags is reported regardless of whether it is in that six.
+
+### Image tag
+
+`latest-omnibus`, matching this repo's dominant convention (watchtower updates nightly at 04:00
+and posts to Discord). Upstream's README warns against `latest-` tags generally, but surprise
+updates with notification are this stack's deliberate, stack-wide answer to that problem, and
+making one service the exception adds a stale-pin nobody will remember to check. Noted here so
+the deviation from upstream advice is a decision on the record rather than an oversight.
+
+**Tests:** `tests/control_panel/test_scrutiny_router.py`, 23 cases — auth gating on all four
+routes, summary shaping, healthy-vs-failing classification, no-disks-yet vs unreachable,
+identifier resolution across UUID/name/serial/case, the single-disk default, the multi-disk
+requirement, 404 on unknown, wear-attribute filtering, flagged-attribute reporting, collector
+exit codes, the `success: false` notification path, and the `detail`-key shape test. Full suite
+677 passed, no regressions. `ruff` clean.
+
+**Fish functions:** `stack-scrutiny-summary`, `stack-scrutiny-disk [id]`, `stack-scrutiny-collect`,
+`stack-scrutiny-alert-test`. Deployed as plain copies to `~/.config/fish/functions/`, all four
+confirmed callable against the real running stack.
