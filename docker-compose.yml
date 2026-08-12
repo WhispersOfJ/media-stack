@@ -686,6 +686,11 @@ services:
       # /api/ratings/imdb, /api/ratings/mdblist - standalone secrets.
       OMDB_KEY: ${OMDB_KEY}
       MDBLIST_KEY: ${MDBLIST_KEY}
+      # /api/speedtest-tracker/* - Sanctum personal-access token, minted
+      # once outside the app (see STACK.md's Speedtest Tracker entry for
+      # why - Sanctum only ever stores a hash, and the image has no
+      # tinker), read as a plain env var same as FRONTEND_BACKEND_API_KEY.
+      SPEEDTEST_TRACKER_API_TOKEN: ${SPEEDTEST_TRACKER_API_TOKEN}
       # Evolved backend (main.py) - service-account key for unattended
       # stack-* fish commands; see .env's comment and
       # core/security.py's current_user_or_service.
@@ -1098,4 +1103,55 @@ services:
       - "8700:80"
     mem_limit: 256m
     mem_reservation: 32m
+    cpus: 1
+
+  # Phase 2 (PLANS.md) - scheduled ISP speed monitoring + history.
+  # SPEEDTEST_SCHEDULE is hourly, not upstream's 15-min default - a full
+  # speedtest saturates the link, and 4x/hour is unnecessary noise for a
+  # monitoring signal, not a benchmark tool.
+  speedtest-tracker:
+    restart: unless-stopped
+    image: lscr.io/linuxserver/speedtest-tracker:latest
+    container_name: speedtest-tracker
+    environment:
+      PUID: "${PUID}"
+      PGID: "${PGID}"
+      TZ: "${TZ}"
+      APP_KEY: "${SPEEDTEST_TRACKER_APP_KEY}"
+      APP_URL: "http://${HOST_IP}:8701"
+      DB_CONNECTION: sqlite
+      SPEEDTEST_SCHEDULE: "0 * * * *"
+      ADMIN_EMAIL: "${SPEEDTEST_TRACKER_ADMIN_EMAIL}"
+      ADMIN_PASSWORD: "${SPEEDTEST_TRACKER_ADMIN_PASSWORD}"
+      # Pins scheduled runs to known-good nearby servers instead of the
+      # Ookla CLI's own auto-selection ("--selection-details" pings many
+      # candidate servers concurrently over a loaded-latency probe, and
+      # this stack's network path makes that probe flaky - "Cannot open
+      # socket"/"Connection refused" against whichever candidate answers
+      # slowest first, confirmed live: ~50% failure rate un-pinned vs 3/3
+      # clean runs pinned to a single server). Both IDs confirmed reachable
+      # and fast from this host during live verification (2026-08-11).
+      SPEEDTEST_SERVERS: "45389,49674"
+    networks: [stacknet]
+    # The Ookla speedtest CLI this image ships (1.2.0.84) creates an IPv6
+    # socket before falling back to IPv4, and aborts with "Cannot open
+    # socket" / ENETUNREACH instead of actually falling back, since
+    # stacknet's bridge has no IPv6 route configured. Disabling IPv6 in the
+    # container's own netns (not the host's) makes the binary skip AF_INET6
+    # entirely - confirmed live: every real run failed until this was added.
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/api/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./config/speedtest-tracker:/config
+    ports:
+      - "8701:80"
+    mem_limit: 512m
+    mem_reservation: 64m
     cpus: 1

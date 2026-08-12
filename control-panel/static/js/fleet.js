@@ -19,8 +19,9 @@ const FLEET_GROUPS = {
   maintainerr: "Library maintenance", checkrr: "Library maintenance", prefetcharr: "Library maintenance",
   "control-panel": "Dashboard",
   ntfy: "Notifications",
+  "speedtest-tracker": "Monitoring",
 };
-const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Post-processing", "Auto-updates", "Notifications", "Dashboard", "Other"];
+const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Post-processing", "Auto-updates", "Notifications", "Monitoring", "Dashboard", "Other"];
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem("fleetCollapsed") || "[]"));
 
 function fmtPercent(v) { return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`; }

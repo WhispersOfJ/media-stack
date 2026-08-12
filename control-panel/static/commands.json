@@ -2642,5 +2642,54 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": ""
+  },
+  {
+    "Name": "stack-speedtest-latest",
+    "Description": "Show latest speedtest result",
+    "Method": "GET",
+    "PathTemplate": "/api/speedtest-tracker/latest",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-speedtest-history",
+    "Description": "Show speedtest history",
+    "Method": "GET",
+    "PathTemplate": "/api/speedtest-tracker/history",
+    "Query": [
+      {
+        "Key": "days",
+        "ArgName": "days"
+      }
+    ],
+    "Args": [
+      {
+        "Name": "days",
+        "Choices": null,
+        "Optional": true,
+        "Default": "7",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
+  },
+  {
+    "Name": "stack-speedtest-run-now",
+    "Description": "Trigger an out-of-schedule speedtest",
+    "Method": "POST",
+    "PathTemplate": "/api/speedtest-tracker/run",
+    "Query": null,
+    "Args": [],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
   }
 ]

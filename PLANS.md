@@ -10,12 +10,13 @@ is the canonical one an implementing agent should follow — if the two ever dri
 this file wins.
 
 **Status: see each phase's own `Status:` line — that's the single source of
-truth, not this paragraph.** As of last update (2026-08-11): Phase 1 (ntfy)
-DONE, Phases 2-7 not started. Phase 1 was built out of this doc's stated risk
-order at Bear's explicit request (see its own Phase 1 section for why that's
-a deliberate deviation, not an oversight). See STACK.md's "ntfy added" entry
-for the full implementation record, including two real bugs found and fixed
-during live verification.
+truth, not this paragraph.** As of last update (2026-08-11): Phases 1 (ntfy)
+and 2 (Speedtest Tracker) DONE, Phases 3-7 not started. Phase 1 was built out
+of this doc's stated risk order at Bear's explicit request (see its own
+Phase 1 section for why that's a deliberate deviation, not an oversight).
+See STACK.md's "ntfy added" and "Speedtest Tracker added" entries for the
+full implementation records, including real bugs/assumption-mismatches
+found and fixed during live verification of each.
 Each phase below gets its own commit(s); update the `Status` line at the top
 of a phase's section to `IN PROGRESS` / `DONE` as work lands, and update
 `MEMORY.md` per the memory-reference note at the bottom.
@@ -242,10 +243,27 @@ New file `fish-functions/stack-ntfy-*.fish`:
 
 ## Phase 2 — Speedtest Tracker
 
-**Status:** NOT STARTED
+**Status:** DONE (2026-08-11)
 **Risk:** low
 **Role:** scheduled ISP speed monitoring + history, so link degradation is
 visible before it's the reason downloads/streaming feel slow.
+
+Implemented, live-verified, and committed - see STACK.md's "Speedtest Tracker
+added" entry for the full record, including two real bugs found and fixed
+during live verification (not just discovered during planning): the Ookla
+CLI's IPv6 socket failure that made every run fail 100% of the time until a
+`sysctls` fix landed, and a naive-vs-aware datetime 500 in `/history` caused
+by the live API's real timestamp format differing from its own docs. Also
+two deviations from this section as originally written, both discovered
+during implementation, not assumed from docs:
+- 2.2's default-login note is moot - the image's `ADMIN_NAME`/`ADMIN_EMAIL`/
+  `ADMIN_PASSWORD` env vars seed a real admin on first boot, so there was
+  never a default `admin@example.com`/`password` login to change.
+- 2.5's "sqlite query" assumption for reading the API token back out was
+  wrong - Sanctum only stores a hash, and the image has no `tinker`. The
+  token was minted by replicating Sanctum's own token-generation algorithm
+  and inserting the row directly via Python's `sqlite3` against the
+  bind-mounted DB file. Full detail in STACK.md.
 
 ### 2.1 Compose
 
@@ -333,15 +351,16 @@ cannot be automated via the API before the app has booted once.
 
 ### 2.7 Acceptance
 
-- [ ] Container healthy
-- [ ] APP_KEY generated and in `.env` (not committed — verify `.gitignore`
+- [x] Container healthy
+- [x] APP_KEY generated and in `.env` (not committed — verified `.gitignore`
       covers `.env` before this phase's commit)
-- [ ] Default login changed
-- [ ] health-monitor probe green
-- [ ] pytest suite passing
-- [ ] Live speedtest run + readback verified
-- [ ] Fish functions callable
-- [ ] STACK.md entry added
+- [x] Default login changed (moot - seeded correctly via ADMIN_* env vars,
+      see the deviation note above)
+- [x] health-monitor probe green
+- [x] pytest suite passing
+- [x] Live speedtest run + readback verified
+- [x] Fish functions callable
+- [x] STACK.md entry added
 - [ ] Committed as its own commit
 
 ---

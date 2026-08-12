@@ -36,6 +36,7 @@ HTTP_SERVICES = {
     "lingarr": (9876, "/"),
     "nzbdav": (3000, "/"),
     "ntfy": (8700, "/v1/health"),
+    "speedtest-tracker": (8701, "/api/healthcheck"),
 }
 
 

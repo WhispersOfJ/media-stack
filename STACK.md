@@ -3059,3 +3059,94 @@ symlink), confirmed callable from a real fish shell against the running stack.
 is implemented, it scans **both** the general Radarr library and the anime Radarr (`radarr_anime`)
 library for gaps - Bear confirmed this explicitly, overriding PLANS.md's stated default of
 general-only. See `PLANS.md`'s Phase 5.2 for the full context this decision sits inside.
+
+## Speedtest Tracker added: hourly ISP link monitoring, 2026-08-11
+
+Phase 2 of `PLANS.md`'s 7-service integration batch. Phases 3-7 (Organizr, Scrutiny, GAPS-2,
+WatchState, PlexAniSync) remain not built.
+
+**What it is:** `lscr.io/linuxserver/speedtest-tracker` (pinned `v1.14.7-ls166` at deploy time,
+tracked via `:latest`), container `speedtest-tracker`, host port 8701 (container 80). Runs an
+Ookla speedtest hourly (`SPEEDTEST_SCHEDULE: "0 * * * *"`) - deliberately not upstream's 15-min
+default, since a full speedtest saturates the link and 4x/hour is unnecessary noise for a
+monitoring signal, not a benchmark tool.
+
+**Admin bootstrap, not the manual "change default login" step PLANS.md originally called for:**
+the image supports `ADMIN_NAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars, "only effective during
+initial setup" per upstream docs (docs.speedtest-tracker.dev/getting-started/environment-variables).
+Set via `SPEEDTEST_TRACKER_ADMIN_EMAIL`/`SPEEDTEST_TRACKER_ADMIN_PASSWORD` in `.env`, so there's
+no default `admin@example.com`/`password` login sitting open even briefly.
+
+**APP_KEY:** Laravel encryption key, generated once via `echo "base64:$(openssl rand -base64 32)"`
+per upstream's own docker install docs, stored in `.env` as `SPEEDTEST_TRACKER_APP_KEY`. Losing
+or rotating it after first boot breaks decryption of anything already encrypted with the old key
+- treat it like any other irreplaceable secret, not a rotatable credential.
+
+**API token provisioning - real deviation from PLANS.md 2.5's assumption:** the plan assumed the
+Sanctum API token could be read back out of Speedtest Tracker's sqlite DB the same way Tautulli's
+flat-file `config.ini` works. Confirmed false during implementation: Sanctum only ever stores a
+SHA-256 *hash* of the token (`personal_access_tokens.token`), and the image ships without
+`laravel/tinker` (`php artisan tinker` errors `Command "tinker" is not defined`), so there's no
+in-container CLI path to mint one either. What actually worked: replicated Sanctum's own
+`HasApiTokens::createToken()` algorithm from `vendor/laravel/sanctum/src/HasApiTokens.php` (40
+random alnum chars + `hash('crc32b', ...)` of those 40 chars appended, sha256 of the full string
+stored as the DB row's `token`, plaintext returned to the caller as `"{id}|{40chars}{crc}"`) and
+inserted the row directly into `./config/speedtest-tracker/database.sqlite` from the host via
+Python's stdlib `sqlite3` (the bind mount makes this reachable without needing a `sqlite3` binary
+inside the container, which isn't present either). Abilities set to `["results:read",
+"speedtests:run"]` - the exact ability strings the app's own controllers check via
+`$request->user()->tokenCant('results:read')` /
+`app/Http/Controllers/Api/V1/{Results,Stats,Speedtest}Controller.php`, confirmed by reading those
+controllers directly rather than guessing from the docs. The resulting plaintext token is stored
+in `.env` as `SPEEDTEST_TRACKER_API_TOKEN` - this is the only copy; if it's ever lost, the same
+script needs re-running (or a new token minted via the web UI's own `/admin/api-tokens` page,
+Sanctum tokens are cheap to create, there's no reason to guard this like the APP_KEY).
+
+**Control Panel wiring:** `control-panel/services/speedtest_tracker/router.py` - `GET
+/api/speedtest-tracker/latest` (most recent result), `GET /api/speedtest-tracker/history?days=N`
+(client-side date filter - Speedtest Tracker's own `/api/v1/results` has no date-range query
+param), `POST /api/speedtest-tracker/run` (out-of-schedule trigger). All three proxy Speedtest
+Tracker's real `/api/v1/*` REST API with a `Bearer` token, confirmed against the live container's
+own `app/Http/Controllers/Api/V1/*` source and `app/OpenApi/OpenApiDefinition.php`, not assumed
+from third-party docs alone.
+
+**Two real bugs found and fixed during live verification, not just configured:**
+
+1. **Ookla CLI socket failure, every scheduled/manual run failed 100% of the time until fixed.**
+   The image's bundled `speedtest` binary (1.2.0.84) opens an IPv6 socket as part of its
+   candidate-server probe even though `stacknet`'s bridge network has no IPv6 route configured,
+   and aborts with `{"error":"Cannot open socket"}` instead of falling back to IPv4. Fixed by
+   adding `sysctls: [net.ipv6.conf.all.disable_ipv6=1, net.ipv6.conf.default.disable_ipv6=1]` to
+   the container (its own netns only, not the host's) so the binary never attempts `AF_INET6`.
+   Confirmed via `docker exec speedtest-tracker /usr/bin/speedtest --accept-license --accept-gdpr
+   -f json` failing identically outside the app entirely, ruling out an app-layer bug.
+2. **Residual flakiness after the IPv6 fix, root-caused to the CLI's own multi-server
+   `--selection-details` probe, not this stack's network.** With IPv6 disabled, un-pinned runs
+   still failed roughly half the time (`Connection refused` / `Cannot open socket` against
+   whichever of ~10 candidate mirror servers answered slowest first). Pinning to two known-good
+   nearby servers via `SPEEDTEST_SERVERS: "45389,49674"` (University of Rochester / GoNetspeed,
+   both confirmed fast and reliable from this host) made every run succeed - 3/3 clean manual
+   runs, then a clean scheduled-path run through the real app queue (343 Mbps down / 667 Mbps up,
+   24.7ms ping). Revisit the pinned server IDs if either one degrades - `speedtest --servers`
+   lists current candidates.
+
+Also found and fixed: the router's `/history` route 500'd in production
+(`TypeError: can't compare offset-naive and offset-aware datetimes`) because the *live* API
+returns `created_at` as `"2026-08-12 02:15:00"` (space-separated, no offset - Laravel's default
+cast) rather than the docs' `"2024-01-15T10:30:00Z"` example. Fixed by normalizing the separator
+and treating a naive parse result as UTC; a regression test using the real live format was added
+(`tests/control_panel/test_speedtest_tracker_router.py::test_history_filters_by_days`).
+
+**Live-verified, not just deployed:** container came up healthy immediately (`start_period: 30s`
+was generous - actual boot was under 20s); confirmed admin user bootstrapped correctly (real
+`SELECT * FROM users` against the bind-mounted DB showed the configured email, not the upstream
+default); provisioned the API token per above and confirmed it authenticates; after the two fixes
+above, triggered a real speedtest through the app's own `POST /api/v1/speedtests/run` queue path
+and confirmed it reached `status: "completed"` with real bandwidth numbers, readable through this
+stack's own `GET /api/speedtest-tracker/latest` and `/history`; confirmed `health-monitor` reports
+`speedtest-tracker` green alongside every other service, full 526/526 control-panel test suite
+still green after both router changes.
+
+**Fish functions:** `stack-speedtest-latest`, `stack-speedtest-history [days]`,
+`stack-speedtest-run-now`. Deployed as plain copies to `~/.config/fish/functions/` (this host's
+actual deployment mechanism), confirmed callable against the real running stack.

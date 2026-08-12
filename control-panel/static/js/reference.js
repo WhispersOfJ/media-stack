@@ -21,6 +21,7 @@ const QUICK_LINKS = [
   { id: "checkrr", label: "Checkrr", port: 8585 },
   { id: "lingarr", label: "Lingarr", port: 9876 },
   { id: "ntfy", label: "ntfy", port: 8700 },
+  { id: "speedtest-tracker", label: "Speedtest Tracker", port: 8701 },
   // No quicklink for kometa/prefetcharr - neither publishes a port
   // (kometa is a scheduled batch job, prefetcharr a headless poller).
 ];
@@ -55,6 +56,7 @@ const DOC_LINKS = [
   { app: "Lingarr", desc: "subtitle translation, complements Bazarr", urls: [["Source", "https://github.com/lingarr-translate/lingarr"]] },
   { app: "Kometa", desc: "Plex metadata/collections/overlays automation", urls: [["Wiki", "https://metamanager.wiki/"], ["Source", "https://github.com/Kometa-Team/Kometa"]] },
   { app: "ntfy", desc: "shared push-notification sink for Radarr/Sonarr/Prowlarr alerts (anonymous access, not exposed publicly)", urls: [["Docs", "https://docs.ntfy.sh/"], ["Source", "https://github.com/binwiederhier/ntfy"]] },
+  { app: "Speedtest Tracker", desc: "hourly ISP speed monitoring + history, so link degradation is visible before it's blamed on downloads/streaming", urls: [["Docs", "https://docs.speedtest-tracker.dev/"], ["Source", "https://github.com/alexjustesen/speedtest-tracker"]] },
 ];
 
 export function buildDocLinks() {
