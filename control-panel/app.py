@@ -17,7 +17,6 @@ import queue
 import re
 import socket
 import sqlite3
-import subprocess
 import threading
 import time
 from collections import Counter
@@ -95,8 +94,8 @@ def _omdb_key() -> str | None:
 def _mdblist_key() -> str | None:
     return os.environ.get("MDBLIST_KEY") or None
 # Read-only host mounts added specifically for the stack-* diagnostic
-# endpoints below (resource-check through backup-integrity-check) - see
-# docker-compose.yml's control-panel volumes for what backs each of these.
+# endpoints below - see docker-compose.yml's control-panel volumes for
+# what backs each of these.
 HOST_CONFIG_DIR = "/host-config"
 HOST_MNT_DIR = "/mnt"
 # Only present once the compose privilege change for Force Unstick lands -
@@ -104,9 +103,6 @@ HOST_MNT_DIR = "/mnt"
 # 500) if the mount isn't there, so this route works before and after.
 HOST_PROC_DIR = "/host-proc"
 HOST_SYS_FUSE_DIR = "/host-sys-fuse"
-HOST_BACKUP_LOCAL = "/host-backups/stack-restic-repo"
-HOST_BACKUP_OFFSITE = "/host-backup-offsite"
-HOST_RESTIC_PASSWORD_FILE = "/host-backups/.restic-password"
 HOST_README = "/host-README.md"
 
 # Internal stacknet hostnames - not HOST_IP, since this container reaches
@@ -4320,86 +4316,6 @@ def image_check():
     return ok(msg, images=results)
 
 
-def _restic(repo_path: str, args: list, text: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
-    """Both repos are mounted read-only into this container - deliberately,
-    there's no legitimate reason Control Panel needs write access to a
-    backup repo. restic still tries to take a lock file for most commands,
-    including read-only ones, which fails against a read-only mount and
-    retries for a full minute before giving up (confirmed live: every call
-    here failed with "read-only file system" on the lock, not an actual
-    repo problem). --no-lock is correct for every use in this file - none
-    of them write anything - so this fixes it without loosening the mount.
-    text=False for `dump`: it streams a file's raw bytes to stdout, and
-    forcing UTF-8 decoding on that (the default here otherwise) throws
-    UnicodeDecodeError on the first binary file it happens to hit -
-    confirmed live against a real MediaCover image."""
-    env = dict(os.environ)
-    env["RESTIC_REPOSITORY"] = repo_path
-    env["RESTIC_PASSWORD_FILE"] = HOST_RESTIC_PASSWORD_FILE
-    return subprocess.run(["restic", "--no-lock", *args], env=env, capture_output=True, text=text, timeout=timeout)
-
-
-@app.get("/api/backup-verify")
-def backup_verify():
-    """Latest snapshot age for both the local and off-site restic repos -
-    the check that would have caught the off-site leg silently not existing
-    before this session's audit found it the hard way (a real overnight
-    tar-backup failure, discovered only by chance)."""
-    repos = {"local": HOST_BACKUP_LOCAL, "offsite": HOST_BACKUP_OFFSITE}
-    out = {}
-    for name, path in repos.items():
-        if not os.path.isdir(path):
-            out[name] = {"status": "missing", "path": path}
-            continue
-        try:
-            r = _restic(path, ["snapshots", "--json", "--latest", "1"])
-            if r.returncode != 0:
-                out[name] = {"status": "error", "detail": r.stderr.strip()[:300]}
-                continue
-            import json as _json
-            snaps = _json.loads(r.stdout or "[]")
-            if not snaps:
-                out[name] = {"status": "empty", "path": path}
-                continue
-            out[name] = {"status": "ok", "time": snaps[0].get("time"), "id": snaps[0].get("short_id")}
-        except Exception as e:
-            out[name] = {"status": "error", "detail": str(e)}
-    problems = [n for n, v in out.items() if v.get("status") != "ok"]
-    msg = "Both repos have a recent snapshot." if not problems else f"Problem with: {', '.join(problems)}"
-    return ok(msg, repos=out)
-
-
-@app.post("/api/backup-restore-test")
-def backup_restore_test():
-    """Pulls one small file out of the latest local snapshot into a scratch
-    path inside the container and confirms it's actually readable - this
-    stack has verified backups complete successfully many times, but never
-    that a restore actually works, until now."""
-    if not os.path.isdir(HOST_BACKUP_LOCAL):
-        fail(f"{HOST_BACKUP_LOCAL} not present.")
-    try:
-        r = _restic(HOST_BACKUP_LOCAL, ["ls", "latest", "--json"])
-        if r.returncode != 0:
-            fail(f"restic ls failed: {r.stderr.strip()[:300]}")
-        import json as _json
-        candidate = None
-        for line in r.stdout.splitlines():
-            try:
-                entry = _json.loads(line)
-            except ValueError:
-                continue
-            if entry.get("type") == "file" and 0 < entry.get("size", 0) < 1_000_000:
-                candidate = entry.get("path")
-                break
-        if not candidate:
-            fail("No small file found in the latest snapshot to test-restore.")
-        dump = _restic(HOST_BACKUP_LOCAL, ["dump", "latest", candidate], text=False)
-        if dump.returncode != 0:
-            fail(f"restic dump failed for {candidate}: {dump.stderr.decode(errors='replace').strip()[:300]}")
-        return ok(f"Restore test passed: '{candidate}' ({len(dump.stdout)} bytes) dumped and read successfully.")
-    except subprocess.TimeoutExpired:
-        fail("restic operation timed out.")
-
 
 @app.get("/api/cleanuparr/instances")
 def cleanuparr_instances():
@@ -4761,33 +4677,6 @@ def notify_test():
     return ok("Test notification sent to Discord.")
 
 
-@app.get("/api/backup-status")
-def backup_status():
-    """Full snapshot history (not just the latest, see backup_verify()
-    above) for both restic repos - count and oldest/newest timestamps, to
-    catch a repo that's accumulating snapshots but silently stopped
-    pruning, or one that only ever had a single snapshot ever taken."""
-    import json as _json
-    repos = {"local": HOST_BACKUP_LOCAL, "offsite": HOST_BACKUP_OFFSITE}
-    out = {}
-    for name, path in repos.items():
-        if not os.path.isdir(path):
-            out[name] = {"status": "missing", "path": path}
-            continue
-        try:
-            r = _restic(path, ["snapshots", "--json"])
-            if r.returncode != 0:
-                out[name] = {"status": "error", "detail": r.stderr.strip()[:300]}
-                continue
-            snaps = _json.loads(r.stdout or "[]")
-            if not snaps:
-                out[name] = {"status": "empty", "count": 0}
-                continue
-            times = sorted(s["time"] for s in snaps)
-            out[name] = {"status": "ok", "count": len(snaps), "oldest": times[0], "newest": times[-1]}
-        except Exception as e:
-            out[name] = {"status": "error", "detail": str(e)[:300]}
-    return ok("Backup repo snapshot history.", repos=out)
 
 
 @app.get("/api/top")
@@ -5053,25 +4942,6 @@ def bazarr_provider_status():
     msg = "All providers healthy." if not problems else f"Problem with: {', '.join(problems)}"
     return ok(msg, items=items)
 
-
-@app.post("/api/backup-integrity-check")
-def backup_integrity_check():
-    """On-demand `restic check` (10% data subset, same sampling
-    backup-config.sh's own monthly automatic check uses) against both
-    repos - for verifying right now rather than waiting for the 1st of
-    the month, e.g. right after a repo's been touched by hand."""
-    repos = {"local": HOST_BACKUP_LOCAL, "offsite": HOST_BACKUP_OFFSITE}
-    out = {}
-    for name, path in repos.items():
-        if not os.path.isdir(path):
-            out[name] = {"status": "missing", "path": path}
-            continue
-        r = _restic(path, ["check", "--read-data-subset=10%"], timeout=600)
-        out[name] = {"status": "ok" if r.returncode == 0 else "error",
-                      "detail": None if r.returncode == 0 else (r.stderr or r.stdout).strip()[:500]}
-    problems = [n for n, v in out.items() if v["status"] != "ok"]
-    msg = "Both repos passed integrity check." if not problems else f"Problem with: {', '.join(problems)}"
-    return ok(msg, repos=out)
 
 
 @app.get("/api/arr/{app_name}/customformat-snapshot")
@@ -5844,29 +5714,6 @@ def newapps_status():
     down = [n for n, s in out.items() if not s["running"] or s["reachable"] is False]
     msg = "All 8 new apps healthy." if not down else f"Problem with: {', '.join(down)}"
     return ok(msg, apps=out)
-
-
-@app.get("/api/newapps/backup-check")
-def newapps_backup_check():
-    """Verifies each of the 8 new apps' config/<app> directory actually
-    appears in the most recent LOCAL restic snapshot (scripts/backup-
-    config.sh backs up the whole ./config tree, only excluding config/*/
-    logs and config/*/log - see that script - so this confirms restic
-    didn't silently skip one, e.g. a permission error like Plex's own
-    known gotcha, rather than just trusting the glob)."""
-    if not os.path.isdir(HOST_BACKUP_LOCAL):
-        return ok("Local backup repo not found - can't verify coverage.", missing=None, repo_status="missing")
-    try:
-        r = _restic(HOST_BACKUP_LOCAL, ["ls", "latest", "/config"], timeout=60)
-    except Exception as e:
-        return ok(f"restic ls failed: {e}", missing=None, repo_status="error")
-    if r.returncode != 0:
-        return ok(f"restic ls failed: {r.stderr.strip()[:300]}", missing=None, repo_status="error")
-    listing = r.stdout
-    missing = [name for name in NEW_APP_CONTAINERS if f"/config/{name}" not in listing]
-    if not missing:
-        return ok("All 8 new apps' config directories are present in the latest local snapshot.", missing=[])
-    return ok(f"NOT in the latest snapshot: {', '.join(missing)}.", missing=missing)
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

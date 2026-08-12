@@ -30,8 +30,6 @@ function stack-help --description 'List all stack-* terminal commands for the me
     echo '  stack-mount-health                              check every known FUSE mountpoint'
     echo '  stack-oom-check                                 containers Docker has recorded an OOM-kill for'
     echo '  stack-perms-check                               config files unreadable by group/other (won'"'"'t be backed up)'
-    echo '  stack-backup-verify                             latest snapshot age, local + off-site repos'
-    echo '  stack-backup-restore-test                       restore one file, confirm restores actually work'
     echo '  stack-cleanuparr-instances                      which *arr apps Cleanuparr actually has connected'
     echo '  stack-arr-logs <app> [lines]                    tail an *arr app'"'"'s container log directly'
     echo '  stack-plex-empty-trash [library ...]            empty trash on one library, or all of them'
@@ -50,7 +48,6 @@ function stack-help --description 'List all stack-* terminal commands for the me
     echo '  stack-cleanuparr-strikes [limit]                recent stalled/slow/malware strikes'
     echo '  stack-arr-queue-errors                          only queue items already flagged as a problem'
     echo '  stack-notify-test                               send a test message to the Discord webhook'
-    echo '  stack-backup-status                              full snapshot history, both restic repos'
     echo '  stack-top [cpu|mem] [limit]                     top containers by resource usage'
     echo '  stack-cutoff-unmet <radarr|sonarr> [limit]      items below their quality cutoff'
     echo '  stack-import-lists <radarr|sonarr>              configured import lists + enabled state'
@@ -120,5 +117,4 @@ function stack-help --description 'List all stack-* terminal commands for the me
     echo '  stack-kometa-last-run-result                    outcome of the last completed run'
     echo '  stack-kometa-config                             which libraries config.yml is set to touch'
     echo '  stack-newapps-status                            health sweep of all new apps at once'
-    echo '  stack-newapps-backup-check                      confirm all new apps are in the latest backup snapshot'
 end

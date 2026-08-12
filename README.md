@@ -1204,8 +1204,6 @@ stack-log-levels                                # or `reset` to set every debug 
 stack-mount-health                              # every known FUSE mountpoint, checked for a stale one
 stack-oom-check                                 # containers Docker has recorded an OOM-kill for
 stack-perms-check                               # config files unreadable by group/other
-stack-backup-verify                             # latest snapshot age, local + off-site repos
-stack-backup-restore-test                       # actually restores one file, confirms restores work
 stack-cleanuparr-instances                      # which *arr apps Cleanuparr actually has connected
 stack-arr-logs radarr 200                       # tail a container's log directly
 stack-plex-empty-trash "TV Shows"               # scoped to one library, or every library if none given
@@ -1291,73 +1289,37 @@ history but was deleted outright from GitHub as of 2026-07-21, for privatization
 
 ## Backups
 
-**As of v11.8.0, this stack has zero backup coverage of any kind, deliberately** - both the
-local (`~/backups/stack-restic-repo`) and offsite (`BACKUP_REMOTE_REPOSITORY`) restic
-repositories were deleted at explicit user request while a new backup policy is decided, and
-all three timers below were stopped and unlinked (not deleted - the unit files under
-`systemd/` are untouched, so relinking is a one-line fix once a new policy is chosen). The rest
-of this section describes the system as designed/previously running, not its current state.
+**As of 2026-08-12, this stack has zero backup coverage of any kind, deliberately, and the
+removal is total** - restic (both the local `~/backups/stack-restic-repo` repo and the offsite
+`BACKUP_REMOTE_REPOSITORY` repo, including the actual repo data on disk) was removed at
+explicit user request while a new backup solution is decided. Unlike an earlier stop/unlink of
+the same systemd timers, this removal deleted the source files too: `scripts/backup-config.sh`,
+`scripts/backup-claude-dir.sh`, `systemd/stack-backup.{service,timer}`,
+`systemd/stack-claude-backup.{service,timer}`, every `stack-backup-*`/
+`stack-newapps-backup-check` fish function, and the control-panel `_restic` helper and
+`/api/backup-*` routes. There is nothing to relink - a replacement has to be built from
+scratch.
 
 `./config` holds every app's settings, database, and plaintext API keys. None of it is in
-git, and it is not reproducible by re-running `docker compose up` or re-pulling images.
+git, is not reproducible by re-running `docker compose up` or re-pulling images, and currently
+has no backup coverage of any kind.
 
-- **`scripts/backup-config.sh`**: `restic backup ./config`, then `restic forget --prune`
-  (`--keep-daily 7 --keep-weekly 4 --keep-monthly 6`). Repo at `~/backups/stack-restic-repo`,
-  restic-encrypted. Run daily at 03:30 by `systemd/stack-backup.timer`, before Watchtower's
-  4am updates. An off-site leg mirrors the same backup to any restic-supported remote
-  (`BACKUP_REMOTE_REPOSITORY` in `.env`) with its own retention pass, Discord tag, and a
-  monthly `restic check --read-data-subset=10%` integrity check on the 1st, same as the local
-  repo. Used to also do a logical `pg_dump` of `zilean-postgres` before the restic run - that
-  step (and the whole database) was removed along with the rest of the debrid layer (see
-  [History](#history)). Any future DB-backed service needs its own logical-dump step added
-  back; excluding a raw datadir from restic alone drops it from coverage entirely.
-- **Excluded from restic**: every app's `logs`/`log` directory. Several regenerable Plex
-  subdirectory exclusions (`Metadata` - 28GB of re-fetchable posters/art, `Cache`, `Codecs`,
-  `Logs`, `Crash Reports`, plus `plex-transcode`) are moot as of v11.7.0 - `config/plex/` and
-  `config/plex-transcode/` were deleted outright along with Plex itself (see
-  [History](#history)), at the user's explicit request, no archive kept. This restic exclusion
-  list still references those now-nonexistent paths; harmless (excluding a path that doesn't
-  exist is a no-op), but worth pruning next time `scripts/backup-config.sh` is touched.
-- **`scripts/arr-app-backup.py`** + `systemd/stack-arr-backup.timer` (daily, 03:40): triggers
-  each `*arr` app's native `Backup` command, producing the portable `.zip` each app's own
-  restore flow expects:
+- **`scripts/arr-app-backup.py`** + `systemd/stack-arr-backup.timer` (daily, 03:40) is
+  **unaffected by the restic removal** - it was never restic-based. It triggers each `*arr`
+  app's native `Backup` command, producing the portable `.zip` each app's own restore flow
+  expects:
   ```bash
   curl -X POST -H "X-Api-Key: $RADARR_API_KEY" -H "Content-Type: application/json" \
     -d '{"name":"Backup"}' http://192.168.4.105:7878/api/v3/command
   ```
-- **`scripts/backup-claude-dir.sh`** + `systemd/stack-claude-backup.timer` (nightly,
-  midnight): a full `tar --zstd` snapshot of the entire `~/Claude` directory to
-  `~/Dropbox/Claude-backup-latest.tar.zst`, overwritten in place each run, no retained
-  history. Needs passwordless `sudo` (the tree includes container-owned files). This is not
-  the stack's off-site protection: one run has failed outright (4h41m, exit 1, no output
-  file) with no earlier copy to fall back on. It is a coarse convenience snapshot; the
-  restic off-site leg above is the disaster-recovery mechanism.
-- This host has a single physical disk (one NVMe). The local restic repo protects against
-  config corruption and accidental deletion, not disk failure. The off-site leg is a second
-  restic repository inside the host's Dropbox sync folder
-  (`~/Dropbox/stack-restic-repo-offsite`); Dropbox's client handles the replication, no new
-  cloud account or `rclone` install needed. Same password file as the primary repo
-  (`BACKUP_REMOTE_PASSWORD_FILE` unset falls back to `~/backups/.restic-password`).
-
-Verify anytime:
-
-```bash
-RESTIC_PASSWORD_FILE=~/backups/.restic-password restic -r ~/backups/stack-restic-repo snapshots
-# off-site leg:
-RESTIC_PASSWORD_FILE=~/backups/.restic-password restic -r ~/Dropbox/stack-restic-repo-offsite snapshots
-```
-
-Note: restic exit code 3 (some files unreadable/locked) is treated as a soft warning that
-still allows pruning, not a hard failure. Alerting keyed only on error-level restic output
-will miss a recurring partial-backup problem that never escalates past exit code 3.
+- This host has a single physical disk (one NVMe) and no off-site copy of `./config` anywhere
+  as of the removal above.
 
 ## Alerting (Discord)
 
 One webhook (`DISCORD_WEBHOOK_URL` in `.env`) backs several independent alert paths, all
 through `scripts/notify-discord.sh` (no-ops silently if unconfigured):
 
-- **Backups**: success/warning/failure from `backup-config.sh`, plus an `OnFailure=` systemd
-  hook as a second layer for failures the script cannot self-report.
 - **Watchtower**: every image update (or failed update) posts before it happens, via Shoutrrr
   (`discord://<token>@<id>` format, a separate URL from the plain webhook the others use).
 - **Container health**: `scripts/check-container-health.sh`, every 5 minutes, diffs the

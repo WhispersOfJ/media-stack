@@ -2,8 +2,7 @@
 Description=Daily Radarr/Sonarr native backup
 
 [Timer]
-# After stack-backup's 03:30 config snapshot, before Watchtower's 04:00
-# image updates - same reasoning as stack-backup.timer's own placement.
+# Before Watchtower's 04:00 image updates.
 OnCalendar=*-*-* 03:40:00
 Persistent=true
 

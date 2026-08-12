@@ -602,12 +602,11 @@ one.
 
 `/app/data` holds `config.enc` and `.config.key` — losing either bricks the
 saved configuration (Plex OAuth, Radarr key, TMDB key all re-entry required).
-**This volume must be included in whatever backup mechanism already covers
-`./config/*`** — confirm via `stack-backup-status` / the backup scripts that
-new top-level `./config/<service>` directories are picked up automatically
-(the existing backup scripts should glob `./config/*`; verify this assumption
-holds rather than taking it on faith, since a silently-unbacked-up encryption
-key is the actual failure mode this note exists to prevent).
+**This volume must be included in whatever backup mechanism replaces the
+retired restic setup** — verify new top-level `./config/<service>`
+directories get picked up automatically rather than taking it on faith,
+since a silently-unbacked-up encryption key is the actual failure mode
+this note exists to prevent.
 
 ### 5.2 Secrets
 

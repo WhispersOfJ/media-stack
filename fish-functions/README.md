@@ -159,10 +159,6 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 
 ## Backup
 
-- **`stack-backup-verify`** — confirms both local and off-site restic repos have a recent snapshot.
-- **`stack-backup-status`** — full snapshot history (count, oldest/newest) for both repos.
-- **`stack-backup-integrity-check`** — on-demand `restic check` (10% data sample) against both repos.
-- **`stack-backup-restore-test`** — restores one file from the latest local snapshot to confirm restores actually work.
 - **`stack-claude-full-backup`** — one-off full `~/Claude` tree tar.zst backup to Dropbox, dated and not overwritten in place.
 
 ## Notifications
@@ -265,4 +261,3 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 ### Cross-app
 
 - **`stack-newapps-status`** — health sweep of all new apps at once.
-- **`stack-newapps-backup-check`** — confirms all new apps are present in the latest local backup snapshot.

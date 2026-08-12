@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Triggers each *arr app's own native Backup command (POST /api/v3/command
-name=Backup) rather than relying solely on backup-config.sh's raw
-`./config/<app>` file-level snapshot. This produces the same .zip an app's
-own Settings -> Backup screen creates on demand - portable across a version
-upgrade in a way a raw SQLite file copy taken mid-write isn't guaranteed to
-be, and it's what each app's own restore flow expects as input.
+name=Backup). This produces the same .zip an app's own Settings -> Backup
+screen creates on demand - portable across a version upgrade in a way a
+raw SQLite file copy taken mid-write isn't guaranteed to be, and it's what
+each app's own restore flow expects as input.
 
 Scoped to Radarr and Sonarr - this repo's own established meaning of "the
 arr apps" (see control-panel/app.py's ARR_APPS), which no longer includes
@@ -12,8 +11,7 @@ Lidarr/Readarr as of their removal. Prowlarr/Bazarr both have an equivalent
 native backup mechanism too, but neither is "an arr app" by that same
 convention, so both are left out here on purpose.
 
-Run daily by systemd/stack-arr-backup.{service,timer}, after the existing
-config-level stack-backup.timer.
+Run daily by systemd/stack-arr-backup.{service,timer}.
 """
 import json
 import sys

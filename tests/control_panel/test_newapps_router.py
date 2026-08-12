@@ -1,8 +1,7 @@
 """Phase 4 validation for .claude/plans/evolved-control-panel-backend.plan.md:
-services/newapps/router.py, ported from app.py. Covers auth gating, the
+services/newapps/router.py, ported from app.py. Covers auth gating and the
 status sweep's healthy/down branches (including missing container and
-unreachable HTTP), and the backup-check's missing-repo/error/missing-app
-branches.
+unreachable HTTP).
 """
 import sys
 from unittest.mock import MagicMock
@@ -28,7 +27,6 @@ def _service_key_header(main_module):
 
 @pytest.mark.parametrize("method,path", [
     ("GET", "/api/newapps/status"),
-    ("GET", "/api/newapps/backup-check"),
 ])
 def test_routes_require_auth(cp_main_app, method, path):
     client = TestClient(cp_main_app.app)
@@ -103,48 +101,3 @@ def test_status_reports_unreachable_http(cp_main_app, monkeypatch):
     body = resp.json()
     assert body["apps"]["tautulli"]["reachable"] is False
     assert "tautulli" in body["message"]
-
-
-def test_backup_check_reports_missing_repo(cp_main_app, monkeypatch):
-    monkeypatch.setattr("services.newapps.router.HOST_BACKUP_LOCAL", "/nonexistent-repo-path")
-    client = TestClient(cp_main_app.app)
-    headers = _service_key_header(cp_main_app)
-    resp = client.get("/api/newapps/backup-check", headers=headers)
-    body = resp.json()
-    assert body["repo_status"] == "missing"
-
-
-def test_backup_check_reports_all_present(cp_main_app, monkeypatch, tmp_path):
-    monkeypatch.setattr("services.newapps.router.HOST_BACKUP_LOCAL", str(tmp_path))
-    listing = "\n".join(f"/config/{name}" for name in
-                         ["tautulli", "wrapperr", "maintainerr", "checkrr", "prefetcharr", "lingarr", "kometa"])
-    fake_result = MagicMock(returncode=0, stdout=listing, stderr="")
-    monkeypatch.setattr("services.newapps.router._restic", lambda *a, **k: fake_result)
-    client = TestClient(cp_main_app.app)
-    headers = _service_key_header(cp_main_app)
-    resp = client.get("/api/newapps/backup-check", headers=headers)
-    body = resp.json()
-    assert body["missing"] == []
-
-
-def test_backup_check_reports_missing_apps(cp_main_app, monkeypatch, tmp_path):
-    monkeypatch.setattr("services.newapps.router.HOST_BACKUP_LOCAL", str(tmp_path))
-    fake_result = MagicMock(returncode=0, stdout="/config/tautulli\n/config/wrapperr", stderr="")
-    monkeypatch.setattr("services.newapps.router._restic", lambda *a, **k: fake_result)
-    client = TestClient(cp_main_app.app)
-    headers = _service_key_header(cp_main_app)
-    resp = client.get("/api/newapps/backup-check", headers=headers)
-    body = resp.json()
-    assert "checkrr" in body["missing"]
-    assert "NOT in the latest snapshot" in body["message"]
-
-
-def test_backup_check_reports_restic_error(cp_main_app, monkeypatch, tmp_path):
-    monkeypatch.setattr("services.newapps.router.HOST_BACKUP_LOCAL", str(tmp_path))
-    fake_result = MagicMock(returncode=1, stdout="", stderr="permission denied")
-    monkeypatch.setattr("services.newapps.router._restic", lambda *a, **k: fake_result)
-    client = TestClient(cp_main_app.app)
-    headers = _service_key_header(cp_main_app)
-    resp = client.get("/api/newapps/backup-check", headers=headers)
-    body = resp.json()
-    assert body["repo_status"] == "error"

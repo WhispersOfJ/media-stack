@@ -1,10 +1,9 @@
 # Usage: stack-claude-full-backup
-# One-off full ~/Claude tree tar.zst (no excludes, unlike
-# scripts/backup-claude-dir.sh which skips media-stack/config since restic
-# already covers it) into "~/Dropbox/Stack and Claude Backups", dated,
-# not overwritten in place. sudo needed for container-owned files under
-# media-stack/config. Named (not $status) since fish reserves $status for
-# the last command's exit code and will refuse to assign to it.
+# One-off full ~/Claude tree tar.zst (no excludes) into
+# "~/Dropbox/Stack and Claude Backups", dated, not overwritten in place.
+# sudo needed for container-owned files under media-stack/config. Named
+# (not $status) since fish reserves $status for the last command's exit
+# code and will refuse to assign to it.
 function stack-claude-full-backup --description 'Full ~/Claude tar.zst backup to Dropbox (dated, no excludes)'
     set -l dest_dir "$HOME/Dropbox/Stack and Claude Backups"
     set -l dest "$dest_dir/Claude-full-backup-"(date +%Y%m%d)".tar.zst"

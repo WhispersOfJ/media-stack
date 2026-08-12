@@ -713,8 +713,8 @@ services:
       # below, not by a login gate.
       - /var/run/docker.sock:/var/run/docker.sock
       # Read-only additions for the stack-* diagnostic endpoints
-      # (resource-check/mount-health/perms-check/backup-verify/etc.) - none
-      # of these need write access, only visibility into what's already there.
+      # (resource-check/mount-health/perms-check/etc.) - none of these
+      # need write access, only visibility into what's already there.
       - /mnt:/mnt:ro
       - ./config:/host-config:ro
       # Plex Health feature (Tier 3 "Force Unstick") - real, meaningful
@@ -727,8 +727,6 @@ services:
       # 2026-07-25 hang (see CLAUDE.md's landmines section).
       - /proc:/host-proc:ro
       - /sys/fs/fuse:/host-sys-fuse
-      - /home/bear/backups:/host-backups:ro
-      - /home/bear/Dropbox/stack-restic-repo-offsite:/host-backup-offsite:ro
       # Single-file bind mount, not a directory - confirmed live this
       # session as a real gotcha: Docker binds a specific inode for a
       # single-file mount, not the directory entry, so an editor that

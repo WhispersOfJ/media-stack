@@ -90,12 +90,15 @@ dedicated History entry below for why this had regressed and how it was fixed an
 2026-07-23 — no boxes/tabs, a permanently pinned log console, see the dedicated entry below);
 everything else is off-the-shelf images wired together in `docker-compose.yml`.
 
-**This stack currently has zero backup coverage, deliberately, as of 2026-07-23** — both the
-local and offsite restic repositories were deleted at the user's explicit request while a new
-backup policy is being decided, and the three backup systemd timers were stopped and unlinked
-(not deleted — their source units still exist under `systemd/` and can be relinked anytime).
-Do not assume `scripts/backup-config.sh` or its timer are running; verify with
-`systemctl --user list-timers` before relying on either.
+**This stack currently has zero backup coverage, deliberately, as of 2026-08-12** — restic was
+removed entirely at the user's explicit request while a new backup solution is being decided.
+This time the removal is total, not a stop/unlink: both the local (`~/backups/stack-restic-repo`,
+453GB) and offsite (`~/Dropbox/stack-restic-repo-offsite`) repo data were deleted, along with
+`scripts/backup-config.sh`, `scripts/backup-claude-dir.sh`, the `stack-backup`/`stack-claude-backup`
+systemd units, every `stack-backup-*`/`stack-newapps-backup-check` fish function, and the
+control-panel `_restic` helper and `/api/backup-*` routes. `scripts/arr-app-backup.py` (Radarr/
+Sonarr's own native Backup command, not restic) is untouched and still runs. Do not assume any
+restic-based recovery path exists — there is none until a replacement is built.
 
 **`README.md` is the only documentation in this repo besides raw config** — it merges what used
 to be README/TECHNICAL/CHANGELOG into one document, organized by subsystem, ~1,900 lines with a
@@ -345,12 +348,9 @@ section, and there's no substitute for it for that class of change.
 - **`config/<app>/` holds real plaintext secrets** wherever an app stores its own config (e.g.
   `config/nzbdav/db.sqlite`'s `ConfigItems` table holds the Usenet provider's real
   username/password), is gitignored, and is not reproducible by `docker compose up` or
-  re-pulling images — it's the one thing the backup scripts under `scripts/`/`systemd/` actually
-  exist to protect. It has a real off-site leg now too (`BACKUP_REMOTE_REPOSITORY` in `.env`, a
-  second restic repo riding on this host's own Dropbox sync) — don't treat
-  `scripts/backup-claude-dir.sh`'s Dropbox tar as the off-site protection if you're touching
-  backup tooling; it's a cruder, unretained whole-`~/Claude`-tree snapshot that has failed
-  silently before, not the real disaster-recovery mechanism.
+  re-pulling images — as of the 2026-08-12 restic removal there is no automated backup
+  mechanism protecting this at all (see Backup/DR section below). `scripts/backup-claude-dir.sh`
+  is also gone; do not assume any Dropbox tar of `~/Claude` still exists or is being refreshed.
 - **Zurg's content-routing config (`config/zurg/config.yml`) had a real, repeated failure
   mode, worth remembering even though Zurg itself is gone as of v11.0.0**: a group whose *app*
   was removed didn't stop misrouting content, it just started misrouting into a path nothing
@@ -1626,19 +1626,17 @@ chose full removal over continued debugging.
 
 ## Backup/DR details beyond "restic + a Dropbox tarball"
 
-- **Every backup this stack had was deleted 2026-07-23, at the user's explicit request, while a
-  new backup policy is being decided — this stack currently has zero backup coverage of any
-  kind.** Deleted: the local restic repo (`~/backups/stack-restic-repo`, 83GB), the offsite
-  restic repo (`/home/bear/Dropbox/stack-restic-repo-offsite`, 83GB, riding on Dropbox sync),
-  and every ad-hoc pre-change snapshot made during that session's own work (including a real
-  Radarr/Sonarr config backup made hours earlier during a DB wipe — required `sudo` to delete,
-  since it was captured root-owned). The three backup systemd timers (`stack-backup.timer`,
-  `stack-arr-backup.timer`, `stack-claude-backup.timer`) were stopped and unlinked, not deleted —
-  their `.service` unit definitions and the real source files under `systemd/` in this repo are
-  untouched, so re-enabling later is just `systemctl --user link systemd/stack-*.timer &&
-  systemctl --user enable --now stack-*.timer` once a new policy is chosen, not a rebuild.
-  Everything below this bullet describes the backup system as it existed before this deletion -
-  read it as design/history, not as "this is currently running."
+- **restic was fully removed from this stack twice: 2026-07-23 (repos deleted, systemd units
+  stopped/unlinked but source files kept for later relinking) and again 2026-08-12 (this time
+  total — code, scripts, systemd units, control-panel wiring, and the actual repo data all
+  deleted, no relinking path left).** Between those two dates restic was apparently redeployed
+  and back in production use, since it was fully wired live going into the 2026-08-12 removal —
+  if a future session finds restic wiring again, that means a third setup happened after this
+  entry was written; check `git log --all -- 'scripts/backup-config.sh'` for the real history
+  before assuming this note is current. `scripts/arr-app-backup.py` (Radarr/Sonarr's own native
+  Backup command) was never restic-based and was not touched by either removal.
+  Everything below this bullet describes the backup system as it existed before the 2026-08-12
+  deletion - read it as design/history, not as "this is currently running."
 - **No Postgres-backed service ran in this stack from v11.0.0 (when `zilean-postgres` was
   removed with the rest of the debrid layer, along with `scripts/backup-config.sh`'s
   logical-`pg_dump` step for it) until 2026-07-22, when `jellystat-db` (`postgres:18.1`)

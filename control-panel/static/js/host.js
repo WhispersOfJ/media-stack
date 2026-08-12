@@ -1,8 +1,8 @@
 /* Host rail — two lanes plus a live resource strip. Vitals are read-only
    checks this container can genuinely answer from its own mounts
-   (docker.sock, /host-config, /mnt, /host-backups, and - since
-   2026-07-26's Plex Health mount - /host-proc for real host-wide CPU/
-   RAM). Reboot/pacman sync/pacman upgrade are real host-changing actions,
+   (docker.sock, /host-config, /mnt, and - since 2026-07-26's Plex Health
+   mount - /host-proc for real host-wide CPU/RAM). Reboot/pacman sync/
+   pacman upgrade are real host-changing actions,
    brokered through the optional controlpanel-helper daemon (see
    core/host_helper_client.py and
    .claude/plans/host-privileged-helper.plan.md) - this container never
@@ -19,9 +19,6 @@ const HOST_VITALS = [
   { id: "oom-check", label: "OOM kills", desc: "Containers Docker has ever recorded an OOM-kill flag for.", path: "/api/oom-check" },
   { id: "resource-check", label: "Resource limits", desc: "Containers missing an explicit mem_limit or cpus.", path: "/api/resource-check" },
   { id: "disk-usage", label: "Config disk usage", desc: "Per-app config/ directory size, largest first.", path: "/api/disk-usage" },
-  { id: "backup-verify", label: "Backup verify", desc: "Latest restic snapshot age and repo integrity summary.", path: "/api/backup-verify" },
-  { id: "backup-status", label: "Backup history", desc: "Full snapshot history for both repos - catches one that stopped pruning or only ever ran once.", path: "/api/backup-status" },
-  { id: "backup-restore-test", label: "Backup restore test", desc: "Pulls one real file out of the latest snapshot - proves restore actually works, not just that a snapshot exists.", path: "/api/backup-restore-test", method: "POST" },
   { id: "disk-health", label: "Disk health", desc: "Host mount free space plus reclaimable space from unused Docker images/volumes/build cache.", path: "/api/disk-health" },
 ];
 
@@ -101,35 +98,6 @@ export function buildHostActions() {
   wrap.appendChild(posterRow);
   posterRow.querySelector("button").addEventListener("click", () => {
     document.getElementById("poster-dock").hidden = false;
-  });
-
-  const integrityRow = document.createElement("div");
-  integrityRow.className = "rule-row";
-  integrityRow.innerHTML = `
-    <div class="rule-main">
-      <span class="rule-title">Backup integrity check</span>
-      <span class="rule-desc">Runs restic's own data-verification pass against the repo — can take a while on a large repo.</span>
-    </div>
-    <div class="rule-actions"><button class="btn-ghost" type="button">Run check</button></div>
-    <div class="rule-status" id="status-backup-integrity">—</div>
-  `;
-  wrap.appendChild(integrityRow);
-  const integrityBtn = integrityRow.querySelector("button");
-  const integrityStatus = integrityRow.querySelector(".rule-status");
-  armButton(integrityBtn, "Run check", "Click again to confirm", async () => {
-    integrityBtn.disabled = true;
-    setStatusLine(integrityStatus, "pending", "Running…");
-    logLine("pending", "Backup integrity check — requested");
-    try {
-      const data = await postAction("/api/backup-integrity-check");
-      setStatusLine(integrityStatus, "success", data.message);
-      logLine("ok", `Backup integrity check — ${data.message}`);
-    } catch (e) {
-      setStatusLine(integrityStatus, "error", e.message);
-      logLine("err", `Backup integrity check — ${e.message}`);
-    } finally {
-      integrityBtn.disabled = false;
-    }
   });
 
   const pruneRow = document.createElement("div");

@@ -241,54 +241,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-backup-integrity-check",
-    "Description": "Run an on-demand restic integrity check on both backup repos",
-    "Method": "POST",
-    "PathTemplate": "/api/backup-integrity-check",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-backup-restore-test",
-    "Description": "Restore one file from the latest local snapshot to confirm restores actually work",
-    "Method": "POST",
-    "PathTemplate": "/api/backup-restore-test",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-backup-status",
-    "Description": "Show full restic snapshot history for both backup repos",
-    "Method": "GET",
-    "PathTemplate": "/api/backup-status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-backup-verify",
-    "Description": "Check both local and off-site restic repos have a recent snapshot",
-    "Method": "GET",
-    "PathTemplate": "/api/backup-verify",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-bazarr-history",
     "Description": "Show recent Bazarr subtitle download history",
     "Method": "GET",
@@ -2477,18 +2429,6 @@
     "Description": "Health sweep of all 8 2026-07-30 new apps at once",
     "Method": "GET",
     "PathTemplate": "/api/newapps/status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-newapps-backup-check",
-    "Description": "Confirm all 8 new apps are in the latest backup snapshot",
-    "Method": "GET",
-    "PathTemplate": "/api/newapps/backup-check",
     "Query": null,
     "Args": null,
     "Confirm": false,
