@@ -233,14 +233,25 @@ New file `fish-functions/stack-ntfy-*.fish`:
 
 ### 1.8 Acceptance
 
-- [ ] Container healthy via `docker compose ps`
-- [ ] health-monitor probe green
-- [ ] pytest suite passing
-- [ ] Live publish/subscribe verified
-- [ ] All 5 Arr-family apps have a working ntfy connection
-- [ ] Fish functions callable, `stack-notify-test` updated
-- [ ] STACK.md entry added
-- [ ] Committed as its own commit
+Ticked 2026-08-13, four days after this phase shipped - the boxes were left
+blank on 2026-08-09 even though STACK.md recorded the verification. Every item
+below was re-verified live on 2026-08-13 rather than taken from that record.
+
+- [x] Container healthy via `docker compose ps` (up 2 days, healthy)
+- [x] health-monitor probe green (`ntfy` HTTP 200 on `/v1/health`)
+- [x] pytest suite passing (`tests/control_panel/test_ntfy_router.py`, 10 cases)
+- [x] Live publish/subscribe verified - published to `plans-md-acceptance` and
+      read the same message back off the topic's JSON stream
+- [x] All 5 Arr-family apps have a working ntfy connection: radarr, sonarr,
+      radarr-anime, sonarr-anime (7 triggers each) and prowlarr (4 - it has
+      fewer trigger types, not a misconfiguration)
+- [x] Fish functions callable: `stack-ntfy-topics` (5 topics),
+      `stack-ntfy-publish`, and `stack-notify-test`, which was **updated**
+      rather than duplicated - `/api/notify/test` now fans out to Discord
+      *and* ntfy and reports both results independently, so one dead sink
+      cannot mask the other
+- [x] STACK.md entry added (`## ntfy added:`, 2026-08-09)
+- [x] Committed as its own commit (2b70fae)
 
 ---
 
