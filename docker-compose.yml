@@ -401,8 +401,26 @@ services:
       nzbdav:
         condition: service_healthy
         restart: true
-    command: >
-      mount nzbdav: /mnt/remote/nzbdav
+    # Clear a stale mountpoint before mounting. `depends_on: nzbdav
+    # restart: true` above means every nzbdav restart also restarts this
+    # container - and rclone gets SIGKILLed without unmounting, leaving a
+    # dead FUSE mount on the host. rclone then refuses to remount ("directory
+    # already mounted") and crash-loops forever, while every dependent
+    # (plex/radarr/sonarr/bazarr/cleanuparr) is left holding a defunct handle.
+    # That is exactly what happened 2026-08-13 04:00: nzbdav restarted, rclone
+    # crash-looped ~3h, and Plex's scan stat-failed on everything and flagged
+    # 19,024 items deleted. The unmounts below are the self-heal: they are
+    # no-ops on a clean start and clear the corpse on a dirty one.
+    entrypoint: ["/bin/sh", "-c"]
+    # NOTE: single-element list, not a bare `command: >`. With a list
+    # entrypoint, compose word-splits a plain string command into separate
+    # argv entries, which would hand `sh -c` only the first word.
+    command:
+      - >
+        fusermount3 -uz /mnt/remote/nzbdav 2>/dev/null || true;
+        umount -l /mnt/remote/nzbdav 2>/dev/null || true;
+        exec rclone
+        mount nzbdav: /mnt/remote/nzbdav
         --cache-dir=/cache
         --uid=1000
         --gid=1000
