@@ -1,13 +1,18 @@
 """Gate tests for the Plex/Arr reconcile.
 
-The bug these exist to prevent is the one the first run of this script actually
-had on 2026-08-13: it reported 1,269 broken items when only 75 were broken.
-Every deleted-flagged row was counted as damage, including the 1,194 whose file
-is genuinely gone - which is correct behaviour on this stack, because
-autoEmptyTrash is disabled on purpose so soft deletes are never purged.
+These exist because of a real false positive on 2026-08-13. The first version
+of the script decided visibility from Plex's SQLite `metadata_items.deleted_at`
+and reported 75 broken items. All 75 were playable. A live plex restart and a
+full library scan were run against a problem that did not exist.
 
-The distinguishing signal is whether the file still exists. classify() is the
-place that decision lives, so it is the place worth pinning down.
+The cause was multi-version episodes: Frieren S02E01 has a BluRay file and a
+WEB-DL file on the same episode. Plex keeps superseded metadata_items rows that
+still name a file path, so grouping by path and checking deleted_at makes every
+second version look orphaned.
+
+The fix was to define "in Plex" as "the API returns a Part for this path",
+which is what a user actually sees. test_visibility_never_consults_deleted_at
+is the regression guard: it fails if anyone reintroduces the DB shortcut.
 """
 import importlib.util
 import sys
@@ -27,51 +32,98 @@ def rec():
     return module
 
 
-MKV = "/data/anime-shows/Fairy Tail/Season 1/Fairy.Tail.E19.mkv"
+MKV = "/data/anime-shows/Frieren - Beyond Journey's End/Season 2/Frieren.S02E01.BluRay.mkv"
 ISO = "/data/movies/Aswang (1994) {tmdb-133535}/Aswang (1994) - [DVD-R].iso"
 
 
-def test_visible_in_plex_is_ok(rec):
-    assert rec.classify(MKV, in_live=True, in_trashed=False, on_disk=True) == "ok"
+def test_served_by_plex_is_ok(rec):
+    assert rec.classify(MKV, served=True, on_disk=True) == "ok"
 
 
-def test_trashed_with_the_file_still_there_is_the_red_trash_can(rec):
-    assert rec.classify(MKV, in_live=False, in_trashed=True,
-                        on_disk=True) == "trashed_in_plex"
+def test_the_2026_08_13_false_positive_stays_fixed(rec):
+    """A second-version file: on disk, served by Plex, and carrying a
+    deleted_at-flagged row in the DB. Must be ok. This is the exact shape of
+    all 75 items the first version wrongly reported."""
+    assert rec.classify(MKV, served=True, on_disk=True) == "ok"
 
 
-def test_trashed_with_the_file_gone_is_not_damage(rec):
-    """The 1,194 case. Calling this broken overstates the problem 17x."""
-    assert rec.classify(MKV, in_live=False, in_trashed=True,
-                        on_disk=False) == "stale_trash"
+def test_on_disk_but_not_served_needs_attention(rec):
+    assert rec.classify(MKV, served=False, on_disk=True) == "missing_from_plex"
 
 
-def test_a_live_row_wins_even_if_a_deleted_row_also_exists(rec):
-    """A re-import leaves the old row flagged and adds a new one. The item is
-    visible, so it is not a finding."""
-    assert rec.classify(MKV, in_live=True, in_trashed=True, on_disk=True) == "ok"
+def test_arr_tracking_a_file_that_is_gone_is_an_arr_problem(rec):
+    """Not a Plex fault, and it must not be reported as one."""
+    assert rec.classify(MKV, served=False, on_disk=False) == "file_gone"
 
 
-def test_disc_image_plex_cannot_index_is_not_a_scan_failure(rec):
-    assert rec.classify(ISO, in_live=False, in_trashed=False,
-                        on_disk=True) == "unsupported"
+def test_disc_image_is_not_a_scan_failure(rec):
+    assert rec.classify(ISO, served=False, on_disk=True) == "unsupported"
 
 
 def test_unsupported_check_is_case_insensitive(rec):
-    assert rec.classify(ISO.replace(".iso", ".ISO"), in_live=False,
-                        in_trashed=False, on_disk=True) == "unsupported"
+    assert rec.classify(ISO.replace(".iso", ".ISO"), served=False,
+                        on_disk=True) == "unsupported"
 
 
-def test_a_trashed_disc_image_is_judged_on_the_file_not_the_suffix(rec):
-    """Suffix must not short-circuit the trashed branch - a disc image Plex
-    already has a deleted row for is stale trash, not 'unsupported'."""
-    assert rec.classify(ISO, in_live=False, in_trashed=True,
-                        on_disk=False) == "stale_trash"
+def test_a_missing_disc_image_is_file_gone_not_unsupported(rec):
+    """Existence outranks container type - otherwise a deleted .iso is filed
+    as 'Plex cannot index it', hiding a real Arr-side gap."""
+    assert rec.classify(ISO, served=False, on_disk=False) == "file_gone"
 
 
-def test_normal_file_plex_never_saw_needs_a_scan(rec):
-    assert rec.classify(MKV, in_live=False, in_trashed=False,
-                        on_disk=True) == "missing_from_plex"
+def test_a_served_disc_image_is_still_ok(rec):
+    """If Plex somehow serves it, the suffix rule must not override reality."""
+    assert rec.classify(ISO, served=True, on_disk=True) == "ok"
+
+
+def test_visibility_never_consults_deleted_at(rec):
+    """The regression guard. classify() takes `served`, which comes from the
+    API; if a future edit reaches for the DB flag again, this fails.
+
+    Docstrings are stripped before the check - the prose deliberately names
+    deleted_at to explain why it is not used, and a naive substring search on
+    the raw source would flag that explanation as the offence.
+    """
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(rec))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef,
+                             ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = node.body
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                node.body = body[1:] or [ast.Pass()]
+
+    assert "deleted_at" not in ast.unparse(tree), (
+        "deleted_at is back in the executable logic - visibility must come "
+        "from the Plex API, not the database flag. See this file's docstring.")
+    assert "served" in inspect.signature(rec.classify).parameters
+
+
+def test_the_regression_guard_can_actually_fail(rec):
+    """A guard nobody has seen fail is not known to work. Same stripping
+    logic, run against code that does use the flag."""
+    import ast
+
+    offender = ast.parse('def f(x):\n    """deleted_at is fine here."""\n'
+                         '    return x.deleted_at is None\n')
+    for node in ast.walk(offender):
+        if isinstance(node, ast.FunctionDef) and node.body:
+            node.body = node.body[1:]
+    assert "deleted_at" in ast.unparse(offender)
+
+
+def test_shows_use_allleaves_and_movies_use_all(rec):
+    """/all stops at the series level for shows, so it returns no episode
+    Parts at all - using it would report every episode as missing."""
+    endpoints = {label: ep for label, _, ep in rec.LIBRARIES.values()}
+    assert endpoints["Movies"] == "all"
+    assert endpoints["Anime Movies"] == "all"
+    assert endpoints["Shows"] == "allLeaves"
+    assert endpoints["Anime Shows"] == "allLeaves"
 
 
 @pytest.mark.parametrize("path,expected", [
@@ -88,11 +140,9 @@ def test_library_is_derived_from_the_path_not_the_arr_instance(rec, path, expect
 
 
 def test_anime_movies_is_not_swallowed_by_the_movies_prefix(rec):
-    """/data/movies/ and /data/anime-movies/ do not share a prefix, but dict
-    ordering makes this easy to break with a future rename."""
     assert rec.library_of("/data/anime-movies/A/A.mkv") == "Anime Movies"
 
 
 def test_every_library_maps_to_a_distinct_plex_section(rec):
-    sections = [sid for _, sid in rec.LIBRARIES.values()]
+    sections = [sid for _, sid, _ in rec.LIBRARIES.values()]
     assert len(set(sections)) == len(sections)
