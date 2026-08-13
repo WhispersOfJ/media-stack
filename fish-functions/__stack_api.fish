@@ -17,10 +17,12 @@ function __stack_api
     set -l path $argv[2]
     set -l body $argv[3]
     set -l host_ip 192.168.4.105
-    # Hardcoded, not derived from status --current-filename - this function
-    # is deployed as a plain copy at ~/.config/fish/functions/, not a
-    # symlink into the repo (~/.dotfiles doesn't exist on this host as of
-    # 2026-08-04), so a self-relative path would resolve to the wrong place.
+    # Hardcoded, not derived from the running file's location. Since Phase 8a
+    # (2026-08-13) the stack-* functions ARE symlinks into this repo, but this
+    # helper is not one of them - it has no stack- prefix, so
+    # scripts/fish-functions-install.py does not manage it, and it stays a
+    # plain copy. Keeping the path absolute means both arrangements resolve
+    # to the same .env either way.
     set -l env_file /home/bear/Claude/media-stack/.env
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat "$env_file" 2>/dev/null))[2]
     set -l curl_opts -sS -X $method -w '\n%{http_code}'
