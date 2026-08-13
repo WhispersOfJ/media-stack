@@ -32,7 +32,7 @@ Not stack-specific — general-purpose fish helpers.
 - **`stack-oom-check`** — containers Docker has recorded an OOM-kill for.
 - **`stack-image-check`** — checks every pinned image tag for a newer registry digest (no pull).
 - **`stack-top [cpu|mem] [limit]`** — top containers by CPU or memory usage.
-- **`stack-disk-usage`** — per-app `config/` directory size, largest first.
+- **`stack-disk-config-sizes`** — per-app `config/` directory size, largest first.
 - **`stack-docker-disk-usage`** — Docker disk usage broken down by images/containers/volumes/build cache.
 - **`stack-mount-health`** — checks every known FUSE mountpoint resolves cleanly.
 - **`stack-perms-check`** — config files unreadable by group/other (won't get backed up).
@@ -42,7 +42,7 @@ Not stack-specific — general-purpose fish helpers.
 ## Radarr / Sonarr (general)
 
 - **`stack-arr <radarr|sonarr> <rss-sync|search-missing|unstick|unstick-importing>`** — trigger RSS sync, a missing search, or clear a wedged queue item. `unstick` only touches items the app itself flagged; `unstick-importing` targets a different failure mode — a download stuck in `trackedDownloadState "importing"` while `trackedDownloadStatus` stays `ok`, so it never trips the normal flag.
-- **`stack-arr-search-toggle <radarr|sonarr|all> <on|off>`** — turn RSS sync + automatic search on/off for every indexer, without touching manual search. Useful for pausing new grabs while an import queue drains.
+- **`stack-arr-toggle-search <radarr|sonarr|all> <on|off>`** — turn RSS sync + automatic search on/off for every indexer, without touching manual search. Useful for pausing new grabs while an import queue drains.
 - **`stack-arr-logs <radarr|sonarr|prowlarr> [lines]`** — tail an app's container log directly.
 - **`stack-arr-backlog <radarr|sonarr>`** — the app's internal command-queue backlog (searches, RSS sync, bulk moves).
 - **`stack-arr-import-backlog`** — items sitting on "waiting on import" across both apps, grouped by release rather than printed per-episode.
@@ -54,16 +54,16 @@ Not stack-specific — general-purpose fish helpers.
 - **`stack-arr-import-starvation`** — why nothing is importing when the queue looks empty and clean. `RefreshMonitoredDownloads` both polls the download client and triggers imports, so a bulk search backlog that starves it out of the command pool stops imports *and* empties the queue at once, making every other queue check read healthy on a fully broken app (2026-08-08 incident). Read-only; the auto-remediation runs inside `stack-queue-autofix`. See the `arr-import-starvation-diagnosis` skill.
 - **`stack-queue-autofix`** — blocklists+re-searches `failedPending` items in Radarr/Sonarr and Radarr's `importBlocked` items (always remove+research, no manual-import attempt first), disables `autoRedownloadFailed` if a retry storm is detected (≥15 failedPending in one pass), clears any search backlog starving imports, and reports NzbDAV queue health. Distinct from `unstick` — `unstick` only catches `trackedDownloadStatus warning/error`, which `failedPending` items don't set. Powers the recurring 5-minute queue-monitoring loop.
 - **`stack-arr-blocklist <radarr|sonarr> [limit]`** — recent blocklisted releases.
-- **`stack-arr-blocklist-clear <radarr|sonarr> [-y|--yes]`** — clear every blocklisted release; confirms first unless `-y`.
+- **`stack-arr-clear-blocklist <radarr|sonarr> [-y|--yes]`** — clear every blocklisted release; confirms first unless `-y`.
 - **`stack-arr-list-implementations <radarr|sonarr>`** — every import-list type the app's build supports, configured or not.
 - **`stack-import-lists <radarr|sonarr>`** — configured import lists and their enabled state.
 - **`stack-cutoff-unmet <radarr|sonarr> [limit]`** — items below their quality profile's cutoff (have a file, just not the target quality).
-- **`stack-recently-added <radarr|sonarr> [limit]`** — recently added items with file/episode status.
+- **`stack-arr-recently-added <radarr|sonarr> [limit]`** — recently added items with file/episode status.
 - **`stack-customformat-diff <radarr|sonarr>`** — diffs current custom-format scores against the last check, then updates the cache.
 - **`stack-command-queue-summary`** — command-queue backlog across radarr/sonarr/prowlarr at once.
 - **`stack-queue-status`** — every app's download queue with live-measured speed/ETA (two samples, ~4s apart).
 - **`stack-backlog-status`** — every app's wanted/missing backlog with a throughput-projected ETA.
-- **`stack-sonarr-monitor-episodes-fix`** — fixes any episode left unmonitored under a monitored Sonarr series/season (season 0 left alone).
+- **`stack-sonarr-fix-episode-monitoring`** — fixes any episode left unmonitored under a monitored Sonarr series/season (season 0 left alone).
 
 ## List imports (Radarr/Sonarr)
 
@@ -78,13 +78,13 @@ Most take `[--no-search] [--no-monitor] [--dry-run]`; list-scraping ones also ta
 - **`stack-letterboxd-radarr-popular`** — add Letterboxd's current popular films.
 - **`stack-letterboxd-radarr-list-random`** — picks one random URL from a cached list of featured Letterboxd lists and imports it, removing it from the cache so a future run won't repeat it.
 - **`stack-mdblist-import <mdblist-list-url>`** — import a public MDBList list, routing movies to Radarr and TV to Sonarr in one call.
-- **`stack-trakt-list-import <radarr|sonarr> <trakt-username> <trakt-listname> <display-name> [--no-search]`** — add a public Trakt list as an import list.
-- **`stack-radarr-list-import <list-url> <display-name> [--no-search]`** — add a hosted Radarr-list-format JSON URL as a Radarr import list.
-- **`stack-sonarr-custom-list-import <base-url> <display-name> [--no-search]`** — add a generic JSON/RSS feed as a Sonarr import list.
-- **`stack-tmdb-company-import <tmdb-company-id> <display-name> [--no-search]`** — add a studio's filmography as a Radarr import list.
-- **`stack-tmdb-keyword-import <tmdb-keyword-id> <display-name> [--no-search]`** — add a TMDB keyword-filtered list as a Radarr import list.
-- **`stack-plex-watchlist-import <radarr|sonarr> [--no-search]`** — add your own Plex watchlist as a native import list (uses Plex's own OAuth token already set up in that app).
-- **`stack-plex-rss-import <radarr|sonarr> <plex-watchlist-rss-url> [--no-search]`** — add a Plex Watchlist RSS feed URL as an import list (polls the public feed instead of using an account token).
+- **`stack-trakt-import-list <radarr|sonarr> <trakt-username> <trakt-listname> <display-name> [--no-search]`** — add a public Trakt list as an import list.
+- **`stack-radarr-import-list <list-url> <display-name> [--no-search]`** — add a hosted Radarr-list-format JSON URL as a Radarr import list.
+- **`stack-sonarr-import-custom-list <base-url> <display-name> [--no-search]`** — add a generic JSON/RSS feed as a Sonarr import list.
+- **`stack-tmdb-import-company <tmdb-company-id> <display-name> [--no-search]`** — add a studio's filmography as a Radarr import list.
+- **`stack-tmdb-import-keyword <tmdb-keyword-id> <display-name> [--no-search]`** — add a TMDB keyword-filtered list as a Radarr import list.
+- **`stack-plex-import-watchlist <radarr|sonarr> [--no-search]`** — add your own Plex watchlist as a native import list (uses Plex's own OAuth token already set up in that app).
+- **`stack-plex-import-rss <radarr|sonarr> <plex-watchlist-rss-url> [--no-search]`** — add a Plex Watchlist RSS feed URL as an import list (polls the public feed instead of using an account token).
 
 ## Ratings
 
@@ -105,7 +105,7 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-plex-analyze [library ...]`** — queue deep media analysis (loudness, chapter thumbnails, intro/credits/ad markers, voice activity) for one library, or all of them.
 - **`stack-plex-duplicates [min_gb]`** — flag movies carrying redundant duplicate files well beyond a normal multi-version upgrade.
 - **`stack-plex-sessions`** — who's watching what right now, direct play vs transcode per session.
-- **`stack-plex-recently-added [limit]`** — what's actually finished importing and become visible in Plex (distinct from `stack-recently-added`, which shows what was added to management, not necessarily downloaded).
+- **`stack-plex-recently-added [limit]`** — what's actually finished importing and become visible in Plex (distinct from `stack-arr-recently-added`, which shows what was added to management, not necessarily downloaded).
 - **`stack-plex-updates`** — checks whether Plex has a newer release on its current channel (check only, doesn't apply it — this stack pins Plex deliberately).
 - **`stack-tmdb-missing`** — scans every movie/show library for items with no TMDb link, writes them to `~/missing.txt`.
 

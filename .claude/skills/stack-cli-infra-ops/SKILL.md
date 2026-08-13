@@ -37,9 +37,9 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 | `stack-oom-check` | none | Containers Docker has recorded an OOM-kill for - the only reliable way to catch one, since `restart: unless-stopped` silently restarts a killed container with no other visible symptom. |
 | `stack-perms-check` | none | Config files unreadable by group/other - these silently fail to back up rather than erroring loudly. |
 | `stack-image-check` | none | Checks digest- or exact-version-pinned images for a newer registry digest (channel-tag images are already covered by Watchtower and not what this checks). |
-| `stack-disk-usage` | none | Per-app `config/` directory size, largest first. |
-| `stack-disk-free` | `[warn-pct default 80] [crit-pct default 90]` | `df -h` filtered to real filesystems (tmpfs/devtmpfs/overlay/squashfs excluded), one `[ok\|warn\|FAIL]` line per mount by use percentage. Host-level free space - distinct from `stack-disk-usage`'s per-app `config/` directory sizes. |
-| `stack-docker-disk-usage` | none | `docker system df` - images/containers/volumes/build-cache totals. Which Docker-managed category is eating disk, not per-app config size (`stack-disk-usage`) and not host filesystem free space (`stack-disk-free`). |
+| `stack-disk-config-sizes` | none | Per-app `config/` directory size, largest first. |
+| `stack-disk-free` | `[warn-pct default 80] [crit-pct default 90]` | `df -h` filtered to real filesystems (tmpfs/devtmpfs/overlay/squashfs excluded), one `[ok\|warn\|FAIL]` line per mount by use percentage. Host-level free space - distinct from `stack-disk-config-sizes`'s per-app `config/` directory sizes. |
+| `stack-docker-disk-usage` | none | `docker system df` - images/containers/volumes/build-cache totals. Which Docker-managed category is eating disk, not per-app config size (`stack-disk-config-sizes`) and not host filesystem free space (`stack-disk-free`). |
 | `stack-version` | none | This repo's README-declared version plus a live core/extras container count - a doc-vs-reality drift check. |
 | `stack-claude-full-backup` | none | One-off full `~/Claude` tree `tar.zst` (no excludes) to `~/Dropbox/Stack and Claude Backups`, dated (`Claude-full-backup-YYYYMMDD.tar.zst`) - see common_mistakes before treating this as a real backup mechanism. |
 | `stack-notify-test` | none | Sends a real test message through the stack's Discord webhook - confirms it still works without waiting for a real failure to find out it doesn't. |
@@ -65,7 +65,7 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 
 <resources>
 **Local:**
-- `~/.config/fish/functions/stack-status.fish`, `stack-container.fish`, `stack-restart-all.fish`, `stack-resource-check.fish`, `stack-log-levels.fish`, `stack-mount-health.fish`, `stack-oom-check.fish`, `stack-perms-check.fish`, `stack-image-check.fish`, `stack-disk-usage.fish`, `stack-disk-free.fish`, `stack-docker-disk-usage.fish`, `stack-version.fish`, `stack-backup-*.fish`, `stack-claude-full-backup.fish`, `stack-notify-test.fish`, `stack-top.fish`, `stack-seerr-requests.fish` - the actual fish source these commands wrap
+- `~/.config/fish/functions/stack-status.fish`, `stack-container.fish`, `stack-restart-all.fish`, `stack-resource-check.fish`, `stack-log-levels.fish`, `stack-mount-health.fish`, `stack-oom-check.fish`, `stack-perms-check.fish`, `stack-image-check.fish`, `stack-disk-config-sizes.fish`, `stack-disk-free.fish`, `stack-docker-disk-usage.fish`, `stack-version.fish`, `stack-backup-*.fish`, `stack-claude-full-backup.fish`, `stack-notify-test.fish`, `stack-top.fish`, `stack-seerr-requests.fish` - the actual fish source these commands wrap
 - `control-panel/main.py` + `services/host/router.py`, `services/backups/router.py` in this repo - the real behavior behind every Control-Panel-backed endpoint these commands call (does not cover `stack-claude-full-backup`, `stack-disk-free`, `stack-docker-disk-usage` - those run local tools directly, see calling_convention)
 - `scripts/backup-claude-dir.sh` in this repo - the separate, systemd-scheduled, overwrite-in-place tarball script `stack-claude-full-backup` is often confused with; read this file's own comments to see why it's not the same thing
 </resources>

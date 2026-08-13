@@ -42,7 +42,7 @@ None of these commands take a `--host` flag or read a `STACK_HOST_IP` environmen
 | `stack-import-lists` | `<radarr\|sonarr>` | Configured import lists (Trakt, other *arr instances, etc.) and each one's enabled/auto-add state. |
 | `stack-arr-list-implementations` | `<radarr\|sonarr>` | Every import-list implementation type that app's build supports (Simkl, TMDb Company/Keyword/User, Plex, Custom, etc), whether configured or not - discovery aid before adding a new import list via the `stack-cli-discovery-import` skill's add-a-list commands. |
 | `stack-customformat-diff` | `<radarr\|sonarr>` | Diffs current custom-format scores against the last time this ran, then updates its cache. Neither app logs format-score edits made through the API, so this is the only way to see what changed since the last check. |
-| `stack-recently-added` | `<radarr\|sonarr> [limit]` (default 10) | What was added *to management* most recently, with file/episode counts - spot-checks whether a fresh add has actually been searched yet. Distinct from `stack-plex-recently-added` (see the `stack-cli-plex-kometa` skill), which shows what's actually visible in Plex. |
+| `stack-arr-recently-added` | `<radarr\|sonarr> [limit]` (default 10) | What was added *to management* most recently, with file/episode counts - spot-checks whether a fresh add has actually been searched yet. Distinct from `stack-plex-recently-added` (see the `stack-cli-plex-kometa` skill), which shows what's actually visible in Plex. |
 | `stack-arr-logs` | `<radarr\|sonarr\|prowlarr> [lines]` (default 100) | Tails that app's container log directly. |
 | `stack-command-queue-summary` | none | Backlog across radarr+sonarr+prowlarr at once - the aggregate view of what `stack-arr-backlog` shows one app at a time. |
 | `stack-queue-status` | none | Every download queue (radarr, sonarr, nzbdav, plex activities) with a live-measured speed and ETA. Takes ~4s: it samples twice, since each app's own progress/timeleft reporting is unreliable in this stack. |
@@ -73,6 +73,6 @@ None of these commands take a `--host` flag or read a `STACK_HOST_IP` environmen
 
 <resources>
 **Local:**
-- `~/.config/fish/functions/stack-arr*.fish`, `stack-cutoff-unmet.fish`, `stack-import-lists.fish`, `stack-customformat-diff.fish`, `stack-recently-added.fish`, `stack-command-queue-summary.fish`, `stack-queue-status.fish`, `stack-backlog-status.fish`, `stack-bazarr-*.fish` - the actual fish source these commands wrap
+- `~/.config/fish/functions/stack-arr*.fish`, `stack-cutoff-unmet.fish`, `stack-import-lists.fish`, `stack-customformat-diff.fish`, `stack-arr-recently-added.fish`, `stack-command-queue-summary.fish`, `stack-queue-status.fish`, `stack-backlog-status.fish`, `stack-bazarr-*.fish` - the actual fish source these commands wrap
 - `control-panel/main.py` + `services/arr/router.py`, `services/bazarr/router.py`, `services/queue/router.py` in this repo - the real behavior behind every endpoint these commands call
 </resources>

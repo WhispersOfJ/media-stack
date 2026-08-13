@@ -107,7 +107,7 @@ def test_monitor_episodes_fix_skips_season_zero(cp_main_app, monkeypatch):
 
 
 def test_monitor_episodes_fix_accepts_service_key(cp_main_app, monkeypatch):
-    """stack-sonarr-monitor-episodes-fix.fish calls this unattended via the
+    """stack-sonarr-fix-episode-monitoring.fish calls this unattended via the
     service key (2026-08-06's extend-service-key-auth commit) - was
     session-only before that."""
     monkeypatch.setattr(httpx, "get", lambda *a, **k: _json_response([]))

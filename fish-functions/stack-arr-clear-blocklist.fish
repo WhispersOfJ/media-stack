@@ -1,9 +1,9 @@
-# Usage: stack-arr-blocklist-clear <radarr|sonarr> [-y|--yes]
+# Usage: stack-arr-clear-blocklist <radarr|sonarr> [-y|--yes]
 # Clears every blocklisted release, not just what stack-arr-blocklist shows.
 # Confirms first unless -y is given.
-function stack-arr-blocklist-clear --description 'Clear every blocklisted release in Radarr/Sonarr'
+function stack-arr-clear-blocklist --description 'Clear every blocklisted release in Radarr/Sonarr'
     if test (count $argv) -lt 1; or not contains -- $argv[1] radarr sonarr
-        echo "Usage: stack-arr-blocklist-clear <radarr|sonarr> [-y|--yes]" >&2
+        echo "Usage: stack-arr-clear-blocklist <radarr|sonarr> [-y|--yes]" >&2
         return 1
     end
     set -l app $argv[1]

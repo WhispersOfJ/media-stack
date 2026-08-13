@@ -1,4 +1,4 @@
-function stack-disk-usage --description 'Per-app config/ directory size, largest first'
+function stack-disk-config-sizes --description 'Per-app config/ directory size, largest first'
     set -l host_ip 192.168.4.105
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
     curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/disk-usage" | python3 -c "

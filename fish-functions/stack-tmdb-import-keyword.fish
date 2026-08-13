@@ -1,13 +1,13 @@
-# Usage: stack-tmdb-keyword-import <tmdb-keyword-id> <display-name> [--no-search]
+# Usage: stack-tmdb-import-keyword <tmdb-keyword-id> <display-name> [--no-search]
 # Adds a TMDB keyword-filtered list as a Radarr import list
 # (TMDbKeywordImport) - e.g. keyword id 4565 is "time travel". Find ids
 # via TMDB's own keyword search (no public numeric lookup UI - easiest
 # path is a movie page's Keywords section, which links the id).
-function stack-tmdb-keyword-import --description 'Add a TMDB keyword-filtered list as a Radarr import list'
+function stack-tmdb-import-keyword --description 'Add a TMDB keyword-filtered list as a Radarr import list'
     argparse 'no-search' -- $argv
     or return 1
     if test (count $argv) -ne 2
-        echo "Usage: stack-tmdb-keyword-import <tmdb-keyword-id> <display-name> [--no-search]" >&2
+        echo "Usage: stack-tmdb-import-keyword <tmdb-keyword-id> <display-name> [--no-search]" >&2
         return 1
     end
     set -l search true

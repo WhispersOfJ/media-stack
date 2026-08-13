@@ -1,13 +1,13 @@
-# Usage: stack-plex-rss-import <radarr|sonarr> <plex-watchlist-rss-url> [--no-search]
+# Usage: stack-plex-import-rss <radarr|sonarr> <plex-watchlist-rss-url> [--no-search]
 # Adds a Plex Watchlist RSS feed URL as an import list (PlexRssImport) -
 # get the URL from https://app.plex.tv/desktop/#!/settings/watchlist.
-# Distinct from stack-plex-watchlist-import: that one uses your account
+# Distinct from stack-plex-import-watchlist: that one uses your account
 # token directly (PlexImport), this one polls a public RSS feed instead.
-function stack-plex-rss-import --description 'Add a Plex Watchlist RSS feed as a Radarr/Sonarr import list'
+function stack-plex-import-rss --description 'Add a Plex Watchlist RSS feed as a Radarr/Sonarr import list'
     argparse 'no-search' -- $argv
     or return 1
     if test (count $argv) -ne 2; or not contains -- $argv[1] radarr sonarr
-        echo "Usage: stack-plex-rss-import <radarr|sonarr> <plex-watchlist-rss-url> [--no-search]" >&2
+        echo "Usage: stack-plex-import-rss <radarr|sonarr> <plex-watchlist-rss-url> [--no-search]" >&2
         return 1
     end
     set -l search true

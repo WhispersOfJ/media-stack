@@ -1206,7 +1206,7 @@ stack-plex-empty-trash "TV Shows"               # scoped to one library, or ever
 stack-plex-analyze "TV Shows"                   # queue deep media analysis, scoped to one library or all
 stack-plex-butler deep-media-analysis           # fire any one Plex Butler task on demand (see full list below)
 stack-image-check                               # digest/exact-version-pinned images vs their registry
-stack-disk-usage                                # per-app config/ directory size, largest first
+stack-disk-config-sizes                                # per-app config/ directory size, largest first
 stack-version                                   # README's declared version + live container count
 ```
 
@@ -1828,7 +1828,7 @@ Glances and Dozzle removed (Control Panel's host-stats endpoint and tiles remove
 Glances). A Prometheus + Grafana plan was drafted and cancelled before anything was built.
 20 new Control Panel endpoints + `stack-*` commands added (`stack-command-queue-summary`,
 `stack-plex-duplicates` (which found ~700GB of redundant movie copies, removed the same
-session), `stack-recently-added`, `stack-cutoff-unmet`, `stack-cleanuparr-strikes`,
+session), `stack-arr-recently-added`, `stack-cutoff-unmet`, `stack-cleanuparr-strikes`,
 `stack-dmm-status`, `stack-plex-sessions`, `stack-seerr-requests`, `stack-tautulli-history`,
 and others). New Control Panel dependencies: `pymysql` + `cryptography` (MySQL
 `caching_sha2_password`). Bugs fixed while verifying: `plex_duplicates()` false positives

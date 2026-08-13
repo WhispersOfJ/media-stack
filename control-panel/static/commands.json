@@ -479,7 +479,7 @@
     "LogContainer": "{1}"
   },
   {
-    "Name": "stack-arr-blocklist-clear",
+    "Name": "stack-arr-clear-blocklist",
     "Description": "Clear every blocklisted release in Radarr/Sonarr",
     "Method": "POST",
     "PathTemplate": "/api/arr/{1}/blocklist/clear",
@@ -502,7 +502,7 @@
     "LogContainer": "{1}"
   },
   {
-    "Name": "stack-sonarr-monitor-episodes-fix",
+    "Name": "stack-sonarr-fix-episode-monitoring",
     "Description": "Fix any unmonitored episode under a monitored Sonarr series/season",
     "Method": "POST",
     "PathTemplate": "/api/arr/sonarr/monitor-episodes-fix",
@@ -514,7 +514,7 @@
     "LogContainer": "sonarr"
   },
   {
-    "Name": "stack-disk-usage",
+    "Name": "stack-disk-config-sizes",
     "Description": "Per-app config/ directory size, largest first",
     "Method": "GET",
     "PathTemplate": "/api/disk-usage",
@@ -1068,7 +1068,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-plex-rss-import",
+    "Name": "stack-plex-import-rss",
     "Description": "Add a Plex Watchlist RSS feed as a Radarr/Sonarr import list",
     "Method": "POST",
     "PathTemplate": "/api/arr/{1}/import-list/add",
@@ -1143,7 +1143,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-plex-watchlist-import",
+    "Name": "stack-plex-import-watchlist",
     "Description": "Add your Plex watchlist as a Radarr/Sonarr import list",
     "Method": "POST",
     "PathTemplate": "/api/arr/{1}/import-list/add",
@@ -1205,7 +1205,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-radarr-list-import",
+    "Name": "stack-radarr-import-list",
     "Description": "Add a hosted Radarr-list-format URL as a Radarr import list",
     "Method": "POST",
     "PathTemplate": "/api/arr/radarr/import-list/add",
@@ -1293,7 +1293,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-recently-added",
+    "Name": "stack-arr-recently-added",
     "Description": "List recently added items in Radarr/Sonarr with file status",
     "Method": "GET",
     "PathTemplate": "/api/arr/{1}/recently-added",
@@ -1384,7 +1384,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-sonarr-custom-list-import",
+    "Name": "stack-sonarr-import-custom-list",
     "Description": "Add a generic JSON/RSS feed as a Sonarr import list",
     "Method": "POST",
     "PathTemplate": "/api/arr/sonarr/import-list/add",
@@ -1444,7 +1444,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-tmdb-company-import",
+    "Name": "stack-tmdb-import-company",
     "Description": "Add a TMDB studio filmography as a Radarr import list",
     "Method": "POST",
     "PathTemplate": "/api/arr/radarr/import-list/add",
@@ -1492,7 +1492,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-tmdb-keyword-import",
+    "Name": "stack-tmdb-import-keyword",
     "Description": "Add a TMDB keyword-filtered list as a Radarr import list",
     "Method": "POST",
     "PathTemplate": "/api/arr/radarr/import-list/add",
@@ -1593,7 +1593,7 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-trakt-list-import",
+    "Name": "stack-trakt-import-list",
     "Description": "Add a public Trakt list as a Radarr/Sonarr import list",
     "Method": "POST",
     "PathTemplate": "/api/arr/{1}/import-list/add",
@@ -2840,7 +2840,7 @@
     "LogContainer": "plexanisync"
   },
   {
-    "Name": "stack-arr-search-toggle",
+    "Name": "stack-arr-toggle-search",
     "Description": "Turn RSS sync + automatic search on/off for Radarr/Sonarr indexers (the fish command also accepts `all`, which fans out to both apps)",
     "Method": "POST",
     "PathTemplate": "/api/arr/{1}/search-toggle",

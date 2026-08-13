@@ -1,11 +1,11 @@
-# Usage: stack-tmdb-company-import <tmdb-company-id> <display-name> [--no-search]
+# Usage: stack-tmdb-import-company <tmdb-company-id> <display-name> [--no-search]
 # Adds a studio filmography as a Radarr import list (TMDbCompanyImport) -
 # find the company id from a TMDB URL like themoviedb.org/company/2 (A24).
-function stack-tmdb-company-import --description 'Add a TMDB studio filmography as a Radarr import list'
+function stack-tmdb-import-company --description 'Add a TMDB studio filmography as a Radarr import list'
     argparse 'no-search' -- $argv
     or return 1
     if test (count $argv) -ne 2
-        echo "Usage: stack-tmdb-company-import <tmdb-company-id> <display-name> [--no-search]" >&2
+        echo "Usage: stack-tmdb-import-company <tmdb-company-id> <display-name> [--no-search]" >&2
         return 1
     end
     set -l search true

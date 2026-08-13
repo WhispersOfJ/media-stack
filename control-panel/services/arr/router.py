@@ -800,10 +800,10 @@ class ImportListAddRequest(BaseModel):
 
 
 @router.post("/api/arr/{app_name}/import-list/add")
-# current_user_or_service, not current_user: stack-plex-rss-import.fish,
-# stack-plex-watchlist-import.fish, stack-radarr-list-import.fish,
-# stack-sonarr-custom-list-import.fish, stack-tmdb-company-import.fish,
-# stack-tmdb-keyword-import.fish, and stack-trakt-list-import.fish all call
+# current_user_or_service, not current_user: stack-plex-import-rss.fish,
+# stack-plex-import-watchlist.fish, stack-radarr-import-list.fish,
+# stack-sonarr-import-custom-list.fish, stack-tmdb-import-company.fish,
+# stack-tmdb-import-keyword.fish, and stack-trakt-import-list.fish all call
 # this unattended via __stack_api's service key (2026-08-06).
 def arr_import_list_add(app_name: str, payload: ImportListAddRequest, _=Depends(current_user_or_service)):
     if app_name not in ("radarr", "sonarr"):

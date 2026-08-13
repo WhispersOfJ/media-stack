@@ -51,7 +51,12 @@ TOP_LEVEL_COMMANDS = {
 
 # Domains that are real but whose container name does not match the token
 # (e.g. the arr family is addressed as one domain with an app argument).
-EXTRA_SERVICE_DOMAINS = {"arr", "customformat", "cutoff", "rating", "recently", "import"}
+#
+# `recently` was here before Phase 8b and is gone now: it existed only to make
+# the bare `stack-recently-added` legal, and that command is now
+# stack-arr-recently-added. Leaving a dead token in would let the same
+# undomained name back in silently.
+EXTRA_SERVICE_DOMAINS = {"arr", "customformat", "cutoff", "rating", "import"}
 
 
 def _compose_services() -> set[str]:
@@ -111,3 +116,98 @@ def test_no_bare_domain_names_outside_the_allowlist():
     offenders = [name for name, _ in _functions()
                  if len(name.split("-")) == 2 and name not in TOP_LEVEL_COMMANDS]
     assert not offenders, "\n  " + "\n  ".join(sorted(offenders))
+
+
+# Action words this stack actually uses. A name whose action portion contains
+# one of these must lead with it.
+VERBS = {
+    "add", "analyze", "apply", "backup", "check", "clean", "clear", "delete",
+    "dedup", "diff", "empty", "exclude", "export", "find", "fix", "generate",
+    "import", "install", "kill", "list", "monitor", "open", "process",
+    "prune", "publish", "refresh", "remove", "repair", "reset", "restart",
+    "restore", "run", "scan", "search", "show", "start", "stop", "sync",
+    "tail", "test", "toggle", "track", "unmonitor", "unstick", "untrack",
+    "update", "upgrade", "verify",
+}
+
+# Names whose trailing word is a verb by coincidence - they are noun phrases,
+# not actions. "last-run" is a thing, not an instruction to run something.
+NOUN_PHRASE_ALLOWLIST = {
+    "stack-claude-full-backup",
+    "stack-kometa-last-run-result",
+    "stack-maintainerr-plex-link-check",
+    "stack-maintainerr-safety-check",
+    "stack-plexanisync-last-run",
+    "stack-prefetcharr-plex-link-check",
+    "stack-scrutiny-alert-test",
+    "stack-wrapperr-tautulli-link-check",
+}
+
+
+def _action_tokens(name: str) -> list[str]:
+    """The part after `stack-<domain>-`, with the source-first family's
+    two-token domain (letterboxd-radarr, mdblist-radarr) accounted for."""
+    parts = name.split("-")[1:]
+    if parts[0] in SOURCE_FIRST_DOMAINS and len(parts) > 2 and parts[1] in SERVICE_DOMAINS:
+        return parts[2:]
+    return parts[1:]
+
+
+def test_actions_are_verb_first():
+    """`stack-arr-blocklist-clear` reads as a noun being modified;
+    `stack-arr-clear-blocklist` reads as the instruction it is. Reads with no
+    verb at all (stack-plex-libraries) are unaffected by this rule.
+
+    Known limit, measured on 2026-08-13 rather than assumed: this rule caught
+    7 of the 12 names the spec renamed. It misses any name whose leading token
+    is noun-verb ambiguous - `search` in stack-arr-search-toggle, `list` in
+    stack-radarr-list-import, `monitor` in stack-sonarr-monitor-episodes-fix -
+    because that token is in VERBS, so the name looks verb-first already.
+
+    A trailing-verb rule was tried as the fix and rejected on the numbers: it
+    flags 33 legitimate names (stack-gaps2-scan, stack-oom-check, every
+    single-token action) and would have flagged 4 of the rename's own target
+    names, including stack-radarr-import-list. English ambiguity is not
+    resolvable in a token set, so the ambiguous cases stay human judgment and
+    live in the spec's rename table. This rule's job is the unambiguous ones.
+    """
+    offenders = []
+    for name, _ in _functions():
+        if name in TOP_LEVEL_COMMANDS or name in NOUN_PHRASE_ALLOWLIST:
+            continue
+        tokens = _action_tokens(name)
+        if len(tokens) < 2:
+            continue
+        if any(t in VERBS for t in tokens) and tokens[0] not in VERBS:
+            offenders.append(name)
+    assert not offenders, (
+        "verb-last names (move the verb to the front):\n  " + "\n  ".join(sorted(offenders)))
+
+
+def test_source_first_domains_stay_source_first():
+    """Guards the exception in both directions: these must keep naming the
+    source first, so a well-meaning later rename to stack-radarr-letterboxd-*
+    fails here."""
+    offenders = [name for name, _ in _functions()
+                 if name.split("-")[1] in SERVICE_DOMAINS
+                 and any(f"-{src}-" in name for src in SOURCE_FIRST_DOMAINS)]
+    assert not offenders, (
+        "source-first family must lead with the source:\n  " + "\n  ".join(sorted(offenders)))
+
+
+def test_no_two_commands_describe_the_same_concept():
+    """The concrete case this was written for: stack-recently-added,
+    stack-plex-recently-added and stack-tautulli-recently-added. Three real
+    commands, but the first does not say that its domain is the Arr apps."""
+    concepts = {}
+    for name, _ in _functions():
+        tokens = _action_tokens(name)
+        if not tokens:
+            continue
+        concepts.setdefault("-".join(tokens), []).append(name)
+    offenders = []
+    for concept, names in sorted(concepts.items()):
+        undomained = [n for n in names if len(n.split("-")) == len(concept.split("-")) + 1]
+        if len(names) > 1 and undomained:
+            offenders.append(f"{concept}: {sorted(names)} - {undomained} has no domain")
+    assert not offenders, "\n  " + "\n  ".join(offenders)

@@ -1,9 +1,9 @@
-# Usage: stack-recently-added <radarr|sonarr> [limit]
+# Usage: stack-arr-recently-added <radarr|sonarr> [limit]
 # What was added to management most recently, with file/episode counts -
 # spot-checks whether a fresh add has actually been searched yet.
-function stack-recently-added --description 'List recently added items in Radarr/Sonarr with file status'
+function stack-arr-recently-added --description 'List recently added items in Radarr/Sonarr with file status'
     if test (count $argv) -lt 1; or test (count $argv) -gt 2; or not contains -- $argv[1] radarr sonarr
-        echo "Usage: stack-recently-added <radarr|sonarr> [limit]" >&2
+        echo "Usage: stack-arr-recently-added <radarr|sonarr> [limit]" >&2
         return 1
     end
     set -l limit 10

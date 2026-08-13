@@ -1,10 +1,10 @@
-# Usage: stack-arr-search-toggle <radarr|sonarr|all> <on|off>
+# Usage: stack-arr-toggle-search <radarr|sonarr|all> <on|off>
 # Toggles RSS sync + automatic search on every indexer for the given app(s),
 # without touching interactive/manual search. Use to pause new grabs while
 # an import queue drains, then turn back on when it's clear.
-function stack-arr-search-toggle --description 'Turn RSS sync + automatic search on/off for Radarr/Sonarr indexers'
+function stack-arr-toggle-search --description 'Turn RSS sync + automatic search on/off for Radarr/Sonarr indexers'
     if test (count $argv) -ne 2; or not contains -- $argv[1] radarr sonarr all; or not contains -- $argv[2] on off
-        echo "Usage: stack-arr-search-toggle <radarr|sonarr|all> <on|off>" >&2
+        echo "Usage: stack-arr-toggle-search <radarr|sonarr|all> <on|off>" >&2
         return 1
     end
     set -l enabled true

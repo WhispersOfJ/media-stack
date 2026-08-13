@@ -1,12 +1,12 @@
-# Usage: stack-sonarr-custom-list-import <base-url> <display-name> [--no-search]
+# Usage: stack-sonarr-import-custom-list <base-url> <display-name> [--no-search]
 # Adds a generic JSON/RSS feed as a Sonarr import list (CustomImport) -
 # for any curated series list hosted as a URL, not covered by a dedicated
 # implementation (Trakt/IMDb/Plex/Simkl).
-function stack-sonarr-custom-list-import --description 'Add a generic JSON/RSS feed as a Sonarr import list'
+function stack-sonarr-import-custom-list --description 'Add a generic JSON/RSS feed as a Sonarr import list'
     argparse 'no-search' -- $argv
     or return 1
     if test (count $argv) -ne 2
-        echo "Usage: stack-sonarr-custom-list-import <base-url> <display-name> [--no-search]" >&2
+        echo "Usage: stack-sonarr-import-custom-list <base-url> <display-name> [--no-search]" >&2
         return 1
     end
     set -l search true

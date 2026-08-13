@@ -982,7 +982,7 @@ scratch. Full incident narrative is in the History section below; this is the ch
   `DELETE /api/v3/queue/{id}?removeFromClient=true&blocklist=false` calls for Sonarr.
   **This is queue-specific, not universal** - `DELETE /api/v3/blocklist/bulk` (body
   `{"ids": [...]}`) works fine on both apps, confirmed live building
-  `stack-arr-blocklist-clear`. Don't assume every Sonarr bulk endpoint is broken just because
+  `stack-arr-clear-blocklist`. Don't assume every Sonarr bulk endpoint is broken just because
   the queue one is.
 - **`httpx.delete()` (the module-level shortcut) doesn't accept a `json=` kwarg in this
   project's pinned httpx version** — confirmed live building `/api/arr/{app}/blocklist/clear`,
@@ -2381,8 +2381,8 @@ TV Shows") - Radarr/Sonarr both reject a duplicate import-list name, so the regi
 includes the MDBList username/slug for guaranteed uniqueness.
 
 **Two real bugs found in `control-panel/app.py`'s existing generic import-list endpoint**
-(`/api/arr/{app}/import-list/add`, already used by `stack-radarr-list-import`,
-`stack-sonarr-custom-list-import`, `stack-tmdb-*-import`, `stack-trakt-list-import` before this):
+(`/api/arr/{app}/import-list/add`, already used by `stack-radarr-import-list`,
+`stack-sonarr-import-custom-list`, `stack-tmdb-*-import`, `stack-trakt-import-list` before this):
 - Sonarr's importlist schema uses different field names than Radarr's
   (`enableAutomaticAdd`/`searchForMissingEpisodes`/`shouldMonitor` vs. Radarr's
   `enableAuto`/`searchOnAdd`/`monitor`) - the endpoint was unconditionally writing Radarr's field

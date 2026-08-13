@@ -1,6 +1,6 @@
 # Usage: stack-plex-recently-added [limit]
 # What actually finished importing and became visible in Plex, across
-# every movie/show library - complements stack-recently-added (which shows
+# every movie/show library - complements stack-arr-recently-added (which shows
 # what was added *to management*, not necessarily downloaded yet).
 function stack-plex-recently-added --description 'Show recently added items visible in Plex'
     set -l limit 15
