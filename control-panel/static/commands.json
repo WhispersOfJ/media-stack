@@ -2838,5 +2838,44 @@
     "BodyMode": "",
     "BodyFields": null,
     "LogContainer": "plexanisync"
+  },
+  {
+    "Name": "stack-arr-search-toggle",
+    "Description": "Turn RSS sync + automatic search on/off for Radarr/Sonarr indexers (the fish command also accepts `all`, which fans out to both apps)",
+    "Method": "POST",
+    "PathTemplate": "/api/arr/{1}/search-toggle",
+    "Query": [
+      {
+        "Key": "enabled",
+        "ArgName": "enabled",
+        "Literal": ""
+      }
+    ],
+    "Args": [
+      {
+        "Name": "radarr/sonarr",
+        "Choices": [
+          "radarr",
+          "sonarr"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      },
+      {
+        "Name": "enabled",
+        "Choices": [
+          "true",
+          "false"
+        ],
+        "Optional": false,
+        "Default": "",
+        "Rest": false
+      }
+    ],
+    "Confirm": false,
+    "BodyMode": "",
+    "BodyFields": null,
+    "LogContainer": ""
   }
 ]
