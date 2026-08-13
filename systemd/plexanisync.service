@@ -1,0 +1,21 @@
+[Unit]
+Description=Push anime watch state from Plex to AniList (PlexAniSync)
+After=media-stack.service
+OnFailure=notify-failure@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/bear/Claude/media-stack
+# The container lives behind the "scheduled" compose profile, so a plain
+# `docker compose up` never starts it. This creates it (or recreates it after a
+# compose change) without running it - idempotent, a no-op once it exists and
+# matches.
+ExecStartPre=/usr/bin/docker compose --profile scheduled up --no-start plexanisync
+# --attach, not `run --rm`: re-starting the same container keeps its logs, which
+# is what /api/plexanisync/last-run parses, and streams this run's output into
+# the journal. INTERVAL=0 in docker-compose.yml makes the process sync once and
+# exit, so this returns the sync's real exit code rather than blocking forever.
+ExecStart=/usr/bin/docker start --attach plexanisync
+# A full anime sync walks both libraries and rate-limits against AniList's API.
+# Cap it rather than let a hung run sit on top of the next timer firing.
+TimeoutStartSec=3600

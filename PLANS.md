@@ -10,9 +10,11 @@ is the canonical one an implementing agent should follow — if the two ever dri
 this file wins.
 
 **Status: see each phase's own `Status:` line — that's the single source of
-truth, not this paragraph.** As of last update (2026-08-12): Phases 1 (ntfy),
-2 (Speedtest Tracker), 3 (Organizr), 4 (Scrutiny) and 5 (GAPS-2) DONE,
-Phases 6-7 not started. Phase 1 was built out
+truth, not this paragraph.** As of last update (2026-08-13): Phases 1 (ntfy),
+2 (Speedtest Tracker), 3 (Organizr), 4 (Scrutiny), 5 (GAPS-2),
+6 (WatchState) and 7 (PlexAniSync) DONE — the whole 7-service batch has
+landed. Phase 8 (naming cleanup) is now unblocked but still DEFERRED until
+explicitly started. Phase 1 was built out
 of this doc's stated risk order at Bear's explicit request (see its own
 Phase 1 section for why that's a deliberate deviation, not an oversight).
 See STACK.md's "ntfy added" and "Speedtest Tracker added" entries for the
@@ -1039,9 +1041,36 @@ secret-injector.
 
 ## Phase 7 — PlexAniSync
 
-**Status:** NOT STARTED
+**Status:** DONE (2026-08-13)
 **Risk:** medium — the one service in this batch with an unautomatable
 secret (AniList OAuth, yearly manual renewal) and no persistent web UI.
+
+### 7.0 Corrections to this section, found while implementing (2026-08-13)
+
+Five things below were written from guesses and turned out wrong. The build
+follows the corrections, not 7.1–7.5 as originally written.
+
+1. **Image is `ghcr.io/rickdb/plexanisync:latest`**, not `rickdb/...`.
+   Upstream publishes to GHCR only.
+2. **Config path is not `/app/config`.** There is no config directory. The
+   Docker image is configured entirely by env vars (`PLEX_URL`, `PLEX_TOKEN`,
+   `PLEX_SECTION`, `ANI_USERNAME`, `ANI_TOKEN`, …); only
+   `custom_mappings.yaml` is a mounted file, at
+   `/plexanisync/custom_mappings.yaml`. This satisfies Phase 4's
+   env-var-over-config-file preference for free.
+3. **`INTERVAL=0` is what makes it a one-shot.** The image's default (3600)
+   turns it into its own sleep-loop scheduler, which would have collided with
+   the systemd timer this section calls for. `<=0` means sync once and exit.
+4. **`docker compose run --rm` was the wrong trigger.** It throws the logs
+   away on exit, and logs are the *only* thing 7.4/7.5 have to parse. Both
+   triggers instead re-*start* one persistent-but-stopped container: the timer
+   via `docker start --attach`, the control panel via the Docker SDK.
+5. **Kometa was the wrong template.** Kometa runs its own internal scheduler
+   (`KOMETA_TIMES`) and has no systemd unit at all — 7.1's "copy Kometa's
+   structure" is not a thing that exists. The real precedent is
+   `systemd/stack-letterboxd-sync.{service,timer}`, and every stack timer on
+   this host is a **user** unit symlinked from `systemd/` into
+   `~/.config/systemd/user/`, needing no sudo.
 
 ### 7.1 Compose
 
@@ -1134,15 +1163,19 @@ success/failure).
 
 ### 7.7 Acceptance
 
-- [ ] systemd service + timer installed and enabled
-- [ ] Plex token configured (reused from Phase 6 if present)
-- [ ] AniList OAuth token configured, renewal date documented in STACK.md
-- [ ] Timer offset confirmed not to race WatchState's import
-- [ ] pytest suite passing
-- [ ] Live sync verified against a real watched title
-- [ ] Fish functions callable
-- [ ] STACK.md entry added, including the yearly-renewal landmine note
-- [ ] Committed as its own commit
+- [x] systemd service + timer installed and enabled (user units, symlinked
+      from `systemd/`, no sudo)
+- [x] Plex token configured (reused from Phase 6 - `PLEX_URL`/`PLEX_TOKEN`)
+- [x] AniList OAuth token configured; issued 2026-08-13, **expires
+      2027-08-13**, documented in STACK.md's landmine section
+- [x] Timer offset confirmed not to race WatchState's import (00/06/12/18:45
+      vs WatchState's :25, and outside 02:00-05:59 entirely)
+- [x] pytest suite passing (797 -> 824; 17 router cases + 9 timer-freshness)
+- [x] Live sync verified against real watched titles, confirmed on AniList's
+      own API: Cowboy Bebop, The Animatrix, Dragon Ball Z
+- [x] Fish functions callable (`run-now`, `last-run`, `logs`)
+- [x] STACK.md entry added, including the yearly-renewal landmine note
+- [x] Committed as its own commit
 
 ---
 

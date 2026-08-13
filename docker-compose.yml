@@ -672,6 +672,12 @@ services:
       retries: 3
       start_period: 15s
     environment:
+      # Added 2026-08-13 (Phase 7). This container had no TZ, so it ran on UTC
+      # while every other surface Bear reads is EDT - core/responses.now()
+      # calls .astimezone() and got UTC back, meaning every "time" field the
+      # panel has ever returned was silently 4-5 hours off local. Found while
+      # /api/plexanisync/last-run reported a 12:07 run as 16:07.
+      TZ: ${TZ}
       # Jellyfin removed entirely (reverted back to Plex - see CLAUDE.md's
       # History for the reversion and the reasons behind it).
       PLEX_URL: ${PLEX_URL}
@@ -1389,6 +1395,66 @@ services:
       - ./config/watchstate:/config
     ports:
       - "8705:8080"
+    mem_limit: 512m
+    mem_reservation: 64m
+    cpus: 1
+
+  # PlexAniSync - Phase 7 of PLANS.md's 7-service batch. Pushes anime watch
+  # state from Plex to AniList. Six things this block encodes:
+  #
+  # 1. Image is ghcr.io/rickdb/plexanisync, not the docker.io/rickdb/... that
+  #    PLANS.md 7.1 guessed. Upstream only publishes to GHCR
+  #    (github.com/RickDB/PlexAniSync/tree/master/Docker/PlexAniSync).
+  #
+  # 2. INTERVAL=0 is what makes this a one-shot. Upstream's default (3600)
+  #    turns the container into its own sleep-loop scheduler; <=0 makes it
+  #    sync once and exit. The systemd timer owns the schedule instead
+  #    (systemd/plexanisync.timer), matching every other scheduled job in
+  #    this repo rather than adding a second scheduling mechanism.
+  #
+  # 3. profiles: ["scheduled"] keeps `docker compose up -d` from starting it.
+  #    The container is still created once (`docker compose --profile
+  #    scheduled up --no-start plexanisync`) and then re-*started* by both
+  #    triggers - the timer (`docker start --attach`) and the control panel
+  #    (Docker SDK .start()). One container, one config, retained logs that
+  #    /api/plexanisync/last-run can parse. `run --rm` would throw the logs
+  #    away on every run.
+  #
+  # 4. Config is env vars, not a settings.ini. config/ is gitignored
+  #    wholesale in this repo, so a mounted ini exists only on the live host
+  #    - the same trap Phases 4/5/6 each hit. custom_mappings.yaml is the one
+  #    exception: it is a hand-curated mapping list, tracked at
+  #    config/plexanisync/custom_mappings.yaml, and read fresh every run.
+  #
+  # 5. PLEX_SECTION names both anime libraries, pipe-separated (upstream's
+  #    multi-library syntax). This stack splits anime across "Anime Shows"
+  #    and "Anime Movies" (Plex sections 7 and 6) fed by sonarr-anime/
+  #    radarr-anime - the general "Shows"/"Movies" libraries must not be in
+  #    here or non-anime titles get pushed to AniList.
+  #
+  # 6. ANI_TOKEN expires yearly and cannot be renewed non-interactively.
+  #    See .env.example and STACK.md's dated landmine entry.
+  plexanisync:
+    profiles: ["scheduled"]
+    restart: "no"
+    logging: *common-logging
+    image: ghcr.io/rickdb/plexanisync:latest
+    container_name: plexanisync
+    networks: [stacknet]
+    environment:
+      TZ: ${TZ}
+      PLEX_URL: ${PLEX_URL}
+      PLEX_TOKEN: ${PLEX_TOKEN}
+      PLEX_SECTION: "Anime Shows|Anime Movies"
+      ANI_USERNAME: ${PLEXANISYNC_ANILIST_USERNAME}
+      ANI_TOKEN: ${PLEXANISYNC_ANILIST_TOKEN}
+      # Single-shot: sync once, exit. The timer owns the schedule - see (2).
+      INTERVAL: "0"
+      # Writes unmatched titles to /plexanisync/failed_matches.txt inside the
+      # container, which is what custom_mappings.yaml gets curated from.
+      LOG_FAILED_MATCHES: "True"
+    volumes:
+      - ./config/plexanisync/custom_mappings.yaml:/plexanisync/custom_mappings.yaml
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 1

@@ -50,6 +50,74 @@ HTTP_SERVICES = {
     "watchstate": (8705, "/v1/api/system/healthcheck"),
 }
 
+# Scheduled jobs have no port and no persistent process, so HTTP reachability
+# says nothing about them - the question is whether the timer actually fired
+# recently and whether the last run succeeded. name -> (timer unit, max age in
+# seconds before the run counts as stale).
+#
+# These are *user* units (systemctl --user), not system ones - every stack-*
+# timer on this host is installed under ~/.config/systemd/user.
+SCHEDULED_JOBS = {
+    # 00:45/06:45/12:45/18:45 -> at most 6h apart; 8h allows one missed firing
+    # plus a long run before this reports stale.
+    "plexanisync": ("plexanisync.timer", 8 * 3600),
+}
+
+
+def _systemctl_show(unit: str, properties: str) -> dict:
+    """`systemctl --user show` as a dict. Empty on any failure - a missing unit
+    is reported by the caller as not-installed, not as a crash."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "show", unit, "--property", properties],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return {}
+    values = {}
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition("=")
+        if key:
+            values[key] = value
+    return values
+
+
+def check_timer(name: str, unit: str, max_age: int) -> tuple[bool, str]:
+    """Freshness + last-result for a systemd timer-backed job.
+
+    Two independent failure modes, both of which have to fail the check: the
+    timer stopped firing (stale), or it fired and the job exited non-zero.
+    """
+    timer = _systemctl_show(unit, "LoadState,ActiveState,LastTriggerUSec")
+    if not timer or timer.get("LoadState") != "loaded":
+        return False, f"timer '{unit}' not installed"
+    if timer.get("ActiveState") != "active":
+        return False, f"timer '{unit}' is {timer.get('ActiveState', 'inactive')}, not active"
+
+    service_unit = unit.rsplit(".", 1)[0] + ".service"
+    service = _systemctl_show(service_unit, "Result,ExecMainStatus")
+    result = service.get("Result", "")
+    exit_status = service.get("ExecMainStatus", "")
+    if result and result != "success":
+        return False, f"last run failed (result={result}, exit={exit_status or '?'})"
+
+    trigger = timer.get("LastTriggerUSec", "")
+    # systemd prints "n/a" when the timer has never fired since it was enabled.
+    if not trigger or trigger == "n/a":
+        return True, "installed and active, has not fired yet"
+
+    try:
+        # Format: "Thu 2026-08-13 12:45:00 EDT" - drop the weekday and zone.
+        parts = trigger.split()
+        last = time.mktime(time.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S"))
+    except (IndexError, ValueError):
+        return True, f"active, last fired {trigger} (unparsed)"
+
+    age = int(time.time() - last)
+    if age > max_age:
+        return False, f"stale - last fired {age // 3600}h ago (max {max_age // 3600}h)"
+    return True, f"last fired {age // 60}m ago, exit {exit_status or '0'}"
+
 
 def docker_ps(compose_dir: Path) -> list[dict]:
     try:
@@ -91,7 +159,7 @@ def check_http(name: str, port: int, path: str, timeout: float = 5.0) -> tuple[b
 
 
 def sweep(compose_dir: Path, do_docker: bool, do_http: bool) -> dict:
-    report = {"docker": {}, "http": {}}
+    report = {"docker": {}, "http": {}, "scheduled": {}}
 
     if do_docker:
         for svc in docker_ps(compose_dir):
@@ -104,6 +172,14 @@ def sweep(compose_dir: Path, do_docker: bool, do_http: bool) -> dict:
         for name, (port, path) in HTTP_SERVICES.items():
             ok, detail = check_http(name, port, path)
             report["http"][name] = {"ok": ok, "detail": detail}
+
+    # Grouped with the HTTP pass rather than the docker one: both answer "is
+    # this service doing its job", which docker state cannot say for a
+    # container that is supposed to be Exited(0) between runs.
+    if do_http:
+        for name, (unit, max_age) in SCHEDULED_JOBS.items():
+            ok, detail = check_timer(name, unit, max_age)
+            report["scheduled"][name] = {"ok": ok, "detail": detail}
 
     return report
 
@@ -118,6 +194,12 @@ def print_report(report: dict) -> None:
     if report["http"]:
         print("== HTTP reachability ==")
         for name, info in sorted(report["http"].items()):
+            marker = "OK  " if info["ok"] else "FAIL"
+            print(f"  {marker}  {name:<24} {info['detail']}")
+
+    if report.get("scheduled"):
+        print("== Scheduled jobs (systemd timers) ==")
+        for name, info in sorted(report["scheduled"].items()):
             marker = "OK  " if info["ok"] else "FAIL"
             print(f"  {marker}  {name:<24} {info['detail']}")
 

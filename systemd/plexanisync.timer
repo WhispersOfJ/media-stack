@@ -1,0 +1,20 @@
+[Unit]
+Description=4x/day: push anime watch state from Plex to AniList
+
+[Timer]
+# 00:45 / 06:45 / 12:45 / 18:45. Three constraints picked these slots:
+#
+# 1. Off WatchState's import (":25" of hours 0-1,6-23, docker-compose.yml's
+#    WS_CRON_IMPORT_AT). Both walk every Plex library; 20 minutes of offset
+#    keeps them from hitting Plex's API in the same minute.
+# 2. Outside 02:00-05:59 entirely, the same window WatchState's import skips -
+#    it already holds stack-poster-sync-shows (02:00), stack-arr-backup
+#    (03:40), stack-letterboxd-sync (04:00) and the Sunday docker prune
+#    (04:30), and this stack has confirmed Plex SQLite write contention when
+#    several writers overlap (plex-marked-deleted-db-contention).
+# 3. Off stack-poster-sync-movies' 06:00/14:00/22:00 runs.
+OnCalendar=*-*-* 00,06,12,18:45:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -24,6 +24,10 @@ const FLEET_GROUPS = {
   scrutiny: "Monitoring",
   gaps2: "Discovery",
   watchstate: "Discovery",
+  // Scheduled batch job, not a persistent service - it sits in Exited(0)
+  // between its four daily runs. Status comes from stack-plexanisync-last-run,
+  // not an up/down dot (SERVICE_META.health_check is null for the same reason).
+  plexanisync: "Post-processing",
 };
 const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Discovery", "Post-processing", "Auto-updates", "Notifications", "Monitoring", "Dashboard", "Other"];
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem("fleetCollapsed") || "[]"));

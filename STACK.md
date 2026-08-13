@@ -3759,3 +3759,104 @@ re-run path that must not re-add a backend.
 **Restart needed:** `docker compose build control-panel && docker compose up -d
 control-panel` - a new `services/<name>/` directory needs the image rebuilt,
 not just recreated. Done.
+
+## PlexAniSync added: Plex anime watch state to AniList, 2026-08-13
+
+Phase 7 of PLANS.md's 7-service batch, and the last of it - the batch is
+complete. No host port, no web UI, no API: it is a container that syncs once
+and exits, fired four times a day by a systemd timer. Image
+`ghcr.io/rickdb/plexanisync:latest`. AniList account **TheVeryAngryDaddy**.
+
+### LANDMINE: the AniList token expires 2027-08-13
+
+`PLEXANISYNC_ANILIST_TOKEN` is a 1-year AniList OAuth access token. There is no
+non-interactive way to renew it - no refresh token, no API call, no service
+account. It has to be fetched by a human, logged into AniList, from:
+
+    https://anilist.co/api/v2/oauth/authorize?client_id=1549&response_type=token
+
+**Issued 2026-08-13, expires 2027-08-13.** When it lapses the sync does not
+announce itself: the container exits non-zero and anime watch state silently
+stops flowing, with Plex and everything else still perfectly healthy. Two
+places will say so if anyone asks - `stack-plexanisync-last-run` reports
+`token_expired: true` and names the renewal, and the health-monitor sweep's new
+"Scheduled jobs" section fails the freshness check. The systemd
+`OnFailure=notify-failure@` hook fires too. Do not spend an afternoon
+re-diagnosing this a year from now.
+
+### It is a one-shot; the timer owns the schedule
+
+`INTERVAL=0` in docker-compose.yml. Upstream's default (3600) turns the
+container into its own sleep-loop scheduler, which would have quietly competed
+with the timer; `<=0` means sync once and exit. `systemd/plexanisync.timer`
+runs at **00:45 / 06:45 / 12:45 / 18:45** - 20 minutes off WatchState's ":25"
+import so the two never walk Plex's libraries in the same minute, entirely
+outside the 02:00-05:59 maintenance window (poster sync, Arr backup, Letterboxd
+sync, docker prune, Plex Butler), and off stack-poster-sync-movies' 06/14/22.
+Same SQLite-contention reasoning as WatchState's cadence.
+
+Both triggers re-*start* one persistent-but-stopped container rather than
+creating a fresh one: the timer via `docker start --attach` (exit code and
+output land in the journal), the control panel via the Docker SDK. `compose run
+--rm` was the obvious design and is wrong here - it discards the logs, and the
+logs are the only thing `/api/plexanisync/last-run` has to read. Sitting in
+`Exited(0)` between runs is the healthy state, which is why its fleet tile and
+`SERVICE_META` carry no health dot (same as kometa).
+
+### Scope: both anime libraries, neither general one
+
+`PLEX_SECTION="Anime Shows|Anime Movies"` (Plex sections 7 and 6, fed by
+sonarr-anime/radarr-anime). Pipe-separated is upstream's multi-library syntax.
+The general "Shows"/"Movies" libraries must never appear here - they would push
+non-anime titles to AniList.
+
+### Config is env vars; the one mounted file is untracked
+
+There is no settings.ini and no config directory - PLANS.md 7.1's `/app/config`
+does not exist. Everything is env vars, which sidesteps the trap Phases 4, 5
+and 6 each hit (config/ is gitignored wholesale, so a mounted config file lives
+only on the live host). The exception is
+`config/plexanisync/custom_mappings.yaml`, which is mounted at
+`/plexanisync/custom_mappings.yaml`, read fresh every run, and *is* untracked
+for that same reason. Its entire baseline is two `remote-urls` entries pointing
+at the community mapping lists; the file documents its own recreation at the
+top. `LOG_FAILED_MATCHES=True` writes unmatched titles to
+`/plexanisync/failed_matches.txt` inside the container, which is the input for
+curating local overrides.
+
+### Side fix: the control panel had been reporting UTC as local
+
+Found while reading this feature's own output - a 12:07 run reported as 16:07.
+The control-panel container had no `TZ`, so `core/responses.now()`'s
+`.astimezone()` resolved to UTC, meaning *every* `"time"` field the panel has
+ever returned was 4-5 hours off, unlabelled. `TZ: ${TZ}` added to its compose
+environment. Not Phase 7 scope, but it was Phase 7's bug to find.
+
+### Live verification (2026-08-13)
+
+- First run, triggered through the real systemd unit (`systemctl --user start
+  plexanisync.service`): 826 series in Anime Shows + 756 in Anime Movies read,
+  3 watched series found, 3 matched, 0 unmatched, exit 0, `Result=success`.
+- Confirmed on AniList's own API, not just in the logs: Cowboy Bebop CURRENT
+  progress 25, The Animatrix CURRENT progress 1, Dragon Ball Z COMPLETED
+  progress 291 - the last one through a custom mapping collapsing 9 Plex
+  seasons onto anilist-id 813.
+- `stack-plexanisync-last-run` → "Last run succeeded at 2026-08-13T12:07:19
+  -04:00: 3 watched series in Plex, 3 matched on AniList, 0 unmatched."
+- `systemctl --user is-enabled plexanisync.timer` → enabled, next 12:45.
+- health-monitor sweep: 46/46 green, including the new scheduled-jobs section.
+
+**Tests:** `tests/control_panel/test_plexanisync_router.py` (17 cases) and
+`tests/scripts/test_health_monitor_timers.py` (9 cases). The parser is pinned
+to a verbatim excerpt of the real run's log, not to invented wording - the
+first draft guessed at "Successfully matched N titles" summary lines that
+PlexAniSync never emits. The cases that matter cover the readings that look
+right and are not: `Exited(0)` as healthy rather than down, exit 0 *without*
+the "sync finished" line as a run that died partway, a stated total that failed
+to parse as unknown rather than 0, and a timer that succeeded three days ago as
+stale rather than fine.
+
+**Restart needed:** `docker compose build control-panel && docker compose up -d
+control-panel` (new `services/<name>/` needs a rebuild, and the TZ change needs
+the recreate). Done. Timer installed and enabled as a *user* unit - no sudo
+anywhere in this phase.
