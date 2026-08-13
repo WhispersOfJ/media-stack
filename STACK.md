@@ -3860,3 +3860,126 @@ stale rather than fine.
 control-panel` (new `services/<name>/` needs a rebuild, and the TZ change needs
 the recreate). Done. Timer installed and enabled as a *user* unit - no sudo
 anywhere in this phase.
+
+---
+
+## CLI naming cleanup: the repo is now the enforced source of truth, 2026-08-13
+
+Phase 8 of PLANS.md, the deferred one. Two halves: 8a made the command surface
+trustworthy, 8b renamed the 12 names that broke the schema. Design and the
+decisions behind it: `docs/superpowers/specs/2026-08-13-cli-naming-cleanup-design.md`.
+
+### What started it: two sources of truth, drifted 9 names apart
+
+`fish-functions/` in this repo and `~/.config/fish/functions/` on the host were
+hand-copied between each other. Nothing enforced that they matched, and they
+did not: 4 functions existed only in the repo (`stack-mdblist-radarr-{history,
+track,tracked,untrack}`), 5 only on the host (four `stack-backup-*` plus
+`stack-newapps-backup-check`, all dead since restic was removed 2026-08-12).
+A command could be in the repo and not run, or run and not be in the repo.
+
+`scripts/fish-functions-install.py` replaces the copy with a symlink per
+function, so the two cannot diverge. It manages `stack-*.fish` and nothing
+else - the target directory also holds the user's own fish functions, and
+`__stack_api.fish`, which stays a plain copy because it has no `stack-` prefix.
+
+`tests/test_fish_functions_installed.py` is the invariant: it fails the commit
+if any installed function is a plain copy, points somewhere other than this
+repo, dangles, or exists on one side and not the other. It skips on a machine
+with no `~/.config/fish`, so a fresh clone and CI stay green.
+
+### 8a also closed three real gaps
+
+- **5 dead functions removed** from the host. They were restic-era; restic went
+  2026-08-12 and these survived it.
+- **4 commands `commands.json` advertised but that did not exist**:
+  `stack-loop-candidates`, `stack-loop-unmonitor`, `stack-loop-exclude`,
+  `stack-nzbdav-dedup-check`. Their control-panel routes were live the whole
+  time - only the fish side was missing. Written from the manifest's own specs.
+- **1 command that existed with no `commands.json` entry**:
+  `stack-arr-toggle-search`. The plan's proposed entry was single-arg; the real
+  function takes two (`<radarr|sonarr|all> <on|off>`) and passes
+  `?enabled=true|false`, so the entry follows the function. The palette entry
+  drops `all` because `palette.js` issues one request per command and `all`
+  fans out to two.
+- `control-panel/services/backups/` deleted. It was an empty directory left by
+  the restic removal, and `main.py` imports `services.<name>.router` for every
+  directory it finds, so an empty one is a latent import error.
+
+### 8b: the 12 renames
+
+`tests/test_fish_naming.py` is the schema. There is no prose rule that can
+drift from it. `scripts/fish-rename.py` applied the table in one pass.
+
+| Old | New | Why |
+|---|---|---|
+| `stack-arr-blocklist-clear` | `stack-arr-clear-blocklist` | verb order |
+| `stack-arr-search-toggle` | `stack-arr-toggle-search` | verb order |
+| `stack-plex-rss-import` | `stack-plex-import-rss` | verb order |
+| `stack-plex-watchlist-import` | `stack-plex-import-watchlist` | verb order |
+| `stack-radarr-list-import` | `stack-radarr-import-list` | verb order |
+| `stack-sonarr-custom-list-import` | `stack-sonarr-import-custom-list` | verb order |
+| `stack-sonarr-monitor-episodes-fix` | `stack-sonarr-fix-episode-monitoring` | verb order |
+| `stack-tmdb-company-import` | `stack-tmdb-import-company` | verb order |
+| `stack-tmdb-keyword-import` | `stack-tmdb-import-keyword` | verb order |
+| `stack-trakt-list-import` | `stack-trakt-import-list` | verb order |
+| `stack-recently-added` | `stack-arr-recently-added` | had no domain; collided in meaning with `stack-plex-recently-added` and `stack-tautulli-recently-added` |
+| `stack-disk-usage` | `stack-disk-config-sizes` | said "disk usage", actually reports per-app `config/` directory sizes |
+
+Hard cutover, no aliases. Every reference moved in the same commit and the
+script proved it by grepping each old name afterwards.
+
+### What was deliberately NOT renamed
+
+- **35 host domains** (`disk`, `journal`, `kernel`, `pkg`, `oom`, `zombie`...).
+  These are host-level concerns, not services, and they are a legitimate second
+  namespace rather than an inconsistency. `loop` joined them in 8b.
+- **21 source-first commands** (`stack-letterboxd-radarr-*`,
+  `stack-mdblist-radarr-*`, `stack-tmdb-*`, `stack-trakt-*`, `stack-rating-*`).
+  Naming the data source before the target app reads as intent and
+  tab-completes by source. `test_source_first_domains_stay_source_first` now
+  guards the exception in *both* directions, so a well-meaning later rename to
+  `stack-radarr-letterboxd-*` fails.
+- **7 top-level commands**, in two shapes: dispatchers where the action is an
+  argument (`stack-arr`, `stack-plex`, `stack-container`) and bare reads
+  (`stack-status`, `stack-top`, `stack-version`, `stack-help`).
+
+### Landmine: the linter catches 7 of 12, and that is on purpose
+
+`test_actions_are_verb_first` flagged 7 of the 12 renames. It misses any name
+whose leading token is noun-verb ambiguous - `search` in
+`stack-arr-search-toggle`, `list` in `stack-radarr-list-import`, `monitor` in
+`stack-sonarr-monitor-episodes-fix` - because that token is in `VERBS`, so the
+name already looks verb-first.
+
+A trailing-verb rule was tried as the fix and rejected on measured numbers, not
+taste: it flags 33 legitimate names (`stack-gaps2-scan`, `stack-oom-check`,
+every single-token action) and would have flagged 4 of the rename's own targets
+including `stack-radarr-import-list`. English noun/verb ambiguity is not
+resolvable in a token set. The ambiguous cases stay human judgment; the linter
+owns the unambiguous ones. Do not "fix" this by widening the rule - check the
+numbers first.
+
+### Landmine: some files describe the rename and must never be rewritten
+
+`fish-rename.py` excludes `docs/superpowers/**`, `PLANS.md`,
+`tests/test_fish_naming.py` and its own test file. Those contain tables and
+docstrings that read `old -> new`; a blind pass collapses both sides into the
+new name and destroys the only record of what changed. The post-rename grep
+check skips them for the same reason. If you add a rename later, extend
+`RECORD_PATHS`, do not delete the exclusion.
+
+Conversely `targets()` covers `control-panel/**/*.py` and `tests/**/*.py`,
+which the plan's first draft missed: `control-panel/services/arr/router.py`
+names seven `.fish` files in a comment about auth dependencies, and a router
+test names the command that exercises it.
+
+### Numbers
+
+194 functions, identical on both sides. Test suite 824 -> 849 (+7 installer,
++3 drift, +6 schema, +9 rename script). `commands.json` 135 -> 136 entries;
+its rename diff is 12 insertions and 12 deletions, all `"Name"` values.
+
+**Never round-trip `commands.json` through `json.dump`.** It re-escapes em
+dashes across unrelated entries. Edit it key-by-key. This bit once already,
+on 2026-08-13, and had to be reverted.

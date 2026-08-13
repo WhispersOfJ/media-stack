@@ -1192,10 +1192,16 @@ success/failure).
 
 ## Phase 8 — deferred: whole-stack fish-function / endpoint naming cleanup
 
-**Status:** 8a DONE (2026-08-13) — integrity: symlink cutover, restic orphans
-removed, missing functions written. 8b (the rename) IN PROGRESS. Full design
-and decisions: `docs/superpowers/specs/2026-08-13-cli-naming-cleanup-design.md`,
-which supersedes 8.2-8.4 below.
+**Status:** DONE (2026-08-13). 8a integrity + 8b rename both shipped. 12
+commands renamed, schema enforced by `tests/test_fish_naming.py`. Design and
+decisions: `docs/superpowers/specs/2026-08-13-cli-naming-cleanup-design.md`,
+which supersedes 8.2-8.4 below. Implementation record, including the two
+landmines (the linter's deliberate 7-of-12 coverage, and the files
+`fish-rename.py` must never rewrite): STACK.md's "CLI naming cleanup" entry.
+
+**Note on 8.3 below:** it names commands by their pre-rename names on purpose.
+It is the audit that motivated the rename, so it is excluded from
+`fish-rename.py`'s reference sweep. Do not "fix" those names.
 **Risk:** high blast radius, not high technical risk — this is a scope/
 coordination risk, not a correctness risk.
 
