@@ -190,7 +190,7 @@ services:
       NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
       NZBDAV_CONFIG__MEDIA__LIBRARY_DIR: "/mnt/remote/nzbdav/completed-symlinks"
       NZBDAV_CONFIG__USENET__PROVIDERS: >-
-        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":50,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":50,"Priority":0,"Nickname":"backup"}]}
+        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":26,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":26,"Priority":0,"Nickname":"backup"}]}
       # Settings audit 2026-07-31 (every settings page/config key checked against
       # backend/Config/ConfigManager.cs - see STACK.md): cascade defaulted off, which
       # meant primary/backup were raw-load-balanced by spare connection count instead of
@@ -283,8 +283,8 @@ services:
       NZBDAV_CONFIG__USENET__PIPELINING__ENABLED: "true"
       NZBDAV_CONFIG__USENET__PIPELINING__DEPTH: "8"
       # Per-stream connection cap so one heavy stream can't starve a second
-      # concurrent Plex session against the 100-connection pool (2 providers x
-      # 50). Medium = 50% of the streaming budget per stream.
+      # concurrent Plex session against the 52-connection pool (2 providers x
+      # 26). Medium = 50% of the streaming budget per stream.
       NZBDAV_CONFIG__USENET__MAX_DOWNLOAD_CONNECTIONS_PER_STREAM: "true"
       NZBDAV_CONFIG__USENET__MAX_DOWNLOAD_CONNECTIONS_PER_STREAM_PRESET: "medium"
       # Import-quality safeguards, both off by default - given this stack's
