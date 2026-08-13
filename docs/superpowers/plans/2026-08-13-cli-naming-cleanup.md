@@ -4,7 +4,9 @@
 
 **Goal:** Make the repo the single enforced source of truth for this stack's 190 `stack-*` fish functions, then rename the 12 that violate the naming schema, behind a linter that keeps it that way.
 
-**Architecture:** Two ordered phases. 8a (Tasks 1-5) replaces the hand-copied `~/.config/fish/functions/stack-*.fish` files with symlinks into the repo's `fish-functions/`, deletes 5 dead restic-era functions, writes 4 functions that `commands.json` already advertises, and locks the invariant with a gate test. 8b (Tasks 6-9) adds a schema linter whose failure output is the audit, then a rename script that edits every reference in one pass. 8b must not start until Task 5 is committed and green.
+**Architecture:** Two ordered phases. 8a (Tasks 1-5) replaces the hand-copied `~/.config/fish/functions/stack-*.fish` files with symlinks into the repo's `fish-functions/`, deletes 5 dead restic-era functions, writes 4 functions that `commands.json` already advertises, and locks the invariant with a gate test. 8b (Tasks 6-8) adds a schema linter whose failure output is the audit, then a rename script that edits every reference in one pass. 8b must not start until Task 5 is committed and green.
+
+**Execution note (2026-08-13):** this runs on `main` with the human partner's explicit consent, not in a worktree — Tasks 2, 3 and 7 create symlinks in `~/.config/fish/functions` that must point at `/home/bear/Claude/media-stack/fish-functions`, and a worktree would leave 194 dangling links behind when it was removed. The original Tasks 7-9 were merged into Tasks 7-8 so that no task ever commits a failing test.
 
 **Tech Stack:** Python 3.13 (`.venv-test/bin/python`), pytest, fish 4.x, no new dependencies.
 
@@ -805,12 +807,15 @@ git commit -m "test: structural half of the fish naming schema (Phase 8b)"
 
 ---
 
-### Task 7: The naming linter — verb order and duplicates
+### Task 7: Verb-order rules, the rename script, and the rename itself
 
-Rules 3, 4, 5 and 7. This is where the 12 renames get identified by the rule rather than by eye. The tests are expected to FAIL at the end of this task; Task 8 makes them pass.
+Rules 3, 4, 5 and 7, plus the rename that satisfies them. These are one task because the rules describe the post-rename state: committing them alone would land a red test. Write the rules, read their output as the audit, build the script, run it, end green.
 
 **Files:**
 - Modify: `tests/test_fish_naming.py`
+- Create: `scripts/fish-rename.py`
+- Create: `tests/scripts/test_fish_rename.py`
+- Modify: 12 files in `fish-functions/` (renamed), `control-panel/static/commands.json`, the `SKILL.md` files that reference old names, `README.md`, `STACK.md`, `AGENTS.md`
 
 **Interfaces:**
 - Consumes: `SERVICE_DOMAINS`, `HOST_DOMAINS`, `SOURCE_FIRST_DOMAINS`, `TOP_LEVEL_COMMANDS`, `_functions()` from Task 6.
@@ -906,30 +911,13 @@ Expected: `test_actions_are_verb_first` fails listing ~10 names, `test_no_two_co
 
 Compare the offender list against the spec's rename table. If the linter names something the spec does not, decide: extend `NOUN_PHRASE_ALLOWLIST` (it is a noun phrase) or extend the rename map in Task 8 (it is a real violation). If the spec names something the linter misses, the rule is too narrow — widen `VERBS`.
 
-- [ ] **Step 3: Commit the failing linter deliberately**
+Do not commit yet — the verb-order rules stay red until the rename below makes them green, and this task is not done until they are.
 
-```bash
-git add tests/test_fish_naming.py
-git commit -m "test: verb-order and duplicate rules for fish naming (Phase 8b, failing until the rename)"
-```
-
-Committing a red test is intentional here and only survives one task. Task 8 is what makes it green, and no other work should land in between.
-
----
-
-### Task 8: The rename script and its test
-
-One pass across every file that names a function as a string. The prefix-collision case is the reason this is a script with a test rather than `sed`.
-
-**Files:**
-- Create: `scripts/fish-rename.py`
-- Create: `tests/scripts/test_fish_rename.py`
-
-**Interfaces:**
+**Interfaces (rename script):**
 - Consumes: `scripts/fish-functions-install.py` (called at the end).
 - Produces: `RENAMES: dict[str, str]`, `rename_text(text: str, renames: dict[str, str]) -> str`, `targets(repo_root: Path) -> list[Path]`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 4: Write the failing test for the rename script**
 
 Create `tests/scripts/test_fish_rename.py`:
 
@@ -1012,12 +1000,12 @@ def test_targets_include_every_reference_surface(renamer, tmp_path):
             "README.md", "STACK.md", "AGENTS.md", "PLANS.md"} <= found
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 5: Run the test to verify it fails**
 
 Run: `.venv-test/bin/python -m pytest tests/scripts/test_fish_rename.py -q`
 Expected: collection error — the script does not exist.
 
-- [ ] **Step 3: Write the rename script**
+- [ ] **Step 6: Write the rename script**
 
 Create `scripts/fish-rename.py`:
 
@@ -1146,41 +1134,27 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 7: Run the test to verify it passes**
 
 Run: `.venv-test/bin/python -m pytest tests/scripts/test_fish_rename.py -q`
 Expected: 7 passed.
 
-- [ ] **Step 5: Commit**
-
-```bash
-git add scripts/fish-rename.py tests/scripts/test_fish_rename.py
-git commit -m "feat: rename script for the fish command cutover (Phase 8b)"
-```
-
----
-
-### Task 9: Execute the rename and close Phase 8
-
-**Files:**
-- Modify: 12 files in `fish-functions/` (renamed), `control-panel/static/commands.json`, the `SKILL.md` files that reference the old names, `README.md`, `STACK.md`, `AGENTS.md`, `PLANS.md`
-
-- [ ] **Step 1: Dry-run and read every line**
+- [ ] **Step 8: Dry-run the rename and read every line**
 
 Run: `.venv-test/bin/python scripts/fish-rename.py --dry-run`
 Expected: an edit line per affected file plus 12 `git mv` lines. If a file you did not expect appears, read that diff before proceeding.
 
-- [ ] **Step 2: Run it for real**
+- [ ] **Step 9: Run it for real**
 
 Run: `.venv-test/bin/python scripts/fish-rename.py`
 Expected: exits 0 with "No old names remain in tracked files." If it exits 1, the listed references are in files `targets()` does not cover — add them there rather than editing by hand, so the coverage is permanent.
 
-- [ ] **Step 3: Verify the linter is now green**
+- [ ] **Step 10: Verify the linter is now green**
 
 Run: `.venv-test/bin/python -m pytest tests/test_fish_naming.py -q`
 Expected: 6 passed. This is the moment Task 7's deliberately-red tests turn green.
 
-- [ ] **Step 4: Verify the live shell**
+- [ ] **Step 11: Verify the live shell**
 
 Run:
 ```bash
@@ -1191,17 +1165,32 @@ fish -c 'stack-arr-blocklist-clear' 2>&1 | head -1   # expect "Unknown command"
 ```
 Expected: the new names work and the old one is gone. Fish caches autoloaded functions per session, so run these in a fresh `fish -c`, not an interactive shell that has been open since before the rename.
 
-- [ ] **Step 5: Run the full suite**
+- [ ] **Step 12: Run the full suite**
 
 Run: `.venv-test/bin/python -m pytest -q`
 Expected: 847 passed (834 after Task 5, + 3 structural + 3 verb/duplicate + 7 rename-script).
 
-- [ ] **Step 6: Check the commands.json diff is surgical**
+- [ ] **Step 13: Check the commands.json diff is surgical**
 
 Run: `git diff --stat control-panel/static/commands.json`
 Expected: equal insertions and deletions, roughly 10-14 lines, all of them `"Name"` values. Any change to an unrelated entry means the em-dash escaping problem recurred — revert that file and re-run with the script only.
 
-- [ ] **Step 7: Update PLANS.md and commit**
+- [ ] **Step 14: Commit**
+
+```bash
+git add -A
+git commit -m "refactor: rename 12 fish commands to the enforced schema (Phase 8b)"
+git push
+```
+
+---
+
+### Task 8: Document the cleanup and close Phase 8
+
+**Files:**
+- Modify: `PLANS.md`, `STACK.md`
+
+- [ ] **Step 1: Update PLANS.md Phase 8**
 
 Set Phase 8's `**Status:**` to:
 
@@ -1212,19 +1201,15 @@ decisions: `docs/superpowers/specs/2026-08-13-cli-naming-cleanup-design.md`,
 which supersedes 8.2-8.4 below.
 ```
 
-```bash
-git add -A
-git commit -m "refactor: rename 12 fish commands to the enforced schema (Phase 8b)"
-git push
-```
-
-- [ ] **Step 8: Add the STACK.md entry**
+- [ ] **Step 2: Add the STACK.md entry**
 
 Append a dated entry covering: the two-source-of-truth drift that started this, the symlink invariant and where it is enforced, the 12 renames as a table, the domains that were deliberately NOT renamed (35 host + 21 source-first) and why, and the fact that `tests/test_fish_naming.py` is now the schema — a new function with a bad name fails at commit time.
 
+- [ ] **Step 3: Commit and push**
+
 ```bash
-git add STACK.md
-git commit -m "docs: STACK.md entry for the CLI naming cleanup"
+git add PLANS.md STACK.md
+git commit -m "docs: STACK.md entry and Phase 8 closeout for the CLI naming cleanup"
 git push
 ```
 
