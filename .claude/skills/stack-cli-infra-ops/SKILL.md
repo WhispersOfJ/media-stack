@@ -66,6 +66,6 @@ None of these read a `STACK_HOST_IP` environment variable - the Control Panel UR
 <resources>
 **Local:**
 - `~/.config/fish/functions/stack-status.fish`, `stack-container.fish`, `stack-restart-all.fish`, `stack-resource-check.fish`, `stack-log-levels.fish`, `stack-mount-health.fish`, `stack-oom-check.fish`, `stack-perms-check.fish`, `stack-image-check.fish`, `stack-disk-config-sizes.fish`, `stack-disk-free.fish`, `stack-docker-disk-usage.fish`, `stack-version.fish`, `stack-backup-*.fish`, `stack-claude-full-backup.fish`, `stack-notify-test.fish`, `stack-top.fish`, `stack-seerr-requests.fish` - the actual fish source these commands wrap
-- `control-panel/main.py` + `services/host/router.py`, `services/backups/router.py` in this repo - the real behavior behind every Control-Panel-backed endpoint these commands call (does not cover `stack-claude-full-backup`, `stack-disk-free`, `stack-docker-disk-usage` - those run local tools directly, see calling_convention)
+- `control-panel/main.py` + `services/host/router.py` in this repo - the real behavior behind every Control-Panel-backed endpoint these commands call (does not cover `stack-claude-full-backup`, `stack-disk-free`, `stack-docker-disk-usage` - those run local tools directly, see calling_convention)
 - `scripts/backup-claude-dir.sh` in this repo - the separate, systemd-scheduled, overwrite-in-place tarball script `stack-claude-full-backup` is often confused with; read this file's own comments to see why it's not the same thing
 </resources>
