@@ -1192,7 +1192,10 @@ success/failure).
 
 ## Phase 8 — deferred: whole-stack fish-function / endpoint naming cleanup
 
-**Status:** DEFERRED — do not start until Phases 1–7 are all DONE.
+**Status:** 8a DONE (2026-08-13) — integrity: symlink cutover, restic orphans
+removed, missing functions written. 8b (the rename) IN PROGRESS. Full design
+and decisions: `docs/superpowers/specs/2026-08-13-cli-naming-cleanup-design.md`,
+which supersedes 8.2-8.4 below.
 **Risk:** high blast radius, not high technical risk — this is a scope/
 coordination risk, not a correctness risk.
 
