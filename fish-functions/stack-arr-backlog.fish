@@ -1,11 +1,12 @@
 function stack-arr-backlog --description 'Show an arr app''s internal command queue backlog (searches, RSS sync, bulk moves, etc)'
-    if test (count $argv) -ne 1
-        echo 'Usage: stack-arr-backlog <radarr|sonarr>' >&2
+    if test (count $argv) -ne 1; or not __stack_arr_app $argv[1] >/dev/null
+        echo 'Usage: stack-arr-backlog <radarr|sonarr|radarr_anime|sonarr_anime>' >&2
         return 1
     end
+    set -l app (__stack_arr_app $argv[1])
     set -l host_ip 192.168.4.105
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
-    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/arr/$argv[1]/command-backlog" | python3 -c "
+    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/arr/$app/command-backlog" | python3 -c "
 import json, sys
 raw = sys.stdin.read()
 try:

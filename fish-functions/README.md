@@ -2,7 +2,61 @@
 
 All fish functions used on this host, mirrored here from `~/.config/fish/functions/` for version control. Most target this project's Control Panel API at `192.168.4.105:8420`; a handful are general shell/host utilities unrelated to the stack.
 
-Install by symlinking or copying the whole directory into `~/.config/fish/functions/`.
+Install with `scripts/fish-functions-install.py`, which symlinks every
+`stack-*.fish` and `__stack_*.fish` into `~/.config/fish/functions/` and every
+generated completion into `~/.config/fish/completions/`. It prunes dead
+`stack-*` commands but never a `__stack_*` helper that exists only on the host,
+since that would be the only copy.
+
+## Arr instances: all four, everywhere
+
+Every command that takes an Arr app accepts all four instances. `radarr` and
+`sonarr` are the general pair; `radarr_anime` and `sonarr_anime` are the
+anime-only instances on ports 7879 and 8990.
+
+Two spellings are load-bearing and both are accepted everywhere: `radarr_anime`
+is the API key the Control Panel routes on, `radarr-anime` is what Docker knows
+the container by. `ranime`/`sanime` and `anime-movies`/`anime-shows` work as
+short aliases. `__stack_arr_app` normalizes them, so you never have to remember
+which spelling a given command wants.
+
+```fish
+stack-cutoff-unmet radarr-anime      # hyphen
+stack-cutoff-unmet radarr_anime      # underscore
+stack-cutoff-unmet ranime            # alias
+```
+
+Two commands select their instance with `--anime` instead of a positional,
+matching the Letterboxd/MDBList family, because only one shape is ever valid:
+`stack-loop-exclude` (Radarr only - Sonarr has no episode exclusion list) and
+`stack-sonarr-fix-episode-monitoring` (Sonarr only).
+
+`stack-arr-toggle-search all` covers all four. Anything less would leave the
+anime instances grabbing while you believe grabbing is paused.
+
+## Tab completion
+
+Every command has completions, generated from the functions themselves by
+`scripts/fish-completions-generate.py` - argparse flags, `contains` guards, and
+each `# Usage:` header. A gate test fails if a function changes and its
+completion does not, so they cannot drift.
+
+Container names and Plex Butler task names are resolved at tab time rather than
+baked in, so a newly-added service is completable the moment it is up.
+
+```fish
+stack-arr <TAB>                # radarr sonarr radarr_anime sonarr_anime
+stack-arr radarr <TAB>         # rss-sync search-missing unstick unstick-importing
+stack-container restart <TAB>  # live container names
+stack-loop-exclude --<TAB>     # --anime --yes
+```
+
+Regenerate after editing any function:
+
+```fish
+scripts/fish-completions-generate.py
+scripts/fish-functions-install.py
+```
 
 ---
 
@@ -21,6 +75,9 @@ Not stack-specific — general-purpose fish helpers.
 
 ## Core helper
 
+- **`__stack_arr_app <name> [--container]`** — validates an Arr instance name and normalizes it. Accepts `radarr_anime`, `radarr-anime`, `ranime`, `anime-movies` and the Sonarr equivalents; prints the API-key form, or the container form with `--container`. Every app-taking command funnels through it, so the accepted spellings are defined once rather than in 19 separate guards.
+- **`__stack_containers`** — container names for tab completion, live from Docker with `docker-compose.yml` as a fallback.
+- **`__stack_plex_butler_tasks`** — the Butler task names, read out of `stack-plex-butler.fish` itself so the completion cannot drift from what the command validates.
 - **`__stack_api <METHOD> <PATH> [JSON_BODY]`** — private helper every `stack-*` function funnels through. Calls Control Panel's API and prints its `message` field, handling both response shapes (`{"ok","message",...}` on success, FastAPI's `{"detail": {...}}` wrapper on an error). Exit status mirrors the API's own `ok` field.
 
 ## Container control & stack status
@@ -42,8 +99,8 @@ Not stack-specific — general-purpose fish helpers.
 ## Radarr / Sonarr (general)
 
 - **`stack-arr <radarr|sonarr> <rss-sync|search-missing|unstick|unstick-importing>`** — trigger RSS sync, a missing search, or clear a wedged queue item. `unstick` only touches items the app itself flagged; `unstick-importing` targets a different failure mode — a download stuck in `trackedDownloadState "importing"` while `trackedDownloadStatus` stays `ok`, so it never trips the normal flag.
-- **`stack-arr-toggle-search <radarr|sonarr|all> <on|off>`** — turn RSS sync + automatic search on/off for every indexer, without touching manual search. Useful for pausing new grabs while an import queue drains.
-- **`stack-arr-logs <radarr|sonarr|prowlarr> [lines]`** — tail an app's container log directly.
+- **`stack-arr-toggle-search <radarr|sonarr|radarr_anime|sonarr_anime|all> <on|off>`** — turn RSS sync + automatic search on/off for every indexer, without touching manual search. Useful for pausing new grabs while an import queue drains.
+- **`stack-arr-logs <radarr|sonarr|radarr-anime|sonarr-anime|prowlarr> [lines]`** — tail an app's container log directly.
 - **`stack-arr-backlog <radarr|sonarr>`** — the app's internal command-queue backlog (searches, RSS sync, bulk moves).
 - **`stack-arr-import-backlog`** — items sitting on "waiting on import" across both apps, grouped by release rather than printed per-episode.
 - **`stack-arr-import-candidates <radarr|sonarr>`** — files stuck in the queue ready to manually import, numbered for `stack-arr-import`.
@@ -63,7 +120,7 @@ Not stack-specific — general-purpose fish helpers.
 - **`stack-command-queue-summary`** — command-queue backlog across radarr/sonarr/prowlarr at once.
 - **`stack-queue-status`** — every app's download queue with live-measured speed/ETA (two samples, ~4s apart).
 - **`stack-backlog-status`** — every app's wanted/missing backlog with a throughput-projected ETA.
-- **`stack-sonarr-fix-episode-monitoring`** — fixes any episode left unmonitored under a monitored Sonarr series/season (season 0 left alone).
+- **`stack-sonarr-fix-episode-monitoring [--anime]`** — fixes any episode left unmonitored under a monitored Sonarr series/season (season 0 left alone).
 
 ## List imports (Radarr/Sonarr)
 
@@ -110,7 +167,7 @@ history is what identifies the loop; these three act on it.
 
 - **`stack-loop-candidates <radarr|sonarr>`** — titles or episodes with 2+ `downloadFailed` events in the recent autofix history, with a suggested remediation for each.
 - **`stack-loop-unmonitor <radarr|sonarr> <id> [-y|--yes]`** — unmonitor a confirmed looping movie or episode. Confirms first unless `-y`.
-- **`stack-loop-exclude <movie-id> [-y|--yes]`** — add a Radarr movie to Exclusions. The durable fix: unmonitoring alone gets undone by the next import-list sync. Radarr only, Sonarr has no episode-level equivalent.
+- **`stack-loop-exclude <movie-id> [--anime] [-y|--yes]`** — add a Radarr movie to Exclusions. The durable fix: unmonitoring alone gets undone by the next import-list sync. Radarr only, Sonarr has no episode-level equivalent.
 
 ## Ratings
 

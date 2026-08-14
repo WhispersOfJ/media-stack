@@ -1,4 +1,4 @@
-# Usage: stack-arr <radarr|sonarr> <rss-sync|search-missing|unstick|unstick-importing>
+# Usage: stack-arr <radarr|sonarr|radarr_anime|sonarr_anime> <rss-sync|search-missing|unstick|unstick-importing>
 # unstick only acts on items the arr app itself flagged (warning/error).
 # unstick-importing is a different failure mode: a download wedged in
 # trackedDownloadState "importing" keeps trackedDownloadStatus "ok" the
@@ -14,16 +14,17 @@
 # re-searches either way.
 function stack-arr --description 'Trigger an *arr app maintenance action'
     if test (count $argv) -ne 2
-        echo "Usage: stack-arr <radarr|sonarr> <rss-sync|search-missing|unstick|unstick-importing>" >&2
+        echo "Usage: stack-arr <radarr|sonarr|radarr_anime|sonarr_anime> <rss-sync|search-missing|unstick|unstick-importing>" >&2
         return 1
     end
-    if not contains -- $argv[1] radarr sonarr
+    if not __stack_arr_app $argv[1] >/dev/null
         echo "Unknown app '$argv[1]' - use radarr or sonarr." >&2
         return 1
     end
+    set -l app (__stack_arr_app $argv[1])
     if not contains -- $argv[2] rss-sync search-missing unstick unstick-importing
         echo "Unknown action '$argv[2]' - use rss-sync, search-missing, unstick, or unstick-importing." >&2
         return 1
     end
-    __stack_api POST "/api/arr/$argv[1]/$argv[2]"
+    __stack_api POST "/api/arr/$app/$argv[2]"
 end

@@ -78,7 +78,11 @@ def test_host_only_stack_function_is_pruned(installer, dirs):
 
 def test_non_stack_functions_are_never_touched(installer, dirs):
     """The user's own fish functions live in the same directory. Pruning one
-    would delete work that has no other copy anywhere."""
+    would delete work that has no other copy anywhere.
+
+    __stack_*.fish became installable on 2026-08-14 but deliberately did not
+    become prunable: a helper present on the host and absent from the repo is
+    the host's only copy."""
     repo, installed = dirs
     _write(installed, "my-own-helper")
     _write(installed, "__stack_api")
@@ -87,6 +91,29 @@ def test_non_stack_functions_are_never_touched(installer, dirs):
     installer.apply(actions, repo_dir=repo)
     assert (installed / "my-own-helper.fish").exists()
     assert (installed / "__stack_api.fish").exists()
+
+
+def test_repo_helpers_are_installed_like_commands(installer, dirs):
+    """The drift this closes: a helper edited in the repo kept running from a
+    stale hand-copied version on the host, invisibly, because a private
+    helper produces no output of its own."""
+    repo, installed = dirs
+    source = _write(repo, "__stack_arr_app")
+    actions = installer.plan(repo, installed)
+    assert installed / "__stack_arr_app.fish" in actions["link"]
+    installer.apply(actions, repo_dir=repo)
+    assert (installed / "__stack_arr_app.fish").resolve() == source.resolve()
+
+
+def test_stale_helper_copy_is_relinked_not_left(installer, dirs):
+    """A plain copy shadowing a repo helper is the drift itself."""
+    repo, installed = dirs
+    source = _write(repo, "__stack_arr_app")
+    _write(installed, "__stack_arr_app")  # plain copy, not a link
+    actions = installer.plan(repo, installed)
+    assert installed / "__stack_arr_app.fish" in actions["relink"]
+    installer.apply(actions, repo_dir=repo)
+    assert (installed / "__stack_arr_app.fish").resolve() == source.resolve()
 
 
 def test_correct_link_is_left_alone(installer, dirs):

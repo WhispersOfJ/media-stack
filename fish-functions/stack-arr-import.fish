@@ -1,14 +1,14 @@
-# Usage: stack-arr-import <radarr|sonarr> <index>
+# Usage: stack-arr-import <radarr|sonarr|radarr_anime|sonarr_anime> <index>
 # Re-fetches the candidate list fresh (the queue can change between listing
 # and importing) and imports the one at <index> - see
 # stack-arr-import-candidates for the numbered list.
 function stack-arr-import --description 'Import a file listed by stack-arr-import-candidates'
-    if test (count $argv) -ne 2; or not contains -- $argv[1] radarr sonarr
-        echo "Usage: stack-arr-import <radarr|sonarr> <index>" >&2
+    if test (count $argv) -ne 2; or not __stack_arr_app $argv[1] >/dev/null
+        echo "Usage: stack-arr-import <radarr|sonarr|radarr_anime|sonarr_anime> <index>" >&2
         return 1
     end
     set -l host_ip 192.168.4.105
-    set -l app $argv[1]
+    set -l app (__stack_arr_app $argv[1])
     set -l body (curl -sS "http://$host_ip:8420/api/arr/$app/manual-import" | python3 -c "
 import json, sys
 items = json.load(sys.stdin)
