@@ -86,6 +86,32 @@ Most take `[--no-search] [--no-monitor] [--dry-run]`; list-scraping ones also ta
 - **`stack-plex-import-watchlist <radarr|sonarr> [--no-search]`** — add your own Plex watchlist as a native import list (uses Plex's own OAuth token already set up in that app).
 - **`stack-plex-import-rss <radarr|sonarr> <plex-watchlist-rss-url> [--no-search]`** — add a Plex Watchlist RSS feed URL as an import list (polls the public feed instead of using an account token).
 
+### Tracked lists (nightly diff-only sync)
+
+The one-shot commands above import a list once. These register a list for the nightly
+diff-only sync instead (`systemd/stack-letterboxd-sync.timer`, 04:00 daily), so only titles
+added to the list since the last run get pushed. A tracked list stays synced until it is
+explicitly untracked. Both families take `[--label TEXT] [--anime] [--sonarr-anime]` on
+`track`, routing to `radarr-anime`/`sonarr-anime` instead of the general instances.
+
+- **`stack-letterboxd-radarr-track <list-url> [--label TEXT] [--anime] [--sonarr-anime]`** — register a Letterboxd list for the nightly sync.
+- **`stack-letterboxd-radarr-untrack <list-url>`** — stop syncing a tracked Letterboxd list.
+- **`stack-letterboxd-radarr-tracked`** — every Letterboxd list currently registered.
+- **`stack-letterboxd-radarr-history`** — recent Letterboxd sync runs and what each added.
+- **`stack-mdblist-radarr-track <list-url> [--label TEXT] [--anime] [--sonarr-anime]`** — same, for an MDBList list.
+- **`stack-mdblist-radarr-untrack <list-url>`** — stop syncing a tracked MDBList list.
+- **`stack-mdblist-radarr-tracked`** — every MDBList list currently registered.
+- **`stack-mdblist-radarr-history`** — recent MDBList sync runs.
+
+### Loop remediation
+
+For a title that keeps getting grabbed, failing, and re-grabbed. `stack-queue-autofix`'s
+history is what identifies the loop; these three act on it.
+
+- **`stack-loop-candidates <radarr|sonarr>`** — titles or episodes with 2+ `downloadFailed` events in the recent autofix history, with a suggested remediation for each.
+- **`stack-loop-unmonitor <radarr|sonarr> <id> [-y|--yes]`** — unmonitor a confirmed looping movie or episode. Confirms first unless `-y`.
+- **`stack-loop-exclude <movie-id> [-y|--yes]`** — add a Radarr movie to Exclusions. The durable fix: unmonitoring alone gets undone by the next import-list sync. Radarr only, Sonarr has no episode-level equivalent.
+
 ## Ratings
 
 Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
@@ -112,6 +138,8 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 ### Plex Butler tasks
 
 `stack-plex-butler <task>` fires one on demand (run with no args for the full list); each also has its own dedicated wrapper:
+
+- **`stack-plex-butler-all`** — fire every Butler task, one request at a time (the 19 named tasks plus `optimize-db` and `clean-bundles`). Sequential on purpose: 21 maintenance jobs at once against the same Plex DB and FUSE mount is how the stale-handle/contention incidents started.
 
 - **`stack-plex-automatic-updates`** — Plex's own app-update check.
 - **`stack-plex-backup-database`** — back up Plex's database.
@@ -140,6 +168,7 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-nzbdav-history [limit]`** — recent download history (completed/failed).
 - **`stack-nzbdav-stats`** — aggregate queue/history counts.
 - **`stack-nzbdav-delete-failures`** — delete every "Failed" entry from history (a Failed row can block re-grabbing a release with a matching name).
+- **`stack-nzbdav-dedup-check`** — verifies `api.duplicate-nzb-behavior` is still `mark-failed`. Guards against the return of the `(2)`/`(3)`-suffix `importBlocked` bug, where a duplicate grab lands as "Title (2)" and the Arr app cannot import it.
 
 ## Bazarr
 
@@ -309,3 +338,14 @@ Keeps its own record of what has been watched, fed from Plex by **both** a sched
 - **`stack-watchstate-status`** — tracked item count, when the import last ran and when it runs next, whether one is queued. Also reports `export_enabled`, which is off by design — export writes watch state back *into* Plex — so a silent flip shows up here.
 - **`stack-watchstate-import-now`** — queues an out-of-schedule import. Queued, not run: WatchState's dispatcher picks it up within a minute, so the result appears in `stack-watchstate-status`, not in this command's output.
 - **`stack-watchstate-history [title] [limit]`** — watch history, newest first, optionally filtered to matching titles (partial names work). Each row carries `via` (which backend reported it) and `updated_at`, which is how a webhook-delivered event is told apart from one the scheduled import picked up.
+
+### PlexAniSync (Phase 7)
+
+Pushes anime watch state from Plex to AniList. The only profiled service in the stack
+(`scheduled`) — a run-to-completion container, not a daemon, so sitting in `Exited(0)`
+between runs is the healthy state. Scheduled runs come from `systemd/plexanisync.timer`
+(00:45/06:45/12:45/18:45).
+
+- **`stack-plexanisync-last-run`** — outcome of the most recent sync: when it ran, how it exited, how many titles matched, plus a log tail. Watch for `token_expired=true` — the AniList token is a 1-year OAuth token with no non-interactive renewal, and expiry is this sync's most likely failure.
+- **`stack-plexanisync-logs [lines]`** — tail the container log (stdout only, no log file). Defaults to 200 lines. For when the tail in `last-run` isn't enough.
+- **`stack-plexanisync-run-now`** — start an out-of-schedule sync. Started, not finished: it returns immediately and the outcome shows up in `stack-plexanisync-last-run`. A second concurrent run is refused, not queued.

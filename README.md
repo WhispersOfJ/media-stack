@@ -29,6 +29,7 @@ chronological [History](#history) section is at the end.
 - [Directory layout](#directory-layout)
 - [The full service list](#the-full-service-list)
 - [The *arr apps](#the-arr-apps)
+- [The debrid pipeline: removed](#the-debrid-pipeline-removed)
 - [The Usenet pipeline: nzbdav/nzbdav](#the-usenet-pipeline-nzbdavnzbdav)
 - [Indexing: Prowlarr](#indexing-prowlarr)
 - [Requests: Seerr](#requests-seerr)
@@ -36,6 +37,8 @@ chronological [History](#history) section is at the end.
 - [Bindery and Calibre-Web: retired](#bindery-and-calibre-web-retired)
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [Automation extras: Cleanuparr, Unpackerr, Watchtower](#automation-extras-cleanuparr-unpackerr-watchtower)
+- [Plex-connected companions (added v11.11.0)](#plex-connected-companions-added-v11110)
+- [Monitoring: Tautulli, Scrutiny, Speedtest Tracker](#monitoring-tautulli-scrutiny-speedtest-tracker)
 - [Bazarr: subtitle management](#bazarr-subtitle-management)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
@@ -137,7 +140,8 @@ Radarr/Sonarr ──grab──> nzbdav (SABnzbd-compatible API, WebDAV server, n
                          root folder) ──symlinked into──> each app's root folder:
                          ./media/<type> → /data/<type>
 
-./media/{movies,shows}  → /data/{...}  → every app's writable root folder, 100%
+./media/{movies,shows,anime-movies,anime-shows}
+                        → /data/{...}  → every app's writable root folder, 100%
                                           symlinks, zero real media files on disk
 
 Plex (network_mode: host - GDM auto-discovery/DLNA/remote-access NAT-PMP/UPnP
@@ -191,7 +195,7 @@ Stack/
 ├── config/nzbdav-rclone/             # nzbdav_rclone's rclone.conf + VFS cache
 ├── scripts/                          # backup/alert/setup automation, stdlib-only Python or bash
 ├── systemd/                          # user-scope units for boot automation, backups, alerts
-└── media/{movies,shows,music,books,comics,audiobooks,youtube}
+└── media/{movies,shows,anime-movies,anime-shows,music,books,comics,audiobooks,youtube}
                                        # every arr app's writable root folder, mounted at
                                        # /data/<type>; completed downloads land as symlinks
                                        # under nzbdav's own mount (same filesystem as
@@ -206,30 +210,49 @@ Stack/
 
 Every service in `docker-compose.yml`, in the order they appear:
 
-There is no `profiles:` split in `docker-compose.yml` (any historical "core"/"extras"
-distinction is gone) - `docker compose up -d` brings up every service below.
+Only one service is behind a `profiles:` gate - `plexanisync`, under the `scheduled`
+profile, because it is a run-to-completion sync job rather than a daemon. Every other
+service starts with a plain `docker compose up -d`.
+
+<!-- AUTO-GENERATED: service table, from docker-compose.yml -->
 
 | # | Service | Image | Port(s) |
 |---|---|---|---|
 | 1 | `prowlarr` | `ghcr.io/hotio/prowlarr:release` | 9696 |
 | 2 | `radarr` | `ghcr.io/hotio/radarr:release` | 7878 |
 | 3 | `sonarr` | `ghcr.io/hotio/sonarr:release` | 8989 |
-| 4 | `nzbdav` | `ghcr.io/nzbdav/nzbdav:latest` | 3000 |
-| 5 | `nzbdav_rclone` | `rclone/rclone:latest` | none |
-| 6 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:c92d2d...` | 5055 |
-| 7 | `plex` | `plexinc/pms-docker:1.43.3.10828-00f62d37d` | 32400 (host networking) |
-| 8 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 |
-| 9 | `control-panel` | built from `./control-panel` | 8420 |
-| 10 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none |
-| 11 | `watchtower` | `nickfedor/watchtower:1.19.0` | none |
-| 12 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.9.16` | 11011 |
-| 13 | `tautulli` | `ghcr.io/tautulli/tautulli:latest` | 8182 |
-| 14 | `wrapperr` | `aunefyren/wrapperr:latest` | 8283 |
-| 15 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 |
-| 16 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
-| 17 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
-| 18 | `kometa` | `kometateam/kometa:latest` | none |
-| 19 | `radarr-anime` | `ghcr.io/hotio/radarr:release` | 7879 |
+| 4 | `radarr-anime` | `ghcr.io/hotio/radarr:release` | 7879 |
+| 5 | `sonarr-anime` | `ghcr.io/hotio/sonarr:release` | 8990 |
+| 6 | `nzbdav` | `ghcr.io/infinidysk/infinidysk:latest` | 3000 |
+| 7 | `nzbdav_rclone` | `rclone/rclone:latest` | none |
+| 8 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:f4768d...` | 5055 |
+| 9 | `plex` | `plexinc/pms-docker:1.43.3.10861-07dfddaeb` | 32400 (host networking) |
+| 10 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 |
+| 11 | `control-panel` | built from `./control-panel` | 8420 |
+| 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none |
+| 13 | `watchtower` | `nickfedor/watchtower:1.20.3` | none |
+| 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.10.3` | 11011 |
+| 15 | `tautulli` | `ghcr.io/tautulli/tautulli:latest` | 8182 |
+| 16 | `wrapperr` | `aunefyren/wrapperr:latest` | 8283 |
+| 17 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 |
+| 18 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
+| 19 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
+| 20 | `kometa` | `kometateam/kometa:latest` | none |
+| 21 | `ntfy` | `binwiederhier/ntfy` | 8700 |
+| 22 | `speedtest-tracker` | `lscr.io/linuxserver/speedtest-tracker:latest` | 8701 |
+| 23 | `organizr` | `ghcr.io/organizr/organizr:latest` | 8702 |
+| 24 | `scrutiny` | `ghcr.io/analogj/scrutiny:latest-omnibus` | 8703 |
+| 25 | `gaps2` | `primetime43/gaps-2:latest` | 8704 |
+| 26 | `watchstate` | `ghcr.io/arabcoders/watchstate:latest` | 8705 |
+| 27 | `plexanisync` | `ghcr.io/rickdb/plexanisync:latest` | none (profile `scheduled`) |
+
+<!-- END AUTO-GENERATED -->
+
+Services 21-27 are the PLANS.md new-services batch (Phases 1-7, 2026-08-09 to 2026-08-12),
+all on the contiguous 8700-8705 port block: ntfy (push sink), Speedtest Tracker (hourly ISP
+monitoring), Organizr (single-pane frontend), Scrutiny (SMART disk health), GAPS-2 (missing
+movie-collection detection, Movies/Shows only), WatchState (cross-server watch-state sync),
+and PlexAniSync (Plex to AniList sync, the one profiled service).
 
 **`radarr-anime`** is a second, fully independent Radarr instance for anime movies only
 (2026-08-06) - own root folder (`/data/anime-movies`), own "Anime" quality profile, own Plex
@@ -260,7 +283,7 @@ Decypharr, Zurg, rclone-alldebrid, Zilean, zilean-postgres, Byparr - were remove
 
 ## The *arr apps
 
-Both follow the same wiring: Prowlarr pushes Usenet indexers down via `fullSync`, NzbDAV is
+All four follow the same wiring: Prowlarr pushes Usenet indexers down via `fullSync`, NzbDAV is
 the only download client, Unpackerr extracts RAR'd releases, the root folder is
 `./media/<type>` mounted at `/data/<type>`, and Control Panel provides RSS sync /
 search-missing / unstick / unstick-importing / manual-import for each.
@@ -270,11 +293,12 @@ search-missing / unstick / unstick-importing / manual-import for each.
 | Radarr | 7878 | `/data/movies` | Movies |
 | Sonarr | 8989 | `/data/shows` | TV |
 | Radarr (Anime) | 7879 | `/data/anime-movies` | Anime movies only |
+| Sonarr (Anime) | 8990 | `/data/anime-shows` | Anime series only |
 
 Radarr and Sonarr were each removed and reinstated at earlier points; Lidarr was reinstated
 in v10.2.0 and removed again in v10.9.9, and Whisparr was removed for the last time in
 v10.12.0 (along with Stash, which cataloged its library). See [History](#history). The `*arr`
-family is now Radarr/Sonarr only.
+family is now Radarr/Sonarr only, across four instances: one general and one anime-only pair.
 
 ### Readarr is gone
 
@@ -343,8 +367,10 @@ checklist** - nothing else in this stack ever caught it on its own.
 
 ## The Usenet pipeline: nzbdav/nzbdav
 
-**NzbDAV** (`ghcr.io/nzbdav/nzbdav:latest`, a maintained super-fork of `nzbdav-dev/nzbdav` -
-see History for why this specific fork) is a pure WebDAV server with **no built-in mount of its
+**NzbDAV** (`ghcr.io/infinidysk/infinidysk:latest` - the same super-fork of `nzbdav-dev/nzbdav`
+this stack has always run, renamed upstream to InfiniDysk; the compose service, config
+directory, and every CLI/skill reference still say `nzbdav`. See History for why this specific
+fork) is a pure WebDAV server with **no built-in mount of its
 own** - a `rclone/rclone` sidecar (`nzbdav_rclone`) does the actual `rclone mount` against its
 WebDAV endpoint, landing completed downloads at `/mnt/remote/nzbdav` as symlinks streamed on
 demand. This is a deliberate, knowingly-accepted tradeoff (two containers instead of one) over
@@ -353,7 +379,7 @@ BearMount's single-binary embedded FUSE mount - see History for the evaluation.
 ```yaml
 # docker-compose.yml
 nzbdav:
-  image: ghcr.io/nzbdav/nzbdav:latest
+  image: ghcr.io/infinidysk/infinidysk:latest
   environment:
     FRONTEND_BACKEND_API_KEY: ${FRONTEND_BACKEND_API_KEY}
     NZBDAV_CONFIG__API__KEY: ${FRONTEND_BACKEND_API_KEY}
@@ -517,7 +543,7 @@ Whisparr application-sync entry was deleted with Whisparr in v10.12.0.
 
 ## Requests: Seerr
 
-**Seerr** (`ghcr.io/seerr-team/seerr@sha256:c92d2d...`, port 5055; formerly
+**Seerr** (`ghcr.io/seerr-team/seerr@sha256:f4768d...`, port 5055; formerly
 Overseerr/Jellyseerr, the projects merged) is the request entry point: search for a movie or
 show, click Request. Connected to Radarr and Sonarr as default servers (the `ANY` quality
 profile on both, `/data/movies`/`/data/shows` - see
@@ -543,7 +569,7 @@ bridge networking; this is the one service in the stack still using host network
 ```yaml
 # docker-compose.yml
 plex:
-  image: plexinc/pms-docker:1.43.3.10828-00f62d37d
+  image: plexinc/pms-docker:1.43.3.10861-07dfddaeb
   network_mode: host
   environment:
     PLEX_UID: "955"
@@ -791,7 +817,7 @@ lock-contention stall from the resulting import burst. There is no automated
 missing-content/quality-upgrade hunting of any kind in this stack now - only Cleanuparr's
 strike/malware/stalled-download cleanup remains.
 
-**Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.9.16`, port 11011) automates what Control
+**Cleanuparr** (`ghcr.io/cleanuparr/cleanuparr:2.10.3`, port 11011) automates what Control
 Panel's "unstick" action does by hand: strikes (3-strike failed-import detection), an
 hourly-checked community malware blocklist, and stalled-download cleanup. Its own built-in
 proactive search stays disabled, since there is no longer a second hunting tool to
@@ -842,7 +868,7 @@ UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
 It needs each app's actual `/app/downloads/...` path mounted, not just `/mnt`: the archives
 live at the path each app's queue reports as `outputPath`, not the resolved symlink target.
 
-**Watchtower** (`nickfedor/watchtower:1.19.0`; the maintained fork; `containrrr/watchtower`
+**Watchtower** (`nickfedor/watchtower:1.20.3`; the maintained fork; `containrrr/watchtower`
 is archived and its bundled Docker client is too old for this host's Engine API version)
 auto-updates the channel-tag-pinned images daily at 4am, posting every update or failure to
 Discord via Shoutrrr:
@@ -863,11 +889,20 @@ the exception forward (Watchtower auto-updated it like any other channel-tag ima
 moot now that Plex, not Jellyfin, is the media server again. See
 [Image pinning policy](#image-pinning-policy).
 
-## Monitoring: none currently
+## Monitoring: Tautulli, Scrutiny, Speedtest Tracker
 
-**Tautulli** (Plex's watch-history/stats dashboard) was removed entirely in v11.9.0, along
-with Kometa - see [History](#history) `[11.9.0]`. There is no watch-history/stats dashboard
-of any kind in this stack now.
+Three monitoring surfaces run now, each covering a different layer:
+
+| Service | Port | Covers |
+|---|---|---|
+| `tautulli` | 8182 | Plex watch history and stats (plus `wrapperr` on 8283 for year-in-review) |
+| `scrutiny` | 8703 | SMART health for the host's disks (needs `SYS_ADMIN` for NVMe) |
+| `speedtest-tracker` | 8701 | Hourly ISP link speed/latency via the Ookla CLI |
+
+**Tautulli** was removed entirely in v11.9.0 along with Kometa, then both were reinstalled in
+v11.11.0 - see [History](#history). Scrutiny and Speedtest Tracker are Phases 4 and 2 of the
+PLANS.md new-services batch (2026-08-11/12). There is still no general host-metrics or
+container-metrics dashboard (no Prometheus/Grafana, no Glances) - see below.
 
 During the brief v11.7.0 Jellyfin era, Tautulli was removed entirely once before (Plex-only,
 nothing left to monitor once Plex was gone) and replaced by **Jellystat**
@@ -1352,14 +1387,14 @@ Every image is pinned, using whichever approach does not change what is running:
 - **Channel tags** (`ghcr.io/hotio/radarr:release`, etc.) for the hotio images (Prowlarr,
   Radarr, Sonarr, Bazarr). hotio's model is rolling channels identified by git-hash, not
   semver, so a channel tag is the closest available pin.
-- **Version tags** (`nickfedor/watchtower:1.19.0`,
-  `ghcr.io/cleanuparr/cleanuparr:2.9.16`) where the upstream tags real releases and the running
+- **Version tags** (`nickfedor/watchtower:1.20.3`,
+  `ghcr.io/cleanuparr/cleanuparr:2.10.3`) where the upstream tags real releases and the running
   image matches.
 - **Digest pins** (`@sha256:...`) for Seerr and Unpackerr. In each case the running
   `:latest`/newest-tagged build is ahead of a usable version tag, so a tag would either
   downgrade or drift forward unexpectedly.
 - **Version tag, manually bumped, off Watchtower's train** for Plex
-  (`plexinc/pms-docker:1.43.3.10828-00f62d37d`) - PMS version changes on a live library are
+  (`plexinc/pms-docker:1.43.3.10861-07dfddaeb`) - PMS version changes on a live library are
   applied manually. This exception briefly moved to Jellyfin during the v11.7.0 detour (a
   mutable `:latest` channel tag that did *not* carry the exclusion forward) and came back to
   Plex on the reversion, unchanged from before.
@@ -1751,7 +1786,7 @@ set). First scan indexed 530 of 531 files after the mount fix below.
 
 **v10.9.1**: Stash's first scan had found 0 scenes: the container lacked the
 `/mnt/zurg`/`/mnt/decypharr`/`/mnt/nzbdav` mounts, so every symlink in `./media/adult` was
-dangling (see [Stash](#stash-adult-library-cataloging)). Cleanuparr found connected only to
+dangling (see Stash (removed in v10.12.0, see [History](#history))). Cleanuparr found connected only to
 Sonarr and Radarr; Lidarr and Whisparr added via its UI. Orphaned
 `config/neutarr/whisparr.json` removed. Recyclarr and Unpackerr audited; both already
 correctly scoped.
@@ -1766,7 +1801,7 @@ night before (4h41m, exit 1, no output). Added a second restic repo inside the h
 sync folder via the existing `BACKUP_REMOTE_REPOSITORY` mechanism; verified with a real run
 (48GB backed up, 44.7GB stored after dedup). The verification run also caught
 `config/stash/config/config.yml` unreadable by the backup user (fixed, `chmod 644`). Stash
-configuration audited (see [Stash](#stash-adult-library-cataloging)). NeutArr's ~30-minute
+configuration audited (see Stash (removed in v10.12.0, see [History](#history))). NeutArr's ~30-minute
 OOM-kill cycle found (see Known gaps).
 
 **v10.9.4**: user-reported content leak: "Drilling Mommy" in the Movies library, untracked
