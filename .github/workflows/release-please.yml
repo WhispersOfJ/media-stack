@@ -21,5 +21,14 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v5
         with:
+          # A user PAT, not the default GITHUB_TOKEN. GitHub deliberately does
+          # not fire pull_request workflows for a PR opened with GITHUB_TOKEN
+          # (recursion guard), which left every release PR sitting at
+          # "action_required" - validate.yml and claude-code-review.yml never
+          # ran, so releases merged unvalidated. A PAT-opened PR triggers them
+          # normally. Fine-grained token, contents + pull-requests read/write,
+          # scoped to this repo only. EXPIRES 2027-08-14 - release PRs stop
+          # being created entirely when it lapses, with no other symptom.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
