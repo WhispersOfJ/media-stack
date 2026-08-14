@@ -1,5 +1,18 @@
 # Changelog
 
+## [11.15.0](https://github.com/WhispersOfJ/media-stack/compare/v11.14.0...v11.15.0) (2026-08-14)
+
+
+### Features
+
+* reach every Arr instance from the CLI, and generate tab completions ([b13311b](https://github.com/WhispersOfJ/media-stack/commit/b13311b5be61daa19ee559f32e87c7f1f86ce7eb))
+* surface radarr-anime and sonarr-anime across the Control Panel ([673bd16](https://github.com/WhispersOfJ/media-stack/commit/673bd1689ac955536957a7b6f9e54e3c585e0f2f))
+
+
+### Bug Fixes
+
+* send the service API key from the Plex health watchdog ([76a2f66](https://github.com/WhispersOfJ/media-stack/commit/76a2f662daae00dcdae9ec195256363a3975067f))
+
 ## [11.14.0](https://github.com/WhispersOfJ/media-stack/compare/v11.13.0...v11.14.0) (2026-08-14)
 
 
