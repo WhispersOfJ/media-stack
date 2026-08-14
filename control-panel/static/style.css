@@ -393,6 +393,7 @@ input[type="checkbox"]:checked::after {
 .fleet-group.collapsed .chev { transform: rotate(-90deg); }
 .fleet-group.collapsed .rule-list { display: none; }
 .fleet-group-count { font-weight: 400; color: var(--ink-faint); }
+.fleet-group-spark { width: 64px; height: 18px; margin-left: auto; opacity: 0.85; flex-shrink: 0; }
 
 .fleet-row-name { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.85rem; }
 .fleet-row-sub { font-size: 0.68rem; color: var(--ink-faint); font-weight: 400; }

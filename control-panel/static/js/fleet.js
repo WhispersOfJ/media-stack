@@ -8,6 +8,7 @@ import { escapeHtml, svg, postAction } from "./core.js";
 import { logLine, selectLogSource, getActiveLogName } from "./activity-log.js";
 import { armIconButton } from "./buttons.js";
 import { renderStatusDots } from "./status.js";
+import { renderSparkline, pushHistory } from "./sparkline.js";
 
 const FLEET_GROUPS = {
   prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
@@ -31,7 +32,30 @@ const FLEET_GROUPS = {
   plexanisync: "Post-processing",
 };
 const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Discovery", "Post-processing", "Auto-updates", "Notifications", "Monitoring", "Dashboard", "Other"];
-const collapsedGroups = new Set(JSON.parse(localStorage.getItem("fleetCollapsed") || "[]"));
+// localStorage isn't a real store under plain `node --test` (no DOM) - Node
+// exposes the identifier but throws on access. Guard so fleet.test.js can
+// import groupHistoryFor without a browser environment. No behavior change
+// in the browser, where localStorage always works.
+function readCollapsedGroups() {
+  try {
+    return JSON.parse(localStorage.getItem("fleetCollapsed") || "[]");
+  } catch {
+    return [];
+  }
+}
+const collapsedGroups = new Set(readCollapsedGroups());
+
+const FLEET_HISTORY_LEN = 24; // matches Host's RESOURCE_HISTORY_LEN
+const containerHistory = new Map(); // name -> { cpu: number[], mem: number[] }
+
+// Exported for fleet.test.js; also used internally to key per-container and
+// per-group (via a "__group__" prefixed name) CPU/mem sample buffers.
+export function groupHistoryFor(name) {
+  if (!containerHistory.has(name)) {
+    containerHistory.set(name, { cpu: [], mem: [] });
+  }
+  return containerHistory.get(name);
+}
 
 function fmtPercent(v) { return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`; }
 function fmtMb(v) {
@@ -151,6 +175,11 @@ export async function refreshFleet() {
   if (containersSub) containersSub.textContent = up === data.length ? "all healthy" : `${data.length - up} need attention`;
 
   const hits = await fetchHitCounts();
+  for (const c of data) {
+    const hist = groupHistoryFor(c.name);
+    pushHistory(hist.cpu, c.cpu_percent ?? 0, FLEET_HISTORY_LEN);
+    pushHistory(hist.mem, c.mem_percent ?? 0, FLEET_HISTORY_LEN);
+  }
   const byGroup = {};
   for (const c of data) {
     const group = FLEET_GROUPS[c.name] || "Other";
@@ -165,14 +194,20 @@ export async function refreshFleet() {
     const groupEl = document.createElement("div");
     groupEl.className = "fleet-group" + (collapsedGroups.has(group) ? " collapsed" : "");
     const downCount = items.filter((c) => !(c.state === "running" && (c.health === "healthy" || !c.health))).length;
+    // Per-group summary sparkline: max CPU% across the group's containers
+    // per poll, not one sparkline per container (unreadable at this density).
+    const groupCpuHistory = groupHistoryFor(`__group__${group}`);
+    pushHistory(groupCpuHistory.cpu, Math.max(0, ...items.map((c) => c.cpu_percent ?? 0)), FLEET_HISTORY_LEN);
     groupEl.innerHTML = `
       <div class="fleet-group-head" data-group="${escapeHtml(group)}">
         <span class="chev">▾</span>${escapeHtml(group)}
         <span class="fleet-group-count">${items.length} container${items.length === 1 ? "" : "s"}${downCount ? ` · ${downCount} need attention` : ""}</span>
+        <svg class="sparkline fleet-group-spark" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
       </div>
       <div class="rule-list">${items.map(fleetRowHtml).join("")}</div>
     `;
     wrap.appendChild(groupEl);
+    renderSparkline(groupEl.querySelector(".fleet-group-spark"), groupCpuHistory.cpu, { min: 0, max: 100 });
     groupEl.querySelector(".fleet-group-head").addEventListener("click", () => {
       groupEl.classList.toggle("collapsed");
       if (groupEl.classList.contains("collapsed")) collapsedGroups.add(group);
