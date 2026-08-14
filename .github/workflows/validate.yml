@@ -21,8 +21,12 @@ jobs:
       - name: Validate default profile
         run: docker compose config --quiet
 
-      - name: Validate extras profile
-        run: docker compose --profile extras config --quiet
+      - name: Validate scheduled profile
+        # `plexanisync` is the only profiled service. Without this step it is
+        # excluded from `docker compose config` entirely and never validated.
+        # (This step used to name a long-dead `extras` profile, which made it a
+        # silent no-op - Compose does not error on an unknown profile name.)
+        run: docker compose --profile scheduled config --quiet
 
       - name: Check every compose ${VAR} has a .env.example key
         # docker compose config doesn't fail on an undefined var - it silently
@@ -48,9 +52,13 @@ jobs:
             config media usenet
 
       - name: Ruff
+        # Whole tree, not just control-panel/app.py: the live backend is
+        # main.py plus core/, services/, and models/ (app.py was retired from
+        # the image CMD in the 2026-08-05 backend rewrite), so the old
+        # single-file scope left every current backend module unlinted.
         run: |
           pip install ruff==0.8.6
-          ruff check control-panel/app.py scripts/*.py
+          ruff check control-panel/ scripts/ tests/
 
       - name: Unit tests
         run: |

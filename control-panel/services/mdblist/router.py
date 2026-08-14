@@ -3,7 +3,6 @@ route. Moved out of services/arr/router.py (2026-08-08) once this became
 a first-class integration spanning both Radarr and Sonarr with anime-app
 support and a tracked-list nightly sync, mirroring services/letterboxd/.
 """
-import json as _json
 import os
 import re
 from datetime import datetime, timezone

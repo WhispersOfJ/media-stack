@@ -7,7 +7,6 @@ import sys
 from unittest.mock import MagicMock
 
 import docker
-import pytest
 from fastapi.testclient import TestClient
 
 

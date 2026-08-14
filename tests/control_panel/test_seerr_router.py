@@ -6,7 +6,6 @@ import json
 from unittest.mock import MagicMock
 
 import httpx
-import pytest
 from fastapi.testclient import TestClient
 
 

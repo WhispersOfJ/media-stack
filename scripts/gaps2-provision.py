@@ -153,7 +153,7 @@ def provision_plex(env: dict, dry_run: bool) -> list[str]:
     })
     if status != 200 or (body or {}).get("result") != "Success":
         raise SystemExit(f"  plex: save-data failed ({status}): {body}")
-    print(f"  plex: active server persisted")
+    print("  plex: active server persisted")
     return [lib.get("title") for lib in libraries]
 
 
@@ -186,7 +186,7 @@ def provision_tvdb(env: dict, dry_run: bool) -> None:
     status, body = request("POST", "/api/tvdb/test", {"api_key": key, "pin": ""})
     if status != 200:
         raise SystemExit(f"  tvdb: key rejected by TheTVDB ({status}): {(body or {}).get('error') or body}")
-    print(f"  tvdb: key saved and verified against TheTVDB")
+    print("  tvdb: key saved and verified against TheTVDB")
 
 
 def provision_arr(target: dict, env: dict, dry_run: bool) -> None:
@@ -255,7 +255,7 @@ def check_libraries(found: list[str]) -> None:
     if missing:
         print(f"  WARNING: routing table names libraries this Plex server does not have: {', '.join(missing)}")
         print(f"           Plex reports: {', '.join(sorted(found))}")
-        print(f"           Fix control-panel/services/gaps2/libraries.py before scanning.")
+        print("           Fix control-panel/services/gaps2/libraries.py before scanning.")
     else:
         print(f"  libraries: all {len(LIBRARY_NAMES)} routed libraries present on Plex")
 

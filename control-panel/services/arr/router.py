@@ -46,18 +46,14 @@ from core.arr_client import (
     import_candidate_queue_items,
     importing_queue_targets,
     nzbdav_api,
-    radarr_add_movie,
-    radarr_root_folder_and_profile,
     recent_import_rate_per_hour,
     require_queue_app,
-    sonarr_add_series,
-    sonarr_root_folder_and_profile,
     stuck_queue_items,
     wanted_missing_total,
 )
 from core.docker_client import docker_client
 from core.responses import fail, ok
-from core.security import current_user, current_user_or_service
+from core.security import current_user_or_service
 
 router = APIRouter(tags=["arr"])
 

@@ -5,7 +5,6 @@ what is deletable - every skip reason is a case where deleting would have been
 wrong.
 """
 import importlib.util
-import os
 
 from pathlib import Path
 
