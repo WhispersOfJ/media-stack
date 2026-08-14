@@ -63,3 +63,5 @@ data/
 
 # Local Ollama model definition for this host, not part of the stack
 ClaudeLocal.modelfile
+
+.superpowers/
