@@ -3995,3 +3995,35 @@ its rename diff is 12 insertions and 12 deletions, all `"Name"` values.
 **Never round-trip `commands.json` through `json.dump`.** It re-escapes em
 dashes across unrelated entries. Edit it key-by-key. This bit once already,
 on 2026-08-13, and had to be reverted.
+
+## Checkrr removed, 2026-08-12 (commit 278ff4a)
+
+The corrupt-media scanner is gone: container, compose block, 6 fish
+functions, control-panel router/routes/tiles/commands, Organizr tab,
+health-monitor probe, and FUSE cascade membership. Nothing scans this
+library for dead media on a schedule now.
+
+**Why it went.** Checkrr wrote a single reason for everything it flagged —
+`unknown` — across all 1,251 files. That merged two unrelated populations:
+genuinely dead media, and disc images `ffprobe` simply cannot demux. A
+report where 27% of rows are false positives and nothing distinguishes
+them cannot drive a re-download, so the scanner's output was never
+actionable on its own.
+
+**What replaced it.** `scripts/checkrr-badfiles-report.py` re-verifies
+every row by container magic bytes rather than trusting the reason
+column. A zeroed header is nzbdav's gap-fill for expired Usenet
+articles, and that is the real signal. Of the 1,251 flagged files, 915
+are genuinely unplayable. Report-only, deliberately: see this repo's
+mass-deletion history before making anything here delete.
+
+**The data outlived the scanner.** The final scan is archived at
+`data/checkrr-final/` — gitignored, because it holds Arr API keys. Dead
+media does not disappear when the thing that found it does.
+
+**Before reinstalling it, know the cost.** Checkrr's whole method is
+`ffprobe` against every file. Every file in this stack is a symlink into
+a streamed Usenet mount, so a full scan pulls real bytes for all 104,282
+of them. STACK.md's 2026-07-26 entry records 8+ D-state hangs in one
+~3-hour session caused by exactly that access pattern. A scheduled
+scanner here is a scheduled outage risk, not just I/O.

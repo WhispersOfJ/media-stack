@@ -2397,7 +2397,7 @@
   },
   {
     "Name": "stack-loop-unmonitor",
-    "Description": "Unmonitor a movie (Radarr) or episode (Sonarr) by id \u2014 confirmed loop candidate",
+    "Description": "Unmonitor a movie (Radarr) or episode (Sonarr) by id — confirmed loop candidate",
     "Method": "POST",
     "PathTemplate": "/api/arr/{1}/unmonitor",
     "Query": null,
@@ -2435,7 +2435,7 @@
   },
   {
     "Name": "stack-loop-exclude",
-    "Description": "Add a Radarr movie to Exclusions \u2014 durable fix for movies re-monitored by import-list syncs after unmonitor",
+    "Description": "Add a Radarr movie to Exclusions — durable fix for movies re-monitored by import-list syncs after unmonitor",
     "Method": "POST",
     "PathTemplate": "/api/arr/radarr/exclude",
     "Query": null,

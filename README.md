@@ -1546,6 +1546,15 @@ what is new.
 
 ## Known gaps and limitations
 
+- **Nothing scans the library for corrupt or dead media on a schedule.** `checkrr` was
+  removed 2026-08-12 (commit `278ff4a`) because it wrote one reason - `unknown` - for all
+  1,251 files it flagged, merging genuinely dead media with disc images `ffprobe` cannot
+  demux. `scripts/checkrr-badfiles-report.py` replaced it as a report-only tool that
+  re-verifies each row by container magic bytes; 915 of the 1,251 were genuinely
+  unplayable. The last scan is archived at `data/checkrr-final/` (gitignored - it holds Arr
+  API keys). Reinstating a scheduled scanner is not free here: every file is a symlink into
+  a streamed Usenet mount, so `ffprobe`-ing all 104,282 of them pulls real bytes for each,
+  the access pattern behind the 2026-07-26 D-state hangs. See STACK.md.
 - **Anime movies (`radarr-anime`) have no Bazarr subtitle coverage.** Bazarr's config schema
   supports only one Radarr connection at a time (`config/bazarr/config/config.yaml` has a single
   `radarr:` block, not a list), already used by the main Radarr. Anime scene/fansub releases
