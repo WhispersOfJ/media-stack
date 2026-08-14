@@ -5,6 +5,7 @@
 import { escapeHtml, setStatusLine } from "./core.js";
 import { logLine } from "./activity-log.js";
 import { armButton } from "./buttons.js";
+import { renderSparkline } from "./sparkline.js";
 
 const PLEX_HEALTH_HISTORY_MAX = 60; // ~15 min at 15s polling
 const plexProgressHistory = [];
@@ -28,21 +29,6 @@ const plexBusyDbHistory = [];
 const PLEX_STALL_CONFIRM_POLLS = 3; // ~45s at 15s polling
 let lastScanProgress = null;
 let stalledPollStreak = 0;
-
-function renderSparkline(svgEl, samples, { min = 0, max = 100 } = {}) {
-  if (!samples.length) {
-    svgEl.innerHTML = "";
-    return;
-  }
-  const w = 200, h = 40;
-  const range = Math.max(max - min, 1);
-  const points = samples.map((v, i) => {
-    const x = samples.length === 1 ? w : (i / (samples.length - 1)) * w;
-    const y = h - ((Math.min(Math.max(v, min), max) - min) / range) * h;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-  svgEl.innerHTML = `<polyline points="${points}" fill="none" stroke="var(--accent)" stroke-width="1.5" />`;
-}
 
 function plexHealthStateBadgeClass(state) {
   if (state === "hung_confirmed") return "state-error";

@@ -13,6 +13,7 @@ import { logLine } from "./activity-log.js";
 import { fetchAndRender } from "./result-render.js";
 import { armButton } from "./buttons.js";
 import { refreshStatus } from "./status.js";
+import { renderSparkline, pushHistory } from "./sparkline.js";
 
 const HOST_VITALS = [
   { id: "mount-health", label: "Mount health", desc: "Every known FUSE mountpoint under /mnt, checked for a clean listing.", path: "/api/mount-health" },
@@ -186,22 +187,6 @@ const RESOURCE_HISTORY_LEN = 24;
 const cpuHistory = [];
 const memHistory = [];
 
-function sparklinePath(values, height = 34) {
-  if (values.length < 2) return { line: "", fill: "" };
-  const max = Math.max(100, ...values);
-  const stepX = 100 / (values.length - 1);
-  const points = values.map((v, i) => [i * stepX, height - (v / max) * height]);
-  const line = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const fill = `${line} L100,${height} L0,${height} Z`;
-  return { line, fill };
-}
-
-function renderSparkline(svgEl, values) {
-  const { line, fill } = sparklinePath(values);
-  svgEl.querySelector(".sparkline-fill").setAttribute("d", fill);
-  svgEl.querySelector(".sparkline-line").setAttribute("d", line);
-}
-
 export function buildHostResources() {
   const wrap = document.getElementById("host-resources");
   if (!wrap) return;
@@ -209,11 +194,11 @@ export function buildHostResources() {
     <div class="sparkline-row">
       <div class="sparkline-block">
         <span class="sparkline-label">CPU <b id="host-cpu-val">—</b></span>
-        <svg class="sparkline" viewBox="0 0 100 34" preserveAspectRatio="none"><path class="sparkline-fill"></path><path class="sparkline-line"></path></svg>
+        <svg class="sparkline" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
       </div>
       <div class="sparkline-block sparkline-ram">
         <span class="sparkline-label">RAM <b id="host-ram-val">—</b></span>
-        <svg class="sparkline" viewBox="0 0 100 34" preserveAspectRatio="none"><path class="sparkline-fill"></path><path class="sparkline-line"></path></svg>
+        <svg class="sparkline" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
       </div>
     </div>
     <p class="hint" id="host-resources-hint"></p>
@@ -231,10 +216,8 @@ export async function refreshHostResources() {
     }
     if (!res.ok) throw new Error(`Request failed (${res.status})`);
     const data = await res.json();
-    cpuHistory.push(data.cpu_percent);
-    memHistory.push(data.mem_percent);
-    if (cpuHistory.length > RESOURCE_HISTORY_LEN) cpuHistory.shift();
-    if (memHistory.length > RESOURCE_HISTORY_LEN) memHistory.shift();
+    pushHistory(cpuHistory, data.cpu_percent, RESOURCE_HISTORY_LEN);
+    pushHistory(memHistory, data.mem_percent, RESOURCE_HISTORY_LEN);
     document.getElementById("host-cpu-val").textContent = `${data.cpu_percent}%`;
     document.getElementById("host-ram-val").textContent = `${data.mem_percent}%`;
     document.getElementById("host-resources-hint").textContent = `${data.mem_used} / ${data.mem_total} RAM`;
