@@ -35,6 +35,12 @@
   --bad: #b3403b;
   --bad-tint: rgba(179, 64, 59, 0.10);
   --unknown: #8b84a3;
+  --rail-plex-health: #b3403b;
+  --rail-overview: #6a4fd0;
+  --rail-fleet: #1f8f6e;
+  --rail-host: #1c7ea9;
+  --rail-catalog: #a9701c;
+  --rail-reference: #837e99;
   --radius: 14px;
   --radius-sm: 9px;
   --blur: 18px;
@@ -70,6 +76,12 @@
     --bad: #ef5b6a;
     --bad-tint: rgba(239, 91, 106, 0.14);
     --unknown: #837c9c;
+    --rail-plex-health: #ef5b6a;
+    --rail-overview: #a996ff;
+    --rail-fleet: #4fd1ac;
+    --rail-host: #4fb8e8;
+    --rail-catalog: #e2a23c;
+    --rail-reference: #837c9c;
   }
 }
 :root[data-theme="dark"] {
@@ -84,6 +96,7 @@
   --warn: #e2a23c; --warn-tint: rgba(226, 162, 60, 0.14);
   --bad: #ef5b6a; --bad-tint: rgba(239, 91, 106, 0.14);
   --unknown: #837c9c;
+  --rail-plex-health: #ef5b6a; --rail-overview: #a996ff; --rail-fleet: #4fd1ac; --rail-host: #4fb8e8; --rail-catalog: #e2a23c; --rail-reference: #837c9c;
 }
 :root[data-theme="light"] {
   --bg: #f3f1f6; --surface: #ffffff; --surface-2: #ece8f5;
@@ -97,6 +110,7 @@
   --warn: #a9701c; --warn-tint: rgba(169, 112, 28, 0.10);
   --bad: #b3403b; --bad-tint: rgba(179, 64, 59, 0.10);
   --unknown: #8b84a3;
+  --rail-plex-health: #b3403b; --rail-overview: #6a4fd0; --rail-fleet: #1f8f6e; --rail-host: #1c7ea9; --rail-catalog: #a9701c; --rail-reference: #837e99;
 }
 
 * { box-sizing: border-box; }
@@ -135,6 +149,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   -webkit-backdrop-filter: blur(var(--blur));
   box-shadow: 0 20px 44px -28px rgba(20, 10, 40, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
+
+/* ---------- Rail accent hues ---------- */
+.rail[data-rail-accent] { border-top: 3px solid var(--rail-accent, var(--accent)); }
+.rail[data-rail-accent="plex-health"] { --rail-accent: var(--rail-plex-health); }
+.rail[data-rail-accent="overview"] { --rail-accent: var(--rail-overview); }
+.rail[data-rail-accent="fleet"] { --rail-accent: var(--rail-fleet); }
+.rail[data-rail-accent="host"] { --rail-accent: var(--rail-host); }
+.rail[data-rail-accent="catalog"] { --rail-accent: var(--rail-catalog); }
+.rail[data-rail-accent="reference"] { --rail-accent: var(--rail-reference); }
+.rail[data-rail-accent] h2 { color: var(--rail-accent); }
 
 /* ---------- Topbar ---------- */
 #topbar {
