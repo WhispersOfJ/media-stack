@@ -221,8 +221,8 @@ export async function refreshHostResources() {
     document.getElementById("host-cpu-val").textContent = `${data.cpu_percent}%`;
     document.getElementById("host-ram-val").textContent = `${data.mem_percent}%`;
     document.getElementById("host-resources-hint").textContent = `${data.mem_used} / ${data.mem_total} RAM`;
-    renderSparkline(wrap.querySelector(".sparkline-block:not(.sparkline-ram) svg"), cpuHistory);
-    renderSparkline(wrap.querySelector(".sparkline-ram svg"), memHistory);
+    renderSparkline(wrap.querySelector(".sparkline-block:not(.sparkline-ram) svg"), cpuHistory); // CPU: defaults (violet, no fill)
+    renderSparkline(wrap.querySelector(".sparkline-ram svg"), memHistory, { stroke: "var(--good)", fill: true });
   } catch (e) {
     logLine("err", `Host resources — ${e.message}`);
   }
