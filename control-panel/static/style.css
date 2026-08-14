@@ -230,15 +230,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .rail:last-child { margin-bottom: 0; }
 .rail h2 {
   margin: 0 0 18px; padding-bottom: 0; border-bottom: none;
-  font-family: var(--font-mono); font-size: 0.84rem; font-weight: 700;
-  letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink);
+  font-family: var(--font-mono); font-size: 1.65rem; font-weight: 800;
+  letter-spacing: -0.01em; text-transform: none; color: var(--ink);
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
 }
 .rail-hint { font-size: 0.74rem; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--ink-faint); font-family: var(--font-ui); }
 .rail-sub {
   margin: 26px 0 12px; padding-top: 0; border-top: none;
-  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.07em; color: var(--accent);
+  font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft);
 }
 
 /* ---------- Boolean switch — a normal rounded glass toggle, not a
