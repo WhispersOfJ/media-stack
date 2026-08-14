@@ -89,6 +89,13 @@ def env_get(key):
 
 DISCORD_WEBHOOK_URL = env_get("DISCORD_WEBHOOK_URL")
 HOST_LABEL = env_get("HOST_IP") or "Stack"
+# Every control-panel route this script touches sits behind
+# current_user_or_service (core/security.py), which accepts a session cookie
+# or this key. A daemon has no session, so without the header every poll
+# 401s - which the retry logic below reads as "scan-health is unreachable",
+# so the watchdog alerts about the control panel instead of watching Plex.
+# Mirrors what fish-functions/__stack_api.fish sends on every call.
+SERVICE_API_KEY = env_get("CONTROL_PANEL_SERVICE_API_KEY")
 DISCORD_RED = 0xED4245
 DISCORD_ORANGE = 0xFEE75C
 DISCORD_GREEN = 0x57F287
@@ -120,6 +127,13 @@ def notify_discord(message, level="info"):
         print(f"notify_discord failed: {e}", file=sys.stderr)
 
 
+def api_headers():
+    headers = {"User-Agent": "media-stack-plex-health-monitor/1.0"}
+    if SERVICE_API_KEY:
+        headers["X-Api-Key"] = SERVICE_API_KEY
+    return headers
+
+
 def api_get(path):
     # scan-health chains several _bounded_exec calls (see app.py) that can
     # each take up to their own individual timeout when Plex's container is
@@ -129,7 +143,7 @@ def api_get(path):
     # failure.
     req = urllib.request.Request(
         f"{CONTROL_PANEL_URL}{path}",
-        headers={"User-Agent": "media-stack-plex-health-monitor/1.0"},
+        headers=api_headers(),
         method="GET",
     )
     with urllib.request.urlopen(req, timeout=30) as r:
@@ -139,7 +153,7 @@ def api_get(path):
 def api_post(path):
     req = urllib.request.Request(
         f"{CONTROL_PANEL_URL}{path}", data=b"",
-        headers={"User-Agent": "media-stack-plex-health-monitor/1.0"},
+        headers=api_headers(),
         method="POST",
     )
     try:

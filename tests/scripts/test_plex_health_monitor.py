@@ -195,3 +195,72 @@ def test_api_post_network_failure(plex_health_monitor, monkeypatch):
     ok, message = plex_health_monitor.api_post("/api/container/plex/restart")
     assert ok is False
     assert "unreachable" in message
+
+
+# --- Service-key auth (regression, 2026-08-14) -------------------------------
+# Every control-panel route this script calls sits behind
+# current_user_or_service. The script sent only a User-Agent, so every poll
+# 401'd and the watchdog's own retry logic reported the control panel as
+# unreachable instead of watching Plex. These pin the header onto both verbs.
+
+def test_api_headers_include_service_key(plex_health_monitor, monkeypatch):
+    monkeypatch.setattr(plex_health_monitor, "SERVICE_API_KEY", "secret-key")
+    assert plex_health_monitor.api_headers()["X-Api-Key"] == "secret-key"
+
+
+def test_api_headers_omit_key_when_unset(plex_health_monitor, monkeypatch):
+    monkeypatch.setattr(plex_health_monitor, "SERVICE_API_KEY", None)
+    assert "X-Api-Key" not in plex_health_monitor.api_headers()
+
+
+def test_api_get_sends_service_key(plex_health_monitor, monkeypatch):
+    monkeypatch.setattr(plex_health_monitor, "SERVICE_API_KEY", "secret-key")
+    seen = {}
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def read(self):
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def _urlopen(req, timeout=None):
+        seen["key"] = req.get_header("X-api-key")
+        return _Resp(json.dumps({"mount_ok": True}).encode())
+
+    monkeypatch.setattr(plex_health_monitor.urllib.request, "urlopen", _urlopen)
+    plex_health_monitor.api_get("/api/plex/scan-health")
+    assert seen["key"] == "secret-key"
+
+
+def test_api_post_sends_service_key(plex_health_monitor, monkeypatch):
+    monkeypatch.setattr(plex_health_monitor, "SERVICE_API_KEY", "secret-key")
+    seen = {}
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def read(self):
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def _urlopen(req, timeout=None):
+        seen["key"] = req.get_header("X-api-key")
+        return _Resp(json.dumps({"message": "restarted"}).encode())
+
+    monkeypatch.setattr(plex_health_monitor.urllib.request, "urlopen", _urlopen)
+    ok, _ = plex_health_monitor.api_post("/api/container/plex/restart")
+    assert ok is True
+    assert seen["key"] == "secret-key"
