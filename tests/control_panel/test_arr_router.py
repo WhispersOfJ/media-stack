@@ -389,3 +389,93 @@ def test_manual_import_all_no_files_reports_zero(cp_main_app, monkeypatch):
     resp = client.post("/api/arr/radarr/manual-import-all", headers=headers)
     assert resp.status_code == 200
     assert "No importable files" in resp.json()["message"]
+
+
+# ---------------------------------------------------------------------
+# All four Arr instances, not just the general pair (2026-08-14).
+#
+# radarr-anime and sonarr-anime have been running since 2026-08-06/08 and
+# are first-class entries in core.arr_client.ARR_APPS, but six routes here
+# still guarded on a hardcoded ("radarr", "sonarr") and rejected them with
+# claims that were never true of the anime instances - "Only radarr and
+# sonarr have quality cutoffs" when radarr-anime has an Anime profile with
+# a cutoff of its own.
+# ---------------------------------------------------------------------
+
+ALL_ARR_APPS = ["radarr", "sonarr", "radarr_anime", "sonarr_anime"]
+
+
+@pytest.mark.parametrize("app_name", ALL_ARR_APPS)
+@pytest.mark.parametrize("path", [
+    "/cutoff-unmet",
+    "/recently-added",
+    "/import-lists",
+    "/import-list/implementations",
+    "/customformat-snapshot",
+])
+def test_per_app_routes_accept_every_arr_instance(cp_main_app, monkeypatch, app_name, path):
+    def fake_get(url, params=None, **kwargs):
+        # customformat-snapshot walks customformat then qualityprofile and
+        # indexes into both, so a bare {} would fail for reasons unrelated
+        # to the guard under test.
+        if "/customformat" in url:
+            return _json_response([{"id": 1, "name": "x265 (HD)"}])
+        if "/qualityprofile" in url:
+            return _json_response([{"name": "Anything", "formatItems": [{"format": 1, "score": -10000}]}])
+        if "/wanted" in url:
+            return _json_response({"records": [], "totalRecords": 0})
+        return _json_response([])
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = TestClient(cp_main_app.app)
+    resp = client.get(f"/api/arr/{app_name}{path}", headers=_service_key_header(cp_main_app))
+    assert resp.status_code == 200, f"{app_name}{path} -> {resp.status_code} {resp.text}"
+
+
+@pytest.mark.parametrize("app_name,expected", [
+    ("radarr", "/api/v3/movie"),
+    ("radarr_anime", "/api/v3/movie"),
+    ("sonarr", "/api/v3/series"),
+    ("sonarr_anime", "/api/v3/series"),
+])
+def test_recently_added_picks_endpoint_by_app_shape(cp_main_app, monkeypatch, app_name, expected):
+    """The landmine documented at core/arr_client.py:62 - radarr_anime is a
+    movie-shaped app, so an `app_name == "radarr"` branch silently sends it
+    to /series and it never resolves. Widening the guard without fixing the
+    branch swaps a 400 for wrong data, which is worse."""
+    seen = {}
+
+    def fake_get(url, params=None, **kwargs):
+        seen["url"] = url
+        return _json_response([])
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = TestClient(cp_main_app.app)
+    resp = client.get(f"/api/arr/{app_name}/recently-added", headers=_service_key_header(cp_main_app))
+    assert resp.status_code == 200
+    assert seen["url"].endswith(expected), f"{app_name} hit {seen['url']}, expected ...{expected}"
+
+
+@pytest.mark.parametrize("app_name", ALL_ARR_APPS)
+def test_import_list_add_accepts_every_arr_instance(cp_main_app, monkeypatch, app_name):
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _json_response([]))
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: _json_response({}))
+
+    client = TestClient(cp_main_app.app)
+    resp = client.post(
+        f"/api/arr/{app_name}/import-list/add",
+        headers=_service_key_header(cp_main_app),
+        json={"implementation": "TraktList", "name": "test", "fields": {}},
+    )
+    # Not asserting success - the payload is deliberately thin. Asserting
+    # only that it is never rejected for *being* an anime instance.
+    assert "Only radarr and sonarr" not in resp.text
+
+
+@pytest.mark.parametrize("container", ["radarr-anime", "sonarr-anime"])
+def test_logs_route_covers_anime_containers(cp_main_app, container):
+    """cp_main_app sets the API-key env vars core.arr_client reads at import."""
+    from services.arr.router import ARR_LOG_CONTAINERS
+    assert container in ARR_LOG_CONTAINERS

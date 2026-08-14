@@ -5,9 +5,14 @@ import { logLine } from "./activity-log.js";
 import { fetchAndRender } from "./result-render.js";
 import { armButton } from "./buttons.js";
 
+/* id is the core/arr_client.py ARR_APPS key (underscore), which is what
+   every /api/arr/{app_name}/... route matches on - NOT the Docker
+   container name (hyphen). port is the published host port. */
 const ARR_APPS = [
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
+  { id: "radarr_anime", label: "Radarr (Anime)", port: 7879 },
+  { id: "sonarr_anime", label: "Sonarr (Anime)", port: 8990 },
 ];
 const ARR_FLEET_ACTIONS = [
   { id: "queue-status", label: "Queue status", path: "/api/queue-status" },

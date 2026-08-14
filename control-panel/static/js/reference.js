@@ -11,6 +11,8 @@ const QUICK_LINKS = [
   { id: "prowlarr", label: "Prowlarr", port: 9696 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
+  { id: "radarr-anime", label: "Radarr (Anime)", port: 7879 },
+  { id: "sonarr-anime", label: "Sonarr (Anime)", port: 8990 },
   { id: "nzbdav", label: "NzbDAV", port: 3000 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "bazarr", label: "Bazarr", port: 6767 },

@@ -11,6 +11,7 @@ import { renderStatusDots } from "./status.js";
 
 const FLEET_GROUPS = {
   prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
+  "radarr-anime": "Arr apps", "sonarr-anime": "Arr apps",
   nzbdav: "Usenet", nzbdav_rclone: "Usenet", seerr: "Requests", plex: "Media server",
   tautulli: "Media server", wrapperr: "Media server", kometa: "Media server",
   bazarr: "Subtitles", lingarr: "Subtitles",

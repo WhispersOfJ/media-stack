@@ -63,7 +63,9 @@ register_host_label(ARR_APPS["radarr"]["url"], "Radarr")
 register_host_label(ARR_APPS["sonarr"]["url"], "Sonarr")
 install_hit_counter()
 
-ARR_LOG_CONTAINERS = {"radarr", "sonarr", "prowlarr"}
+# Container names, not ARR_APPS keys - Docker knows radarr-anime (hyphen),
+# ARR_APPS keys it radarr_anime (underscore). See core/docker_client.py:18.
+ARR_LOG_CONTAINERS = {"radarr", "sonarr", "radarr-anime", "sonarr-anime", "prowlarr"}
 
 
 @router.post("/api/arr/{app_name}/rss-sync")
@@ -701,10 +703,10 @@ def arr_command_queue_summary(_=Depends(current_user_or_service)):
 
 @router.get("/api/arr/{app_name}/recently-added")
 def arr_recently_added(app_name: str, limit: int = 10, _=Depends(current_user_or_service)):
-    if app_name not in ("radarr", "sonarr"):
-        fail("Only radarr and sonarr have an 'added' concept here.", status_code=400)
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_APPS))}", status_code=400)
     cfg = ARR_APPS[app_name]
-    path = "/api/v3/movie" if app_name == "radarr" else "/api/v3/series"
+    path = "/api/v3/movie" if app_name in RADARR_APPS else "/api/v3/series"
     try:
         r = httpx.get(f"{cfg['url']}{path}", headers={"X-Api-Key": cfg["key"]}, timeout=20)
         r.raise_for_status()
@@ -741,8 +743,8 @@ def arr_queue_errors(_=Depends(current_user_or_service)):
 
 @router.get("/api/arr/{app_name}/cutoff-unmet")
 def arr_cutoff_unmet(app_name: str, limit: int = 20, _=Depends(current_user_or_service)):
-    if app_name not in ("radarr", "sonarr"):
-        fail("Only radarr and sonarr have quality cutoffs.", status_code=400)
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_APPS))}", status_code=400)
     cfg = ARR_APPS[app_name]
     try:
         r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/wanted/cutoff", params={"pageSize": limit, "sortKey": "title"},
@@ -758,8 +760,8 @@ def arr_cutoff_unmet(app_name: str, limit: int = 20, _=Depends(current_user_or_s
 
 @router.get("/api/arr/{app_name}/import-lists")
 def arr_import_lists(app_name: str, _=Depends(current_user_or_service)):
-    if app_name not in ("radarr", "sonarr"):
-        fail("Only radarr and sonarr have import lists.", status_code=400)
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_APPS))}", status_code=400)
     cfg = ARR_APPS[app_name]
     try:
         r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/importlist", headers={"X-Api-Key": cfg["key"]}, timeout=20)
@@ -773,8 +775,8 @@ def arr_import_lists(app_name: str, _=Depends(current_user_or_service)):
 
 @router.get("/api/arr/{app_name}/import-list/implementations")
 def arr_import_list_implementations(app_name: str, _=Depends(current_user_or_service)):
-    if app_name not in ("radarr", "sonarr"):
-        fail("Only radarr and sonarr have import lists.", status_code=400)
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_APPS))}", status_code=400)
     cfg = ARR_APPS[app_name]
     try:
         r = httpx.get(f"{cfg['url']}/api/{cfg['api']}/importlist/schema", headers={"X-Api-Key": cfg["key"]}, timeout=20)
@@ -802,8 +804,8 @@ class ImportListAddRequest(BaseModel):
 # stack-tmdb-import-keyword.fish, and stack-trakt-import-list.fish all call
 # this unattended via __stack_api's service key (2026-08-06).
 def arr_import_list_add(app_name: str, payload: ImportListAddRequest, _=Depends(current_user_or_service)):
-    if app_name not in ("radarr", "sonarr"):
-        fail("Only radarr and sonarr have import lists.", status_code=400)
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_APPS))}", status_code=400)
     cfg = ARR_APPS[app_name]
     try:
         schemas = httpx.get(f"{cfg['url']}/api/{cfg['api']}/importlist/schema", headers={"X-Api-Key": cfg["key"]}, timeout=20).json()
@@ -874,8 +876,8 @@ def arr_import_list_add(app_name: str, payload: ImportListAddRequest, _=Depends(
 
 @router.get("/api/arr/{app_name}/customformat-snapshot")
 def arr_customformat_snapshot(app_name: str, _=Depends(current_user_or_service)):
-    if app_name not in ("radarr", "sonarr"):
-        fail("Only radarr and sonarr have custom formats.", status_code=400)
+    if app_name not in ARR_APPS:
+        fail(f"Unknown app '{app_name}' - use one of: {', '.join(sorted(ARR_APPS))}", status_code=400)
     cfg = ARR_APPS[app_name]
     try:
         cf = httpx.get(f"{cfg['url']}/api/{cfg['api']}/customformat", headers={"X-Api-Key": cfg["key"]}, timeout=20)
