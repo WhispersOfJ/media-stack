@@ -151,6 +151,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   box-shadow: 0 20px 44px -28px rgba(20, 10, 40, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* Cards nested inside an accented rail pick up a colored ambient glow,
+   layered on top of the base shadow above (not replacing it). */
+.rail[data-rail-accent] .glass-card,
+.rail[data-rail-accent] .catalog-card {
+  box-shadow: 0 20px 44px -28px rgba(20, 10, 40, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -12px var(--rail-accent, var(--accent));
+}
+
 /* ---------- Rail accent hues ---------- */
 .rail[data-rail-accent] { border-top: 3px solid var(--rail-accent, var(--accent)); }
 .rail[data-rail-accent="plex-health"] { --rail-accent: var(--rail-plex-health); }
