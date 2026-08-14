@@ -37,9 +37,9 @@
   --unknown: #8b84a3;
   --rail-plex-health: #c2571f;
   --rail-overview: #6a4fd0;
-  --rail-fleet: #1f8f6e;
+  --rail-fleet: #1a8f95;
   --rail-host: #1c7ea9;
-  --rail-catalog: #a9701c;
+  --rail-catalog: #9c6b30;
   --rail-reference: #837e99;
   --radius: 14px;
   --radius-sm: 9px;
@@ -78,9 +78,9 @@
     --unknown: #837c9c;
     --rail-plex-health: #f0964a;
     --rail-overview: #a996ff;
-    --rail-fleet: #4fd1ac;
+    --rail-fleet: #4fd1d8;
     --rail-host: #4fb8e8;
-    --rail-catalog: #e2a23c;
+    --rail-catalog: #e0a854;
     --rail-reference: #837c9c;
   }
 }
@@ -96,7 +96,7 @@
   --warn: #e2a23c; --warn-tint: rgba(226, 162, 60, 0.14);
   --bad: #ef5b6a; --bad-tint: rgba(239, 91, 106, 0.14);
   --unknown: #837c9c;
-  --rail-plex-health: #f0964a; --rail-overview: #a996ff; --rail-fleet: #4fd1ac; --rail-host: #4fb8e8; --rail-catalog: #e2a23c; --rail-reference: #837c9c;
+  --rail-plex-health: #f0964a; --rail-overview: #a996ff; --rail-fleet: #4fd1d8; --rail-host: #4fb8e8; --rail-catalog: #e0a854; --rail-reference: #837c9c;
 }
 :root[data-theme="light"] {
   --bg: #f3f1f6; --surface: #ffffff; --surface-2: #ece8f5;
@@ -110,7 +110,7 @@
   --warn: #a9701c; --warn-tint: rgba(169, 112, 28, 0.10);
   --bad: #b3403b; --bad-tint: rgba(179, 64, 59, 0.10);
   --unknown: #8b84a3;
-  --rail-plex-health: #c2571f; --rail-overview: #6a4fd0; --rail-fleet: #1f8f6e; --rail-host: #1c7ea9; --rail-catalog: #a9701c; --rail-reference: #837e99;
+  --rail-plex-health: #c2571f; --rail-overview: #6a4fd0; --rail-fleet: #1a8f95; --rail-host: #1c7ea9; --rail-catalog: #9c6b30; --rail-reference: #837e99;
 }
 
 * { box-sizing: border-box; }
@@ -320,11 +320,9 @@ input[type="range"].fader-input::-moz-range-thumb {
 .sparkline-block { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 4px; }
 .sparkline-label { font-family: var(--font-mono); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); display: flex; justify-content: space-between; }
 .sparkline-label b { font-family: var(--font-mono); font-size: 0.95rem; color: var(--ink); text-transform: none; letter-spacing: 0; }
+/* stroke/fill set inline by sparkline.js's renderSparkline(); RAM sparkline's green
+   comes from host.js calling it with { stroke: "var(--good)", fill: true }. */
 .sparkline { width: 100%; height: 40px; background: none; border-bottom: none; display: block; }
-.sparkline-fill { fill: var(--accent); opacity: 0.14; }
-.sparkline-line { fill: none; stroke: var(--accent); stroke-width: 1.6; }
-.sparkline-ram .sparkline-fill { fill: var(--good); }
-.sparkline-ram .sparkline-line { stroke: var(--good); }
 
 /* ---------- Rule list: a stack of glass rows instead of a flow-line. ---------- */
 .rule-list { display: flex; flex-direction: column; gap: 6px; border-top: none; }
