@@ -236,10 +236,13 @@ there is no automated missing-content/quality-upgrade hunting of any kind in thi
 # Validate compose config (what CI runs) — needs a .env first, dummy values are fine
 cp .env.example .env
 docker compose config --quiet
-docker compose --profile extras config --quiet
+docker compose --profile scheduled config --quiet
 
-# Lint (what CI runs, no repo-local ruff config — defaults)
-ruff check control-panel/app.py scripts/*.py
+# Lint (what CI runs, no repo-local ruff config — defaults). Scope widened
+# 2026-08-14: it was `control-panel/app.py scripts/*.py`, which left the live
+# backend (main.py, core/, services/, models/) entirely unlinted after app.py
+# was retired from the image CMD in the 2026-08-05 rewrite.
+ruff check control-panel/ scripts/ tests/
 shellcheck scripts/*.sh  # CI excludes config/, media/, usenet/
 
 # Rebuild and pick up control-panel changes — app.py AND static/ (CSS/JS/HTML) are both
@@ -252,21 +255,30 @@ docker compose up -d control-panel
 # pick up a .env change here, it needs force-recreate
 docker compose up -d --force-recreate control-panel
 
-# Bring up the stack: 7 core services, or everything (+13 more behind the `extras` profile)
+# Bring up the stack. There is no `extras` profile any more (it was removed with the
+# core/extras split); `up -d` starts all 26 daemon services. plexanisync is the one
+# profiled service — a run-to-completion job, normally fired by systemd/plexanisync.timer
+# rather than by hand.
 docker compose up -d
-docker compose --profile extras up -d
+docker compose --profile scheduled up -d plexanisync
 
-# MANDATORY before recreating/restarting/stopping bearmount for ANY reason (config change,
-# mem_limit tweak, unrelated debugging - the reason does not matter, see CLAUDE.md's
-# 2026-07-23 repeat-incident entry, which carried over unchanged to bearmount's rebrand).
-# /tmp/.bearmount-queue is NOT a persistent volume, so any recreate wipes queued NZBs and
+# MANDATORY before recreating/restarting/stopping the download client for ANY reason
+# (config change, mem_limit tweak, unrelated debugging - the reason does not matter, see
+# CLAUDE.md's 2026-07-23 repeat-incident entry, which carried across both rebrands).
+# The queue directory is NOT a persistent volume, so any recreate wipes queued NZBs and
 # each resulting failure silently unmonitors + permanently blocklists the affected
 # Radarr/Sonarr item. Confirm pending/processing is 0 first, or drain the queue before
 # touching the container.
-sqlite3 config/bearmount/bearmount.db "SELECT status, COUNT(*) FROM import_queue GROUP BY status;"
+#
+# The old `sqlite3 config/bearmount/bearmount.db "SELECT status, COUNT(*) FROM
+# import_queue ..."` form documented here is dead — bearmount was replaced by
+# nzbdav/nzbdav on 2026-07-28 and config/bearmount/ no longer exists. Check the queue
+# through the API instead, which works regardless of the current schema:
+stack-nzbdav-queue
 
-# Unit tests (added 2026-07-22) — control-panel/app.py's pure logic (helpers, CSRF
-# middleware, bucketing/ETA math) plus scripts/*.py's pure logic, all with docker.sock,
+# Unit tests (added 2026-07-22) — the control-panel backend's pure logic (helpers, CSRF
+# middleware, bucketing/ETA math, and since the 2026-08-05 rewrite the services/ routers
+# via FastAPI's TestClient) plus scripts/*.py's pure logic, all with docker.sock,
 # httpx, and urllib network calls mocked out; no real stack/daemon needed. Now part of
 # CI (validate.yml), alongside the compose/ruff/shellcheck checks below.
 # This host's Python is externally-managed (PEP 668) - pip install below refuses with
