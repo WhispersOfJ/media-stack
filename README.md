@@ -1,6 +1,6 @@
 # The Stack
 
-Current version: **v<!-- x-release-please-version -->11.14.0<!-- x-release-please-version -->**
+Current version: **v<!-- x-release-please-version -->11.15.0<!-- x-release-please-version -->**
 
 A Docker Compose media-acquisition-and-serving stack. Indexes, requests, and acquires content
 via Usenet through **nzbdav/nzbdav** - streamed via a FUSE mount (a separate `nzbdav_rclone`
