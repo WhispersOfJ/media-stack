@@ -58,6 +58,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    depends_on:
+      nzbdav_rclone:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./config/radarr:/config
       # nzbdav_rclone's mount point (replaces BearMount's native FUSE mount,
@@ -89,6 +93,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    depends_on:
+      nzbdav_rclone:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./config/sonarr:/config
       # nzbdav_rclone's mount point - see radarr's matching mount comment above.
@@ -114,12 +122,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    depends_on:
+      nzbdav_rclone:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./config/radarr-anime:/config
       - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
       - ./media/anime-movies:/data/anime-movies
     ports:
       - "7879:7878"
+    # Inherited radarr's 2g/256m sizing verbatim - that number was justified
+    # there by a 15,000+ title library doing active scans/imports, which
+    # does not describe this much smaller anime-only instance. Not reduced
+    # yet for lack of an observed baseline; revisit with a real number from
+    # a resource audit rather than guessing a smaller limit blind.
     mem_limit: 2g
     mem_reservation: 256m
     cpus: 2
@@ -135,12 +152,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    depends_on:
+      nzbdav_rclone:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./config/sonarr-anime:/config
       - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
       - ./media/anime-shows:/data/anime-shows
     ports:
       - "8990:8989"
+    # Inherited sonarr's 2g/256m sizing verbatim - that number was justified
+    # there by tracking close to 300,000 episode records, which does not
+    # describe this much smaller anime-only instance. Not reduced yet for
+    # lack of an observed baseline; revisit with a real number from a
+    # resource audit rather than guessing a smaller limit blind.
     mem_limit: 2g
     mem_reservation: 256m
     cpus: 2
@@ -248,8 +274,12 @@ services:
       # STACK.md): these five were confirmed unset/default and enabled
       # deliberately, not guessed. NzbDAV's own daily backup closes the same
       # class of gap that bit this stack's .env before (STACK.md 2026-07-26);
-      # worker-count 3 lets Radarr and Sonarr imports drain concurrently
-      # instead of serializing behind one worker.
+      # worker-count (6, bumped from 3 - confirmed effective 2026-08-15) lets
+      # Radarr and Sonarr imports drain concurrently instead of serializing
+      # behind one worker. NOTE: 6 workers doubles concurrent-import pressure
+      # against the same 52-connection (2x26) provider pool that pipelining/
+      # preflight/watchdog budgets below were originally sized around at 3 -
+      # re-check that math if streaming quality regresses during heavy import.
       NZBDAV_CONFIG__BACKUP__SCHEDULE_ENABLED: "true"
       NZBDAV_CONFIG__BACKUP__SCHEDULE_TIME: "120" # 02:00 local (TZ)
       NZBDAV_CONFIG__BACKUP__RETENTION_COUNT: "7"
@@ -277,7 +307,7 @@ services:
       NZBDAV_CONFIG__USENET__SEGMENT_CACHE__MAX_GB: "20"
       # Queue-side NNTP pipelining (separate from WebDAV streaming pipelining,
       # which was already on by default) - batches first-segment BODY requests
-      # during import, should help now that QUEUE__WORKER_COUNT=3 lets several
+      # during import, should help now that QUEUE__WORKER_COUNT=6 lets several
       # imports compete for the same provider pool. Depth 8 is the documented
       # default; run Auto-tune per provider from Settings -> Usenet afterward.
       NZBDAV_CONFIG__USENET__PIPELINING__ENABLED: "true"
@@ -397,6 +427,16 @@ services:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
+    # Confirms the FUSE mount is actually live, not just that the container
+    # process is running - a crash-looped rclone (see the 2026-08-13 incident
+    # note below) stays "Up" between restart attempts while the mount itself
+    # is gone, which a plain process-alive check would miss entirely.
+    healthcheck:
+      test: ["CMD-SHELL", "mountpoint -q /mnt/remote/nzbdav || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       nzbdav:
         condition: service_healthy
@@ -525,6 +565,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    depends_on:
+      nzbdav_rclone:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./config/plex:/config
       - ./config/plex-transcode:/transcode
@@ -614,6 +658,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    depends_on:
+      nzbdav_rclone:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./config/bazarr:/config
       # nzbdav_rclone's mount point - see radarr's matching mount comment
@@ -813,6 +861,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    depends_on:
+      nzbdav_rclone:
+        condition: service_healthy
+        restart: true
     environment:
       TZ: ${TZ}
       # Was missing every API key below (not just blank - entirely absent), so Unpackerr ran
@@ -832,7 +884,13 @@ services:
       # ones are.
     volumes:
       - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
-      - ./usenet:/usenet:rslave
+      # :rslave here was a no-op copy-paste from the mount above - ./usenet is
+      # a plain local bind (empty except a tmp/ subdir, not referenced by any
+      # UN_* extraction path in this block), not a shared-propagation source,
+      # so rslave did nothing. Left as a plain bind; not removed outright
+      # since it's unclear whether something outside this file still expects
+      # the path to exist.
+      - ./usenet:/usenet
     # No prior ceiling - extraction (unzip/unrar) can spike CPU briefly on
     # large archives, cheap insurance same as the other companion apps above.
     mem_limit: 512m
@@ -890,6 +948,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    depends_on:
+      nzbdav_rclone:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./config/cleanuparr:/config
       # Cleanuparr's QueueCleaner/MalwareBlocker jobs need filesystem access
@@ -1108,13 +1170,11 @@ services:
   # speedtest saturates the link, and 4x/hour is unnecessary noise for a
   # monitoring signal, not a benchmark tool.
   speedtest-tracker:
-    restart: unless-stopped
+    <<: *common
     image: lscr.io/linuxserver/speedtest-tracker:latest
     container_name: speedtest-tracker
     environment:
-      PUID: "${PUID}"
-      PGID: "${PGID}"
-      TZ: "${TZ}"
+      <<: *common-env
       APP_KEY: "${SPEEDTEST_TRACKER_APP_KEY}"
       APP_URL: "http://${HOST_IP}:8701"
       DB_CONNECTION: sqlite
@@ -1171,13 +1231,11 @@ services:
   # wizard has run (api/v2/routes/ping.php), whereas / serves the wizard
   # pre-setup and 302s to login post-setup.
   organizr:
-    restart: unless-stopped
+    <<: *common
     image: ghcr.io/organizr/organizr:latest
     container_name: organizr
     environment:
-      PUID: "${PUID}"
-      PGID: "${PGID}"
-      TZ: "${TZ}"
+      <<: *common-env
       branch: "v2-master"
     networks: [stacknet]
     healthcheck:
@@ -1305,13 +1363,11 @@ services:
   # by the backend and needs no configuration to respond. wget, not curl:
   # the image is python:3.11-slim and installs wget (for gosu), never curl.
   gaps2:
-    restart: unless-stopped
+    <<: *common
     image: primetime43/gaps-2:latest
     container_name: gaps2
     environment:
-      PUID: "${PUID}"
-      PGID: "${PGID}"
-      TZ: "${TZ}"
+      <<: *common-env
       FLASK_ENV: production
       GAPS2_CONFIG_KEY: "${GAPS2_CONFIG_KEY}"
     networks: [stacknet]
