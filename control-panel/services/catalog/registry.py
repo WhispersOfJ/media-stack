@@ -20,6 +20,7 @@ write breaking `docker compose up` for the entire stack), which is why
 this shape won out over the treatment doc's original assumption.
 """
 from services.catalog.entries import (
+    browser_games,
     docker_host,
     household_access,
     indexer_completion,
@@ -42,8 +43,9 @@ CATALOG: list[dict] = [
     *docker_host.CATALOG,
     *security.CATALOG,
     *media.CATALOG,
+    *browser_games.CATALOG,
 ]
 
 CATALOG_BY_ID = {entry["id"]: entry for entry in CATALOG}
 
-assert len(CATALOG) >= 28, f"catalog registry has fewer entries than expected after Media: {len(CATALOG)}"
+assert len(CATALOG) >= 31, f"catalog registry has fewer entries than expected after Browser Games: {len(CATALOG)}"
