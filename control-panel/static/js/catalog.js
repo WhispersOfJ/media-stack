@@ -24,6 +24,29 @@ async function loadCatalog() {
   return res.json();
 }
 
+function formatDetails(item) {
+  const envLines = Object.keys(item.environment).length
+    ? Object.entries(item.environment)
+        .map(([k, v]) => `<div class="catalog-detail-row"><code>${escapeHtml(k)}</code>: ${escapeHtml(String(v))}</div>`)
+        .join("")
+    : `<div class="catalog-detail-row hint">No environment variables.</div>`;
+  const volLines = Object.keys(item.volumes).length
+    ? Object.entries(item.volumes)
+        .map(([name, v]) => `<div class="catalog-detail-row"><code>${escapeHtml(name)}</code> → <code>${escapeHtml(v.bind)}</code> (${escapeHtml(v.mode)})</div>`)
+        .join("")
+    : `<div class="catalog-detail-row hint">No volume mounts.</div>`;
+  return `
+    <div class="catalog-detail-group">
+      <span class="catalog-detail-label">Environment</span>
+      ${envLines}
+    </div>
+    <div class="catalog-detail-group">
+      <span class="catalog-detail-label">Volumes</span>
+      ${volLines}
+    </div>
+  `;
+}
+
 function renderCard(item) {
   const card = document.createElement("div");
   card.className = "glass-card catalog-card";
@@ -45,8 +68,19 @@ function renderCard(item) {
       <span class="footprint">${escapeHtml(item.footprint)}${item.ports.length ? ` · port ${item.ports.join(", ")}` : ""}</span>
       <div class="catalog-card-actions"></div>
     </div>
+    <button type="button" class="catalog-details-toggle" aria-expanded="false">Details ▾</button>
+    <div class="catalog-details-panel" hidden>${formatDetails(item)}</div>
     <div class="rule-status catalog-status" hidden>—</div>
   `;
+
+  const toggle = card.querySelector(".catalog-details-toggle");
+  const panel = card.querySelector(".catalog-details-panel");
+  toggle.addEventListener("click", () => {
+    const isOpen = !panel.hidden;
+    panel.hidden = isOpen;
+    toggle.setAttribute("aria-expanded", String(!isOpen));
+    toggle.textContent = isOpen ? "Details ▾" : "Details ▴";
+  });
 
   const actions = card.querySelector(".catalog-card-actions");
   const status = card.querySelector(".catalog-status");

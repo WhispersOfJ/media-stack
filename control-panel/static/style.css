@@ -792,6 +792,53 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
 .catalog-card-actions button { min-width: 92px; }
 .catalog-status { margin-top: 0; }
 
+.catalog-details-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  text-align: left;
+}
+
+.catalog-details-toggle:hover {
+  text-decoration: underline;
+}
+
+.catalog-details-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--glass-border);
+  margin-top: 0.25rem;
+}
+
+.catalog-detail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.catalog-detail-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+
+.catalog-detail-row {
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+
+.catalog-detail-row.hint {
+  opacity: 0.6;
+  font-style: italic;
+}
+
 #login-overlay {
   position: fixed; inset: 0; z-index: 200;
   display: flex; align-items: center; justify-content: center;
