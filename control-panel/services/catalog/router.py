@@ -1,4 +1,4 @@
-"""Curated software catalog: install/remove/list for the 20 vetted
+"""Curated software catalog: install/remove/list for the 43 vetted
 programs in registry.py. Phase 02 of the control-panel v3 design
 treatment - see registry.py's module docstring for why this goes
 through the Docker SDK directly instead of writing docker-compose.yml.
