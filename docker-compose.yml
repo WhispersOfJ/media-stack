@@ -268,7 +268,7 @@ services:
       # confirm a clean pass before flipping this to "true".
       NZBDAV_CONFIG__MAINTENANCE__REMOVE_ORPHANED_SCHEDULE_ENABLED: "false"
       NZBDAV_CONFIG__MAINTENANCE__REMOVE_ORPHANED_SCHEDULE_TIME: "180" # 03:00 local (TZ)
-      NZBDAV_CONFIG__QUEUE__WORKER_COUNT: "3"
+      NZBDAV_CONFIG__QUEUE__WORKER_COUNT: "6"
       # --- Streaming performance, added 2026-08-11 (all off/default before) ---
       # Segment cache: decoded article bytes cached to disk so a rewind/reseek
       # in Plex doesn't re-fetch from Usenet. 20GB against the 122GB free on
