@@ -59,7 +59,7 @@ def test_list_requires_auth(cp_main_app):
     assert resp.status_code == 401
 
 
-def test_list_accepts_service_key_and_has_20_entries(cp_main_app):
+def test_list_accepts_service_key_and_has_expanded_entry_count(cp_main_app):
     dc = _docker_client_module(cp_main_app)
     dc.docker_client.containers.get.side_effect = docker.errors.NotFound("no such container")
     client = TestClient(cp_main_app.app)
@@ -67,7 +67,7 @@ def test_list_accepts_service_key_and_has_20_entries(cp_main_app):
     resp = client.get("/api/catalog", headers=headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["items"]) >= 31  # 20 original + 8 Media + 3 Browser Games
+    assert len(body["items"]) >= 43
     assert all(i["status"] == "not_installed" for i in body["items"])
 
 
@@ -204,3 +204,15 @@ def test_remove_with_remove_volumes_deletes_named_volume(cp_main_app):
     resp = client.post("/api/catalog/uptime-kuma/remove", json={"confirm": True, "remove_volumes": True})
     assert resp.status_code == 200, resp.text
     fake_volume.remove.assert_called_once()
+
+
+def test_list_includes_environment_and_volumes(cp_main_app):
+    dc = _docker_client_module(cp_main_app)
+    dc.docker_client.containers.get.side_effect = docker.errors.NotFound("no such container")
+    client = TestClient(cp_main_app.app)
+    headers = _service_key_header(cp_main_app)
+    resp = client.get("/api/catalog", headers=headers)
+    items = {i["id"]: i for i in resp.json()["items"]}
+    speedtest = items["speedtest-tracker"]
+    assert speedtest["environment"] == {"OOKLA_EULA_GDPR": "true"}
+    assert speedtest["volumes"] == {"catalog_speedtest_data": {"bind": "/config", "mode": "rw"}}

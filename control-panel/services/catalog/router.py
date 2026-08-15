@@ -63,6 +63,7 @@ def catalog_list(_=Depends(current_user_or_service)):
             "pitch": entry["pitch"], "image": f"{entry['image']}:{entry['tag']}",
             "footprint": entry["footprint"], "doc_url": entry["doc_url"], "caveat": entry.get("caveat"),
             "ports": sorted(entry["ports"].values()), "status": status,
+            "environment": entry["environment"], "volumes": entry["volumes"],
         })
     return ok(f"{len(items)} catalog entries, {sum(1 for i in items if i['status'] != 'not_installed')} installed.",
               items=items)
