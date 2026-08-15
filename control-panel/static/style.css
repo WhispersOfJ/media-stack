@@ -808,12 +808,15 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
 }
 
 .catalog-details-panel {
-  display: flex;
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.5rem 0;
   border-top: 1px solid var(--glass-border);
   margin-top: 0.25rem;
+}
+
+.catalog-details-panel:not([hidden]) {
+  display: flex;
 }
 
 .catalog-detail-group {
