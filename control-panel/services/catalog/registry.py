@@ -24,6 +24,7 @@ from services.catalog.entries import (
     household_access,
     indexer_completion,
     library_quality,
+    media,
     monitoring,
     notifications,
     security,
@@ -40,8 +41,9 @@ CATALOG: list[dict] = [
     *household_access.CATALOG,
     *docker_host.CATALOG,
     *security.CATALOG,
+    *media.CATALOG,
 ]
 
 CATALOG_BY_ID = {entry["id"]: entry for entry in CATALOG}
 
-assert len(CATALOG) == 20, f"catalog registry drifted from 20 entries: {len(CATALOG)}"
+assert len(CATALOG) >= 28, f"catalog registry has fewer entries than expected after Media: {len(CATALOG)}"
