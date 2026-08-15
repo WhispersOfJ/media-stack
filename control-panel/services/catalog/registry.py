@@ -28,6 +28,7 @@ from services.catalog.entries import (
     media,
     monitoring,
     notifications,
+    retroarch,
     security,
 )
 
@@ -44,8 +45,9 @@ CATALOG: list[dict] = [
     *security.CATALOG,
     *media.CATALOG,
     *browser_games.CATALOG,
+    *retroarch.CATALOG,
 ]
 
 CATALOG_BY_ID = {entry["id"]: entry for entry in CATALOG}
 
-assert len(CATALOG) >= 31, f"catalog registry has fewer entries than expected after Browser Games: {len(CATALOG)}"
+assert len(CATALOG) >= 43, f"catalog registry has fewer entries than expected: {len(CATALOG)}"
