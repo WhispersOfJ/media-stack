@@ -1,149 +1,82 @@
-# CLAUDE.md
+### CLAUDE.md — Developer Guide
 
-## How to work (high-level mindset)
+### How to Work (High-Level Mindset)
 
-**This section is non-negotiable and must never be removed.**
+The marginal cost of completeness is near zero with AI. Do the whole thing. Do it right with tests and documentation. Never offer to table items for later or use workarounds when a permanent solve is within reach. The standard is complete, fully functional delivery. Search before building. Test before shipping. Ship the complete thing. When Bear asks for something, the answer is the finished product, not a plan. Understand the codebase completely; you must be able to walk through failure modes out loud to call a task done. 
 
-The marginal cost of completeness is near zero with AI. Do the whole thing. Do it right. Do it with tests. Do it with documentation. Do it so well that Bear is genuinely impressed — not politely satisfied, actually impressed. Never offer to "table this for later" when the permanent solve is within reach. Never leave a dangling thread when tying it off takes five more minutes. Never present a workaround when the real fix exists. The standard isn't "good enough" — it's "holy shit, that's done."
+### The Two Machine Spaces
 
-Search before building. Test before shipping. Ship the complete thing. When Bear asks for something, the answer is the finished product, not a plan to build it.
+* **Latent Space (LLM Work):** Judgment, pattern matching, creativity, open-ended analysis, prose, ambiguous inputs. High variability. Use only when reasoning is required.
+* **Deterministic Space (Code):** Precision, reproducibility, speed, zero cost per run, testable. Use when the same input must always yield the same output.
+* **The Rule:** If a task is deterministic (arithmetic, timezone/date math, file lookups, CSV/JSON parsing, regex, hash checks, structured API calls), write a script. Let the script constrain the LLM to eliminate failure paths. Split tasks that require both spaces into a script+test and a prompt+eval.
 
-Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. Boil the ocean. This is how we think about shipping.
+### The Context Window is the Lever
 
-You can outsource the typing. You cannot outsource the understanding. Before you call anything DONE you must be able to explain why the code is correct and exactly where it would break. Tests passing is not understanding. If you can't walk the failure modes out loud, you're not done, you're guessing.
+Treat the context window as a deliberate, curated input. Load the spec, contract, relevant files, and concrete examples. Exclude noise to prevent vague or bloated output. 
 
-## The two machine spaces — read this before doing anything
+### Non-Negotiable Rules
 
-Every piece of work you do belongs to one of two spaces. Picking the wrong one is the single most common way agents produce bad output.
+### Tests and Evals
 
-**Latent space = LLM work.** Judgment, pattern matching, creativity, open-ended analysis, prose generation, ambiguous inputs. Cost: model tokens. Variability: high. Inspectability: none. Use when the task genuinely requires reasoning.
+* Ship a test suite AND an eval suite in the same commit for every feature or bug fix.
+* Skillify failures or repeated manual successes into automated scripts/workflows immediately.
+* **Gate Tests:** Deterministic, local, free, <2s runtime. Run on every commit via pre-commit hooks.
+* **Periodic Evals:** Paid LLM calls, slower quality checks. Run before shipping and nightly.
 
-**Deterministic space = code.** Precision, reproducibility, speed, zero cost per run, testable. Cost: one-time write. Variability: zero. Inspectability: total. Use when the task is same-input-same-output.
+### Tie Every Change to a Measurable Outcome
 
-**The rule:** if the same question asked twice would produce the same correct answer by definition, it's deterministic work. Do NOT do it in latent space. Write the script. If you find yourself doing arithmetic, timezone conversion, date math, file lookups, CSV parsing, JSON transforms, regex matches, hash computations, or structured API calls inside a model reply, stop and write a script.
+* Name the target metric, workflow step, or user-visible behavior before building.
+* Wire in a trace (metric, log line, or eval score) so the change leaves clear evidence.
 
-**The meta-loop that makes this work:** the LLM writes the deterministic script, then the script constrains the LLM forever after. The model's intelligence creates the constraint that prevents the model from being stupid. A bug in latent space becomes a feature in deterministic space, and the old failure path becomes structurally unreachable.
+### LLM Access
 
-Every feature, every fix, every investigation starts with: is this latent or deterministic? If the answer is "both," split it. The deterministic piece becomes a script + tests. The latent piece becomes a prompt + eval.
+* Call hosted inference endpoints (like the Anthropic API) directly in application code. Do not route app-level calls through local Claude Code instances.
+* Isolate LLM interactions inside a self-contained service under services/llm/ matching defined contracts. Use the best available model by default.
 
-## The context window is the lever
+### Tech Choice
 
-The context window is your only control surface over the model. Treat it as a deliberate input, not a dumping ground. Load the spec, the contract, the relevant files, and concrete examples. Leave the noise out. A vague or bloated context produces vague or bloated output, every time. When a task goes sideways, the first question is "what was in the window," not "was the model dumb." Curate before you prompt.
+* Default to the simplest vanilla patterns and standard libraries. Avoid hypothetical abstractions.
+* Evaluate external packages by searching GitHub and ranking candidates strictly by stars, recency, issue responsiveness, and community feedback. Present the top choice with explicit trade-offs.
 
-## Non-negotiable rules
+### Search Before Building
 
-### Tests and evals — every time, no exceptions
+Follow three layers in order: 1) Tried-and-true standard libraries, 2) New-and-popular libraries with proven traction, 3) First-principles custom code (requires documented justification). 
 
-- Every feature ships with a test suite AND an eval suite, in the same commit. Not the next PR.
-- Every bug fix ships with a test AND an eval that would have caught the bug. The regression test is the proof the bug is fixed. The eval is the proof the fix generalizes.
-- Every failure gets skillified (the 10 steps). Same day. Same session when possible.
-- "I'll add tests later" is banned. If the tests/evals aren't in the diff, the work isn't done.
-- Two test lanes, different budgets:
-  - **Gate tests** — deterministic, local, free, <2s. Run on every commit via pre-commit hook. Never flaky.
-  - **Periodic evals** — paid (LLM calls), slower, quality-measuring. Run before ship and nightly. Allowed to be non-deterministic but must have a pass threshold.
+### Architecture — Services-First, Parallel-Friendly
 
-### Tie every change to a measurable outcome
+* **Isolation:** Build independent concerns inside services/<service-name>/. Each service contains its own code, tests, evals, config, and documentation to allow parallel development without collisions.
+* **Contracts:** Communicate strictly via typed interfaces (HTTP, gRPC, message bus, or shared schemas) placed in top-level contracts/ or schemas/ directories. Never access service internals directly.
+* **Top-Level Glue:** The root directory only orchestrates configuration, contracts, documentation, and tooling scripts. Keep business logic inside service boundaries. Fan out tasks into independent, parallel sessions at contract boundaries.
 
-- Every feature names the outcome it moves before you build it: the metric, the workflow step, or the user-visible behavior that changes. "It works" is not an outcome.
-- If you can't state what gets measurably better and how you'll see it, that's a Confusion Protocol stop, not a license to build.
-- Wire in the trace. The change leaves evidence you can point at later: a metric, a log line, an eval score. Compute that produces no measurable, traceable result is theater.
+### Completion Status Protocol
 
-### LLM access — call the API directly, not local Claude Code
+Report exactly one status at the end of every task: 
 
-- When the software we build needs to call an LLM, use the Anthropic API (or another hosted inference endpoint) directly. Do NOT shell out to a local Claude Code instance to serve app-level LLM calls - Bear's setup calls the API directly, there is no local-Claude-Code routing layer to build here.
-- If no LLM service exists yet in the project, build one. Create a self-contained LLM service (under `services/llm/` per the architecture rules) that calls the API directly, with its own contract, tests, and evals. Every other service calls that contract, never the raw API.
-- Always use the best available model by default unless Bear explicitly instructs otherwise. No silent downgrades to a cheaper or smaller model for cost.
+* **DONE:** All steps finished, tests and evals passing in the diff, evidence provided, ready to merge.
+* **DONE_WITH_CONCERNS:** Completed, but with specific issues listed alongside severity and proposed fixes.
+* **BLOCKED:** Cannot proceed. State the blocker and all attempted solutions.
+* **NEEDS_CONTEXT:** Missing information. State exactly what is required to continue.
 
-### Tech choice — vanilla by default
+### After Every Task
 
-- Simplest vanilla tech wins. No framework-of-the-month. No clever abstractions for hypothetical reuse.
-- Do not recreate what already exists. Before writing a utility, harness, or library, check for an existing lib that solves it.
-- For cross-cutting concerns (eval harness, prompt library, vision utilities, observability, SEO, schema validation, etc.) grep GitHub in parallel for top candidates. Rank by stars, recency of last commit, issue responsiveness, and real user feedback (HN, Reddit, production write-ups). Return the best option with reasoning, not a list. Example: "for SEO in this project, use X because [stars, last commit 2 weeks ago, 48 issues closed in last month]. Second choice Y. Rejected Z because [last commit 14 months ago]."
-- If two options are equally viable, name the trade-off explicitly and ask Bear. Confusion Protocol applies.
+1. **Commit and Push:** Stage work, write a clear message, and push to GitHub without skipping pre-commit hooks.
+2. **Restart Instructions:** State exactly which system or service needs to be restarted to apply changes, providing the exact commands. Always leave sudo commands for Bear to run manually.
 
-### Search before building
+### Confusion Protocol
 
-Three layers, in order:
+For high-stakes ambiguity (conflicting patterns, destructive actions, or multiple viable architectures), STOP. State the ambiguity in one sentence, present 2-3 options with concrete trade-offs, and wait for confirmation. 
 
-1. **Tried-and-true.** Is there a standard library or pattern that does this? Use it.
-2. **New-and-popular.** Is there a newer library with real traction? Evaluate it.
-3. **First-principles.** Does the conventional approach actually apply here? If our situation is genuinely different, document WHY before writing custom code.
+### Safety
 
-Most of the time Layer 1 wins. Default to that. If Layer 3 produces a genuine insight contradicting conventional wisdom, log it as a note in the commit or a design doc.
+* Verify .gitignore before committing if .env or configuration files are modified. Never expose secrets.
+* Get explicit confirmation before executing destructive operations (rm -rf, git reset --hard, DROP TABLE, etc.).
+* Never commit binaries, compiled assets, or model weights directly; use cloud storage or pointers.
+* State actions clearly and wait for verification before touching production environments.
 
-### Check for skills
+### How Bear Wants to Be Talked To
 
-When a task matches a specialized domain (SEO, schema, security audit, design review, etc.), use the installed Claude Code skill. Don't reinvent what gstack or a community skill already does well. Invoke via the Skill tool, not by re-implementing.
-
-### Skillify repeated success, not just failure
-
-Failures get skillified — that rule already stands. So does repeated success. The second time you run the same manual flow by hand, stop and codify it: a script, a skill, or a workflow. One-off prompts don't compound; reusable flows do. The leverage is in the work you stop having to think about, not in re-prompting from scratch each time. Done it twice by hand? The third time is a command.
-
-## Architecture — services-first, parallel-friendly
-
-Build everything as independent services / self-contained directories. The goal: any single piece of the application can be worked on by a separate Claude Code session without stepping on another session's work.
-
-- **One concern, one directory.** Each service lives under `services/<service-name>/` (or equivalent top-level directory) with its own code, tests, evals, README, and config. No shared mutable state across services beyond well-defined contracts.
-- **Contracts at the boundary.** Services communicate via typed interfaces (HTTP, gRPC, message bus, or a shared schema package). Define the contract in a `contracts/` or `schemas/` directory that both sides import — never reach into another service's internals.
-- **Independent test + eval suites.** Each service has its own gate tests and periodic evals. A change in one service must not require running another service's full suite to validate.
-- **Independent deploy unit.** Each service builds and ships on its own. No monolithic release that forces every service to move in lockstep.
-- **Parallel-session safe.** Two Claude sessions working in `services/foo/` and `services/bar/` should never collide. If a change requires coordinated edits across services, that's a contract change — bump the schema version, update both sides, and call it out explicitly.
-- **Top-level only holds glue.** Root directory: orchestration scripts, shared config, contracts, docs. No business logic.
-
-When in doubt, lean toward more services with sharper boundaries rather than fewer services with fuzzy ones.
-
-**Fan out by default.** The services-first layout exists so work runs in parallel. When a job decomposes into independent units, run them as separate isolated sessions or worktrees at the same time, not one after another. Serial work on parallelizable units is wasted wall-clock. Coordinate at the contract boundary, merge each unit when it's green.
-
-## Completion status protocol
-
-At the end of every task, report one of:
-
-- **DONE** — All steps completed. Evidence provided for every claim. Tests + evals in the diff. Skillify checklist green if a failure was promoted. Ready to merge.
-- **DONE_WITH_CONCERNS** — Completed, but with issues Bear should know about. List each concern with severity and a proposed follow-up.
-- **BLOCKED** — Cannot proceed. State what's blocking and what was already tried.
-- **NEEDS_CONTEXT** — Missing information required to continue. State exactly what's needed.
-
-"Partially done" is not a status. Either the feature ships (DONE) or it doesn't (BLOCKED / NEEDS_CONTEXT). Honesty about incompleteness beats pretending.
-
-## After every task — commit, push, restart
-
-Once a task is done, two things happen, no exceptions:
-
-1. **Commit and push.** Stage the work, write a clear commit message, push to GitHub. Don't wait to be asked. Respects the Safety rules (no secrets, no `--no-verify`, no destructive ops without confirmation).
-2. **Report what to restart.** Tell Bear exactly which service / system / program needs to be restarted for the change to take effect, with the full list of commands to run. If nothing needs restarting, say so explicitly.
-
-For restart commands that need `sudo`: never run them yourself. List them for Bear to run, clearly marked as his to execute.
-
-## Background jobs and backfills
-
-See the `background-job-protocol` skill for the full monitoring/snapshot/report checklist required for any background job that touches data.
-
-## Confusion protocol
-
-When you hit high-stakes ambiguity:
-
-- Two plausible architectures for the same requirement
-- A request that contradicts an existing pattern
-- A destructive operation with unclear scope
-- Missing context that would materially change the approach
-
-STOP. Name the ambiguity in one sentence. Present 2-3 options with real trade-offs (not a fake spread). Ask Bear. Do not guess on architectural decisions. Does not apply to routine coding, small features, or obvious changes.
-
-## Safety
-
-- Never commit secrets. If `.env` is touched, verify `.gitignore` before any commit.
-- Never run `rm -rf`, `git reset --hard`, `git push --force`, `DROP TABLE`, `kubectl delete`, or similar destructive ops without explicit confirmation.
-- Never skip pre-commit hooks with `--no-verify`. If a hook fails, fix the underlying issue.
-- Never commit binaries, compiled outputs, or model weights to the repo. Use Git LFS or cloud storage with a pointer.
-- Before any action that touches production, state what you're about to do, wait for confirmation.
-
-## How Bear wants to be talked to
-
-- Direct. Short. Concrete. No preamble.
-- Specific file names, function names, line numbers. Not "there's an issue in the classifier" — it's `food_vision/classifier.py:47`.
-- No em dashes. No AI vocabulary (delve, crucial, robust, comprehensive, nuanced, multifaceted, furthermore, moreover, pivotal, landscape, tapestry, underscore, foster, showcase, intricate, vibrant, fundamental, significant, interplay).
-- No banned phrases: "here's the kicker", "here's the thing", "plot twist", "let me break this down", "the bottom line", "make no mistake".
-- If something is broken, say so plainly.
-- End responses with the next action, not a recap of what was just done.
-
-When Bear asks for something, the answer is the finished product — not a plan. Tests included. Evals included. Docs included.
+* Be direct, short, and concrete. Skip preambles and introductory text.
+* Reference specific file names, function names, and line numbers (e.g., food_vision/classifier.py:47).
+* Do not use em dashes or banned AI terminology (*delve, crucial, robust, comprehensive, nuanced, multifaceted, furthermore, moreover, pivotal, landscape, tapestry, underscore, foster, showcase, intricate, vibrant, fundamental, significant, interplay*).
+* Avoid banned phrases (*here's the kicker, here's the thing, plot twist, let me break this down, the bottom line, make no mistake*).
+* State broken elements plainly. End all responses with the next immediate action.

@@ -137,8 +137,8 @@ services:
     # does not describe this much smaller anime-only instance. Not reduced
     # yet for lack of an observed baseline; revisit with a real number from
     # a resource audit rather than guessing a smaller limit blind.
-    mem_limit: 2g
-    mem_reservation: 256m
+    mem_limit: 1g
+    mem_reservation: 128m
     cpus: 2
 
   sonarr-anime:
@@ -167,8 +167,8 @@ services:
     # describe this much smaller anime-only instance. Not reduced yet for
     # lack of an observed baseline; revisit with a real number from a
     # resource audit rather than guessing a smaller limit blind.
-    mem_limit: 2g
-    mem_reservation: 256m
+    mem_limit: 1g
+    mem_reservation: 128m
     cpus: 2
 
   # ---------------------------------------------------------------------
@@ -196,7 +196,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl -fsSL http://localhost:3000/healthz > /dev/null || exit 1"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
       start_period: 60s
     environment:
@@ -216,7 +216,7 @@ services:
       NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
       NZBDAV_CONFIG__MEDIA__LIBRARY_DIR: "/mnt/remote/nzbdav/completed-symlinks"
       NZBDAV_CONFIG__USENET__PROVIDERS: >-
-        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":50,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":50,"Priority":0,"Nickname":"backup"}]}
+        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":25,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":25,"Priority":0,"Nickname":"backup"}]}
       # Settings audit 2026-07-31 (every settings page/config key checked against
       # backend/Config/ConfigManager.cs - see STACK.md): cascade defaulted off, which
       # meant primary/backup were raw-load-balanced by spare connection count instead of
