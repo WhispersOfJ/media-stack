@@ -117,7 +117,11 @@ def provision_seeker(dry_run):
     """Runs after instances: Cleanuparr auto-creates a Seeker row per Arr
     instance, but disabled and with a 7-day cycle, so a newly added instance
     is present-but-inert until this enables it."""
-    cfg = request("GET", "seeker")
+    try:
+        cfg = request("GET", "seeker")
+    except urllib.error.HTTPError as e:
+        print(f"FAILED: seeker config fetch failed ({e.code})", file=sys.stderr)
+        return []
     cfg.update(SEEKER_GLOBAL)
     for instance in cfg.get("instances", []):
         instance.update(SEEKER_INSTANCE_DEFAULTS)
