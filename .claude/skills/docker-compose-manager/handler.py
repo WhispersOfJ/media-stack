@@ -40,7 +40,7 @@ from pathlib import Path
 # what evaluates depends_on/restart:true) avoids triggering that side-cascade,
 # so nzbdav is restarted last, after nzbdav_rclone and every other dependent
 # have already settled on their final mount instance. Verified live 2026-07-29.
-FUSE_MOUNT_DEPENDENTS = ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr", "radarr-anime", "sonarr-anime", "bazarr"]
+FUSE_MOUNT_DEPENDENTS = ["radarr", "sonarr", "plex", "unpackerr", "cleanuparr"]
 CASCADE_MAP = {
     "nzbdav_rclone": FUSE_MOUNT_DEPENDENTS,
     "nzbdav": FUSE_MOUNT_DEPENDENTS,

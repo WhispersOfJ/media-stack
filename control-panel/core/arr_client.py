@@ -37,10 +37,18 @@ ARR_APPS = {
         "label": "Sonarr",
         "import_events": ("downloadFolderImported",),
     },
+    # radarr-anime/sonarr-anime retired 2026-08-18 (Plan 3 consolidation) -
+    # their env vars are gone from .env, so these two entries use .get(...)
+    # instead of the bare os.environ[...] every other entry uses, to avoid
+    # crashing control-panel's import (and every route, not just anime ones)
+    # the next time this container recreates. Deliberately left as dead
+    # entries rather than removed outright per Bear's instruction not to
+    # touch control-panel this session; full removal is a "next phase"
+    # follow-up.
     "radarr_anime": {
         "url": "http://radarr-anime:7878",
         "api": "v3",
-        "key": os.environ["RADARR_ANIME_API_KEY"],
+        "key": os.environ.get("RADARR_ANIME_API_KEY", ""),
         "search_command": "MissingMoviesSearch",
         "label": "Radarr (Anime)",
         "import_events": ("downloadFolderImported",),
@@ -48,7 +56,7 @@ ARR_APPS = {
     "sonarr_anime": {
         "url": "http://sonarr-anime:8989",
         "api": "v3",
-        "key": os.environ["SONARR_ANIME_API_KEY"],
+        "key": os.environ.get("SONARR_ANIME_API_KEY", ""),
         "search_command": "MissingEpisodeSearch",
         "label": "Sonarr (Anime)",
         "import_events": ("downloadFolderImported",),

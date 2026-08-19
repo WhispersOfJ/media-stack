@@ -26,21 +26,11 @@ HTTP_SERVICES = {
     "seerr": (5055, "/api/v1/status"),
     "control-panel": (8420, "/healthz"),
     "plex": (32400, "/identity"),
-    "radarr-anime": (7879, "/ping"),
-    "sonarr-anime": (8990, "/ping"),
-    "bazarr": (6767, "/"),
     "tautulli": (8182, "/"),
     "wrapperr": (8283, "/"),
     "maintainerr": (6246, "/"),
     "lingarr": (9876, "/"),
     "nzbdav": (3000, "/"),
-    "ntfy": (8700, "/v1/health"),
-    "speedtest-tracker": (8701, "/api/healthcheck"),
-    # /api/v2/ping, not "/" - ping is unauthenticated and hard-200s both
-    # before and after Organizr's setup wizard, whereas "/" serves the
-    # wizard pre-setup and 302s to login after.
-    "organizr": (8702, "/api/v2/ping"),
-    "scrutiny": (8703, "/api/health"),
     # /api/about, not "/" - "/" is the bundled Angular frontend and answers
     # 200 even with a dead Flask backend behind it. /api/about is served by
     # the backend and needs no configuration to respond.

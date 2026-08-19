@@ -73,6 +73,10 @@ services:
       # mounts did not support having files written into them (confirmed:
       # symlink/hardlink/copy all failed there with I/O errors).
       - ./media/movies:/data/movies
+      # Added during the Plan 3 anime-instance merge (2026-08-18): radarr-anime
+      # is being retired, its library folded into this instance with
+      # genre/tag-based routing instead of a separate instance.
+      - ./media/anime-movies:/data/anime-movies
     ports:
       - "7878:7878"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -102,6 +106,10 @@ services:
       # nzbdav_rclone's mount point - see radarr's matching mount comment above.
       - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
       - ./media/shows:/data/shows
+      # Added during the Plan 3 anime-instance merge (2026-08-18): sonarr-anime
+      # is being retired, its library folded into this instance with
+      # genre/tag-based routing instead of a separate instance.
+      - ./media/anime-shows:/data/anime-shows
     ports:
       - "8989:8989"
     # No prior limit at all - found live via a resource audit. Sized above
@@ -111,65 +119,13 @@ services:
     mem_reservation: 256m
     cpus: 2
 
-  radarr-anime:
-    <<: *common
-    image: ghcr.io/hotio/radarr:release
-    container_name: radarr-anime
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:7878/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      nzbdav_rclone:
-        condition: service_healthy
-        restart: true
-    volumes:
-      - ./config/radarr-anime:/config
-      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
-      - ./media/anime-movies:/data/anime-movies
-    ports:
-      - "7879:7878"
-    # Inherited radarr's 2g/256m sizing verbatim - that number was justified
-    # there by a 15,000+ title library doing active scans/imports, which
-    # does not describe this much smaller anime-only instance. Not reduced
-    # yet for lack of an observed baseline; revisit with a real number from
-    # a resource audit rather than guessing a smaller limit blind.
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
-
-  sonarr-anime:
-    <<: *common
-    image: ghcr.io/hotio/sonarr:release
-    container_name: sonarr-anime
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8989/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      nzbdav_rclone:
-        condition: service_healthy
-        restart: true
-    volumes:
-      - ./config/sonarr-anime:/config
-      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
-      - ./media/anime-shows:/data/anime-shows
-    ports:
-      - "8990:8989"
-    # Inherited sonarr's 2g/256m sizing verbatim - that number was justified
-    # there by tracking close to 300,000 episode records, which does not
-    # describe this much smaller anime-only instance. Not reduced yet for
-    # lack of an observed baseline; revisit with a real number from a
-    # resource audit rather than guessing a smaller limit blind.
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
+  # radarr-anime and sonarr-anime retired 2026-08-18 (Plan 3 consolidation).
+  # Their libraries (728 movies, 1,022 series) were merged into base
+  # radarr/sonarr via genre/tag routing (seriesType=anime + tag id 1),
+  # verified with 0 migration failures and a full duplicate-title
+  # reconciliation pass. Anime media now lives under the same base
+  # instances at ./media/anime-movies and ./media/anime-shows (see the
+  # volume mounts on radarr/sonarr above).
 
   # ---------------------------------------------------------------------
   # Usenet - streaming, no local disk. Replaced BearMount entirely,
@@ -229,14 +185,12 @@ services:
       # Now wired up deliberately - see the "InfiniDysk's own search/play
       # subsystem" block below QUEUE__WORKER_COUNT.
       NZBDAV_CONFIG__USENET__CASCADE__ENABLED: "true"
-      # All four Arr instances, not just the original two. The anime peers
-      # were missing here from their standup until 2026-08-08 - inert while
-      # REPAIR__ENABLE is false below (nothing else reads this list), but it
-      # stops being inert the moment repair is ever re-enabled, and a repair
-      # pass that cannot see an instance treats that instance's library as
-      # unowned. Keep in sync with core/arr_client.py's ARR_APPS.
+      # radarr-anime/sonarr-anime retired 2026-08-18 (Plan 3 consolidation) -
+      # their libraries were merged into the base instances via genre/tag
+      # routing (seriesType=anime + tag id 1), so only the base pair remains
+      # here. Keep in sync with core/arr_client.py's ARR_APPS.
       NZBDAV_CONFIG__ARR__INSTANCES: >-
-        {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"},{"Host":"http://radarr-anime:7878","ApiKey":"${RADARR_ANIME_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"},{"Host":"http://sonarr-anime:8989","ApiKey":"${SONARR_ANIME_API_KEY}"}],"QueueRules":[]}
+        {"RadarrInstances":[{"Host":"http://radarr:7878","ApiKey":"${RADARR_API_KEY}"}],"SonarrInstances":[{"Host":"http://sonarr:8989","ApiKey":"${SONARR_API_KEY}"}],"QueueRules":[]}
       # RE-ENABLED 2026-08-11 after re-auditing the actual 2026-07-29 root
       # cause against the current infinidysk/infinidysk source (not just the
       # old nzbdav-dev fork this stack ran back then). The exact bug is
@@ -535,8 +489,11 @@ services:
     # publishes the public channel. Deliberate, not an oversight - public
     # channel on the official image is the more conservative choice for a
     # containerized production library anyway.
-    # Bump this tag deliberately, not via Watchtower (see below).
-    image: plexinc/pms-docker:1.43.3.10861-07dfddaeb
+    # Switched from a pinned digest to :latest 2026-08-18 (deliberate policy
+    # change, not an oversight) - Watchtower now auto-updates this container
+    # nightly at 04:00 same as everything else in the stack, no more manual
+    # version bumps.
+    image: plexinc/pms-docker:latest
     container_name: plex
     # Plex's own guidance for Docker: GDM auto-discovery, DLNA, and
     # remote-access NAT-PMP/UPnP negotiation are all unreliable on bridge
@@ -633,56 +590,6 @@ services:
   #   docker compose --profile extras up -d
   # =======================================================================
   # Subtitle management for Radarr/Sonarr - connected via API key post-boot
-  # (Bazarr has no env-var wiring for this, same pattern as Maintainerr
-  # below), watches both libraries for missing English subs and downloads
-  # from whichever configured providers have them. Removed entirely in
-  # v10.2.0 (see README History); this is a from-scratch reinstall, not a
-  # restore - no config/bazarr state survived the removal.
-  bazarr:
-    <<: *common
-    image: ghcr.io/hotio/bazarr:release
-    container_name: bazarr
-    # No explicit hostname previously - Docker defaulted it to the
-    # container's own short ID, which Bazarr then baked into its
-    # self-registered Plex account webhook URL. That ID changes on every
-    # recreate, permanently orphaning the old webhook entry on the Plex
-    # account (confirmed live 2026-07-25: registered URL still pointed at
-    # a dead prior container ID, unresolvable, logging warnings on every
-    # Plex event). A stable hostname keeps any future re-registration
-    # resolvable indefinitely.
-    hostname: bazarr
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6767/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      nzbdav_rclone:
-        condition: service_healthy
-        restart: true
-    volumes:
-      - ./config/bazarr:/config
-      # nzbdav_rclone's mount point - see radarr's matching mount comment
-      # further up this file. Without this, media symlinks under
-      # ./media/movies|shows that point into the mount resolve as broken
-      # inside this container (os.path.exists() False) even though the
-      # target is fine - Bazarr silently treats every such title as
-      # unscannable instead of missing, so it never searches for subs.
-      - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
-      - ./media/movies:/data/movies
-      - ./media/shows:/data/shows
-      - ./media/anime-movies:/data/anime-movies
-      - ./media/anime-shows:/data/anime-shows
-    ports:
-      - "6767:6767"
-    # No prior baseline to size against (fresh reinstall) - a modest
-    # companion-app footprint.
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-
   # Single dashboard for this stack: live container status/control, host
   # stats, one-click ops actions, and a Quick Links panel
   # to every service's own web UI. That last part is what let Heimdall and
@@ -872,12 +779,8 @@ services:
       # startup log: "No Starr apps or folders configured."
       UN_RADARR_0_URL: http://radarr:7878
       UN_RADARR_0_API_KEY: ${RADARR_API_KEY}
-      UN_RADARR_1_URL: http://radarr-anime:7878
-      UN_RADARR_1_API_KEY: ${RADARR_ANIME_API_KEY}
       UN_SONARR_0_URL: http://sonarr:8989
       UN_SONARR_0_API_KEY: ${SONARR_API_KEY}
-      UN_SONARR_1_URL: http://sonarr-anime:8989
-      UN_SONARR_1_API_KEY: ${SONARR_ANIME_API_KEY}
       # No UN_READARR entry - Bindery replaced Readarr in v10.7.0 and isn't
       # a supported Unpackerr "Starr app" (too new for that fixed list).
       # Low-impact: ebook releases are rarely RAR'd the way video/audio
@@ -1117,213 +1020,10 @@ services:
     mem_reservation: 64m
     cpus: 2
 
-  # Plex metadata/collections/overlays. Runs its own built-in scheduler
-  # (KOMETA_TIMES) rather than the old sleep-infinity + docker-exec
-  # placeholder pattern from the prior install. Config at
-  # config/kometa/config.yml is a from-scratch, Plex-only minimal build
-  # (TMDb/MDBList only) - no Trakt/GitHub credentials, no old config
-  # survived the 2026-07-22 removal.
-  kometa:
-    restart: "no"
-    logging: *common-logging
-    image: kometateam/kometa:latest
-    container_name: kometa
-    networks: [stacknet]
-    environment:
-      TZ: ${TZ}
-      KOMETA_CONFIG: /config/config.yml
-      KOMETA_RUN: "true"
-    volumes:
-      - ./config/kometa:/config
-    mem_limit: 2g
-    mem_reservation: 256m
-    cpus: 4
-
   # ---------------------------------------------------------------------
   # new-services (2026-08) - see PLANS.md for the full 7-service spec this
   # batch comes from. Each phase is its own commit; this is Phase 1.
   # ---------------------------------------------------------------------
-
-  ntfy:
-    restart: unless-stopped
-    image: binwiederhier/ntfy
-    container_name: ntfy
-    command: serve
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --tries=1 http://localhost:80/v1/health -O - | grep -q true || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    volumes:
-      - ./config/ntfy/cache:/var/cache/ntfy
-      - ./config/ntfy/etc:/etc/ntfy
-    ports:
-      - "8700:80"
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1
-
-  # Phase 2 (PLANS.md) - scheduled ISP speed monitoring + history.
-  # SPEEDTEST_SCHEDULE is hourly, not upstream's 15-min default - a full
-  # speedtest saturates the link, and 4x/hour is unnecessary noise for a
-  # monitoring signal, not a benchmark tool.
-  speedtest-tracker:
-    <<: *common
-    image: lscr.io/linuxserver/speedtest-tracker:latest
-    container_name: speedtest-tracker
-    environment:
-      <<: *common-env
-      APP_KEY: "${SPEEDTEST_TRACKER_APP_KEY}"
-      APP_URL: "http://${HOST_IP}:8701"
-      DB_CONNECTION: sqlite
-      SPEEDTEST_SCHEDULE: "0 * * * *"
-      ADMIN_EMAIL: "${SPEEDTEST_TRACKER_ADMIN_EMAIL}"
-      ADMIN_PASSWORD: "${SPEEDTEST_TRACKER_ADMIN_PASSWORD}"
-      # Pins scheduled runs to known-good nearby servers instead of the
-      # Ookla CLI's own auto-selection ("--selection-details" pings many
-      # candidate servers concurrently over a loaded-latency probe, and
-      # this stack's network path makes that probe flaky - "Cannot open
-      # socket"/"Connection refused" against whichever candidate answers
-      # slowest first, confirmed live: ~50% failure rate un-pinned vs 3/3
-      # clean runs pinned to a single server). Both IDs confirmed reachable
-      # and fast from this host during live verification (2026-08-11).
-      SPEEDTEST_SERVERS: "45389,49674"
-    networks: [stacknet]
-    # The Ookla speedtest CLI this image ships (1.2.0.84) creates an IPv6
-    # socket before falling back to IPv4, and aborts with "Cannot open
-    # socket" / ENETUNREACH instead of actually falling back, since
-    # stacknet's bridge has no IPv6 route configured. Disabling IPv6 in the
-    # container's own netns (not the host's) makes the binary skip AF_INET6
-    # entirely - confirmed live: every real run failed until this was added.
-    sysctls:
-      - net.ipv6.conf.all.disable_ipv6=1
-      - net.ipv6.conf.default.disable_ipv6=1
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/api/healthcheck || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/speedtest-tracker:/config
-    ports:
-      - "8701:80"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 1
-
-  # Phase 3 (PLANS.md) - single landing dashboard with a tab per service.
-  #
-  # Image is ghcr.io/organizr/organizr, NOT the organizr/organizr Docker Hub
-  # name PLANS.md 3.1 specified - the docker-organizr README lists the Hub
-  # path (and organizrtools/organizr-v2 before it) as the legacy name that
-  # ghcr replaced. Same project, current publish target.
-  #
-  # No `fpm` env var: the base image "now set up to use the unix socket
-  # exclusively" per that same README, so the old fpm toggle PLANS.md 3.1
-  # carried over is inert. `branch` is real and still selects the git branch
-  # the entrypoint installs from.
-  #
-  # Healthcheck hits /api/v2/ping rather than /: ping is an unauthenticated
-  # GET that returns "pong" with a hard 200 both before and after the setup
-  # wizard has run (api/v2/routes/ping.php), whereas / serves the wizard
-  # pre-setup and 302s to login post-setup.
-  organizr:
-    <<: *common
-    image: ghcr.io/organizr/organizr:latest
-    container_name: organizr
-    environment:
-      <<: *common-env
-      branch: "v2-master"
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/api/v2/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/organizr:/config
-    ports:
-      - "8702:80"
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1
-
-  # Phase 4 (PLANS.md) - S.M.A.R.T. health trending and failure prediction,
-  # layered on top of (not replacing) the raw-smartctl stack-disk-health check.
-  #
-  # This host has exactly ONE physical disk, contrary to PLANS.md 4.1's
-  # two-SATA-disk example: a 954GB NVMe (Bestoss GM988H). Everything else the
-  # stack serves lives on the Usenet-backed FUSE mount, which has no SMART
-  # data to trend. So the value here is NVMe wear tracking (percentage_used,
-  # media errors, unsafe shutdowns) on the single disk the whole stack runs
-  # on, not array-wide failure prediction.
-  #
-  # `devices` is /dev/nvme0, the NVMe *controller character device*, because
-  # that is what `smartctl --scan` reports on this host - NOT the /dev/sdX-
-  # style block device PLANS.md's example used. Upstream's README says to
-  # pass exactly what --scan lists. /dev/nvme0n1 is passed too so the
-  # collector can also read block-device metadata via udev.
-  #
-  # SYS_ADMIN is on top of SYS_RAWIO because this disk is NVMe: smartctl
-  # needs the NVMe admin passthrough ioctl, which SYS_RAWIO alone doesn't
-  # cover (upstream README, and AnalogJ/scrutiny#26). Without it Scrutiny
-  # registers the device and then reports no SMART data at all. This is a
-  # real privilege grant to this container - it is the documented minimum
-  # for NVMe, and is still narrower than --privileged.
-  scrutiny:
-    restart: unless-stopped
-    image: ghcr.io/analogj/scrutiny:latest-omnibus
-    container_name: scrutiny
-    environment:
-      TZ: "${TZ}"
-      # Upstream's own default (daily at midnight), set explicitly so the
-      # schedule is visible here rather than implied. SMART trending does not
-      # need to run more often, and midnight is clear of watchtower (04:00)
-      # and Kometa (05:30).
-      COLLECTOR_CRON_SCHEDULE: "0 0 * * *"
-      # Disk-failure alerts route into the ntfy sink from Phase 1 rather
-      # than standing up a second notification channel for one service.
-      #
-      # Set as an env var, NOT in scrutiny.yaml, deliberately: this repo
-      # gitignores config/ wholesale, so a config-file version of this
-      # wiring exists only on this host and silently vanishes on a rebuild.
-      # Scrutiny's config is viper-backed with SetEnvPrefix("SCRUTINY") and
-      # a "." -> "_" key replacer, and notify.urls has a registered default
-      # (webapp/backend/pkg/config/config.go:42), so AutomaticEnv resolves
-      # this key. Everything else Scrutiny needs is already its own default.
-      #
-      # scheme=http is required: shoutrrr's ntfy service defaults to
-      # https/443 and stacknet has no TLS.
-      SCRUTINY_NOTIFY_URLS: "ntfy://ntfy:80/scrutiny-alerts?scheme=http"
-    cap_add:
-      - SYS_RAWIO
-      - SYS_ADMIN
-    devices:
-      - "/dev/nvme0:/dev/nvme0"
-      - "/dev/nvme0n1:/dev/nvme0n1"
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/scrutiny/config:/opt/scrutiny/config
-      - ./config/scrutiny/influxdb:/opt/scrutiny/influxdb
-      # Device metadata for the collector. Read-only.
-      - /run/udev:/run/udev:ro
-    ports:
-      - "8703:8080"
-    # Omnibus bundles InfluxDB, so this needs more headroom than the other
-    # companion apps - 512m is upstream's own suggested floor for the bundle.
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 1
 
   # Phase 5 (PLANS.md) - gap detection: movies and TV shows present in a
   # collection/franchise but missing from the Plex library, pushed into the
