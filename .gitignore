@@ -15,6 +15,10 @@
 # every *arr app's config.xml). None of this belongs in git history.
 config/
 
+# control-panel's shared logger (core/logging_config.py) bind-mount target -
+# stateful/regenerated, same reasoning as config/ above.
+logs/
+
 # Leftover local downloads from NZBGet (removed in 10.1.0, replaced by NzbDAV's
 # streaming approach) plus the local media library every arr app writes to
 usenet/

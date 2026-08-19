@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
+from core.logging_config import logger
+
 
 def now() -> str:
     return datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S")
@@ -15,4 +17,5 @@ def ok(message: str, **extra):
 
 
 def fail(message: str, status_code: int = 502):
+    logger.error(message)
     raise HTTPException(status_code=status_code, detail={"ok": False, "message": message, "time": now()})

@@ -21,6 +21,7 @@ def cp_main_app(monkeypatch, tmp_path):
     object, its startup-created engine) shouldn't leak between tests."""
     db_path = tmp_path / "control-panel-test.db"
     monkeypatch.setenv("CONTROL_PANEL_DB_PATH", str(db_path))
+    monkeypatch.setenv("CONTROL_PANEL_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("CONTROL_PANEL_SECRET_KEY", "test-secret-key-not-for-prod")
     # main.py's verify_same_origin middleware (Phase 2) checks the Host
     # header against HOST_IP - TestClient's default Host is "testserver",
@@ -156,3 +157,13 @@ def gaps2_prune_history():
 @pytest.fixture(scope="module")
 def watchstate_provision():
     return _import_script("watchstate-provision")
+
+
+@pytest.fixture(scope="module")
+def mdblist_toplists_import():
+    return _import_script("mdblist_toplists_import")
+
+
+@pytest.fixture(scope="module")
+def provision_cleanuparr_instances():
+    return _import_script("provision-cleanuparr-instances")
