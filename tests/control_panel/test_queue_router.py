@@ -1,8 +1,6 @@
 """services/queue/router.py - GET /api/queue-status, the cross-app download
 queue aggregator. First-ever coverage for this router (it 404'd in
 production before being ported, per its own module docstring)."""
-from unittest.mock import MagicMock
-
 import pytest
 from fastapi.testclient import TestClient
 

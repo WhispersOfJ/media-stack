@@ -1,9 +1,6 @@
 """Gate tests for core/security.py - session tokens, password hashing, and
 API key lookup. First-ever coverage for this module."""
-from datetime import timedelta
-
 import pytest
-from fastapi import HTTPException
 
 
 @pytest.fixture

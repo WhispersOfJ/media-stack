@@ -8,7 +8,6 @@ rather than trusting each app's own (frequently wrong) timeleft/progress reporti
 """
 import time
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from core.api_hit_counts import install as install_hit_counter

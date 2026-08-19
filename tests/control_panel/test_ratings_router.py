@@ -2,7 +2,6 @@
 First-ever coverage for this router."""
 from unittest.mock import MagicMock
 
-import httpx
 from fastapi.testclient import TestClient
 
 

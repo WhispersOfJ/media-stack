@@ -10,7 +10,7 @@ CONTROL_PANEL_ROOT = Path(__file__).resolve().parents[2] / "control-panel"
 if str(CONTROL_PANEL_ROOT) not in sys.path:
     sys.path.insert(0, str(CONTROL_PANEL_ROOT))
 
-from services.catalog.registry import CATALOG, CATALOG_BY_ID
+from services.catalog.registry import CATALOG, CATALOG_BY_ID  # noqa: E402
 
 REQUIRED_KEYS = {
     "id", "name", "category", "pitch", "image", "tag", "ports",
