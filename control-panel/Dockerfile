@@ -16,12 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends util-linux \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py settings_store.py main.py alembic.ini .
+COPY settings_store.py main.py alembic.ini .
 COPY static ./static
-# Evolved backend cutover (Phase 5 of
-# .claude/plans/evolved-control-panel-backend.plan.md) - CMD below now runs
-# main.py, not the retired app.py (kept in the image temporarily as a
-# rollback reference, not imported by anything).
 COPY core ./core
 COPY models ./models
 COPY services ./services

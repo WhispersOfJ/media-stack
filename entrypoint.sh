@@ -56,8 +56,7 @@ This looks like a fresh install. Next steps:
   docker run --rm -p 8090:8090 -v "\$(pwd)":/out ghcr.io/whispersofj/media-stack:latest --setup
                                      # opens a setup wizard at http://localhost:8090
                                      # to fill in .env (or: cp .env.example .env && \$EDITOR .env)
-  docker compose up -d              # core services
-  docker compose --profile extras up -d   # + Bazarr/Byparr/Tautulli/Kometa/etc.
+  docker compose up -d              # all services
 EOF
 else
   cat <<EOF
