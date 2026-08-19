@@ -4,7 +4,7 @@ Architectural issues noted during the audit but not fixed (out of scope for a sm
 
 ## Pre-existing (found during plan recon, before directory 1)
 
-- **No global exception handler** in `control-panel/main.py`. `_startup()` and `_discover_routers()` run unguarded at import time — a broken client import can crash boot without a clear error surface. Fixing this is an architectural change (adding `@app.exception_handler`), not a small fix; flagged here rather than done inline.
+- ~~**No global exception handler** in `control-panel/main.py`.~~ **Fixed post-audit (2026-08-19):** `_discover_routers()`'s per-router import is now wrapped in try/except — a broken router import logs via the shared logger and is skipped, instead of crash-looping every other router along with it. This is not a hypothetical: it's exactly what happened live during this audit's Directory 6 verification (a stale image with a dangling `os.environ["RADARR_ANIME_API_KEY"]` read crash-looped the entire container). `_startup()`'s DB setup remains unguarded on purpose — a DB failure should stop boot, not degrade silently — but now logs a "startup complete" line so a crash there is visible in the log file, not just `docker logs`. Verified live: rebuilt, container boots clean and healthy; 3 new tests in `tests/control_panel/test_main_router_discovery.py` confirm a simulated broken router import is isolated and logged rather than fatal.
 - **STACK.md service-count header is stale.** `## Full service inventory (all 17, by subsystem)` (STACK.md:114) undercounts against the same doc's own later text ("`up -d` starts all 26 daemon services", STACK.md:259). Not a functional bug, just a doc nit — worth a one-line header fix whenever STACK.md is next touched.
 
 ## Directory 2: control-panel/core/

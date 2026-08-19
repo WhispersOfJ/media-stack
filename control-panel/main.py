@@ -1,8 +1,6 @@
-"""Evolved control-panel backend entrypoint - Phase 1 of
-.claude/plans/evolved-control-panel-backend.plan.md. Runs ALONGSIDE the
-existing app.py during the phased migration; docker-compose.yml's CMD
-still points at app:app until Phase 5's cutover, so this module has zero
-effect on the live container until that switch happens.
+"""Control-panel backend entrypoint - the evolved backend from
+.claude/plans/evolved-control-panel-backend.plan.md. Cutover from the
+retired app.py completed 2026-08-05; this is the only backend module.
 """
 import importlib
 import os
@@ -16,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 import models  # noqa: F401  (registers every table on Base before create_all)
 from core.db import Base, SessionLocal, engine
 from core.docker_client import docker_client
+from core.logging_config import logger
 from core.security import hash_api_key, hash_password
 from models.api_key import ApiKey
 from models.user import User
@@ -133,17 +132,29 @@ SERVICES_DIR = Path(__file__).parent / "services"
 
 def _discover_routers() -> None:
     """Mounts every services/<name>/router.py's `router` - adding a new
-    integration means adding a new directory, not editing this file."""
+    integration means adding a new directory, not editing this file.
+
+    Each router's import is isolated: a bad import in one service (missing
+    env var, broken dependency) logs and is skipped rather than taking down
+    every other router along with it. Confirmed this matters in practice -
+    a single dangling os.environ[...] read in a service's import chain
+    previously crash-looped the whole container instead of just that
+    service being unavailable."""
     for entry in sorted(SERVICES_DIR.iterdir()):
         if not entry.is_dir() or not (entry / "router.py").is_file():
             continue
-        module = importlib.import_module(f"services.{entry.name}.router")
+        try:
+            module = importlib.import_module(f"services.{entry.name}.router")
+        except Exception as e:
+            logger.error(f"_discover_routers: services/{entry.name}/router.py failed to import, skipping: {e}")
+            continue
         router = getattr(module, "router", None)
         if router is not None:
             app.include_router(router)
 
 
 _discover_routers()
+logger.info("control-panel startup complete")
 
 # Absolute path, not "static" - unlike app.py (which the test fixture
 # chdir()s into control-panel/ before importing), this module's own test
