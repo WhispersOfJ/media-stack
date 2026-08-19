@@ -639,8 +639,6 @@ services:
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
-      RADARR_ANIME_API_KEY: ${RADARR_ANIME_API_KEY}
-      SONARR_ANIME_API_KEY: ${SONARR_ANIME_API_KEY}
       # NzbDAV (nzbdav-dev) removed entirely 2026-07-23, then AltMount removed
       # entirely 2026-07-24, then BearMount removed entirely 2026-07-28 (see
       # STACK.md's History) - nzbdav/nzbdav's shared frontend<->backend proxy
@@ -665,16 +663,6 @@ services:
       # /api/ratings/imdb, /api/ratings/mdblist - standalone secrets.
       OMDB_KEY: ${OMDB_KEY}
       MDBLIST_KEY: ${MDBLIST_KEY}
-      # /api/speedtest-tracker/* - Sanctum personal-access token, minted
-      # once outside the app (see STACK.md's Speedtest Tracker entry for
-      # why - Sanctum only ever stores a hash, and the image has no
-      # tinker), read as a plain env var same as FRONTEND_BACKEND_API_KEY.
-      SPEEDTEST_TRACKER_API_TOKEN: ${SPEEDTEST_TRACKER_API_TOKEN}
-      # /api/organizr/* - Organizr's own API key, which this stack chose
-      # rather than had generated for it (it is an input to the setup
-      # wizard, see scripts/organizr-provision.py). Must be exactly 20
-      # chars; Organizr's isApprovedRequest gates on strlen before value.
-      ORGANIZR_API_KEY: ${ORGANIZR_API_KEY}
       # Phase 6: WatchState's API key. Every /v1/api call needs it, since
       # WS_SECURE_API_ENDPOINTS is on.
       WS_API_KEY: ${WS_API_KEY}
@@ -731,6 +719,10 @@ services:
       # timestamp per Plex ratingKey) so the 48h-per-movie gate survives a
       # container restart/recreate instead of resetting every deploy.
       - ./config/control-panel:/data
+      # core/logging_config.py's shared logger - RotatingFileHandler at
+      # /logs/control-panel.log, bind-mounted so logs survive a container
+      # restart/recreate instead of living only in `docker logs`.
+      - ./logs/control-panel:/logs
       # Host-privileged-action helper (reboot / pacman sync / pacman
       # upgrade) - see .claude/plans/host-privileged-helper.plan.md and
       # scripts/host-helper/README.md. Commented out by default: this
