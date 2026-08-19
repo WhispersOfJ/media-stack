@@ -271,6 +271,9 @@ def gaps2_status(_=Depends(current_user_or_service)):
 
 
 @router.post("/api/gaps2/scan")
+# current_user_or_service, not current_user: stack-gaps2-scan.fish calls this
+# unattended via __stack_api's service key, same documented automation
+# exception as core/security.py's current_user_or_service docstring covers.
 def gaps2_scan(payload: ScanRequest, _=Depends(current_user_or_service)):
     """Start a background sweep over one or more libraries.
 
@@ -339,6 +342,9 @@ def gaps2_missing(library: str = "", limit: int = 0, _=Depends(current_user_or_s
 
 
 @router.post("/api/gaps2/push")
+# current_user_or_service, not current_user: stack-gaps2-push.fish calls this
+# unattended via __stack_api's service key, same documented automation
+# exception as core/security.py's current_user_or_service docstring covers.
 def gaps2_push(payload: PushRequest, _=Depends(current_user_or_service)):
     """Add one missing title to the Arr instance its library maps to.
 

@@ -187,6 +187,10 @@ def plexanisync_last_run(_=Depends(current_user_or_service)):
 
 
 @router.post("/api/plexanisync/run-now")
+# current_user_or_service, not current_user: stack-plexanisync-run-now.fish
+# calls this unattended via __stack_api's service key, same documented
+# automation exception as core/security.py's current_user_or_service docstring
+# covers.
 def plexanisync_run_now(_payload: RunRequest | None = None, _=Depends(current_user_or_service)):
     """Start an out-of-schedule sync.
 

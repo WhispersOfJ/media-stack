@@ -18,6 +18,7 @@ from core.api_hit_counts import register_host_label
 from core.nzbdav_client import nzbdav_api
 from core.docker_client import docker_client
 from core.host_paths import HOST_CONFIG_DIR, HOST_PROC_DIR, HOST_SYS_FUSE_DIR
+from core.logging_config import logger
 from core.plex_client import PLEX_URL, plex_headers, plex_sections
 from core.responses import fail, ok
 from core.security import current_user_or_service
@@ -206,7 +207,8 @@ def _plex_scanner_processes() -> list[str]:
         return []
     try:
         result = _bounded_exec(c, ["ps", "aux"], timeout=5)
-    except Exception:
+    except Exception as e:
+        logger.error(f"_plex_scanner_processes: ps aux exec failed: {e}")
         return []
     if result is None:
         return []
@@ -332,7 +334,8 @@ def _mount_test(container_name: str = "plex", timeout: int = 5) -> bool:
         return False
     try:
         result = _bounded_exec(c, ["timeout", str(timeout), "ls", "/mnt/remote/nzbdav"], timeout=timeout + 2)
-    except Exception:
+    except Exception as e:
+        logger.error(f"_mount_test: exec failed for container '{container_name}': {e}")
         return False
     if result is None:
         return False

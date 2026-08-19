@@ -7,7 +7,8 @@ candidate lookup lives in candidates.py, cooldown persistence in
 state.py. Mutating routes (sync/review/apply) use current_user_or_service
 - the auto-sync path is systemd-timer-invoked (3x/day movies, 1x/day
 shows), same automation-invoked exception as services/tautulli's
-terminate-stream and services/kometa's run-now.
+terminate-stream and services/plexanisync's run-now (kometa itself was
+removed 2026-08-18; this comment used to reference its own run-now route).
 """
 import json
 import queue
