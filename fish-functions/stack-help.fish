@@ -1,5 +1,5 @@
 function stack-help --description 'List all stack-* terminal commands for the media stack'
-    echo 'Media-stack terminal commands (all hit Control Panel on 192.168.4.105:8420):'
+    echo 'Media-stack terminal commands (all hit Control Panel on 192.168.4.20:8420):'
     echo '  stack-status                                    live health of every container'
     echo '  stack-arr <radarr|sonarr> <rss-sync|search-missing|unstick|unstick-importing>'
     echo '                                                   unstick-importing: clear a wedged "importing" download (dead-article test)'

@@ -14,7 +14,7 @@ function stack-arr-logs --description 'Tail an *arr app''s container log directl
             return 1
         end
     end
-    set -l host_ip 192.168.4.105
+    set -l host_ip 192.168.4.20
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
     set -l lines 100
     if test (count $argv) -ge 2

@@ -2,7 +2,7 @@
 # No args = every library. With args = just that one (case-insensitive
 # match against its Plex title, e.g. "TV Shows").
 function stack-plex-empty-trash --description 'Empty trash on one Plex library, or all of them'
-    set -l host_ip 192.168.4.105
+    set -l host_ip 192.168.4.20
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
     if test (count $argv) -eq 0
         curl -sS -H "X-Api-Key: $service_key" -X POST "http://$host_ip:8420/api/plex/empty-trash" | python3 -c "

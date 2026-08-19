@@ -2279,7 +2279,7 @@ Start the stack (if not already running) and load the dashboard in a browser:
 docker compose up -d control-panel
 ```
 
-Then navigate to `http://192.168.4.105:8420/`, confirm the new Letterboxd panel renders with an empty tracked-list table and empty history table (no tracked lists yet), track a real list via a `curl` call to `/api/arr/letterboxd/track` (using a real session cookie from the logged-in browser, or via `__stack_api` with the service key), reload the dashboard, and confirm the tracked row appears with the correct label and "never" for last-synced.
+Then navigate to `http://192.168.4.20:8420/`, confirm the new Letterboxd panel renders with an empty tracked-list table and empty history table (no tracked lists yet), track a real list via a `curl` call to `/api/arr/letterboxd/track` (using a real session cookie from the logged-in browser, or via `__stack_api` with the service key), reload the dashboard, and confirm the tracked row appears with the correct label and "never" for last-synced.
 
 - [ ] **Step 5: Commit**
 
@@ -2455,7 +2455,7 @@ docker compose up -d --force-recreate control-panel
 - [ ] **Step 3: Confirm health**
 
 ```bash
-curl -sS http://192.168.4.105:8420/healthz
+curl -sS http://192.168.4.20:8420/healthz
 ```
 
 Expected: `{"status":"ok"}`

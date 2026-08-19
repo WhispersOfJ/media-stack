@@ -1,6 +1,6 @@
 # Fish functions
 
-All fish functions used on this host, mirrored here from `~/.config/fish/functions/` for version control. Most target this project's Control Panel API at `192.168.4.105:8420`; a handful are general shell/host utilities unrelated to the stack.
+All fish functions used on this host, mirrored here from `~/.config/fish/functions/` for version control. Most target this project's Control Panel API at `192.168.4.20:8420`; a handful are general shell/host utilities unrelated to the stack.
 
 Install with `scripts/fish-functions-install.py`, which symlinks every
 `stack-*.fish` and `__stack_*.fish` into `~/.config/fish/functions/` and every

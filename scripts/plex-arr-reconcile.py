@@ -134,7 +134,7 @@ def arr_paths(env: dict[str, str]) -> tuple[dict[str, str], list[str]]:
 
 def plex_served(env: dict[str, str]) -> tuple[set[str], list[str]]:
     """Every file path Plex will actually serve, straight from the API."""
-    base = env.get("PLEX_URL") or "http://192.168.4.105:32400"
+    base = env.get("PLEX_URL") or "http://192.168.4.20:32400"
     token = env.get("PLEX_TOKEN", "")
     served: set[str] = set()
     problems: list[str] = []

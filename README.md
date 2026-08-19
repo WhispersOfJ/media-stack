@@ -316,14 +316,14 @@ Radarr and Sonarr expose the same `/api/v3` REST API shape:
 
 ```bash
 # Radarr's health/liveness endpoint (used by every healthcheck in this stack)
-curl -sf http://192.168.4.105:7878/ping
+curl -sf http://192.168.4.20:7878/ping
 
 # List Radarr's configured root folders
-curl -s -H "X-Api-Key: $RADARR_API_KEY" http://192.168.4.105:7878/api/v3/rootfolder | jq .
+curl -s -H "X-Api-Key: $RADARR_API_KEY" http://192.168.4.20:7878/api/v3/rootfolder | jq .
 
 # Trigger an immediate RSS sync on Sonarr
 curl -X POST -H "X-Api-Key: $SONARR_API_KEY" -H "Content-Type: application/json" \
-  -d '{"name":"RssSync"}' http://192.168.4.105:8989/api/v3/command
+  -d '{"name":"RssSync"}' http://192.168.4.20:8989/api/v3/command
 ```
 
 ### The Sonarr `missing-aired` pagination gap (known, unresolved)
@@ -335,8 +335,8 @@ not-yet-aired episodes from daily/ongoing shows this instance tracks. Control Pa
 purpose-built endpoint:
 
 ```bash
-curl -s http://192.168.4.105:8420/api/arr/sonarr/missing-aired | jq .
-curl -s http://192.168.4.105:8420/api/arr/radarr/missing-aired | jq .
+curl -s http://192.168.4.20:8420/api/arr/sonarr/missing-aired | jq .
+curl -s http://192.168.4.20:8420/api/arr/radarr/missing-aired | jq .
 ```
 
 For Sonarr it paginates `wanted/missing` ascending by air date and stops at the first future
@@ -433,13 +433,13 @@ three earlier Usenet clients before it - see History). API examples via Control 
 
 ```bash
 # Current Usenet download queue
-curl -s http://192.168.4.105:8420/api/nzbdav/queue | jq .
+curl -s http://192.168.4.20:8420/api/nzbdav/queue | jq .
 
 # Recent history (completed/failed), last 20 by default
-curl -s http://192.168.4.105:8420/api/nzbdav/history | jq .
+curl -s http://192.168.4.20:8420/api/nzbdav/history | jq .
 
 # Aggregate queue/history stats
-curl -s http://192.168.4.105:8420/api/nzbdav/stats | jq .
+curl -s http://192.168.4.20:8420/api/nzbdav/stats | jq .
 ```
 
 ### Historical: AltMount and BearMount, replaced entirely by nzbdav/nzbdav 2026-07-28
@@ -524,11 +524,11 @@ reversible at each step before committing to it:
 ```bash
 # Disable first (reversible, in case something needed re-checking)
 curl -X PUT -H "X-Api-Key: $PROWLARR_API_KEY" -H "Content-Type: application/json" \
-  http://192.168.4.105:9696/api/v1/indexer/<id> -d '{...same body, "enable": false}'
+  http://192.168.4.20:9696/api/v1/indexer/<id> -d '{...same body, "enable": false}'
 
 # Then delete once confirmed nothing depended on it
 curl -X DELETE -H "X-Api-Key: $PROWLARR_API_KEY" \
-  http://192.168.4.105:9696/api/v1/indexer/<id>
+  http://192.168.4.20:9696/api/v1/indexer/<id>
 ```
 
 Zilean (the DMM cache-hash indexer, previously registered as a `Generic Torznab` indexer),
@@ -555,7 +555,7 @@ reconnection back.
 ```bash
 # Seerr's settings API accepts its stored API key as X-Api-Key - no session
 # login needed for scripted config changes
-curl -s -H "X-Api-Key: $SEERR_API_KEY" http://192.168.4.105:5055/api/v1/settings/radarr | jq .
+curl -s -H "X-Api-Key: $SEERR_API_KEY" http://192.168.4.20:5055/api/v1/settings/radarr | jq .
 ```
 
 ## Media server: Plex
@@ -797,7 +797,7 @@ Check what a release title scores with each app's parse endpoint:
 
 ```bash
 curl -s -H "X-Api-Key: $RADARR_API_KEY" \
-  "http://192.168.4.105:7878/api/v3/parse?title=Movie.Name.2024.1080p.WEB-DL.RUS" | \
+  "http://192.168.4.20:7878/api/v3/parse?title=Movie.Name.2024.1080p.WEB-DL.RUS" | \
   jq '.customFormats, .customFormatScore'
 ```
 
@@ -1133,7 +1133,7 @@ def worker():
 ```
 
 ```bash
-curl -X POST http://192.168.4.105:8420/api/stack/restart-all
+curl -X POST http://192.168.4.20:8420/api/stack/restart-all
 ```
 
 `MOUNT_PREREQS` holds `nzbdav` because the current architecture (unlike AltMount/BearMount, which
@@ -1194,7 +1194,7 @@ codebase under the same name). `stack-bearmount-restart` and
 # ~/.dotfiles/.config/fish/functions/__stack_api.fish
 # Usage: __stack_api METHOD PATH [JSON_BODY]
 function __stack_api
-    set -l host_ip 192.168.4.105
+    set -l host_ip 192.168.4.20
     curl -sS -X $method -w '\n%{http_code}' "http://$host_ip:8420$path" | python3 -c "..."
 end
 ```
@@ -1341,7 +1341,7 @@ has no backup coverage of any kind.
   expects:
   ```bash
   curl -X POST -H "X-Api-Key: $RADARR_API_KEY" -H "Content-Type: application/json" \
-    -d '{"name":"Backup"}' http://192.168.4.105:7878/api/v3/command
+    -d '{"name":"Backup"}' http://192.168.4.20:7878/api/v3/command
   ```
 - This host has a single physical disk (one NVMe) and no off-site copy of `./config` anywhere
   as of the removal above.

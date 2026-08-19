@@ -6,7 +6,7 @@ description: Exact fish CLI command reference for Plex operations against this s
 # Stack CLI: Plex
 
 <skill_scope skill="stack-cli-plex-kometa">
-This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every Plex terminal command in this stack is already known, without reading `~/.config/fish/functions/stack-plex*.fish` fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`); the actual behavior lives in `control-panel/main.py` plus the relevant `control-panel/services/<name>/router.py` (`services/plex/router.py` for the commands below). Kometa and Tautulli are both deployed and live in this stack - see the `stack-cli-usenet-queue`/other skills or `services/kometa/router.py` and `services/tautulli/router.py` for their commands; they were never removed.
+This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every Plex terminal command in this stack is already known, without reading `~/.config/fish/functions/stack-plex*.fish` fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.20:8420`); the actual behavior lives in `control-panel/main.py` plus the relevant `control-panel/services/<name>/router.py` (`services/plex/router.py` for the commands below). Kometa and Tautulli are both deployed and live in this stack - see the `stack-cli-usenet-queue`/other skills or `services/kometa/router.py` and `services/tautulli/router.py` for their commands; they were never removed.
 </skill_scope>
 
 ## Calling convention

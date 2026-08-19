@@ -66,7 +66,7 @@ this point again** - it can drift.
 `PROCESS_TIMER` stretched from the 1h default to `24h` as a fallback sweep. Plex Pass was
 already confirmed in use elsewhere (`plex-webhook-listener.py`), so this was a real
 optimization, not blocked on a missing subscription. The Plex-side webhook URL
-registration (`http://192.168.4.105:9090/webhook` in Plex's own Settings → Webhooks) is a
+registration (`http://192.168.4.20:9090/webhook` in Plex's own Settings → Webhooks) is a
 manual, account-level step done live by the user - not tracked by this repo.
 Commit: `media-stack@46dc108`.
 

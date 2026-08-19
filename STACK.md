@@ -2668,7 +2668,7 @@ instead.
 - Launch via the AppImage directly (double-click in KDE Plasma's file manager, or
   `~/Applications/WebTools-NG-*.AppImage &` from a terminal) — it's a GUI app, not something
   Claude Code can drive headlessly.
-- On first launch, point it at this stack's Plex server: URL `http://192.168.4.105:32400`,
+- On first launch, point it at this stack's Plex server: URL `http://192.168.4.20:32400`,
   token from `.env`'s `PLEX_TOKEN`. Both come from the same `.env` Plex already uses — no
   separate credential needed.
 - No update automation exists for this — it's a manually-downloaded release binary, not
@@ -3007,7 +3007,7 @@ via `docker exec pihole pihole setpassword '<value>'` instead of trusting the en
 config has ever been written to the volume.
 
 **Router-side work still required and NOT done by this session** - see README/AGENTS for the
-end-user Eero steps: this host's IP (`192.168.4.105`, currently DHCP-assigned) needs a DHCP
+end-user Eero steps: this host's IP (`192.168.4.20`, currently DHCP-assigned) needs a DHCP
 reservation, and the router's handed-out DNS server needs to change from its default to this
 host's IP. Until that happens, Pi-hole is fully functional but nothing on the network is
 actually using it yet.

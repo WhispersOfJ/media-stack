@@ -745,7 +745,7 @@ then `docker compose up -d plex` and re-run the `ls` check until it succeeds.
 
 ```bash
 set -a; source .env; set +a
-curl -s -X POST "http://192.168.4.105:32400/library/sections?name=Anime%20Movies&type=movie&agent=tv.plex.agents.movie&scanner=Plex%20Movie&language=en-US&location=/data/anime-movies&X-Plex-Token=$PLEX_TOKEN"
+curl -s -X POST "http://192.168.4.20:32400/library/sections?name=Anime%20Movies&type=movie&agent=tv.plex.agents.movie&scanner=Plex%20Movie&language=en-US&location=/data/anime-movies&X-Plex-Token=$PLEX_TOKEN"
 ```
 
 Expected: HTTP 200, and the library appears in Plex's own UI/`GET /library/sections` listing.
@@ -753,7 +753,7 @@ Expected: HTTP 200, and the library appears in Plex's own UI/`GET /library/secti
 - [ ] **Step 3: Verify**
 
 ```bash
-curl -s "http://192.168.4.105:32400/library/sections?X-Plex-Token=$PLEX_TOKEN" | grep -o 'title="Anime Movies"'
+curl -s "http://192.168.4.20:32400/library/sections?X-Plex-Token=$PLEX_TOKEN" | grep -o 'title="Anime Movies"'
 ```
 
 Expected: one match.
@@ -819,7 +819,7 @@ Watch `docker logs -f radarr-anime`, then `docker logs -f nzbdav`, confirm the g
 - [ ] **Step 3: Confirm Plex visibility**
 
 ```bash
-curl -s "http://192.168.4.105:32400/library/sections?X-Plex-Token=$PLEX_TOKEN"
+curl -s "http://192.168.4.20:32400/library/sections?X-Plex-Token=$PLEX_TOKEN"
 ```
 
 Trigger a scan on the new "Anime Movies" library, confirm the title appears with correct metadata within one scan cycle.

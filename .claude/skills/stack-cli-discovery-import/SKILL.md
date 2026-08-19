@@ -6,7 +6,7 @@ description: Exact fish CLI command reference for IMDb/MDBList rating lookups an
 # Stack CLI: Discovery & List Import
 
 <skill_scope skill="stack-cli-discovery-import">
-This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, flags, and known limitations for every rating-lookup and list-import terminal command in this stack are already known, without reading the fish source fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.105:8420`), which does the actual scraping/API calls server-side - no extra container is needed for any of this. The real behavior lives in `control-panel/main.py` plus `services/ratings/router.py` (rating lookups), `services/letterboxd/router.py`, and `services/arr/router.py` (`/api/mdblist/import-list` and the `add-from-letterboxd*` routes) - `app.py` is retired dead code, not the live source.
+This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, flags, and known limitations for every rating-lookup and list-import terminal command in this stack are already known, without reading the fish source fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.20:8420`), which does the actual scraping/API calls server-side - no extra container is needed for any of this. The real behavior lives in `control-panel/main.py` plus `services/ratings/router.py` (rating lookups), `services/letterboxd/router.py`, and `services/arr/router.py` (`/api/mdblist/import-list` and the `add-from-letterboxd*` routes) - `app.py` is retired dead code, not the live source.
 </skill_scope>
 
 ## Calling convention

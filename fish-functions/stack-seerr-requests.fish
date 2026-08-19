@@ -11,7 +11,7 @@ function stack-seerr-requests --description 'List Seerr media requests by status
     if test (count $argv) -eq 1
         set req_status $argv[1]
     end
-    set -l host_ip 192.168.4.105
+    set -l host_ip 192.168.4.20
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
     curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/seerr/requests?status=$req_status" | python3 -c "
 import json, sys

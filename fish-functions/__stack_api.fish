@@ -16,7 +16,7 @@ function __stack_api
     set -l method $argv[1]
     set -l path $argv[2]
     set -l body $argv[3]
-    set -l host_ip 192.168.4.105
+    set -l host_ip 192.168.4.20
     # Hardcoded, not derived from the running file's location. Since Phase 8a
     # (2026-08-13) the stack-* functions ARE symlinks into this repo, but this
     # helper is not one of them - it has no stack- prefix, so

@@ -7,7 +7,7 @@ function stack-arr-import --description 'Import a file listed by stack-arr-impor
         echo "Usage: stack-arr-import <radarr|sonarr> <index>" >&2
         return 1
     end
-    set -l host_ip 192.168.4.105
+    set -l host_ip 192.168.4.20
     set -l app (__stack_arr_app $argv[1])
     set -l body (curl -sS "http://$host_ip:8420/api/arr/$app/manual-import" | python3 -c "
 import json, sys
