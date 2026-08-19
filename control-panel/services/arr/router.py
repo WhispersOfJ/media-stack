@@ -26,14 +26,12 @@ from core import settings as settings_core
 from core.api_hit_counts import install as install_hit_counter, register_host_label
 from core.arr_client import (
     ARR_APPS,
-    BAZARR_URL,
     PROWLARR_CFG,
     QUEUE_ARR_APPS,
     RADARR_APPS,
     RECENT_IMPORT_LOOKBACK_HOURS,
     arr_command,
     arr_queue,
-    bazarr_headers,
     blocklist_and_research,
     current_queue_output_path,
     dd_test_file,
@@ -63,9 +61,7 @@ register_host_label(ARR_APPS["radarr"]["url"], "Radarr")
 register_host_label(ARR_APPS["sonarr"]["url"], "Sonarr")
 install_hit_counter()
 
-# Container names, not ARR_APPS keys - Docker knows radarr-anime (hyphen),
-# ARR_APPS keys it radarr_anime (underscore). See core/docker_client.py:18.
-ARR_LOG_CONTAINERS = {"radarr", "sonarr", "radarr-anime", "sonarr-anime", "prowlarr"}
+ARR_LOG_CONTAINERS = {"radarr", "sonarr", "prowlarr"}
 
 
 @router.post("/api/arr/{app_name}/rss-sync")
@@ -653,21 +649,6 @@ def backlog_status(_=Depends(current_user_or_service)):
         else:
             item["eta"] = f"unknown - no imports in the last {RECENT_IMPORT_LOOKBACK_HOURS}h to measure a rate from"
         result[app_name] = item
-
-    try:
-        headers = bazarr_headers()
-        movies_wanted = httpx.get(f"{BAZARR_URL}/api/movies/wanted", headers=headers, params={"length": 1}, timeout=20)
-        movies_wanted.raise_for_status()
-        episodes_wanted = httpx.get(f"{BAZARR_URL}/api/episodes/wanted", headers=headers, params={"length": 1}, timeout=20)
-        episodes_wanted.raise_for_status()
-        missing = movies_wanted.json().get("total", 0) + episodes_wanted.json().get("total", 0)
-        result["bazarr"] = {
-            "label": "Bazarr", "missing": missing, "recent_imports_sampled": 0, "rate_per_hour": 0.0,
-            "eta": "none - nothing missing" if missing == 0
-                   else "unknown - Bazarr's history API has no parseable timestamp to measure a rate from",
-        }
-    except (HTTPException, httpx.HTTPError) as e:
-        result["bazarr"] = {"label": "Bazarr", "error": str(e) if isinstance(e, httpx.HTTPError) else "unreachable"}
 
     total_missing = sum(v.get("missing", 0) for v in result.values())
     return ok(f"{total_missing} item(s) missing across {len(result)} apps.", apps=result)

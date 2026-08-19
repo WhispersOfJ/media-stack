@@ -5,5 +5,4 @@ complete -c stack-letterboxd-radarr-watched -l no-search
 complete -c stack-letterboxd-radarr-watched -l no-monitor
 complete -c stack-letterboxd-radarr-watched -l limit -r
 complete -c stack-letterboxd-radarr-watched -l dry-run -d 'Report what would happen, change nothing'
-complete -c stack-letterboxd-radarr-watched -l anime -d 'Route to the anime instance'
 complete -c stack-letterboxd-radarr-watched -d 'Add every film a Letterboxd user has watched to Radarr'

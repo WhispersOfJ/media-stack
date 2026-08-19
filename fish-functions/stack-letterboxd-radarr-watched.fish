@@ -1,13 +1,13 @@
-# Usage: stack-letterboxd-radarr-watched <letterboxd-user-films-url> [--no-search] [--no-monitor] [--limit N] [--dry-run] [--anime]
+# Usage: stack-letterboxd-radarr-watched <letterboxd-user-films-url> [--no-search] [--no-monitor] [--limit N] [--dry-run]
 # Same technique as stack-letterboxd-radarr, applied to a user's watched-films
 # page (e.g. https://letterboxd.com/<user>/films/): scrapes every film's slug
 # off the paginated grid (max 10 pages / 720 films), then each film's own
 # page for its TMDb id, and adds whatever isn't already in Radarr.
 function stack-letterboxd-radarr-watched --description 'Add every film a Letterboxd user has watched to Radarr'
-    argparse 'no-search' 'no-monitor' 'limit=' 'dry-run' 'anime' -- $argv
+    argparse 'no-search' 'no-monitor' 'limit=' 'dry-run' -- $argv
     or return 1
     if test (count $argv) -ne 1
-        echo "Usage: stack-letterboxd-radarr-watched <letterboxd-user-films-url> [--no-search] [--no-monitor] [--limit N] [--dry-run] [--anime]" >&2
+        echo "Usage: stack-letterboxd-radarr-watched <letterboxd-user-films-url> [--no-search] [--no-monitor] [--limit N] [--dry-run]" >&2
         return 1
     end
     set -l url $argv[1]
@@ -20,7 +20,6 @@ function stack-letterboxd-radarr-watched --description 'Add every film a Letterb
     set -q _flag_no_monitor; and set monitored false
     set -q _flag_limit; and set limit $_flag_limit
     set -q _flag_dry_run; and set dry_run true
-    set -q _flag_anime; and set app radarr_anime
     set -l body (python3 -c "
 import json, sys
 url, search, monitored, limit, dry_run, app = sys.argv[1:7]

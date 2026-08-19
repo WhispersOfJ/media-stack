@@ -24,11 +24,12 @@ class LetterboxdTrackedList(Base):
     # same JSON-in-a-string-column pattern as models/setting.py's value_json.
     rating_quality_map_json: Mapped[str | None] = mapped_column(String, nullable=True)
     tags_as_radarr_tags: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # "radarr" or "radarr_anime" (core.arr_client.RADARR_APPS) - which Radarr
-    # instance this list's films get added to.
+    # Which Radarr instance (core.arr_client.RADARR_APPS) this list's films
+    # get added to. A single base instance since the 2026-08-18 anime merge.
     app: Mapped[str] = mapped_column(String, nullable=False, default="radarr")
-    # "sonarr" or "sonarr_anime" (core.arr_client.SONARR_APPS) - which Sonarr
-    # instance sonarr_crossover TV matches get added to.
+    # Which Sonarr instance (core.arr_client.SONARR_APPS) sonarr_crossover
+    # TV matches get added to. A single base instance since the 2026-08-18
+    # anime merge.
     sonarr_app: Mapped[str] = mapped_column(String, nullable=False, default="sonarr")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

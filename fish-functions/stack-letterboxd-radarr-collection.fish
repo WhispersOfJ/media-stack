@@ -1,4 +1,4 @@
-# Usage: stack-letterboxd-radarr-collection <letterboxd-collection-url> [--no-search] [--no-monitor] [--limit N] [--dry-run] [--anime]
+# Usage: stack-letterboxd-radarr-collection <letterboxd-collection-url> [--no-search] [--no-monitor] [--limit N] [--dry-run]
 # Same technique as stack-letterboxd-radarr, applied to a film collection
 # (e.g. https://letterboxd.com/films/in/<collection-slug>/).
 #
@@ -9,10 +9,10 @@
 # command can intermittently fail with a fetch error that isn't this
 # command's bug. Retry if it happens.
 function stack-letterboxd-radarr-collection --description 'Add every film in a Letterboxd collection to Radarr'
-    argparse 'no-search' 'no-monitor' 'limit=' 'dry-run' 'anime' -- $argv
+    argparse 'no-search' 'no-monitor' 'limit=' 'dry-run' -- $argv
     or return 1
     if test (count $argv) -ne 1
-        echo "Usage: stack-letterboxd-radarr-collection <letterboxd-collection-url> [--no-search] [--no-monitor] [--limit N] [--dry-run] [--anime]" >&2
+        echo "Usage: stack-letterboxd-radarr-collection <letterboxd-collection-url> [--no-search] [--no-monitor] [--limit N] [--dry-run]" >&2
         return 1
     end
     set -l url $argv[1]
@@ -25,7 +25,6 @@ function stack-letterboxd-radarr-collection --description 'Add every film in a L
     set -q _flag_no_monitor; and set monitored false
     set -q _flag_limit; and set limit $_flag_limit
     set -q _flag_dry_run; and set dry_run true
-    set -q _flag_anime; and set app radarr_anime
     set -l body (python3 -c "
 import json, sys
 url, search, monitored, limit, dry_run, app = sys.argv[1:7]

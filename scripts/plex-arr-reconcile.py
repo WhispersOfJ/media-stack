@@ -76,9 +76,7 @@ LIBRARIES = {
 
 ARR_INSTANCES = [
     ("radarr", 7878, "RADARR_API_KEY", "movie"),
-    ("radarr-anime", 7879, "RADARR_ANIME_API_KEY", "movie"),
     ("sonarr", 8989, "SONARR_API_KEY", "series"),
-    ("sonarr-anime", 8990, "SONARR_ANIME_API_KEY", "series"),
 ]
 
 # Plex has no demuxer for a disc image. Radarr tracks them as movie files, so

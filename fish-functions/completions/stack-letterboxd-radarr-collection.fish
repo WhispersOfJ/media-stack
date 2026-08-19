@@ -5,5 +5,4 @@ complete -c stack-letterboxd-radarr-collection -l no-search
 complete -c stack-letterboxd-radarr-collection -l no-monitor
 complete -c stack-letterboxd-radarr-collection -l limit -r
 complete -c stack-letterboxd-radarr-collection -l dry-run -d 'Report what would happen, change nothing'
-complete -c stack-letterboxd-radarr-collection -l anime -d 'Route to the anime instance'
 complete -c stack-letterboxd-radarr-collection -d 'Add every film in a Letterboxd collection to Radarr'

@@ -19,11 +19,11 @@ class MDBListTrackedList(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     url: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     label: Mapped[str | None] = mapped_column(String, nullable=True)
-    # "radarr" or "radarr_anime" (core.arr_client.RADARR_APPS) - which Radarr
-    # instance this list's movies get added to.
+    # Which Radarr instance (core.arr_client.RADARR_APPS) this list's movies
+    # get added to. A single base instance since the 2026-08-18 anime merge.
     app: Mapped[str] = mapped_column(String, nullable=False, default="radarr")
-    # "sonarr" or "sonarr_anime" (core.arr_client.SONARR_APPS) - which Sonarr
-    # instance this list's shows get added to.
+    # Which Sonarr instance (core.arr_client.SONARR_APPS) this list's shows
+    # get added to. A single base instance since the 2026-08-18 anime merge.
     sonarr_app: Mapped[str] = mapped_column(String, nullable=False, default="sonarr")
     radarr_root_folder: Mapped[str | None] = mapped_column(String, nullable=True)
     radarr_quality_profile: Mapped[str | None] = mapped_column(String, nullable=True)

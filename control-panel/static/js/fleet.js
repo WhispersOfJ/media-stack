@@ -12,18 +12,13 @@ import { renderSparkline, pushHistory } from "./sparkline.js";
 
 const FLEET_GROUPS = {
   prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
-  "radarr-anime": "Arr apps", "sonarr-anime": "Arr apps",
   nzbdav: "Usenet", nzbdav_rclone: "Usenet", seerr: "Requests", plex: "Media server",
-  tautulli: "Media server", wrapperr: "Media server", kometa: "Media server",
-  bazarr: "Subtitles", lingarr: "Subtitles",
+  tautulli: "Media server", wrapperr: "Media server",
+  lingarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
   cleanuparr: "Queue cleanup",
   maintainerr: "Library maintenance", prefetcharr: "Library maintenance",
   "control-panel": "Dashboard",
-  organizr: "Dashboard",
-  ntfy: "Notifications",
-  "speedtest-tracker": "Monitoring",
-  scrutiny: "Monitoring",
   gaps2: "Discovery",
   watchstate: "Discovery",
   // Scheduled batch job, not a persistent service - it sits in Exited(0)
@@ -31,7 +26,7 @@ const FLEET_GROUPS = {
   // not an up/down dot (SERVICE_META.health_check is null for the same reason).
   plexanisync: "Post-processing",
 };
-const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Discovery", "Post-processing", "Auto-updates", "Notifications", "Monitoring", "Dashboard", "Other"];
+const GROUP_ORDER = ["Arr apps", "Indexing", "Usenet", "Requests", "Media server", "Subtitles", "Queue cleanup", "Library maintenance", "Discovery", "Post-processing", "Auto-updates", "Dashboard", "Other"];
 // localStorage isn't a real store under plain `node --test` (no DOM) - Node
 // exposes the identifier but throws on access. Guard so fleet.test.js can
 // import groupHistoryFor without a browser environment. No behavior change

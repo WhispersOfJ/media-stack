@@ -15,18 +15,12 @@ docker_client = docker.from_env()
 
 CONTAINER_LABELS = {
     "radarr": ("Radarr", None),
-    # Hyphen matches the Docker container name radarr-anime; core/arr_client.py's
-    # ARR_APPS keys it radarr_anime (underscore, Python-identifier convention) -
-    # the two dicts key the same instance differently on purpose.
-    "radarr-anime": ("Radarr (Anime)", "dedicated Radarr instance for anime movies, Usenet-only"),
     "sonarr": ("Sonarr", None),
-    "sonarr-anime": ("Sonarr (Anime)", "dedicated Sonarr instance for anime shows, Usenet-only"),
     "prowlarr": ("Prowlarr", None),
     "plex": ("Plex", None),
     "nzbdav": ("NzbDAV", "Usenet, WebDAV + SABnzbd-compatible API"),
     "nzbdav_rclone": ("NzbDAV rclone", "rclone sidecar - FUSE-mounts NzbDAV's WebDAV tree"),
     "seerr": ("Seerr", None),
-    "bazarr": ("Bazarr", "subtitle management - watches Radarr/Sonarr for missing subs"),
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
@@ -34,12 +28,8 @@ CONTAINER_LABELS = {
     "wrapperr": ("Wrapperr", "Tautulli stats wrapper/report dashboard"),
     "maintainerr": ("Maintainerr", "Plex/Radarr/Sonarr library maintenance - installed with zero rules configured"),
     "prefetcharr": ("Prefetcharr", "auto-fetches next Sonarr season from Plex watch progress"),
-    "lingarr": ("Lingarr", "subtitle translation, complements Bazarr"),
-    "kometa": ("Kometa", "Plex metadata/collections/overlays, scheduled daily 05:30"),
+    "lingarr": ("Lingarr", "subtitle translation"),
     "control-panel": ("Control Panel", "this dashboard"),
-    "ntfy": ("ntfy", "shared push-notification sink - anonymous access, not exposed publicly"),
-    "organizr": ("Organizr", "single landing dashboard, one tab per service - tabs provisioned by script, not by hand"),
-    "scrutiny": ("Scrutiny", "S.M.A.R.T. trending for the host's single NVMe - collector runs daily at midnight"),
     "gaps2": ("GAPS-2", "finds titles missing from a collection/franchise - detection only, pushes route through the panel to the right Arr instance"),
 }
 

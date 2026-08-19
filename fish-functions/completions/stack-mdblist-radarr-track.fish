@@ -2,6 +2,4 @@
 # Regenerate after changing the function: scripts/fish-completions-generate.py
 complete -c stack-mdblist-radarr-track -f
 complete -c stack-mdblist-radarr-track -l label -r
-complete -c stack-mdblist-radarr-track -l anime -d 'Route to the anime instance'
-complete -c stack-mdblist-radarr-track -l sonarr-anime -d 'Route to sonarr-anime'
 complete -c stack-mdblist-radarr-track -d 'Register an MDBList list for nightly diff-only sync'

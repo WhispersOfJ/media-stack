@@ -391,18 +391,7 @@ def test_manual_import_all_no_files_reports_zero(cp_main_app, monkeypatch):
     assert "No importable files" in resp.json()["message"]
 
 
-# ---------------------------------------------------------------------
-# All four Arr instances, not just the general pair (2026-08-14).
-#
-# radarr-anime and sonarr-anime have been running since 2026-08-06/08 and
-# are first-class entries in core.arr_client.ARR_APPS, but six routes here
-# still guarded on a hardcoded ("radarr", "sonarr") and rejected them with
-# claims that were never true of the anime instances - "Only radarr and
-# sonarr have quality cutoffs" when radarr-anime has an Anime profile with
-# a cutoff of its own.
-# ---------------------------------------------------------------------
-
-ALL_ARR_APPS = ["radarr", "sonarr", "radarr_anime", "sonarr_anime"]
+ALL_ARR_APPS = ["radarr", "sonarr"]
 
 
 @pytest.mark.parametrize("app_name", ALL_ARR_APPS)
@@ -435,15 +424,9 @@ def test_per_app_routes_accept_every_arr_instance(cp_main_app, monkeypatch, app_
 
 @pytest.mark.parametrize("app_name,expected", [
     ("radarr", "/api/v3/movie"),
-    ("radarr_anime", "/api/v3/movie"),
     ("sonarr", "/api/v3/series"),
-    ("sonarr_anime", "/api/v3/series"),
 ])
 def test_recently_added_picks_endpoint_by_app_shape(cp_main_app, monkeypatch, app_name, expected):
-    """The landmine documented at core/arr_client.py:62 - radarr_anime is a
-    movie-shaped app, so an `app_name == "radarr"` branch silently sends it
-    to /series and it never resolves. Widening the guard without fixing the
-    branch swaps a 400 for wrong data, which is worse."""
     seen = {}
 
     def fake_get(url, params=None, **kwargs):
@@ -470,12 +453,5 @@ def test_import_list_add_accepts_every_arr_instance(cp_main_app, monkeypatch, ap
         json={"implementation": "TraktList", "name": "test", "fields": {}},
     )
     # Not asserting success - the payload is deliberately thin. Asserting
-    # only that it is never rejected for *being* an anime instance.
+    # only that it is never rejected for being an unrecognized instance.
     assert "Only radarr and sonarr" not in resp.text
-
-
-@pytest.mark.parametrize("container", ["radarr-anime", "sonarr-anime"])
-def test_logs_route_covers_anime_containers(cp_main_app, container):
-    """cp_main_app sets the API-key env vars core.arr_client reads at import."""
-    from services.arr.router import ARR_LOG_CONTAINERS
-    assert container in ARR_LOG_CONTAINERS

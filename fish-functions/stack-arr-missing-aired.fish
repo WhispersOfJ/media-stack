@@ -1,11 +1,11 @@
-# Usage: stack-arr-missing-aired <radarr|sonarr|radarr_anime|sonarr_anime>
+# Usage: stack-arr-missing-aired <radarr|sonarr>
 # Monitored + no file + already aired/released, excluding upcoming items -
 # the gap in each app's own Wanted/Missing list (Sonarr's has no filter for
 # this and gets buried under not-yet-aired episodes; Radarr's has a native
 # equivalent this mirrors).
 function stack-arr-missing-aired --description 'List monitored items missing a file that have already aired/released'
     if test (count $argv) -ne 1; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-arr-missing-aired <radarr|sonarr|radarr_anime|sonarr_anime>" >&2
+        echo "Usage: stack-arr-missing-aired <radarr|sonarr>" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

@@ -1,13 +1,13 @@
-# Usage: stack-mdblist-radarr-track <mdblist-list-url> [--label TEXT] [--anime] [--sonarr-anime]
+# Usage: stack-mdblist-radarr-track <mdblist-list-url> [--label TEXT]
 # Registers an MDBList list for the nightly diff-only sync
 # (mirrors stack-letterboxd-radarr-track). Adding, then never untracking,
 # is how a list stays synced indefinitely - untrack with
 # stack-mdblist-radarr-untrack when done.
 function stack-mdblist-radarr-track --description 'Register an MDBList list for nightly diff-only sync'
-    argparse 'label=' 'anime' 'sonarr-anime' -- $argv
+    argparse 'label=' -- $argv
     or return 1
     if test (count $argv) -ne 1
-        echo "Usage: stack-mdblist-radarr-track <mdblist-list-url> [--label TEXT] [--anime] [--sonarr-anime]" >&2
+        echo "Usage: stack-mdblist-radarr-track <mdblist-list-url> [--label TEXT]" >&2
         return 1
     end
     set -l url $argv[1]
@@ -15,8 +15,6 @@ function stack-mdblist-radarr-track --description 'Register an MDBList list for 
     set -l app radarr
     set -l sonarr_app sonarr
     set -q _flag_label; and set label $_flag_label
-    set -q _flag_anime; and set app radarr_anime
-    set -q _flag_sonarr_anime; and set sonarr_app sonarr_anime
     set -l body (python3 -c "
 import json, sys
 url, label, app, sonarr_app = sys.argv[1:5]

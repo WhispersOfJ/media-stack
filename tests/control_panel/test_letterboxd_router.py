@@ -320,39 +320,6 @@ def test_letterboxd_add_rejects_unknown_app(cp_main_app):
     assert resp.status_code == 400
 
 
-def test_letterboxd_add_targets_radarr_anime(cp_main_app, monkeypatch):
-    letterboxd_html = '<html>themoviedb.org/movie/603</html>'
-    posted_to = []
-
-    def fake_get(url, params=None, headers=None, timeout=None, **kwargs):
-        if "letterboxd.com" in url:
-            return MagicMock(text=letterboxd_html, raise_for_status=MagicMock())
-        if "/movie/lookup/tmdb" in url:
-            return _json_response({"title": "The Matrix", "year": 1999})
-        if "/rootfolder" in url:
-            return _json_response([{"path": "/data/anime-movies"}])
-        if "/qualityprofile" in url:
-            return _json_response([{"id": 7, "name": "Unlimited"}])
-        if "/movie" in url and params and params.get("tmdbId") == 603:
-            return _json_response([])
-        return _json_response({})
-
-    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
-        posted_to.append(url)
-        return _json_response({"id": 5, "title": "The Matrix", "year": 1999})
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    monkeypatch.setattr(httpx, "post", fake_post)
-    client = TestClient(cp_main_app.app)
-    _login(client, cp_main_app)
-    resp = client.post(
-        "/api/arr/radarr/add-from-letterboxd",
-        json={"url": "https://letterboxd.com/film/the-matrix/", "app": "radarr_anime"},
-    )
-    assert resp.status_code == 200
-    assert posted_to and "radarr-anime" in posted_to[0]
-
-
 def test_letterboxd_track_rejects_unknown_app(cp_main_app):
     client = TestClient(cp_main_app.app)
     _login(client, cp_main_app)
@@ -378,15 +345,15 @@ def test_track_and_list_tracked_persists_app_and_sonarr_app(cp_main_app):
     _login(client, cp_main_app)
     resp = client.post(
         "/api/arr/letterboxd/track",
-        json={"url": "https://letterboxd.com/bear/watchlist/", "app": "radarr_anime", "sonarr_app": "sonarr_anime"},
+        json={"url": "https://letterboxd.com/bear/watchlist/", "app": "radarr", "sonarr_app": "sonarr"},
     )
     assert resp.status_code == 200
 
     resp = client.get("/api/arr/letterboxd/tracked")
     lists = resp.json()["lists"]
     row = next(x for x in lists if x["url"] == "https://letterboxd.com/bear/watchlist/")
-    assert row["app"] == "radarr_anime"
-    assert row["sonarrApp"] == "sonarr_anime"
+    assert row["app"] == "radarr"
+    assert row["sonarrApp"] == "sonarr"
 
 
 def test_sync_tick_passes_tracked_app_to_list_sync(cp_main_app, monkeypatch):
@@ -394,7 +361,7 @@ def test_sync_tick_passes_tracked_app_to_list_sync(cp_main_app, monkeypatch):
     _login(client, cp_main_app)
     client.post(
         "/api/arr/letterboxd/track",
-        json={"url": "https://letterboxd.com/bear/watchlist/", "app": "radarr_anime", "sonarr_app": "sonarr_anime"},
+        json={"url": "https://letterboxd.com/bear/watchlist/", "app": "radarr", "sonarr_app": "sonarr"},
     )
 
     calls = []
@@ -406,5 +373,5 @@ def test_sync_tick_passes_tracked_app_to_list_sync(cp_main_app, monkeypatch):
     monkeypatch.setattr("services.letterboxd.router._run_list_sync", fake_run_list_sync)
     resp = client.post("/api/arr/letterboxd/sync-tick")
     assert resp.status_code == 200
-    assert calls[0]["app"] == "radarr_anime"
-    assert calls[0]["sonarr_app"] == "sonarr_anime"
+    assert calls[0]["app"] == "radarr"
+    assert calls[0]["sonarr_app"] == "sonarr"

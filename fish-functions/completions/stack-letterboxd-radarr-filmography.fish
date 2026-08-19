@@ -5,6 +5,5 @@ complete -c stack-letterboxd-radarr-filmography -l no-search
 complete -c stack-letterboxd-radarr-filmography -l no-monitor
 complete -c stack-letterboxd-radarr-filmography -l limit -r
 complete -c stack-letterboxd-radarr-filmography -l dry-run -d 'Report what would happen, change nothing'
-complete -c stack-letterboxd-radarr-filmography -l anime -d 'Route to the anime instance'
 complete -c stack-letterboxd-radarr-filmography -n 'test (count (commandline -opc)) -eq 1' -d 'role'
 complete -c stack-letterboxd-radarr-filmography -d 'Add every film in a Letterboxd person\'s filmography to Radarr'

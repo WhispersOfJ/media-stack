@@ -1,15 +1,13 @@
-# Private helper: validate an Arr instance name and normalize it to the
-# spelling the caller needs. Every stack-* command that takes an app
-# argument funnels through this, so the accepted spellings are defined
-# once instead of drifting across 19 separate `contains` guards.
+# Private helper: validate an Arr instance name. Every stack-* command
+# that takes an app argument funnels through this, so the accepted
+# spellings are defined once instead of drifting across separate
+# `contains` guards.
 #
-# Two spellings are load-bearing and neither can be dropped:
-#   radarr_anime  - the core/arr_client.py ARR_APPS key, which is what
-#                   /api/arr/{app_name}/... matches on.
-#   radarr-anime  - the Docker container name, which is what the logs
-#                   route and `docker` itself need.
-# Underscores are hostile to type at a prompt, so both are accepted
-# everywhere along with a short alias, and this normalizes.
+# radarr_anime/sonarr_anime were retired 2026-08-18 (Plan 3 consolidation,
+# merged into these base instances) - radarr/sonarr are the only two Arr
+# instances in this stack now, so the --container normalization (which
+# used to swap radarr_anime's underscore for radarr-anime's Docker-name
+# hyphen) has nothing left to do; both spellings key the same instance.
 #
 # Usage: __stack_arr_app <name> [--container]
 # Prints the normalized name and returns 0, or prints nothing and
@@ -27,16 +25,8 @@ function __stack_arr_app
             set key radarr
         case sonarr
             set key sonarr
-        case radarr_anime radarr-anime ranime anime-movies
-            set key radarr_anime
-        case sonarr_anime sonarr-anime sanime anime-shows
-            set key sonarr_anime
         case '*'
             return 1
     end
-    if set -q _flag_container
-        string replace '_' '-' -- $key
-    else
-        echo $key
-    end
+    echo $key
 end

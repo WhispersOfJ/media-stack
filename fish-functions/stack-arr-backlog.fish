@@ -1,6 +1,6 @@
 function stack-arr-backlog --description 'Show an arr app''s internal command queue backlog (searches, RSS sync, bulk moves, etc)'
     if test (count $argv) -ne 1; or not __stack_arr_app $argv[1] >/dev/null
-        echo 'Usage: stack-arr-backlog <radarr|sonarr|radarr_anime|sonarr_anime>' >&2
+        echo 'Usage: stack-arr-backlog <radarr|sonarr>' >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

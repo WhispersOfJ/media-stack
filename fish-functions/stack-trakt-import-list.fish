@@ -1,4 +1,4 @@
-# Usage: stack-trakt-import-list <radarr|sonarr|radarr_anime|sonarr_anime> <trakt-username> <trakt-listname> <display-name> [--no-search]
+# Usage: stack-trakt-import-list <radarr|sonarr> <trakt-username> <trakt-listname> <display-name> [--no-search]
 # Adds a public Trakt list as an import list (TraktListImport). Reuses
 # whichever app already has a Trakt OAuth token from an existing list
 # (this Radarr's DCAU/DCEU lists, this Sonarr's Top250TV/True Crime) -
@@ -9,7 +9,7 @@ function stack-trakt-import-list --description 'Add a public Trakt list as a Rad
     argparse 'no-search' -- $argv
     or return 1
     if test (count $argv) -ne 4; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-trakt-import-list <radarr|sonarr|radarr_anime|sonarr_anime> <trakt-username> <trakt-listname> <display-name> [--no-search]" >&2
+        echo "Usage: stack-trakt-import-list <radarr|sonarr> <trakt-username> <trakt-listname> <display-name> [--no-search]" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

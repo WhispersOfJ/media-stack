@@ -36,12 +36,8 @@ CLEANUPARR_URL = "http://localhost:11011/api/configuration"
 INSTANCES = [
     {"type": "radarr", "name": "Radarr", "url": "http://radarr:7878/",
      "key_env": "RADARR_API_KEY", "version": 6},
-    {"type": "radarr", "name": "Radarr Anime", "url": "http://radarr-anime:7878/",
-     "key_env": "RADARR_ANIME_API_KEY", "version": 6},
     {"type": "sonarr", "name": "Sonarr", "url": "http://sonarr:8989/",
      "key_env": "SONARR_API_KEY", "version": 4},
-    {"type": "sonarr", "name": "Sonarr Anime", "url": "http://sonarr-anime:8989/",
-     "key_env": "SONARR_ANIME_API_KEY", "version": 4},
 ]
 
 # Seeker is the stack's only paced missing-content hunter. Left off, missing

@@ -1,4 +1,4 @@
-# Usage: stack-letterboxd-radarr-filmography <role> <slug> [--no-search] [--no-monitor] [--limit N] [--dry-run] [--anime]
+# Usage: stack-letterboxd-radarr-filmography <role> <slug> [--no-search] [--no-monitor] [--limit N] [--dry-run]
 # role is a Letterboxd crew-role URL segment: actor, director, writer,
 # producer, editor, cinematography, composer, etc. Builds
 # https://letterboxd.com/<role>/<slug>/ and applies the same technique as
@@ -7,10 +7,10 @@
 # adds whatever isn't already in Radarr. An unrecognized role just 404s with
 # a clear error - roles aren't hardcoded here.
 function stack-letterboxd-radarr-filmography --description 'Add every film in a Letterboxd person''s filmography to Radarr'
-    argparse 'no-search' 'no-monitor' 'limit=' 'dry-run' 'anime' -- $argv
+    argparse 'no-search' 'no-monitor' 'limit=' 'dry-run' -- $argv
     or return 1
     if test (count $argv) -ne 2
-        echo "Usage: stack-letterboxd-radarr-filmography <role> <slug> [--no-search] [--no-monitor] [--limit N] [--dry-run] [--anime]" >&2
+        echo "Usage: stack-letterboxd-radarr-filmography <role> <slug> [--no-search] [--no-monitor] [--limit N] [--dry-run]" >&2
         echo "  role examples: actor, director, writer, producer, editor, cinematography, composer" >&2
         return 1
     end
@@ -26,7 +26,6 @@ function stack-letterboxd-radarr-filmography --description 'Add every film in a 
     set -q _flag_no_monitor; and set monitored false
     set -q _flag_limit; and set limit $_flag_limit
     set -q _flag_dry_run; and set dry_run true
-    set -q _flag_anime; and set app radarr_anime
     set -l body (python3 -c "
 import json, sys
 url, search, monitored, limit, dry_run, app = sys.argv[1:7]

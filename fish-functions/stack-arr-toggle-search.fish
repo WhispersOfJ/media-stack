@@ -1,10 +1,10 @@
-# Usage: stack-arr-toggle-search <radarr|sonarr|radarr_anime|sonarr_anime|all> <on|off>
+# Usage: stack-arr-toggle-search <radarr|sonarr|all> <on|off>
 # Toggles RSS sync + automatic search on every indexer for the given app(s),
 # without touching interactive/manual search. Use to pause new grabs while
 # an import queue drains, then turn back on when it's clear.
 function stack-arr-toggle-search --description 'Turn RSS sync + automatic search on/off for Radarr/Sonarr indexers'
     if test (count $argv) -ne 2; or not contains -- $argv[2] on off
-        echo "Usage: stack-arr-toggle-search <radarr|sonarr|radarr_anime|sonarr_anime|all> <on|off>" >&2
+        echo "Usage: stack-arr-toggle-search <radarr|sonarr|all> <on|off>" >&2
         return 1
     end
     set -l enabled true
@@ -13,14 +13,11 @@ function stack-arr-toggle-search --description 'Turn RSS sync + automatic search
     end
     set -l apps
     if test $argv[1] = all
-        # All four instances. Toggling only the general pair here is the
-        # failure this command exists to prevent: the anime instances
-        # keep grabbing while you believe grabbing is paused.
-        set apps radarr sonarr radarr_anime sonarr_anime
+        set apps radarr sonarr
     else
         set apps (__stack_arr_app $argv[1])
         or begin
-            echo "Usage: stack-arr-toggle-search <radarr|sonarr|radarr_anime|sonarr_anime|all> <on|off>" >&2
+            echo "Usage: stack-arr-toggle-search <radarr|sonarr|all> <on|off>" >&2
             return 1
         end
     end

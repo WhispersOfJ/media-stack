@@ -98,27 +98,6 @@ def test_mdblist_import_rejects_unknown_app(cp_main_app, monkeypatch):
     assert resp.status_code == 400
 
 
-def test_mdblist_import_targets_radarr_anime_and_sonarr_anime(cp_main_app, monkeypatch):
-    monkeypatch.setenv("MDBLIST_KEY", "test-mdblist-key")
-    posted_to = []
-
-    def fake_post(url, json=None, headers=None, timeout=None, **kwargs):
-        posted_to.append(url)
-        return _json_response({"id": 1})
-
-    monkeypatch.setattr(httpx, "get", _fake_get_factory())
-    monkeypatch.setattr(httpx, "post", fake_post)
-    client = TestClient(cp_main_app.app)
-    _login(client, cp_main_app)
-    resp = client.post(
-        "/api/mdblist/import-list",
-        json={"list_url": "https://mdblist.com/lists/bear/toplist/", "app": "radarr_anime", "sonarr_app": "sonarr_anime"},
-    )
-    assert resp.status_code == 200
-    assert any("radarr-anime" in u for u in posted_to)
-    assert any("sonarr-anime" in u for u in posted_to)
-
-
 def test_mdblist_import_accepts_service_key(cp_main_app, monkeypatch):
     monkeypatch.setenv("MDBLIST_KEY", "test-mdblist-key")
     monkeypatch.setattr(httpx, "get", _fake_get_factory())
@@ -156,7 +135,7 @@ def test_track_untrack_and_list_tracked_mdblist_lists(cp_main_app):
 
     resp = client.post(
         "/api/mdblist/track",
-        json={"url": "https://mdblist.com/lists/bear/toplist/", "label": "Bear's toplist", "app": "radarr_anime", "sonarr_app": "sonarr_anime"},
+        json={"url": "https://mdblist.com/lists/bear/toplist/", "label": "Bear's toplist", "app": "radarr", "sonarr_app": "sonarr"},
     )
     assert resp.status_code == 200
     list_id = resp.json()["id"]
@@ -166,8 +145,8 @@ def test_track_untrack_and_list_tracked_mdblist_lists(cp_main_app):
     lists = resp.json()["lists"]
     row = next(x for x in lists if x["id"] == list_id)
     assert row["label"] == "Bear's toplist"
-    assert row["app"] == "radarr_anime"
-    assert row["sonarrApp"] == "sonarr_anime"
+    assert row["app"] == "radarr"
+    assert row["sonarrApp"] == "sonarr"
 
     resp = client.post("/api/mdblist/untrack", json={"url": "https://mdblist.com/lists/bear/toplist/"})
     assert resp.status_code == 200
@@ -187,7 +166,7 @@ def test_sync_tick_passes_tracked_app_to_import(cp_main_app, monkeypatch):
     _login(client, cp_main_app)
     client.post(
         "/api/mdblist/track",
-        json={"url": "https://mdblist.com/lists/bear/toplist/", "app": "radarr_anime", "sonarr_app": "sonarr_anime"},
+        json={"url": "https://mdblist.com/lists/bear/toplist/", "app": "radarr", "sonarr_app": "sonarr"},
     )
 
     calls = []
@@ -199,8 +178,8 @@ def test_sync_tick_passes_tracked_app_to_import(cp_main_app, monkeypatch):
     monkeypatch.setattr("services.mdblist.router._run_import", fake_run_import)
     resp = client.post("/api/mdblist/sync-tick")
     assert resp.status_code == 200
-    assert calls[0]["app"] == "radarr_anime"
-    assert calls[0]["sonarr_app"] == "sonarr_anime"
+    assert calls[0]["app"] == "radarr"
+    assert calls[0]["sonarr_app"] == "sonarr"
 
 
 def test_history_reflects_import_run(cp_main_app, monkeypatch):

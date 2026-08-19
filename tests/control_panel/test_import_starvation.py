@@ -116,7 +116,7 @@ def test_starved_app_reports_empty_queue(starvation):
     starvation.state["grab"] = NOW
     starvation.state["import"] = NOW - timedelta(seconds=8760)
 
-    verdict = starvation.detect("sonarr_anime", now=NOW)
+    verdict = starvation.detect("sonarr", now=NOW)
 
     # No queue lookup happens at all - an empty queue must never be able to
     # mask this, so the detector does not consult it.
@@ -157,7 +157,7 @@ def test_missing_import_history_does_not_crash(starvation):
     starvation.state["grab"] = NOW
     starvation.state["import"] = None
 
-    verdict = starvation.detect("radarr_anime", now=NOW)
+    verdict = starvation.detect("radarr", now=NOW)
 
     assert verdict["lag_seconds"] is None
     assert verdict["lagging"] is False
@@ -173,7 +173,7 @@ def test_clear_search_backlog_cancels_only_queued_searches(starvation):
     rss = _command("RssSync", "queued", 50)
     starvation.state["commands"] = [queued_search, started_search, refresh, rss]
 
-    result = starvation.clear_search_backlog("sonarr_anime")
+    result = starvation.clear_search_backlog("sonarr")
 
     assert result == {"targeted": 1, "cancelled": 1, "failed": 0}
     assert starvation.state["deleted"] == [queued_search["id"]]
@@ -202,8 +202,8 @@ def test_check_all_remediates_only_starved_apps(starvation):
 
     result = starvation.check_all(remediate=True, now=NOW)
 
-    # Every app shares the same stubbed backend here, so all four starve.
-    assert set(result["starved"]) == {"radarr", "sonarr", "radarr_anime", "sonarr_anime"}
+    # Every app shares the same stubbed backend here, so both starve.
+    assert set(result["starved"]) == {"radarr", "sonarr"}
     assert all(r["cancelled"] == 1 for r in result["remediated"].values())
 
 

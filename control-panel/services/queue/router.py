@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from core.api_hit_counts import install as install_hit_counter
-from core.arr_client import ARR_APPS, BAZARR_URL, QUEUE_ARR_APPS, arr_queue, bazarr_headers, format_eta, human_size
+from core.arr_client import ARR_APPS, QUEUE_ARR_APPS, arr_queue, format_eta, human_size
 from core.nzbdav_client import nzbdav_api
 from core.responses import ok
 from core.security import current_user_or_service
@@ -150,28 +150,6 @@ def queue_status(_=Depends(current_user_or_service)):
         result["plex"] = {"label": "Plex", "total": len(activities), **buckets}
     except HTTPException:
         result["plex"] = {"label": "Plex", "error": "unreachable"}
-
-    # Bazarr has no in-progress download to bucket as downloading/stalled - a
-    # subtitle grab completes synchronously within one API call, there's no
-    # multi-second transfer to sample twice like the arr/nzbdav/plex
-    # sources above. Its "wanted" list is the honest analog of a queue here: items
-    # still waiting to be searched, which is exactly the "queued" bucket
-    # already means for every other source.
-    try:
-        headers = bazarr_headers()
-        movies_wanted = httpx.get(f"{BAZARR_URL}/api/movies/wanted", headers=headers, timeout=20)
-        movies_wanted.raise_for_status()
-        episodes_wanted = httpx.get(f"{BAZARR_URL}/api/episodes/wanted", headers=headers, timeout=20)
-        episodes_wanted.raise_for_status()
-        queued = [{"title": m.get("title"), "note": "missing subtitle"}
-                  for m in movies_wanted.json().get("data", [])]
-        queued += [{"title": f'{e.get("seriesTitle")} - {e.get("episode_number", "")}', "note": "missing subtitle"}
-                   for e in episodes_wanted.json().get("data", [])]
-        grand_total += len(queued)
-        result["bazarr"] = {"label": "Bazarr", "total": len(queued),
-                             "downloading": [], "stalled": [], "queued": queued, "importing": []}
-    except (HTTPException, httpx.HTTPError) as e:
-        result["bazarr"] = {"label": "Bazarr", "error": str(e) if isinstance(e, httpx.HTTPError) else "unreachable"}
 
     active = sum(len(v.get("downloading", [])) for v in result.values())
     return ok(

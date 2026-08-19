@@ -8,31 +8,15 @@ generated completion into `~/.config/fish/completions/`. It prunes dead
 `stack-*` commands but never a `__stack_*` helper that exists only on the host,
 since that would be the only copy.
 
-## Arr instances: all four, everywhere
+## Arr instances
 
-Every command that takes an Arr app accepts all four instances. `radarr` and
-`sonarr` are the general pair; `radarr_anime` and `sonarr_anime` are the
-anime-only instances on ports 7879 and 8990.
+Every command that takes an Arr app accepts `radarr` or `sonarr` - the only
+two Arr instances in this stack. (radarr-anime/sonarr-anime were retired
+2026-08-18, merged into these two via genre/tag routing.) `__stack_arr_app`
+validates the name, so every command shares one guard instead of each
+re-implementing its own.
 
-Two spellings are load-bearing and both are accepted everywhere: `radarr_anime`
-is the API key the Control Panel routes on, `radarr-anime` is what Docker knows
-the container by. `ranime`/`sanime` and `anime-movies`/`anime-shows` work as
-short aliases. `__stack_arr_app` normalizes them, so you never have to remember
-which spelling a given command wants.
-
-```fish
-stack-cutoff-unmet radarr-anime      # hyphen
-stack-cutoff-unmet radarr_anime      # underscore
-stack-cutoff-unmet ranime            # alias
-```
-
-Two commands select their instance with `--anime` instead of a positional,
-matching the Letterboxd/MDBList family, because only one shape is ever valid:
-`stack-loop-exclude` (Radarr only - Sonarr has no episode exclusion list) and
-`stack-sonarr-fix-episode-monitoring` (Sonarr only).
-
-`stack-arr-toggle-search all` covers all four. Anything less would leave the
-anime instances grabbing while you believe grabbing is paused.
+`stack-arr-toggle-search all` covers both.
 
 ## Tab completion
 
@@ -45,10 +29,10 @@ Container names and Plex Butler task names are resolved at tab time rather than
 baked in, so a newly-added service is completable the moment it is up.
 
 ```fish
-stack-arr <TAB>                # radarr sonarr radarr_anime sonarr_anime
+stack-arr <TAB>                # radarr sonarr
 stack-arr radarr <TAB>         # rss-sync search-missing unstick unstick-importing
 stack-container restart <TAB>  # live container names
-stack-loop-exclude --<TAB>     # --anime --yes
+stack-loop-exclude --<TAB>     # --yes
 ```
 
 Regenerate after editing any function:
@@ -75,7 +59,7 @@ Not stack-specific — general-purpose fish helpers.
 
 ## Core helper
 
-- **`__stack_arr_app <name> [--container]`** — validates an Arr instance name and normalizes it. Accepts `radarr_anime`, `radarr-anime`, `ranime`, `anime-movies` and the Sonarr equivalents; prints the API-key form, or the container form with `--container`. Every app-taking command funnels through it, so the accepted spellings are defined once rather than in 19 separate guards.
+- **`__stack_arr_app <name> [--container]`** — validates an Arr instance name (`radarr` or `sonarr`). Every app-taking command funnels through it, so the accepted names are defined once rather than in separate guards.
 - **`__stack_containers`** — container names for tab completion, live from Docker with `docker-compose.yml` as a fallback.
 - **`__stack_plex_butler_tasks`** — the Butler task names, read out of `stack-plex-butler.fish` itself so the completion cannot drift from what the command validates.
 - **`__stack_api <METHOD> <PATH> [JSON_BODY]`** — private helper every `stack-*` function funnels through. Calls Control Panel's API and prints its `message` field, handling both response shapes (`{"ok","message",...}` on success, FastAPI's `{"detail": {...}}` wrapper on an error). Exit status mirrors the API's own `ok` field.
@@ -99,8 +83,8 @@ Not stack-specific — general-purpose fish helpers.
 ## Radarr / Sonarr (general)
 
 - **`stack-arr <radarr|sonarr> <rss-sync|search-missing|unstick|unstick-importing>`** — trigger RSS sync, a missing search, or clear a wedged queue item. `unstick` only touches items the app itself flagged; `unstick-importing` targets a different failure mode — a download stuck in `trackedDownloadState "importing"` while `trackedDownloadStatus` stays `ok`, so it never trips the normal flag.
-- **`stack-arr-toggle-search <radarr|sonarr|radarr_anime|sonarr_anime|all> <on|off>`** — turn RSS sync + automatic search on/off for every indexer, without touching manual search. Useful for pausing new grabs while an import queue drains.
-- **`stack-arr-logs <radarr|sonarr|radarr-anime|sonarr-anime|prowlarr> [lines]`** — tail an app's container log directly.
+- **`stack-arr-toggle-search <radarr|sonarr|all> <on|off>`** — turn RSS sync + automatic search on/off for every indexer, without touching manual search. Useful for pausing new grabs while an import queue drains.
+- **`stack-arr-logs <radarr|sonarr|prowlarr> [lines]`** — tail an app's container log directly.
 - **`stack-arr-backlog <radarr|sonarr>`** — the app's internal command-queue backlog (searches, RSS sync, bulk moves).
 - **`stack-arr-import-backlog`** — items sitting on "waiting on import" across both apps, grouped by release rather than printed per-episode.
 - **`stack-arr-import-candidates <radarr|sonarr>`** — files stuck in the queue ready to manually import, numbered for `stack-arr-import`.
@@ -120,7 +104,7 @@ Not stack-specific — general-purpose fish helpers.
 - **`stack-command-queue-summary`** — command-queue backlog across radarr/sonarr/prowlarr at once.
 - **`stack-queue-status`** — every app's download queue with live-measured speed/ETA (two samples, ~4s apart).
 - **`stack-backlog-status`** — every app's wanted/missing backlog with a throughput-projected ETA.
-- **`stack-sonarr-fix-episode-monitoring [--anime]`** — fixes any episode left unmonitored under a monitored Sonarr series/season (season 0 left alone).
+- **`stack-sonarr-fix-episode-monitoring`** — fixes any episode left unmonitored under a monitored Sonarr series/season (season 0 left alone).
 
 ## List imports (Radarr/Sonarr)
 
@@ -148,14 +132,13 @@ Most take `[--no-search] [--no-monitor] [--dry-run]`; list-scraping ones also ta
 The one-shot commands above import a list once. These register a list for the nightly
 diff-only sync instead (`systemd/stack-letterboxd-sync.timer`, 04:00 daily), so only titles
 added to the list since the last run get pushed. A tracked list stays synced until it is
-explicitly untracked. Both families take `[--label TEXT] [--anime] [--sonarr-anime]` on
-`track`, routing to `radarr-anime`/`sonarr-anime` instead of the general instances.
+explicitly untracked. Both families take `[--label TEXT]` on `track`.
 
-- **`stack-letterboxd-radarr-track <list-url> [--label TEXT] [--anime] [--sonarr-anime]`** — register a Letterboxd list for the nightly sync.
+- **`stack-letterboxd-radarr-track <list-url> [--label TEXT]`** — register a Letterboxd list for the nightly sync.
 - **`stack-letterboxd-radarr-untrack <list-url>`** — stop syncing a tracked Letterboxd list.
 - **`stack-letterboxd-radarr-tracked`** — every Letterboxd list currently registered.
 - **`stack-letterboxd-radarr-history`** — recent Letterboxd sync runs and what each added.
-- **`stack-mdblist-radarr-track <list-url> [--label TEXT] [--anime] [--sonarr-anime]`** — same, for an MDBList list.
+- **`stack-mdblist-radarr-track <list-url> [--label TEXT]`** — same, for an MDBList list.
 - **`stack-mdblist-radarr-untrack <list-url>`** — stop syncing a tracked MDBList list.
 - **`stack-mdblist-radarr-tracked`** — every MDBList list currently registered.
 - **`stack-mdblist-radarr-history`** — recent MDBList sync runs.
@@ -167,7 +150,7 @@ history is what identifies the loop; these three act on it.
 
 - **`stack-loop-candidates <radarr|sonarr>`** — titles or episodes with 2+ `downloadFailed` events in the recent autofix history, with a suggested remediation for each.
 - **`stack-loop-unmonitor <radarr|sonarr> <id> [-y|--yes]`** — unmonitor a confirmed looping movie or episode. Confirms first unless `-y`.
-- **`stack-loop-exclude <movie-id> [--anime] [-y|--yes]`** — add a Radarr movie to Exclusions. The durable fix: unmonitoring alone gets undone by the next import-list sync. Radarr only, Sonarr has no episode-level equivalent.
+- **`stack-loop-exclude <movie-id> [-y|--yes]`** — add a Radarr movie to Exclusions. The durable fix: unmonitoring alone gets undone by the next import-list sync. Radarr only, Sonarr has no episode-level equivalent.
 
 ## Ratings
 
@@ -227,13 +210,6 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-nzbdav-delete-failures`** — delete every "Failed" entry from history (a Failed row can block re-grabbing a release with a matching name).
 - **`stack-nzbdav-dedup-check`** — verifies `api.duplicate-nzb-behavior` is still `mark-failed`. Guards against the return of the `(2)`/`(3)`-suffix `importBlocked` bug, where a duplicate grab lands as "Title (2)" and the Arr app cannot import it.
 
-## Bazarr
-
-- **`stack-bazarr-wanted`** — movies/episodes still missing a subtitle, across both libraries.
-- **`stack-bazarr-history [limit]`** — recent subtitle download history, successes and failures.
-- **`stack-bazarr-provider-status`** — per-provider throttle/error state.
-- **`stack-bazarr-search-missing`** — trigger an on-demand missing-subtitle search instead of waiting for the scheduler.
-
 ## Cleanuparr
 
 - **`stack-cleanuparr-instances`** — which *arr apps Cleanuparr actually has a connected instance for.
@@ -277,7 +253,7 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-flatpak-updates [--apply]`** — list, or apply, pending Flatpak updates.
 - **`stack-log-levels [reset]`** — check, or reset, every Servarr app's log level.
 
-## 2026-07-30 additions — Tautulli, Wrapperr, Maintainerr, Prefetcharr, Lingarr, Kometa
+## 2026-07-30 additions — Tautulli, Wrapperr, Maintainerr, Prefetcharr, Lingarr
 
 ### Tautulli
 
@@ -328,48 +304,11 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-lingarr-logs [lines]`** — tail Lingarr's container logs.
 - **`stack-lingarr-recent-translations`** — recent individual translation-completed events.
 
-### Kometa
-
-- **`stack-kometa-status`** — time until the next scheduled run.
-- **`stack-kometa-run-now`** — trigger an immediate run alongside the scheduler (detached — returns right away).
-- **`stack-kometa-logs [lines]`** — tail Kometa's container logs.
-- **`stack-kometa-last-run-result`** — outcome of the last completed run.
-- **`stack-kometa-config`** — which libraries/collections `config.yml` is set to touch.
-
 ### Cross-app
 
 - **`stack-newapps-status`** — health sweep of all new apps at once.
 
 ## 2026-08 additions — new-services batch (PLANS.md Phases 1–3)
-
-Backfilled 2026-08-12: Phases 1 and 2 shipped without updating this file or
-`stack-help.fish`, so ntfy and Speedtest Tracker are documented here for the
-first time alongside Organizr.
-
-### ntfy (Phase 1)
-
-- **`stack-ntfy-publish <topic> <message>`** — push a message to an ntfy topic.
-- **`stack-ntfy-topics`** — list the topics the server currently has configured.
-
-### Speedtest Tracker (Phase 2)
-
-- **`stack-speedtest-latest`** — most recent completed result (down/up/ping/jitter).
-- **`stack-speedtest-history [days]`** — results over the last N days, newest first (default 7).
-- **`stack-speedtest-run-now`** — trigger a test outside the hourly schedule.
-
-### Organizr (Phase 3)
-
-- **`stack-organizr-tabs`** — every tab Organizr has, plus which stack services are missing one. Includes Organizr's own built-in Settings/Homepage pages, which this stack does not manage.
-- **`stack-organizr-sync`** — add a tab for any service in the canonical table (`control-panel/services/organizr/tabs.py`) that doesn't have one. Additive only: it never edits or deletes an existing tab, so anything hand-tweaked in Organizr's UI survives. Run it after adding a service to the stack.
-
-### Scrutiny (Phase 4)
-
-Complements `stack-disk-health` (raw `smartctl`, right now) with Scrutiny's trended view. This host has one physical disk, a 954GB NVMe, so these are really about wear tracking on the disk the whole stack runs on.
-
-- **`stack-scrutiny-summary`** — all-disk status at a glance: model, temperature, power-on hours, healthy or failing.
-- **`stack-scrutiny-disk [uuid|name|serial]`** — per-disk SMART detail, including the wear attributes that actually predict end-of-life (`percentage_used`, `available_spare`, `media_errors`, `critical_warning`) and anything Scrutiny has flagged. The argument is optional on a single-disk host.
-- **`stack-scrutiny-collect`** — run the collector now rather than waiting for its midnight cron. Returns the collector's own output.
-- **`stack-scrutiny-alert-test`** — fire Scrutiny's test notification through its configured sink, which here is ntfy topic `scrutiny-alerts`. Proves the disk-failure alert path works before a disk actually fails.
 
 ### GAPS-2 (Phase 5)
 

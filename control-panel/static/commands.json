@@ -7,12 +7,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -44,12 +42,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -69,12 +65,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -101,12 +95,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -126,12 +118,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -151,12 +141,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -182,12 +170,10 @@
     ],
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr-anime/sonarr-anime/prowlarr",
+        "Name": "radarr/sonarr/prowlarr",
         "Choices": [
           "radarr",
           "sonarr",
-          "radarr-anime",
-          "sonarr-anime",
           "prowlarr"
         ],
         "Optional": false,
@@ -215,12 +201,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -249,68 +233,6 @@
     "Description": "Show every app's wanted/missing backlog with a throughput-projected ETA",
     "Method": "GET",
     "PathTemplate": "/api/backlog-status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-bazarr-history",
-    "Description": "Show recent Bazarr subtitle download history",
-    "Method": "GET",
-    "PathTemplate": "/api/bazarr/history",
-    "Query": [
-      {
-        "Key": "limit",
-        "ArgName": "limit",
-        "Literal": ""
-      }
-    ],
-    "Args": [
-      {
-        "Name": "limit",
-        "Choices": null,
-        "Optional": true,
-        "Default": "20",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-bazarr-provider-status",
-    "Description": "Show per-provider throttle/error state in Bazarr",
-    "Method": "GET",
-    "PathTemplate": "/api/bazarr/provider-status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-bazarr-search-missing",
-    "Description": "Trigger an on-demand Bazarr missing-subtitle search",
-    "Method": "POST",
-    "PathTemplate": "/api/bazarr/search-missing",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-bazarr-wanted",
-    "Description": "List movies/episodes still missing subtitles in Bazarr",
-    "Method": "GET",
-    "PathTemplate": "/api/bazarr/wanted",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -407,12 +329,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -438,12 +358,10 @@
     ],
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -476,12 +394,10 @@
     ],
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -508,12 +424,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -569,12 +483,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -1101,12 +1013,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -1178,12 +1088,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -1336,12 +1244,10 @@
     ],
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -1632,12 +1538,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -2285,80 +2189,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-kometa-status",
-    "Description": "Time until Kometa's next scheduled run",
-    "Method": "GET",
-    "PathTemplate": "/api/kometa/status",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-kometa-run-now",
-    "Description": "Trigger an immediate Kometa run (detached)",
-    "Method": "POST",
-    "PathTemplate": "/api/kometa/run-now",
-    "Query": null,
-    "Args": null,
-    "Confirm": true,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-kometa-logs",
-    "Description": "Tail Kometa's container logs",
-    "Method": "GET",
-    "PathTemplate": "/api/kometa/logs",
-    "Query": [
-      {
-        "Key": "lines",
-        "ArgName": "lines",
-        "Literal": ""
-      }
-    ],
-    "Args": [
-      {
-        "Name": "lines",
-        "Choices": null,
-        "Optional": true,
-        "Default": "100",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "kometa"
-  },
-  {
-    "Name": "stack-kometa-last-run-result",
-    "Description": "Outcome of Kometa's last completed run",
-    "Method": "GET",
-    "PathTemplate": "/api/kometa/last-run-result",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-kometa-config",
-    "Description": "Which libraries Kometa's config.yml is set to touch",
-    "Method": "GET",
-    "PathTemplate": "/api/kometa/config",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
     "Name": "stack-newapps-status",
     "Description": "Health sweep of all 8 2026-07-30 new apps at once",
     "Method": "GET",
@@ -2378,12 +2208,10 @@
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -2397,18 +2225,16 @@
   },
   {
     "Name": "stack-loop-unmonitor",
-    "Description": "Unmonitor a movie (Radarr) or episode (Sonarr) by id — confirmed loop candidate",
+    "Description": "Unmonitor a movie (Radarr) or episode (Sonarr) by id \u2014 confirmed loop candidate",
     "Method": "POST",
     "PathTemplate": "/api/arr/{1}/unmonitor",
     "Query": null,
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",
@@ -2435,7 +2261,7 @@
   },
   {
     "Name": "stack-loop-exclude",
-    "Description": "Add a Radarr movie to Exclusions — durable fix for movies re-monitored by import-list syncs after unmonitor",
+    "Description": "Add a Radarr movie to Exclusions \u2014 durable fix for movies re-monitored by import-list syncs after unmonitor",
     "Method": "POST",
     "PathTemplate": "/api/arr/radarr/exclude",
     "Query": null,
@@ -2464,190 +2290,6 @@
     "Description": "Verify NzbDAV api.duplicate-nzb-behavior is still mark-failed (guards against the (2)/(3)-suffix importBlocked bug returning)",
     "Method": "GET",
     "PathTemplate": "/api/nzbdav/dedup-config-check",
-    "Query": null,
-    "Args": [],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-ntfy-publish",
-    "Description": "Publish a message to an ntfy topic",
-    "Method": "POST",
-    "PathTemplate": "/api/ntfy/publish",
-    "Query": null,
-    "Args": [
-      {
-        "Name": "topic",
-        "Choices": null,
-        "Optional": false,
-        "Default": "",
-        "Rest": false
-      },
-      {
-        "Name": "message",
-        "Choices": null,
-        "Optional": false,
-        "Default": "",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "json",
-    "BodyFields": [
-      {
-        "Key": "topic",
-        "ArgName": "topic",
-        "Array": false
-      },
-      {
-        "Key": "message",
-        "ArgName": "message",
-        "Array": false
-      }
-    ],
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-ntfy-topics",
-    "Description": "List topics this stack publishes to on ntfy",
-    "Method": "GET",
-    "PathTemplate": "/api/ntfy/topics",
-    "Query": null,
-    "Args": [],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-speedtest-latest",
-    "Description": "Show latest speedtest result",
-    "Method": "GET",
-    "PathTemplate": "/api/speedtest-tracker/latest",
-    "Query": null,
-    "Args": [],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-speedtest-history",
-    "Description": "Show speedtest history",
-    "Method": "GET",
-    "PathTemplate": "/api/speedtest-tracker/history",
-    "Query": [
-      {
-        "Key": "days",
-        "ArgName": "days"
-      }
-    ],
-    "Args": [
-      {
-        "Name": "days",
-        "Choices": null,
-        "Optional": true,
-        "Default": "7",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-speedtest-run-now",
-    "Description": "Trigger an out-of-schedule speedtest",
-    "Method": "POST",
-    "PathTemplate": "/api/speedtest-tracker/run",
-    "Query": null,
-    "Args": [],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-organizr-tabs",
-    "Description": "List Organizr's configured dashboard tabs",
-    "Method": "GET",
-    "PathTemplate": "/api/organizr/tabs",
-    "Query": null,
-    "Args": [],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-organizr-sync",
-    "Description": "Add any missing stack service as an Organizr tab",
-    "Method": "POST",
-    "PathTemplate": "/api/organizr/tabs/sync",
-    "Query": null,
-    "Args": [],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-scrutiny-summary",
-    "Description": "All-disk SMART status at a glance",
-    "Method": "GET",
-    "PathTemplate": "/api/scrutiny/summary",
-    "Query": null,
-    "Args": [],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-scrutiny-disk",
-    "Description": "Per-disk SMART detail (uuid, device name or serial; omit for the only disk)",
-    "Method": "GET",
-    "PathTemplate": "/api/scrutiny/disk",
-    "Query": [
-      {
-        "Key": "disk_id",
-        "ArgName": "disk_id"
-      }
-    ],
-    "Args": [
-      {
-        "Name": "disk-uuid/name/serial",
-        "Choices": null,
-        "Optional": true,
-        "Default": "",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-scrutiny-collect",
-    "Description": "Run the SMART collector now instead of waiting for midnight",
-    "Method": "POST",
-    "PathTemplate": "/api/scrutiny/collect",
-    "Query": null,
-    "Args": [],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": ""
-  },
-  {
-    "Name": "stack-scrutiny-alert-test",
-    "Description": "Fire Scrutiny's test notification through the ntfy sink",
-    "Method": "POST",
-    "PathTemplate": "/api/scrutiny/alert-test",
     "Query": null,
     "Args": [],
     "Confirm": false,
@@ -2891,12 +2533,10 @@
     ],
     "Args": [
       {
-        "Name": "radarr/sonarr/radarr_anime/sonarr_anime",
+        "Name": "radarr/sonarr",
         "Choices": [
           "radarr",
-          "sonarr",
-          "radarr_anime",
-          "sonarr_anime"
+          "sonarr"
         ],
         "Optional": false,
         "Default": "",

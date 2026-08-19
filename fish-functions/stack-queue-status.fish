@@ -14,7 +14,7 @@ if not data.get('ok', True):
 
 print(data['message'])
 
-order = ['radarr', 'sonarr', 'nzbdav', 'plex', 'bazarr']
+order = ['radarr', 'sonarr', 'nzbdav', 'plex']
 queues = data.get('queues', {})
 
 def line(item):

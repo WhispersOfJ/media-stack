@@ -37,51 +37,19 @@ ARR_APPS = {
         "label": "Sonarr",
         "import_events": ("downloadFolderImported",),
     },
-    # radarr-anime/sonarr-anime retired 2026-08-18 (Plan 3 consolidation) -
-    # their env vars are gone from .env, so these two entries use .get(...)
-    # instead of the bare os.environ[...] every other entry uses, to avoid
-    # crashing control-panel's import (and every route, not just anime ones)
-    # the next time this container recreates. Deliberately left as dead
-    # entries rather than removed outright per Bear's instruction not to
-    # touch control-panel this session; full removal is a "next phase"
-    # follow-up.
-    "radarr_anime": {
-        "url": "http://radarr-anime:7878",
-        "api": "v3",
-        "key": os.environ.get("RADARR_ANIME_API_KEY", ""),
-        "search_command": "MissingMoviesSearch",
-        "label": "Radarr (Anime)",
-        "import_events": ("downloadFolderImported",),
-    },
-    "sonarr_anime": {
-        "url": "http://sonarr-anime:8989",
-        "api": "v3",
-        "key": os.environ.get("SONARR_ANIME_API_KEY", ""),
-        "search_command": "MissingEpisodeSearch",
-        "label": "Sonarr (Anime)",
-        "import_events": ("downloadFolderImported",),
-    },
 }
 
 # Radarr and Sonarr both have a real download queue (NzbDAV wired to each as
 # the sole download client) - Unstick/manual-import work identically on both.
-QUEUE_ARR_APPS = ("radarr", "sonarr", "radarr_anime", "sonarr_anime")
+QUEUE_ARR_APPS = ("radarr", "sonarr")
 
-# radarr_anime is a second Radarr instance (movies, movieId), not a Sonarr
-# one - every "app_name == 'radarr'" branch below means "this is a
-# movie-shaped app" and must include it too, or radarr_anime's queue items
-# silently get treated as episodes (wrong id field, wrong search command)
-# and never resolve.
-RADARR_APPS = ("radarr", "radarr_anime")
+RADARR_APPS = ("radarr",)
 
-# Sonarr counterpart to RADARR_APPS above - used by Letterboxd's sonarr_crossover
-# and MDBList's TV-side import to pick which Sonarr instance to target.
-SONARR_APPS = ("sonarr", "sonarr_anime")
+SONARR_APPS = ("sonarr",)
 
 PROWLARR_API_KEY = os.environ.get("PROWLARR_API_KEY")
 PROWLARR_CFG = {"url": "http://prowlarr:9696", "api": "v1", "key": PROWLARR_API_KEY, "label": "Prowlarr"}
 
-BAZARR_URL = "http://bazarr:6767"
 HOST_CONFIG_DIR = "/host-config"
 
 # NzbDAV's SABnzbd-compatible API - queue-autofix (below) needs its queue
@@ -89,26 +57,6 @@ HOST_CONFIG_DIR = "/host-config"
 # re-exported here (see the import at the top of the file) only so
 # services/arr/router.py's existing import keeps working without touching
 # every call site.
-
-
-def _bazarr_key() -> str | None:
-    """Bazarr generates its own API key on first boot into
-    config/config.yaml's auth.apikey - never an env var."""
-    path = os.path.join(HOST_CONFIG_DIR, "bazarr", "config", "config.yaml")
-    if not os.path.isfile(path):
-        return None
-    with open(path) as f:
-        for line in f:
-            if line.strip().startswith("apikey"):
-                return line.split(":", 1)[1].strip()
-    return None
-
-
-def bazarr_headers() -> dict:
-    key = _bazarr_key()
-    if not key:
-        fail("No Bazarr API key found (config.yaml not present yet - has it completed setup?).", status_code=500)
-    return {"X-API-KEY": key}
 
 
 def human_size(n: int | None) -> str:

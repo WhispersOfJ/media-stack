@@ -1,58 +1,15 @@
-"""Shared fixtures for the media-stack unit test suite.
-
-control-panel/app.py runs `docker.from_env()` at import time (app.py:219),
-which reaches for a real Docker socket - not available in a plain CI
-runner or a throwaway venv. The `cp_app` fixture patches that out before
-importing, so tests never need a live daemon.
-
-Every test gets a *fresh* import of app.py: the module also rewires
-`httpx.request`/`httpx._api.request` at import time (its API-hit-counter
-hook) - reusing one cached import across tests would stack that wrapper
-deeper on every test that imports it, so the fixture restores the
-pre-import versions on teardown instead of leaving them patched.
-"""
+"""Shared fixtures for the media-stack unit test suite."""
 import importlib
 import importlib.util
-import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import httpx
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTROL_PANEL_DIR = REPO_ROOT / "control-panel"
 SCRIPTS_DIR = REPO_ROOT / "scripts"
-
-
-@pytest.fixture
-def cp_app(monkeypatch):
-    monkeypatch.setattr("docker.from_env", lambda: MagicMock())
-    # app.py:129/137 index these directly (os.environ[...], not .get) to
-    # build ARR_APPS at import time - a real deployment always has them via
-    # .env, but a test import needs stand-ins or import itself KeyErrors.
-    monkeypatch.setenv("RADARR_API_KEY", "test-radarr-key")
-    monkeypatch.setenv("SONARR_API_KEY", "test-sonarr-key")
-    original_request = httpx.request
-    original_api_request = httpx._api.request
-
-    sys.path.insert(0, str(CONTROL_PANEL_DIR))
-    sys.modules.pop("app", None)
-    # app.py's own final line mounts StaticFiles(directory="static", ...) -
-    # a relative path resolved against cwd, and this starlette version
-    # verifies the directory exists at construction time.
-    original_cwd = os.getcwd()
-    os.chdir(CONTROL_PANEL_DIR)
-    try:
-        module = importlib.import_module("app")
-        yield module
-    finally:
-        os.chdir(original_cwd)
-        sys.modules.pop("app", None)
-        sys.path.remove(str(CONTROL_PANEL_DIR))
-        httpx.request = original_request
-        httpx._api.request = original_api_request
 
 
 @pytest.fixture
@@ -78,8 +35,6 @@ def cp_main_app(monkeypatch, tmp_path):
     # fixture above for app.py's own ARR_APPS.
     monkeypatch.setenv("RADARR_API_KEY", "test-radarr-key")
     monkeypatch.setenv("SONARR_API_KEY", "test-sonarr-key")
-    monkeypatch.setenv("RADARR_ANIME_API_KEY", "test-radarr-anime-key")
-    monkeypatch.setenv("SONARR_ANIME_API_KEY", "test-sonarr-anime-key")
     monkeypatch.setenv("PROWLARR_API_KEY", "test-prowlarr-key")
     # core.plex_client reads these with os.environ.get (default "") so
     # module import never KeyErrors without them, but plex_headers() fails

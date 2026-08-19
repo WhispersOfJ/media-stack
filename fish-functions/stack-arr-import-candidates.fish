@@ -1,9 +1,9 @@
-# Usage: stack-arr-import-candidates <radarr|sonarr|radarr_anime|sonarr_anime>
+# Usage: stack-arr-import-candidates <radarr|sonarr>
 # Lists files stuck in that app's queue that are ready to manually import,
 # numbered for use with stack-arr-import.
 function stack-arr-import-candidates --description 'List files ready to manually import in an *arr app'
     if test (count $argv) -ne 1; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-arr-import-candidates <radarr|sonarr|radarr_anime|sonarr_anime>" >&2
+        echo "Usage: stack-arr-import-candidates <radarr|sonarr>" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

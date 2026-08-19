@@ -5,5 +5,4 @@ complete -c stack-letterboxd-radarr-watchlist -l no-search
 complete -c stack-letterboxd-radarr-watchlist -l no-monitor
 complete -c stack-letterboxd-radarr-watchlist -l limit -r
 complete -c stack-letterboxd-radarr-watchlist -l dry-run -d 'Report what would happen, change nothing'
-complete -c stack-letterboxd-radarr-watchlist -l anime -d 'Route to the anime instance'
 complete -c stack-letterboxd-radarr-watchlist -d 'Add every film in a Letterboxd watchlist to Radarr'

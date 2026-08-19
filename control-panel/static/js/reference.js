@@ -11,24 +11,16 @@ const QUICK_LINKS = [
   { id: "prowlarr", label: "Prowlarr", port: 9696 },
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "radarr-anime", label: "Radarr (Anime)", port: 7879 },
-  { id: "sonarr-anime", label: "Sonarr (Anime)", port: 8990 },
   { id: "nzbdav", label: "NzbDAV", port: 3000 },
   { id: "seerr", label: "Seerr", port: 5055 },
-  { id: "bazarr", label: "Bazarr", port: 6767 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
   { id: "tautulli", label: "Tautulli", port: 8182 },
   { id: "wrapperr", label: "Wrapperr", port: 8283 },
   { id: "maintainerr", label: "Maintainerr", port: 6246 },
   { id: "lingarr", label: "Lingarr", port: 9876 },
-  { id: "ntfy", label: "ntfy", port: 8700 },
-  { id: "speedtest-tracker", label: "Speedtest Tracker", port: 8701 },
-  { id: "organizr", label: "Organizr", port: 8702 },
-  { id: "scrutiny", label: "Scrutiny", port: 8703 },
   { id: "gaps2", label: "GAPS-2", port: 8704 },
   { id: "watchstate", label: "WatchState", port: 8705 },
-  // No quicklink for kometa/prefetcharr - neither publishes a port
-  // (kometa is a scheduled batch job, prefetcharr a headless poller).
+  // No quicklink for prefetcharr - it publishes no port (headless poller).
 ];
 
 export function buildQuickLinks() {
@@ -49,7 +41,6 @@ const DOC_LINKS = [
   { app: "NzbDAV", desc: "Usenet WebDAV server + SABnzbd-compatible API (nzbdav/nzbdav, a maintained super-fork of nzbdav-dev/nzbdav); FUSE-mounted for Plex/Radarr/Sonarr by the nzbdav_rclone sidecar", urls: [["Docs", "https://nzbdav.com/"], ["Source", "https://github.com/nzbdav/nzbdav"]] },
   { app: "Seerr", desc: "media request/discovery front-end", urls: [["Source", "https://github.com/seerr-team/seerr"]] },
   { app: "Plex", desc: "media server", urls: [["Support", "https://support.plex.tv"]] },
-  { app: "Bazarr", desc: "subtitle management for Radarr/Sonarr", urls: [["Source", "https://github.com/morpheus65535/bazarr"]] },
   { app: "Cleanuparr", desc: "queue strikes/malware-block/stalled cleanup", urls: [["Source", "https://github.com/Cleanuparr/Cleanuparr"]] },
   { app: "Unpackerr", desc: "RAR extraction for Radarr/Sonarr downloads", urls: [["Source", "https://github.com/Unpackerr/unpackerr"]] },
   { app: "Watchtower", desc: "container auto-update (maintained fork)", urls: [["Source", "https://github.com/nicholas-fedor/watchtower"]] },
@@ -57,12 +48,7 @@ const DOC_LINKS = [
   { app: "Wrapperr", desc: "Tautulli stats wrapper/report dashboard", urls: [["Source", "https://github.com/aunefyren/wrapperr"]] },
   { app: "Maintainerr", desc: "Plex/Radarr/Sonarr library maintenance rules (installed with zero rules configured)", urls: [["Source", "https://github.com/Maintainerr/Maintainerr"]] },
   { app: "Prefetcharr", desc: "auto-fetches next Sonarr season from Plex watch progress", urls: [["Source", "https://github.com/p-hueber/prefetcharr"]] },
-  { app: "Lingarr", desc: "subtitle translation, complements Bazarr", urls: [["Source", "https://github.com/lingarr-translate/lingarr"]] },
-  { app: "Kometa", desc: "Plex metadata/collections/overlays automation", urls: [["Wiki", "https://metamanager.wiki/"], ["Source", "https://github.com/Kometa-Team/Kometa"]] },
-  { app: "ntfy", desc: "shared push-notification sink for Radarr/Sonarr/Prowlarr alerts (anonymous access, not exposed publicly)", urls: [["Docs", "https://docs.ntfy.sh/"], ["Source", "https://github.com/binwiederhier/ntfy"]] },
-  { app: "Speedtest Tracker", desc: "hourly ISP speed monitoring + history, so link degradation is visible before it's blamed on downloads/streaming", urls: [["Docs", "https://docs.speedtest-tracker.dev/"], ["Source", "https://github.com/alexjustesen/speedtest-tracker"]] },
-  { app: "Organizr", desc: "single landing dashboard, one tab per service - wizard and tabs both provisioned by scripts/organizr-provision.py, nothing set up by hand", urls: [["Docs", "https://docs.organizr.app/"], ["Source", "https://github.com/causefx/Organizr"]] },
-  { app: "Scrutiny", desc: "S.M.A.R.T. trending for the host's single NVMe, collector daily at midnight - complements the raw-smartctl stack-disk-health check, doesn't replace it", urls: [["Source", "https://github.com/AnalogJ/scrutiny"]] },
+  { app: "Lingarr", desc: "subtitle translation", urls: [["Source", "https://github.com/lingarr-translate/lingarr"]] },
   { app: "GAPS-2", desc: "finds movies/shows missing from a collection or franchise the library partly owns - scans one Plex library at a time so every gap can be routed to the right Arr instance; its own Radarr/Sonarr are deliberately left unconfigured so nothing can be pushed to the wrong one", urls: [["Source", "https://github.com/primetime43/GAPS-2"]] },
 ];
 

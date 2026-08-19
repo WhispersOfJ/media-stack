@@ -4,5 +4,4 @@ complete -c stack-letterboxd-radarr -f
 complete -c stack-letterboxd-radarr -l no-search
 complete -c stack-letterboxd-radarr -l no-monitor
 complete -c stack-letterboxd-radarr -l dry-run -d 'Report what would happen, change nothing'
-complete -c stack-letterboxd-radarr -l anime -d 'Route to the anime instance'
 complete -c stack-letterboxd-radarr -d 'Add a Letterboxd film to Radarr by URL'

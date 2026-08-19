@@ -2,6 +2,4 @@
 # Regenerate after changing the function: scripts/fish-completions-generate.py
 complete -c stack-letterboxd-radarr-track -f
 complete -c stack-letterboxd-radarr-track -l label -r
-complete -c stack-letterboxd-radarr-track -l anime -d 'Route to the anime instance'
-complete -c stack-letterboxd-radarr-track -l sonarr-anime -d 'Route to sonarr-anime'
 complete -c stack-letterboxd-radarr-track -d 'Register a Letterboxd list for nightly diff-only sync'

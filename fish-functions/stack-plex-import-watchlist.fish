@@ -1,4 +1,4 @@
-# Usage: stack-plex-import-watchlist <radarr|sonarr|radarr_anime|sonarr_anime> [--no-search]
+# Usage: stack-plex-import-watchlist <radarr|sonarr> [--no-search]
 # Adds your own Plex watchlist as a native import list (PlexImport) - one
 # call each for movies (Radarr) or TV (Sonarr). Requires Plex's own OAuth
 # token to already be set up in that app (same as any other Plex-backed
@@ -7,7 +7,7 @@ function stack-plex-import-watchlist --description 'Add your Plex watchlist as a
     argparse 'no-search' -- $argv
     or return 1
     if test (count $argv) -ne 1; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-plex-import-watchlist <radarr|sonarr|radarr_anime|sonarr_anime> [--no-search]" >&2
+        echo "Usage: stack-plex-import-watchlist <radarr|sonarr> [--no-search]" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

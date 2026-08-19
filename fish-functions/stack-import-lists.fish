@@ -1,9 +1,9 @@
-# Usage: stack-import-lists <radarr|sonarr|radarr_anime|sonarr_anime>
+# Usage: stack-import-lists <radarr|sonarr>
 # Configured import lists (Trakt, other *arr instances, etc.) and whether
 # each is enabled - a quick check without opening Settings -> Import Lists.
 function stack-import-lists --description 'List configured import lists for Radarr/Sonarr'
     if test (count $argv) -ne 1; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-import-lists <radarr|sonarr|radarr_anime|sonarr_anime>" >&2
+        echo "Usage: stack-import-lists <radarr|sonarr>" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

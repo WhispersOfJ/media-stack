@@ -1,17 +1,16 @@
-# Usage: stack-arr-logs <radarr|sonarr|radarr-anime|sonarr-anime|prowlarr> [lines]
+# Usage: stack-arr-logs <radarr|sonarr|prowlarr> [lines]
 # Takes a *container* name, not an ARR_APPS key - this route reads Docker
-# logs, so prowlarr is valid here and the hyphenated anime spellings are
-# what Docker actually knows them by.
+# logs, so prowlarr is valid here alongside the two Arr instances.
 function stack-arr-logs --description 'Tail an *arr app''s container log directly'
     if test (count $argv) -lt 1
-        echo "Usage: stack-arr-logs <radarr|sonarr|radarr-anime|sonarr-anime|prowlarr> [lines]" >&2
+        echo "Usage: stack-arr-logs <radarr|sonarr|prowlarr> [lines]" >&2
         return 1
     end
     set -l container $argv[1]
     if test $argv[1] != prowlarr
         set container (__stack_arr_app --container $argv[1])
         or begin
-            echo "Unknown app '$argv[1]' - use radarr, sonarr, radarr-anime, sonarr-anime or prowlarr." >&2
+            echo "Unknown app '$argv[1]' - use radarr, sonarr, or prowlarr." >&2
             return 1
         end
     end

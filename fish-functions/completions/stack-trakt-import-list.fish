@@ -2,5 +2,5 @@
 # Regenerate after changing the function: scripts/fish-completions-generate.py
 complete -c stack-trakt-import-list -f
 complete -c stack-trakt-import-list -l no-search
-complete -c stack-trakt-import-list -n 'test (count (commandline -opc)) -eq 1' -a 'radarr sonarr radarr_anime sonarr_anime'
+complete -c stack-trakt-import-list -n 'test (count (commandline -opc)) -eq 1' -a 'radarr sonarr'
 complete -c stack-trakt-import-list -d 'Add a public Trakt list as a Radarr/Sonarr import list'

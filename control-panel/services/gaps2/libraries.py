@@ -2,14 +2,15 @@
 
 One definition, imported by both `services/gaps2/router.py` and
 `scripts/gaps2-provision.py`, so the mapping can never drift between the
-thing that provisions GAPS-2 and the thing that reads its results. Same
-single-definition arrangement as `services/organizr/tabs.py` from Phase 3.
+thing that provisions GAPS-2 and the thing that reads its results.
 
 Scope: general libraries only
 -----------------------------
 GAPS-2 covers Movies and Shows. The anime libraries (Anime Movies, Anime
-Shows, on radarr-anime/sonarr-anime) were removed from this table on
-2026-08-12 at Bear's request. Collection/franchise gap detection is a poor
+Shows) were removed from this table on 2026-08-12 at Bear's request (this
+predates the 2026-08-18 anime-instance merge, so the exclusion still
+applies now that both libraries route through base radarr/sonarr).
+Collection/franchise gap detection is a poor
 fit for anime: TMDB collections and TheTVDB franchises model anime seasons,
 OVAs, specials and recap films inconsistently, so a "gap" there is far more
 often a metadata artefact than a title actually worth grabbing.

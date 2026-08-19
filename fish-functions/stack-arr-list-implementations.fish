@@ -1,10 +1,10 @@
-# Usage: stack-arr-list-implementations <radarr|sonarr|radarr_anime|sonarr_anime>
+# Usage: stack-arr-list-implementations <radarr|sonarr>
 # Every import-list type that app's own build supports (Simkl, TMDb
 # Company/Keyword/User, Plex, Custom, etc), whether configured or not -
 # discovery aid before using the *-import commands below.
 function stack-arr-list-implementations --description 'List every import-list implementation Radarr/Sonarr supports'
     if test (count $argv) -ne 1; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-arr-list-implementations <radarr|sonarr|radarr_anime|sonarr_anime>" >&2
+        echo "Usage: stack-arr-list-implementations <radarr|sonarr>" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

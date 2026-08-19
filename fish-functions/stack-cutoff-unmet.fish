@@ -1,9 +1,9 @@
-# Usage: stack-cutoff-unmet <radarr|sonarr|radarr_anime|sonarr_anime> [limit]
+# Usage: stack-cutoff-unmet <radarr|sonarr> [limit]
 # Items below their quality profile's cutoff - already have a file, just
 # not the target quality yet, so the app keeps upgrade-searching.
 function stack-cutoff-unmet --description 'List items below quality cutoff in Radarr/Sonarr'
     if test (count $argv) -lt 1; or test (count $argv) -gt 2; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-cutoff-unmet <radarr|sonarr|radarr_anime|sonarr_anime> [limit]" >&2
+        echo "Usage: stack-cutoff-unmet <radarr|sonarr> [limit]" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

@@ -5,5 +5,4 @@ complete -c stack-letterboxd-radarr-popular -l no-search
 complete -c stack-letterboxd-radarr-popular -l no-monitor
 complete -c stack-letterboxd-radarr-popular -l limit -r
 complete -c stack-letterboxd-radarr-popular -l dry-run -d 'Report what would happen, change nothing'
-complete -c stack-letterboxd-radarr-popular -l anime -d 'Route to the anime instance'
 complete -c stack-letterboxd-radarr-popular -d 'Add Letterboxd\'s popular films to Radarr'

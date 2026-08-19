@@ -11,8 +11,6 @@ import { armButton } from "./buttons.js";
 const ARR_APPS = [
   { id: "radarr", label: "Radarr", port: 7878 },
   { id: "sonarr", label: "Sonarr", port: 8989 },
-  { id: "radarr_anime", label: "Radarr (Anime)", port: 7879 },
-  { id: "sonarr_anime", label: "Sonarr (Anime)", port: 8990 },
 ];
 const ARR_FLEET_ACTIONS = [
   { id: "queue-status", label: "Queue status", path: "/api/queue-status" },

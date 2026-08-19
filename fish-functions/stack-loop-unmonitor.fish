@@ -1,4 +1,4 @@
-# Usage: stack-loop-unmonitor <radarr|sonarr|radarr_anime|sonarr_anime> <id> [-y|--yes]
+# Usage: stack-loop-unmonitor <radarr|sonarr> <id> [-y|--yes]
 # Unmonitors a movie (Radarr) or episode (Sonarr) by id - the fix for a
 # confirmed loop candidate. Confirms first unless -y is given.
 #
@@ -6,7 +6,7 @@
 # re-monitor the movie afterwards. stack-loop-exclude is the durable fix.
 function stack-loop-unmonitor --description 'Unmonitor a looping movie or episode by id'
     if test (count $argv) -lt 2; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-loop-unmonitor <radarr|sonarr|radarr_anime|sonarr_anime> <id> [-y|--yes]" >&2
+        echo "Usage: stack-loop-unmonitor <radarr|sonarr> <id> [-y|--yes]" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

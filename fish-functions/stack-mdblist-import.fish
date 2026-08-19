@@ -1,17 +1,14 @@
-# Usage: stack-mdblist-import <mdblist-list-url> [--no-search] [--no-monitor] [--dry-run] [--limit N] [--anime] [--sonarr-anime]
+# Usage: stack-mdblist-import <mdblist-list-url> [--no-search] [--no-monitor] [--dry-run] [--limit N]
 # Imports an MDBList list, routing movies to Radarr and TV shows to Sonarr
 # in one call (server-side, via Control Panel). Works on any public
 # MDBList list, including their own mirrors of common IMDb lists (e.g.
 # search mdblist.com for "imdb top 250") - direct IMDb list import isn't
 # possible, IMDb's list pages sit behind a Cloudflare-class bot challenge.
-# --anime routes the movie side to radarr-anime; --sonarr-anime routes the
-# TV side to sonarr-anime - independent flags since a list can be all-movie,
-# all-show, or mixed.
 function stack-mdblist-import --description 'Import an MDBList list into Radarr and Sonarr'
-    argparse 'no-search' 'no-monitor' 'dry-run' 'limit=' 'anime' 'sonarr-anime' -- $argv
+    argparse 'no-search' 'no-monitor' 'dry-run' 'limit=' -- $argv
     or return 1
     if test (count $argv) -ne 1
-        echo "Usage: stack-mdblist-import <mdblist-list-url> [--no-search] [--no-monitor] [--dry-run] [--limit N] [--anime] [--sonarr-anime]" >&2
+        echo "Usage: stack-mdblist-import <mdblist-list-url> [--no-search] [--no-monitor] [--dry-run] [--limit N]" >&2
         return 1
     end
     set -l url $argv[1]
@@ -25,8 +22,6 @@ function stack-mdblist-import --description 'Import an MDBList list into Radarr 
     set -q _flag_no_monitor; and set monitored false
     set -q _flag_dry_run; and set dry_run true
     set -q _flag_limit; and set limit $_flag_limit
-    set -q _flag_anime; and set app radarr_anime
-    set -q _flag_sonarr_anime; and set sonarr_app sonarr_anime
     set -l body (python3 -c "
 import json, sys
 url, search, monitored, dry_run, limit, app, sonarr_app = sys.argv[1:8]

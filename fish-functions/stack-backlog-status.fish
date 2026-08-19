@@ -14,7 +14,7 @@ if not data.get('ok', True):
 print(data['message'])
 print()
 
-order = ['radarr', 'sonarr', 'bazarr']
+order = ['radarr', 'sonarr']
 apps = data.get('apps', {})
 for name in order:
     a = apps.get(name)

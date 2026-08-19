@@ -1,11 +1,11 @@
-# Usage: stack-customformat-diff <radarr|sonarr|radarr_anime|sonarr_anime>
+# Usage: stack-customformat-diff <radarr|sonarr>
 # Diffs the current custom-format scores against the last time this ran,
 # then updates the cache - neither app has a native change log for
 # format-score edits made through the API, so this is the only way to
 # see what actually changed since the last check.
 function stack-customformat-diff --description 'Diff current Radarr/Sonarr custom-format scores against the last check'
     if test (count $argv) -ne 1; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-customformat-diff <radarr|sonarr|radarr_anime|sonarr_anime>" >&2
+        echo "Usage: stack-customformat-diff <radarr|sonarr>" >&2
         return 1
     end
     set -l app (__stack_arr_app $argv[1])

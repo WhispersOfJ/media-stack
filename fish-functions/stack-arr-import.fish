@@ -1,10 +1,10 @@
-# Usage: stack-arr-import <radarr|sonarr|radarr_anime|sonarr_anime> <index>
+# Usage: stack-arr-import <radarr|sonarr> <index>
 # Re-fetches the candidate list fresh (the queue can change between listing
 # and importing) and imports the one at <index> - see
 # stack-arr-import-candidates for the numbered list.
 function stack-arr-import --description 'Import a file listed by stack-arr-import-candidates'
     if test (count $argv) -ne 2; or not __stack_arr_app $argv[1] >/dev/null
-        echo "Usage: stack-arr-import <radarr|sonarr|radarr_anime|sonarr_anime> <index>" >&2
+        echo "Usage: stack-arr-import <radarr|sonarr> <index>" >&2
         return 1
     end
     set -l host_ip 192.168.4.105

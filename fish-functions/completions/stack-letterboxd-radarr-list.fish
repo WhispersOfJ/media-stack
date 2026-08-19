@@ -8,6 +8,4 @@ complete -c stack-letterboxd-radarr-list -l dry-run -d 'Report what would happen
 complete -c stack-letterboxd-radarr-list -l tags-as-radarr-tags
 complete -c stack-letterboxd-radarr-list -l sonarr-crossover
 complete -c stack-letterboxd-radarr-list -l rating-quality-map -r
-complete -c stack-letterboxd-radarr-list -l anime -d 'Route to the anime instance'
-complete -c stack-letterboxd-radarr-list -l sonarr-anime -d 'Route to sonarr-anime'
 complete -c stack-letterboxd-radarr-list -d 'Add every film in a Letterboxd list to Radarr'
