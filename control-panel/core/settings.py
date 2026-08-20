@@ -11,7 +11,7 @@ from core.db import SessionLocal
 from models.setting import Setting
 
 DEFAULTS = {
-    "theme": "dark",
+    "theme": "amber",
     "failed_pending_storm_threshold": 15,
     "loop_review_profile_threshold": 8,
     "recent_values": {},

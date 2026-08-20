@@ -14,7 +14,7 @@ SETTINGS_PATH = "/data/settings.json"
 _LOCK = threading.Lock()
 
 DEFAULTS = {
-    "theme": "dark",
+    "theme": "amber",
     "failed_pending_storm_threshold": 15,
     "loop_review_profile_threshold": 8,
     "recent_values": {},
