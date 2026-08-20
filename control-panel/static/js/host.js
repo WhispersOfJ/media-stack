@@ -87,20 +87,6 @@ export function buildHostActions() {
     }
   });
 
-  const posterRow = document.createElement("div");
-  posterRow.className = "rule-row";
-  posterRow.innerHTML = `
-    <div class="rule-main">
-      <span class="rule-title">Poster sync</span>
-      <span class="rule-desc">Replace posters with the top-voted TMDb match, one library at a time.</span>
-    </div>
-    <div class="rule-actions"><button class="btn-ghost" type="button">Open</button></div>
-  `;
-  wrap.appendChild(posterRow);
-  posterRow.querySelector("button").addEventListener("click", () => {
-    document.getElementById("poster-dock").hidden = false;
-  });
-
   const pruneRow = document.createElement("div");
   pruneRow.className = "rule-row";
   pruneRow.innerHTML = `
