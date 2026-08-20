@@ -6,10 +6,11 @@ Owns the sync/review job state and the two background workers; actual
 candidate lookup lives in candidates.py, cooldown persistence in
 state.py. Mutating routes (sync/review/apply) use current_user_or_service
 - the auto-sync path is systemd-timer-invoked (3x/day movies, 1x/day
-shows), same automation-invoked exception as services/plexanisync's
-run-now (kometa itself was removed 2026-08-18, and services/tautulli's
-terminate-stream - the other prior example - was removed 2026-08-20;
-this comment has been corrected twice now).
+shows), the same automation-invoked exception services/plexanisync's
+run-now once was (kometa itself was removed 2026-08-18, services/tautulli's
+terminate-stream was removed 2026-08-20, and services/plexanisync was
+removed entirely 2026-08-20; this comment has been corrected three times
+now).
 """
 import json
 import queue

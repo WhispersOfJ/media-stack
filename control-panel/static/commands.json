@@ -1844,56 +1844,6 @@
     "LogContainer": ""
   },
   {
-    "Name": "stack-plexanisync-last-run",
-    "Description": "Last PlexAniSync run: time, exit code, matched count",
-    "Method": "GET",
-    "PathTemplate": "/api/plexanisync/last-run",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "plexanisync"
-  },
-  {
-    "Name": "stack-plexanisync-run-now",
-    "Description": "Start an out-of-schedule PlexAniSync sync to AniList",
-    "Method": "POST",
-    "PathTemplate": "/api/plexanisync/run-now",
-    "Query": null,
-    "Args": null,
-    "Confirm": false,
-    "BodyMode": "json",
-    "BodyFields": [],
-    "LogContainer": "plexanisync"
-  },
-  {
-    "Name": "stack-plexanisync-logs",
-    "Description": "Tail PlexAniSync container logs",
-    "Method": "GET",
-    "PathTemplate": "/api/plexanisync/logs",
-    "Query": [
-      {
-        "Key": "lines",
-        "ArgName": "lines",
-        "Literal": ""
-      }
-    ],
-    "Args": [
-      {
-        "Name": "lines",
-        "Choices": null,
-        "Optional": true,
-        "Default": "200",
-        "Rest": false
-      }
-    ],
-    "Confirm": false,
-    "BodyMode": "",
-    "BodyFields": null,
-    "LogContainer": "plexanisync"
-  },
-  {
     "Name": "stack-arr-toggle-search",
     "Description": "Turn RSS sync + automatic search on/off for Radarr/Sonarr indexers (the fish command also accepts `all`, which fans out to both apps)",
     "Method": "POST",

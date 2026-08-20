@@ -39,11 +39,10 @@ HTTP_SERVICES = {
 #
 # These are *user* units (systemctl --user), not system ones - every stack-*
 # timer on this host is installed under ~/.config/systemd/user.
-SCHEDULED_JOBS = {
-    # 00:45/06:45/12:45/18:45 -> at most 6h apart; 8h allows one missed firing
-    # plus a long run before this reports stale.
-    "plexanisync": ("plexanisync.timer", 8 * 3600),
-}
+#
+# Empty since PlexAniSync (the only entry) was decommissioned 2026-08-20 -
+# check_timer() below stays as reusable infra for the next scheduled job.
+SCHEDULED_JOBS = {}
 
 
 def _systemctl_show(unit: str, properties: str) -> dict:

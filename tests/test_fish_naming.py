@@ -135,7 +135,6 @@ VERBS = {
 NOUN_PHRASE_ALLOWLIST = {
     "stack-claude-full-backup",
     "stack-kometa-last-run-result",
-    "stack-plexanisync-last-run",
     "stack-prefetcharr-plex-link-check",
     "stack-scrutiny-alert-test",
 }

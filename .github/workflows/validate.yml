@@ -21,13 +21,6 @@ jobs:
       - name: Validate default profile
         run: docker compose config --quiet
 
-      - name: Validate scheduled profile
-        # `plexanisync` is the only profiled service. Without this step it is
-        # excluded from `docker compose config` entirely and never validated.
-        # (This step used to name a long-dead `extras` profile, which made it a
-        # silent no-op - Compose does not error on an unknown profile name.)
-        run: docker compose --profile scheduled config --quiet
-
       - name: Check every compose ${VAR} has a .env.example key
         # docker compose config doesn't fail on an undefined var - it silently
         # substitutes an empty string. This catches that class of bug directly

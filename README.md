@@ -210,8 +210,8 @@ Stack/
 
 Every service in `docker-compose.yml`, in the order they appear:
 
-Only one service is behind a `profiles:` gate - `plexanisync`, under the `scheduled`
-profile, because it is a run-to-completion sync job rather than a daemon. Every other
+No service is behind a `profiles:` gate anymore - the one that was (`plexanisync`,
+under the `scheduled` profile) was decommissioned 2026-08-20 (see PLANS.md). Every
 service starts with a plain `docker compose up -d`.
 
 <!-- AUTO-GENERATED: service table, from docker-compose.yml -->
@@ -239,15 +239,14 @@ service starts with a plain `docker compose up -d`.
 | 19 | `organizr` | `ghcr.io/organizr/organizr:latest` | 8702 |
 | 20 | `scrutiny` | `ghcr.io/analogj/scrutiny:latest-omnibus` | 8703 |
 | 21 | `watchstate` | `ghcr.io/arabcoders/watchstate:latest` | 8705 |
-| 22 | `plexanisync` | `ghcr.io/rickdb/plexanisync:latest` | none (profile `scheduled`) |
 
 <!-- END AUTO-GENERATED -->
 
 Services 19-24 are the PLANS.md new-services batch (Phases 1-7, 2026-08-09 to 2026-08-12; Phase
-5/GAPS-2 was later decommissioned), all on the contiguous 8700-8705 port block minus 8704: ntfy
-(push sink), Speedtest Tracker (hourly ISP monitoring), Organizr (single-pane frontend), Scrutiny
-(SMART disk health), WatchState (cross-server watch-state sync), and PlexAniSync (Plex to AniList
-sync, the one profiled service).
+5/GAPS-2 and Phase 7/PlexAniSync were later decommissioned), all on the contiguous 8700-8705 port
+block minus 8704: ntfy (push sink), Speedtest Tracker (hourly ISP monitoring), Organizr
+(single-pane frontend), Scrutiny (SMART disk health), and WatchState (cross-server watch-state
+sync).
 
 Service 15 (Prefetcharr) is the survivor of the 2026-07-30
 awesome-arr batch - Tautulli, Wrapperr, Maintainerr, and Lingarr were part of that batch too, but

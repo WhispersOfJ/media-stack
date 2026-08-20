@@ -50,4 +50,4 @@ CATALOG: list[dict] = [
 
 CATALOG_BY_ID = {entry["id"]: entry for entry in CATALOG}
 
-assert len(CATALOG) >= 42, f"catalog registry has fewer entries than expected: {len(CATALOG)}"
+assert len(CATALOG) >= 41, f"catalog registry has fewer entries than expected: {len(CATALOG)}"
