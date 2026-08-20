@@ -54,8 +54,8 @@ def test_status_reports_all_healthy(cp_main_app, monkeypatch):
     headers = _service_key_header(cp_main_app)
     resp = client.get("/api/newapps/status", headers=headers)
     body = resp.json()
-    assert body["message"] == "All 3 new apps healthy."
-    assert body["apps"]["maintainerr"]["running"] is True
+    assert body["message"] == "All 2 new apps healthy."
+    assert body["apps"]["lingarr"]["running"] is True
     assert body["apps"]["prefetcharr"]["reachable"] is None
 
 
@@ -90,7 +90,7 @@ def test_status_reports_unreachable_http(cp_main_app, monkeypatch):
     dc.docker_client.containers.get.side_effect = fake_get
 
     def fake_http_get(url, timeout=None):
-        if "maintainerr" in url:
+        if "lingarr" in url:
             raise httpx.HTTPError("boom")
         return MagicMock(status_code=200)
 
@@ -99,5 +99,5 @@ def test_status_reports_unreachable_http(cp_main_app, monkeypatch):
     headers = _service_key_header(cp_main_app)
     resp = client.get("/api/newapps/status", headers=headers)
     body = resp.json()
-    assert body["apps"]["maintainerr"]["reachable"] is False
-    assert "maintainerr" in body["message"]
+    assert body["apps"]["lingarr"]["reachable"] is False
+    assert "lingarr" in body["message"]

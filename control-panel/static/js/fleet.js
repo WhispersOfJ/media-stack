@@ -16,7 +16,7 @@ const FLEET_GROUPS = {
   lingarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
   cleanuparr: "Queue cleanup",
-  maintainerr: "Library maintenance", prefetcharr: "Library maintenance",
+  prefetcharr: "Library maintenance",
   "control-panel": "Dashboard",
   watchstate: "Discovery",
   // Scheduled batch job, not a persistent service - it sits in Exited(0)

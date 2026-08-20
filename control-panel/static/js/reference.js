@@ -14,7 +14,6 @@ const QUICK_LINKS = [
   { id: "nzbdav", label: "NzbDAV", port: 3000 },
   { id: "seerr", label: "Seerr", port: 5055 },
   { id: "cleanuparr", label: "Cleanuparr", port: 11011 },
-  { id: "maintainerr", label: "Maintainerr", port: 6246 },
   { id: "lingarr", label: "Lingarr", port: 9876 },
   { id: "watchstate", label: "WatchState", port: 8705 },
   // No quicklink for prefetcharr - it publishes no port (headless poller).
@@ -41,7 +40,6 @@ const DOC_LINKS = [
   { app: "Cleanuparr", desc: "queue strikes/malware-block/stalled cleanup", urls: [["Source", "https://github.com/Cleanuparr/Cleanuparr"]] },
   { app: "Unpackerr", desc: "RAR extraction for Radarr/Sonarr downloads", urls: [["Source", "https://github.com/Unpackerr/unpackerr"]] },
   { app: "Watchtower", desc: "container auto-update (maintained fork)", urls: [["Source", "https://github.com/nicholas-fedor/watchtower"]] },
-  { app: "Maintainerr", desc: "Plex/Radarr/Sonarr library maintenance rules (installed with zero rules configured)", urls: [["Source", "https://github.com/Maintainerr/Maintainerr"]] },
   { app: "Prefetcharr", desc: "auto-fetches next Sonarr season from Plex watch progress", urls: [["Source", "https://github.com/p-hueber/prefetcharr"]] },
   { app: "Lingarr", desc: "subtitle translation", urls: [["Source", "https://github.com/lingarr-translate/lingarr"]] },
 ];

@@ -17,7 +17,7 @@ router = APIRouter(tags=["newapps"])
 
 SERVICE_META = {"label": "New Apps", "health_check": None}
 
-NEW_APP_CONTAINERS = ["maintainerr", "prefetcharr", "lingarr"]
+NEW_APP_CONTAINERS = ["prefetcharr", "lingarr"]
 
 
 @router.get("/api/newapps/status")
@@ -25,8 +25,8 @@ def newapps_status(_=Depends(current_user_or_service)):
     """One-shot health sweep across the remaining 2026-07-30 additions -
     container running state plus an HTTP reachability probe for the ones
     with a port (prefetcharr has neither, so it's container-status-only).
-    Tautulli and Wrapperr were decommissioned; see PLANS.md."""
-    ports = {"maintainerr": 6246, "lingarr": 8080}
+    Tautulli, Wrapperr, and Maintainerr were decommissioned; see PLANS.md."""
+    ports = {"lingarr": 8080}
     out = {}
     for name in NEW_APP_CONTAINERS:
         try:
@@ -44,5 +44,5 @@ def newapps_status(_=Depends(current_user_or_service)):
                 reachable = False
         out[name] = {"running": running, "reachable": reachable}
     down = [n for n, s in out.items() if not s["running"] or s["reachable"] is False]
-    msg = "All 3 new apps healthy." if not down else f"Problem with: {', '.join(down)}"
+    msg = "All 2 new apps healthy." if not down else f"Problem with: {', '.join(down)}"
     return ok(msg, apps=out)

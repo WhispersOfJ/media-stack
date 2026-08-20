@@ -1,6 +1,6 @@
 # Usage: stack-newapps-status
 # One-shot health sweep across the remaining apps added 2026-07-30
-# (maintainerr, prefetcharr, lingarr). Tautulli and Wrapperr were
+# (prefetcharr, lingarr). Tautulli, Wrapperr, and Maintainerr were
 # decommissioned; see PLANS.md.
 function stack-newapps-status --description 'Health sweep of the new apps'
     set -l host_ip 192.168.4.20

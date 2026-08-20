@@ -869,34 +869,6 @@ services:
   # UI unless noted otherwise.
   # ---------------------------------------------------------------------
 
-  # Plex/Radarr/Sonarr library maintenance (stale-content cleanup rules).
-  # Installed deliberately with ZERO rules configured - this stack has a
-  # documented history of 3+ mass-deletion incidents (stale FUSE mounts,
-  # autoEmptyTrash, bad bind-mounts, see CLAUDE.md/STACK.md). Do not
-  # create an auto-delete rule without re-reading that history first.
-  maintainerr:
-    restart: unless-stopped
-    logging: *common-logging
-    image: ghcr.io/maintainerr/maintainerr:latest
-    container_name: maintainerr
-    networks: [stacknet]
-    user: "${PUID}:${PGID}"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6246/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/maintainerr:/opt/data
-    ports:
-      - "6246:6246"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-
   # Auto-fetches the next season in Sonarr as a Plex viewer nears the end
   # of the current one. Headless poller, no web UI/port.
   prefetcharr:
@@ -935,7 +907,7 @@ services:
   # Subtitle translation, complements Bazarr (which only fetches existing
   # subs) rather than replacing it. SQLite backend - no separate DB
   # container needed. Radarr/Sonarr connections configured via its own UI
-  # post-boot, same pattern as Seerr/Maintainerr.
+  # post-boot, same pattern as Seerr.
   lingarr:
     restart: unless-stopped
     logging: *common-logging

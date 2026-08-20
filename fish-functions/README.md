@@ -253,21 +253,10 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-flatpak-updates [--apply]`** — list, or apply, pending Flatpak updates.
 - **`stack-log-levels [reset]`** — check, or reset, every Servarr app's log level.
 
-## 2026-07-30 additions — Maintainerr, Prefetcharr, Lingarr
+## 2026-07-30 additions — Prefetcharr, Lingarr
 
-Tautulli and Wrapperr were part of this batch too, but were later decommissioned
-(see PLANS.md) — their fish commands are gone.
-
-### Maintainerr
-
-- **`stack-maintainerr-rules`** — configured rules (expected empty by design).
-- **`stack-maintainerr-rule-detail <rule_id>`** — full definition of one rule.
-- **`stack-maintainerr-collections`** — Plex collections being tracked for cleanup evaluation.
-- **`stack-maintainerr-collection-media <collection_id>`** — media items inside one tracked collection.
-- **`stack-maintainerr-logs [lines]`** — tail Maintainerr's container logs.
-- **`stack-maintainerr-safety-check`** — alerts if any rule is ever active.
-- **`stack-maintainerr-plex-link-check`** — confirms Maintainerr's configured Plex host matches this stack's real Plex.
-
+Tautulli, Wrapperr, and Maintainerr were part of this batch too, but were later
+decommissioned (see PLANS.md) — their fish commands are gone.
 
 ### Prefetcharr
 

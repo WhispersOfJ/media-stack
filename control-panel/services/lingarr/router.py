@@ -2,7 +2,7 @@
 .claude/plans/evolved-control-panel-backend.plan.md.
 
 All routes read-only - current_user_or_service throughout, same reasoning
-as services/maintainerr.
+as services/prefetcharr.
 """
 import re
 
