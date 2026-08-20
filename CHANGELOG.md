@@ -1,5 +1,48 @@
 # Changelog
 
+## [11.16.0](https://github.com/WhispersOfJ/media-stack/compare/v11.15.0...v11.16.0) (2026-08-20)
+
+
+### Features
+
+* add Browser Games category to catalog (3 verified entries) ([6368a00](https://github.com/WhispersOfJ/media-stack/commit/6368a00627a43902d99451b7aa39c44f43560817))
+* add collapsible environment/volume details to catalog cards ([d713736](https://github.com/WhispersOfJ/media-stack/commit/d7137360b6843257305ede15f83fce1c35a3125c))
+* add diagonal-hatch texture layer to page background ([fdc0954](https://github.com/WhispersOfJ/media-stack/commit/fdc09547a7e934c4f8ac4ab1f00a1da4f96be1de))
+* add Media category to catalog (8 verified entries) ([4b2ae62](https://github.com/WhispersOfJ/media-stack/commit/4b2ae62e60ff20072e786c0b18ae24c8b94928fe))
+* add per-group CPU sparkline history to Fleet rail ([7e3c7cd](https://github.com/WhispersOfJ/media-stack/commit/7e3c7cdb144316970b399f063059b5716c6c333d))
+* add RetroArch Emulation category to catalog (12 verified entries) ([f8a9a87](https://github.com/WhispersOfJ/media-stack/commit/f8a9a871304dadeeeee1a3008c8b40bf615998f2))
+* add shared logger + 108 tests for control-panel/core/ ([f1cb35e](https://github.com/WhispersOfJ/media-stack/commit/f1cb35e6e8cf9003ac14e72d7bf4e1c935e141d5))
+* default control-panel theme to amber Pip-Boy palette ([9965440](https://github.com/WhispersOfJ/media-stack/commit/996544098bd1717ef357de184a500429bf198bfb))
+* give each rail a distinct accent hue ([d4ee752](https://github.com/WhispersOfJ/media-stack/commit/d4ee752c7e10f1d7f67c43c186dc03d070a89e17))
+* include environment and volumes in catalog list response ([560bb41](https://github.com/WhispersOfJ/media-stack/commit/560bb41b34493d66519300325010fbad659ec26e))
+* Plan 3 severe consolidation — remove 7 services, merge anime into base Radarr/Sonarr ([517978a](https://github.com/WhispersOfJ/media-stack/commit/517978a56ce644d43e62845f260acc3f379732ae))
+* promote poster sync to top rail, remove software catalog rail ([dc9f4c1](https://github.com/WhispersOfJ/media-stack/commit/dc9f4c1c4f4813e2e23de77d1ab4d61de3824c53))
+* replace dark/light theme with amber/green Pip-Boy CRT palette ([3129195](https://github.com/WhispersOfJ/media-stack/commit/31291956d35cf2496cf1616cbddcf1689515e98d))
+* wire amber/green theme switch, delete software catalog module ([0c701f5](https://github.com/WhispersOfJ/media-stack/commit/0c701f5e75825b5a64776b3a3d845a6d98bc4bca))
+* wire InfiniDysk Prowlarr pull-sync now that v1.1.0+ is stable ([b746438](https://github.com/WhispersOfJ/media-stack/commit/b746438eff7be943ad19df07ae92d953e77b8f3c))
+
+
+### Bug Fixes
+
+* address final-review findings (theme PATCH schema, dead CSS, fragile selector) ([475c078](https://github.com/WhispersOfJ/media-stack/commit/475c07823a7183f3004d4fde65b5770c8b402060))
+* catalog details panel display:flex overrode [hidden], never collapsed ([ff650a6](https://github.com/WhispersOfJ/media-stack/commit/ff650a6b7087aa4f57c31181c9f94b4700690921))
+* clear ruff lint errors blocking Validate Compose CI ([dc27428](https://github.com/WhispersOfJ/media-stack/commit/dc274287dabea6411d1785da0666388e69f8b33f))
+* declare FUSE-mount dependency chain, add rclone healthcheck ([a02163a](https://github.com/WhispersOfJ/media-stack/commit/a02163acab7565d0073ed779660f2fb66f26679f))
+* diverge --rail-plex-health from --bad to avoid error-color collision ([d4e4ab0](https://github.com/WhispersOfJ/media-stack/commit/d4e4ab09079b81576e096fc4462441a55c9b1296))
+* guard unhandled Cleanuparr seeker fetch, add 23 script tests ([10ce1d1](https://github.com/WhispersOfJ/media-stack/commit/10ce1d1722a1462b621179e8dea6e70670651483))
+* isolate router-import failures instead of crashing all of boot ([10f545f](https://github.com/WhispersOfJ/media-stack/commit/10f545f758239336e0a81ed5851e982fdc1f4f11))
+* log silent excepts, justify automation routes, add 35 router tests ([0df6ac1](https://github.com/WhispersOfJ/media-stack/commit/0df6ac16c8470816c2d575900283a85606d417ff))
+* remove dangling env vars for services deleted in consolidation ([922831c](https://github.com/WhispersOfJ/media-stack/commit/922831cecb407ee6afb5b2d6efd728080021b4f9))
+* remove dead sparkline CSS rules, diverge rail-fleet/rail-catalog from status colors ([113d38c](https://github.com/WhispersOfJ/media-stack/commit/113d38cd0d6d8fdd40c14e6dd59e580197f4c09f))
+* remove stale extras profile refs, fix dangling app.py COPY ([7eb9af6](https://github.com/WhispersOfJ/media-stack/commit/7eb9af644b414f6715f92753d630a6d7211c0518))
+* restore RAM sparkline green color and fill styling ([9c070b3](https://github.com/WhispersOfJ/media-stack/commit/9c070b3cabb92037574bd59d99bccdd5db8197a8))
+* update control-panel unit tests for amber/green theme default ([56840a0](https://github.com/WhispersOfJ/media-stack/commit/56840a0bd104696148d0f669487c118d29ec7854))
+
+
+### Performance Improvements
+
+* bump nzbdav queue worker count from 3 to 6 ([718bcbe](https://github.com/WhispersOfJ/media-stack/commit/718bcbef5aa3e983c568cf0cce98e1420c421ed1))
+
 ## [11.15.0](https://github.com/WhispersOfJ/media-stack/compare/v11.14.0...v11.15.0) (2026-08-14)
 
 
