@@ -869,51 +869,6 @@ services:
   # UI unless noted otherwise.
   # ---------------------------------------------------------------------
 
-  tautulli:
-    <<: *common
-    image: ghcr.io/tautulli/tautulli:latest
-    container_name: tautulli
-    networks: [stacknet]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8181/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    volumes:
-      - ./config/tautulli:/config
-    ports:
-      - "8182:8181"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-
-  # Tautulli stats dashboard/wrapper. Needs Tautulli's URL + API key,
-  # entered via its own admin UI once Tautulli is up and has an API key
-  # generated (Tautulli Settings > Web Interface > API Key).
-  wrapperr:
-    restart: unless-stopped
-    logging: *common-logging
-    image: aunefyren/wrapperr:latest
-    container_name: wrapperr
-    networks: [stacknet]
-    user: "${PUID}:${PGID}"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8282/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ./config/wrapperr:/app/config
-    ports:
-      - "8283:8282"
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1
-
   # Plex/Radarr/Sonarr library maintenance (stale-content cleanup rules).
   # Installed deliberately with ZERO rules configured - this stack has a
   # documented history of 3+ mass-deletion incidents (stale FUSE mounts,
@@ -980,7 +935,7 @@ services:
   # Subtitle translation, complements Bazarr (which only fetches existing
   # subs) rather than replacing it. SQLite backend - no separate DB
   # container needed. Radarr/Sonarr connections configured via its own UI
-  # post-boot, same pattern as Seerr/Maintainerr/Wrapperr.
+  # post-boot, same pattern as Seerr/Maintainerr.
   lingarr:
     restart: unless-stopped
     logging: *common-logging

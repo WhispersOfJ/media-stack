@@ -38,7 +38,7 @@ chronological [History](#history) section is at the end.
 - [Custom formats and quality profiles](#custom-formats-and-quality-profiles)
 - [Automation extras: Cleanuparr, Unpackerr, Watchtower](#automation-extras-cleanuparr-unpackerr-watchtower)
 - [Plex-connected companions (added v11.11.0)](#plex-connected-companions-added-v11110)
-- [Monitoring: Tautulli, Scrutiny, Speedtest Tracker](#monitoring-tautulli-scrutiny-speedtest-tracker)
+- [Monitoring: Scrutiny, Speedtest Tracker](#monitoring-scrutiny-speedtest-tracker)
 - [Bazarr: subtitle management](#bazarr-subtitle-management)
 - [Control Panel](#control-panel)
 - [CLI: the `stack-*` fish functions](#cli-the-stack--fish-functions)
@@ -232,26 +232,28 @@ service starts with a plain `docker compose up -d`.
 | 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none |
 | 13 | `watchtower` | `nickfedor/watchtower:1.20.3` | none |
 | 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.10.3` | 11011 |
-| 15 | `tautulli` | `ghcr.io/tautulli/tautulli:latest` | 8182 |
-| 16 | `wrapperr` | `aunefyren/wrapperr:latest` | 8283 |
-| 17 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 |
-| 18 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
-| 19 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
-| 20 | `kometa` | `kometateam/kometa:latest` | none |
-| 21 | `ntfy` | `binwiederhier/ntfy` | 8700 |
-| 22 | `speedtest-tracker` | `lscr.io/linuxserver/speedtest-tracker:latest` | 8701 |
-| 23 | `organizr` | `ghcr.io/organizr/organizr:latest` | 8702 |
-| 24 | `scrutiny` | `ghcr.io/analogj/scrutiny:latest-omnibus` | 8703 |
-| 25 | `watchstate` | `ghcr.io/arabcoders/watchstate:latest` | 8705 |
-| 26 | `plexanisync` | `ghcr.io/rickdb/plexanisync:latest` | none (profile `scheduled`) |
+| 15 | `maintainerr` | `ghcr.io/maintainerr/maintainerr:latest` | 6246 |
+| 16 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
+| 17 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
+| 18 | `kometa` | `kometateam/kometa:latest` | none |
+| 19 | `ntfy` | `binwiederhier/ntfy` | 8700 |
+| 20 | `speedtest-tracker` | `lscr.io/linuxserver/speedtest-tracker:latest` | 8701 |
+| 21 | `organizr` | `ghcr.io/organizr/organizr:latest` | 8702 |
+| 22 | `scrutiny` | `ghcr.io/analogj/scrutiny:latest-omnibus` | 8703 |
+| 23 | `watchstate` | `ghcr.io/arabcoders/watchstate:latest` | 8705 |
+| 24 | `plexanisync` | `ghcr.io/rickdb/plexanisync:latest` | none (profile `scheduled`) |
 
 <!-- END AUTO-GENERATED -->
 
-Services 21-26 are the PLANS.md new-services batch (Phases 1-7, 2026-08-09 to 2026-08-12; Phase
+Services 19-24 are the PLANS.md new-services batch (Phases 1-7, 2026-08-09 to 2026-08-12; Phase
 5/GAPS-2 was later decommissioned), all on the contiguous 8700-8705 port block minus 8704: ntfy
 (push sink), Speedtest Tracker (hourly ISP monitoring), Organizr (single-pane frontend), Scrutiny
 (SMART disk health), WatchState (cross-server watch-state sync), and PlexAniSync (Plex to AniList
 sync, the one profiled service).
+
+Services 15-17 (Maintainerr, Prefetcharr, Lingarr) are the survivors of the 2026-07-30
+awesome-arr batch - Tautulli and Wrapperr were part of that batch too, but were later
+decommissioned (2026-08-20, see PLANS.md).
 
 **`radarr-anime`** is a second, fully independent Radarr instance for anime movies only
 (2026-08-06) - own root folder (`/data/anime-movies`), own "Anime" quality profile, own Plex
@@ -835,13 +837,10 @@ receiving app's own config or API for a real instance entry, not just network re
 
 ## Plex-connected companions (added v11.11.0)
 
-Six additional apps, all configured post-boot via their own web UI unless noted:
+Six additional apps were added in this batch, all configured post-boot via their own web UI
+unless noted. Tautulli and Wrapperr were later decommissioned (2026-08-20, see PLANS.md);
+the survivors:
 
-- **Tautulli** (`ghcr.io/tautulli/tautulli:latest`, port 8182) - Plex watch-stats/history
-  dashboard.
-- **Wrapperr** (`aunefyren/wrapperr:latest`, port 8283) - stats wrapper/report dashboard on
-  top of Tautulli; needs Tautulli's URL and an API key generated via Tautulli's own
-  **Settings > Web Interface > API Key**.
 - **Maintainerr** (`ghcr.io/maintainerr/maintainerr:latest`, port 6246) - Plex/Radarr/Sonarr
   library maintenance (stale-content cleanup rules). Installed deliberately with **zero
   rules configured** - this stack has a documented history of 3+ mass-deletion incidents
@@ -888,19 +887,20 @@ the exception forward (Watchtower auto-updated it like any other channel-tag ima
 moot now that Plex, not Jellyfin, is the media server again. See
 [Image pinning policy](#image-pinning-policy).
 
-## Monitoring: Tautulli, Scrutiny, Speedtest Tracker
+## Monitoring: Scrutiny, Speedtest Tracker
 
-Three monitoring surfaces run now, each covering a different layer:
+Two monitoring surfaces run now, each covering a different layer:
 
 | Service | Port | Covers |
 |---|---|---|
-| `tautulli` | 8182 | Plex watch history and stats (plus `wrapperr` on 8283 for year-in-review) |
 | `scrutiny` | 8703 | SMART health for the host's disks (needs `SYS_ADMIN` for NVMe) |
 | `speedtest-tracker` | 8701 | Hourly ISP link speed/latency via the Ookla CLI |
 
-**Tautulli** was removed entirely in v11.9.0 along with Kometa, then both were reinstalled in
-v11.11.0 - see [History](#history). Scrutiny and Speedtest Tracker are Phases 4 and 2 of the
-PLANS.md new-services batch (2026-08-11/12). There is still no general host-metrics or
+**Tautulli** (plus **Wrapperr**, its report dashboard) covered Plex watch history/stats here
+until both were decommissioned entirely on 2026-08-20 - see PLANS.md. Before that, Tautulli
+was removed entirely in v11.9.0 along with Kometa, then both were reinstalled in v11.11.0 -
+see [History](#history). Scrutiny and Speedtest Tracker are Phases 4 and 2 of the PLANS.md
+new-services batch (2026-08-11/12). There is still no general host-metrics or
 container-metrics dashboard (no Prometheus/Grafana, no Glances) - see below.
 
 During the brief v11.7.0 Jellyfin era, Tautulli was removed entirely once before (Plex-only,

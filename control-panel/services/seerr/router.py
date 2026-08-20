@@ -3,7 +3,7 @@ closed after the auth cutover left this route 404ing (never given a
 services/<name>/router.py, so main.py's auto-discovery never mounted it -
 see the stack-seerr-requests fix that surfaced this).
 
-Read-only - current_user_or_service, same reasoning as services/tautulli.
+Read-only - current_user_or_service, same reasoning as services/maintainerr.
 """
 import json
 import os

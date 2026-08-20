@@ -140,7 +140,6 @@ NOUN_PHRASE_ALLOWLIST = {
     "stack-plexanisync-last-run",
     "stack-prefetcharr-plex-link-check",
     "stack-scrutiny-alert-test",
-    "stack-wrapperr-tautulli-link-check",
 }
 
 

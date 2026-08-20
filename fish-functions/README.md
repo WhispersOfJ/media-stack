@@ -253,30 +253,10 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-flatpak-updates [--apply]`** — list, or apply, pending Flatpak updates.
 - **`stack-log-levels [reset]`** — check, or reset, every Servarr app's log level.
 
-## 2026-07-30 additions — Tautulli, Wrapperr, Maintainerr, Prefetcharr, Lingarr
+## 2026-07-30 additions — Maintainerr, Prefetcharr, Lingarr
 
-### Tautulli
-
-- **`stack-tautulli-activity`** — current Plex streams as Tautulli sees them, with per-session transcode detail.
-- **`stack-tautulli-terminate-stream <session_key>`** — kill one active stream by session key.
-- **`stack-tautulli-history [limit]`** — recent watch history across every user/library.
-- **`stack-tautulli-stats`** — home-page stat cards (top movies/shows/users).
-- **`stack-tautulli-users`** — every known Plex user with lifetime plays/duration.
-- **`stack-tautulli-user-history <user_id> [limit]`** — watch history filtered to one user.
-- **`stack-tautulli-libraries`** — per-library item counts as Tautulli last saw them.
-- **`stack-tautulli-recently-added [limit]`** — Tautulli's own recently-added feed.
-- **`stack-tautulli-server-info`** — which Plex server Tautulli is actually configured against.
-- **`stack-tautulli-newsletters`** — configured newsletter definitions, if any.
-- **`stack-tautulli-notifiers`** — notification agents configured inside Tautulli itself.
-- **`stack-tautulli-plays-by-date [days]`** — daily play-count trend.
-- **`stack-tautulli-sync-check`** — confirms Tautulli is tracking this stack's real Plex server.
-
-### Wrapperr
-
-- **`stack-wrapperr-status`** — reachability plus whether a Tautulli connection is saved.
-- **`stack-wrapperr-reports`** — saved report definitions.
-- **`stack-wrapperr-links`** — generated public share links.
-- **`stack-wrapperr-tautulli-link-check`** — confirms Wrapperr's saved Tautulli API key still matches the live one.
+Tautulli and Wrapperr were part of this batch too, but were later decommissioned
+(see PLANS.md) — their fish commands are gone.
 
 ### Maintainerr
 

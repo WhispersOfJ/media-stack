@@ -26,8 +26,6 @@ HTTP_SERVICES = {
     "seerr": (5055, "/api/v1/status"),
     "control-panel": (8420, "/healthz"),
     "plex": (32400, "/identity"),
-    "tautulli": (8182, "/"),
-    "wrapperr": (8283, "/"),
     "maintainerr": (6246, "/"),
     "lingarr": (9876, "/"),
     "nzbdav": (3000, "/"),

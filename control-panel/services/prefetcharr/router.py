@@ -2,7 +2,7 @@
 .claude/plans/evolved-control-panel-backend.plan.md.
 
 All routes read-only - current_user_or_service throughout, same reasoning
-as services/tautulli. Prefetcharr has no API/port of its own (log-file
+as services/maintainerr. Prefetcharr has no API/port of its own (log-file
 and env-var driven only), unlike most other Phase 4 integrations.
 """
 import os

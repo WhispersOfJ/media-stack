@@ -2,7 +2,7 @@
 .claude/plans/evolved-control-panel-backend.plan.md.
 
 All routes are read-only - current_user_or_service throughout, same
-reasoning as services/tautulli. safety-check exists specifically because
+reasoning as services/seerr. safety-check exists specifically because
 this stack's Maintainerr is installed with ZERO rules on purpose (see
 CLAUDE.md/STACK.md's 3+ documented mass-deletion incidents) - a non-empty
 active-rule list is worth surfacing loudly, not silently trusting.
@@ -116,7 +116,7 @@ def maintainerr_safety_check(_=Depends(current_user_or_service)):
 @router.get("/api/maintainerr/plex-link-check")
 def maintainerr_plex_link_check(_=Depends(current_user_or_service)):
     """Misconfiguration guard: Maintainerr's Plex connection is entered
-    via its own setup wizard, same drift risk as Tautulli/Wrapperr above."""
+    via its own setup wizard, same drift risk as Prefetcharr above."""
     try:
         r = httpx.get(f"{MAINTAINERR_URL}/api/settings", timeout=20)
         r.raise_for_status()

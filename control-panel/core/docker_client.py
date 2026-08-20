@@ -24,8 +24,6 @@ CONTAINER_LABELS = {
     "unpackerr": ("Unpackerr", None),
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
-    "tautulli": ("Tautulli", "Plex watch-stats/history dashboard"),
-    "wrapperr": ("Wrapperr", "Tautulli stats wrapper/report dashboard"),
     "maintainerr": ("Maintainerr", "Plex/Radarr/Sonarr library maintenance - installed with zero rules configured"),
     "prefetcharr": ("Prefetcharr", "auto-fetches next Sonarr season from Plex watch progress"),
     "lingarr": ("Lingarr", "subtitle translation"),
