@@ -21,7 +21,7 @@ COMPOSE = REPO_ROOT / "docker-compose.yml"
 HOST_DOMAINS = {
     "aur", "backlog", "claude", "command", "container", "cron", "disk",
     "docker", "firewall", "flatpak", "git", "image", "journal", "kernel",
-    "log", "loop", "mem", "mount", "newapps", "notify", "oom", "perms",
+    "log", "loop", "mem", "mount", "notify", "oom", "perms",
     "pkg", "queue", "reboot", "resource", "restart", "service", "ssh",
     "status", "timer", "top", "uptime", "version", "zombie",
 }
@@ -135,7 +135,6 @@ VERBS = {
 NOUN_PHRASE_ALLOWLIST = {
     "stack-claude-full-backup",
     "stack-kometa-last-run-result",
-    "stack-prefetcharr-plex-link-check",
     "stack-scrutiny-alert-test",
 }
 

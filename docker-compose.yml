@@ -172,7 +172,7 @@ services:
       NZBDAV_CONFIG__RCLONE__MOUNT_DIR: "/mnt/remote/nzbdav"
       NZBDAV_CONFIG__MEDIA__LIBRARY_DIR: "/mnt/remote/nzbdav/completed-symlinks"
       NZBDAV_CONFIG__USENET__PROVIDERS: >-
-        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":25,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":25,"Priority":0,"Nickname":"backup"}]}
+        {"Providers":[{"Type":1,"Host":"${NZBDAV_USENET_HOST}","Port":${NZBDAV_USENET_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_USER}","Pass":"${NZBDAV_USENET_PASS}","MaxConnections":50,"Priority":0,"Nickname":"primary"},{"Type":1,"Host":"${NZBDAV_USENET_BACKUP_HOST}","Port":${NZBDAV_USENET_BACKUP_PORT},"UseSsl":true,"User":"${NZBDAV_USENET_BACKUP_USER}","Pass":"${NZBDAV_USENET_BACKUP_PASS}","MaxConnections":50,"Priority":0,"Nickname":"backup"}]}
       # Settings audit 2026-07-31 (every settings page/config key checked against
       # backend/Config/ConfigManager.cs - see STACK.md): cascade defaulted off, which
       # meant primary/backup were raw-load-balanced by spare connection count instead of
@@ -861,48 +861,6 @@ services:
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
-
-  # ---------------------------------------------------------------------
-  # awesome-arr additions (2026-07-30). Plex-connected companion apps -
-  # see STACK.md for the fit assessment that picked these 8 out of
-  # awesome-arr's full list. All configured post-boot via their own web
-  # UI unless noted otherwise.
-  # ---------------------------------------------------------------------
-
-  # Auto-fetches the next season in Sonarr as a Plex viewer nears the end
-  # of the current one. Headless poller, no web UI/port.
-  prefetcharr:
-    restart: unless-stopped
-    logging: *common-logging
-    image: phueber/prefetcharr:latest
-    container_name: prefetcharr
-    networks: [stacknet]
-    user: "${PUID}:${PGID}"
-    environment:
-      TZ: ${TZ}
-      # Current image dropped the --media-server-type/etc CLI-flag env vars
-      # (that path now only exists as a "compat mode" triggered by their
-      # ABSENCE) in favor of a single TOML blob via PREFETCHARR_CONFIG.
-      PREFETCHARR_CONFIG: |
-        interval = 3600
-        log_dir = "/log"
-        prefetch_num = 2
-        request_seasons = true
-        connection_retries = 6
-
-        [media_server]
-        type = "Plex"
-        url = "${PLEX_URL}"
-        api_key = "${PLEX_TOKEN}"
-
-        [sonarr]
-        url = "http://sonarr:8989"
-        api_key = "${SONARR_API_KEY}"
-    volumes:
-      - ./config/prefetcharr:/log
-    mem_limit: 128m
-    mem_reservation: 32m
-    cpus: 1
 
   # ---------------------------------------------------------------------
   # new-services (2026-08) - see PLANS.md for the full 7-service spec this

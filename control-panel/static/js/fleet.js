@@ -15,7 +15,6 @@ const FLEET_GROUPS = {
   nzbdav: "Usenet", nzbdav_rclone: "Usenet", seerr: "Requests", plex: "Media server",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
   cleanuparr: "Queue cleanup",
-  prefetcharr: "Library maintenance",
   "control-panel": "Dashboard",
   watchstate: "Discovery",
 };

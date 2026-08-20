@@ -253,21 +253,8 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-flatpak-updates [--apply]`** — list, or apply, pending Flatpak updates.
 - **`stack-log-levels [reset]`** — check, or reset, every Servarr app's log level.
 
-## 2026-07-30 additions — Prefetcharr
-
-Tautulli, Wrapperr, Maintainerr, and Lingarr were part of this batch too, but were
-later decommissioned (see PLANS.md) — their fish commands are gone.
-
-### Prefetcharr
-
-- **`stack-prefetcharr-logs [lines]`** — tail Prefetcharr's log file.
-- **`stack-prefetcharr-status`** — container state plus the most recent prefetch-trigger event.
-- **`stack-prefetcharr-config`** — effective config (interval, prefetch count, etc) as deployed.
-- **`stack-prefetcharr-plex-link-check`** — confirms Prefetcharr's baked-in Plex URL is still current.
-
-### Cross-app
-
-- **`stack-newapps-status`** — health sweep of all new apps at once.
+The 2026-07-30 awesome-arr batch (Tautulli, Wrapperr, Maintainerr, Lingarr, Prefetcharr)
+was fully decommissioned (see PLANS.md) — their fish commands are gone.
 
 ## 2026-08 additions — new-services batch (PLANS.md Phases 1–3)
 

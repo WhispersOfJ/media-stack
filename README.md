@@ -232,7 +232,6 @@ service starts with a plain `docker compose up -d`.
 | 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none |
 | 13 | `watchtower` | `nickfedor/watchtower:1.20.3` | none |
 | 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.10.3` | 11011 |
-| 15 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
 | 16 | `kometa` | `kometateam/kometa:latest` | none |
 | 17 | `ntfy` | `binwiederhier/ntfy` | 8700 |
 | 18 | `speedtest-tracker` | `lscr.io/linuxserver/speedtest-tracker:latest` | 8701 |
@@ -248,9 +247,8 @@ block minus 8704: ntfy (push sink), Speedtest Tracker (hourly ISP monitoring), O
 (single-pane frontend), Scrutiny (SMART disk health), and WatchState (cross-server watch-state
 sync).
 
-Service 15 (Prefetcharr) is the survivor of the 2026-07-30
-awesome-arr batch - Tautulli, Wrapperr, Maintainerr, and Lingarr were part of that batch too, but
-were later decommissioned (2026-08-20, see PLANS.md).
+The entire 2026-07-30 awesome-arr batch (Tautulli, Wrapperr, Maintainerr, Lingarr,
+Prefetcharr) was decommissioned (2026-08-20, see PLANS.md).
 
 **`radarr-anime`** is a second, fully independent Radarr instance for anime movies only
 (2026-08-06) - own root folder (`/data/anime-movies`), own "Anime" quality profile, own Plex
@@ -835,12 +833,8 @@ receiving app's own config or API for a real instance entry, not just network re
 ## Plex-connected companions (added v11.11.0)
 
 Six additional apps were added in this batch, all configured post-boot via their own web UI
-unless noted. Tautulli, Wrapperr, Maintainerr, and Lingarr were later decommissioned
-(2026-08-20, see PLANS.md); the survivor:
-
-- **Prefetcharr** (`phueber/prefetcharr:latest`, no web UI) - auto-fetches the next Sonarr
-  season as a Plex viewer nears the end of the current one. Config is a single TOML blob via
-  `PREFETCHARR_CONFIG`, not CLI flags.
+unless noted. All six (Tautulli, Wrapperr, Maintainerr, Lingarr, Prefetcharr) were later
+decommissioned (2026-08-20, see PLANS.md); none remain.
 
 **Unpackerr** (`golift/unpackerr@sha256:4ec141...`) auto-extracts RAR'd releases for the
 two `*arr` apps:
