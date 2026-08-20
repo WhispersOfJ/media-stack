@@ -394,11 +394,3 @@ export function buildPosterSync() {
 
   loadPosterLibraries();
 }
-
-export function buildPosterDock() {
-  document.getElementById("poster-dock-close").addEventListener("click", () => {
-    document.getElementById("poster-dock").hidden = true;
-    closePosterStream();
-  });
-  buildPosterSync();
-}
