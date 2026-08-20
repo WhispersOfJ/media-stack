@@ -148,18 +148,18 @@ def test_settings_get_allows_service_key_patch_requires_session(cp_main_app):
 
     get_resp = client.get("/api/settings", headers={"X-Api-Key": "raw-service-key"})
     assert get_resp.status_code == 200
-    assert get_resp.json()["theme"] == "dark"
+    assert get_resp.json()["theme"] == "amber"
 
-    patch_unauth = client.patch("/api/settings", json={"theme": "light"})
+    patch_unauth = client.patch("/api/settings", json={"theme": "green"})
     assert patch_unauth.status_code == 401
 
     _login(client, cp_main_app)
-    patch_resp = client.patch("/api/settings", json={"theme": "light"})
+    patch_resp = client.patch("/api/settings", json={"theme": "green"})
     assert patch_resp.status_code == 200
-    assert patch_resp.json()["theme"] == "light"
+    assert patch_resp.json()["theme"] == "green"
 
     get_after = client.get("/api/settings", headers={"X-Api-Key": "raw-service-key"})
-    assert get_after.json()["theme"] == "light"
+    assert get_after.json()["theme"] == "green"
 
 
 def test_verify_same_origin_rejects_unknown_host(cp_main_app, monkeypatch):

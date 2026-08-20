@@ -12,13 +12,13 @@ def settings_module(cp_main_app):
 
 def test_get_settings_returns_defaults_when_empty(settings_module):
     data = settings_module.get_settings()
-    assert data["theme"] == "dark"
+    assert data["theme"] == "amber"
     assert data["failed_pending_storm_threshold"] == 15
 
 
 def test_update_settings_persists_known_key(settings_module):
-    settings_module.update_settings({"theme": "light"})
-    assert settings_module.get_settings()["theme"] == "light"
+    settings_module.update_settings({"theme": "green"})
+    assert settings_module.get_settings()["theme"] == "green"
 
 
 def test_update_settings_ignores_unknown_key(settings_module):
@@ -27,9 +27,9 @@ def test_update_settings_ignores_unknown_key(settings_module):
 
 
 def test_update_settings_overwrites_existing_row(settings_module):
-    settings_module.update_settings({"theme": "light"})
-    settings_module.update_settings({"theme": "dark"})
-    assert settings_module.get_settings()["theme"] == "dark"
+    settings_module.update_settings({"theme": "green"})
+    settings_module.update_settings({"theme": "amber"})
+    assert settings_module.get_settings()["theme"] == "amber"
 
 
 def test_remember_value_adds_to_recent(settings_module):
