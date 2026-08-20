@@ -149,6 +149,9 @@ services:
     image: ghcr.io/infinidysk/infinidysk:latest
     container_name: nzbdav
     networks: [stacknet]
+    depends_on:
+      prowlarr:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -fsSL http://localhost:3000/healthz > /dev/null || exit 1"]
       interval: 30s
@@ -286,30 +289,22 @@ services:
       # elsewhere) - every budget below is sized deliberately small against
       # that shared cap, not left at generous upstream defaults.
       #
-      # Prowlarr pull-sync is deliberately NOT hardcoded here: the deployed
-      # ghcr.io/infinidysk/infinidysk:latest image (v1.0.1) rejected
-      # NZBDAV_CONFIG__PROWLARR__SYNC_ENABLED at startup as an unknown
-      # variable 2026-08-11 (FTL, backend refused to start, container
-      # falsely showed "healthy" the whole time - /healthz is answered by
-      # the frontend proxy, not the .NET backend, so a dead backend behind
-      # a live frontend does not fail the Docker healthcheck). Root cause:
-      # Prowlarr pull-sync is "since 1.1.0" per infinidysk's own docs, and
-      # 1.1.0 was still an unreleased release-candidate (v1.1.0-rc.2) the
-      # same day - :latest tracks the newest STABLE tag, not main/rc.
-      # Decision (Bear, 2026-08-11): wait for 1.1.0 to leave RC rather than
-      # hand-write indexers.instances now or pin to a pre-release image on
-      # core download/streaming infra. prowlarr.url/api-key/sync-enabled/
-      # sync-interval-minutes ARE saved in nzbdav's SQLite already (set via
-      # /api/update-config, not this file) - inert today, but will self-
-      # activate the moment this image is upgraded past 1.1.0, no further
-      # action needed then. Until that sync actually runs, indexers.instances
-      # stays empty, so WATCHTOWER__ENABLED/PLAY__WATCHDOG_ENABLED/
-      # PREFLIGHT__MODE below are harmless no-ops - same inert state as
-      # before tonight, just now pre-armed for whenever the sync goes live.
-      # Do not re-add these
-      # three lines without confirming the deployed image actually accepts
-      # them first (recreate on a throwaway container name, check logs,
-      # THEN swap the real service).
+      # Prowlarr pull-sync, wired 2026-08-20: v1.1.0 left RC on 2026-08-13
+      # (stable), deployed image is v1.1.2 (pulled 2026-08-17, confirmed
+      # via `docker inspect` Created timestamp matching the v1.1.2 GitHub
+      # release date) - past the "since 1.1.0" gate that blocked this
+      # 2026-08-11 (see git history for that FTL/unknown-env-var incident).
+      # Imports indexers into SQLite-owned indexers.instances, which powers
+      # WATCHTOWER__ENABLED/PLAY__WATCHDOG_ENABLED/PREFLIGHT__MODE below.
+      # profiles.instances stays env-managed (PROFILES__INSTANCES above)
+      # with IndexerNames left empty ("every enabled indexer" per
+      # profiles.md) specifically so a Prowlarr-side indexer rename/removal
+      # never needs a profile-reference rewrite - the one case docs warn
+      # env-managed profiles.instances would reject.
+      NZBDAV_CONFIG__PROWLARR__URL: "http://prowlarr:9696"
+      NZBDAV_CONFIG__PROWLARR__API_KEY: ${PROWLARR_API_KEY}
+      NZBDAV_CONFIG__PROWLARR__SYNC_ENABLED: "true"
+      NZBDAV_CONFIG__PROWLARR__SYNC_INTERVAL_MINUTES: "60"
       # One profile searching every enabled (synced) indexer - IndexerNames
       # empty = all, per profiles.md ("Leave all unchecked = every enabled
       # indexer"). Token is a bearer secret for the adapter URLs; also
