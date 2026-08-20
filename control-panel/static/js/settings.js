@@ -1,6 +1,7 @@
-/* Persisted-settings wiring: theme (server-side, /api/settings) and the
-   log console drawer (client-only UI state, localStorage - no server
-   round-trip needed for something this ephemeral). */
+/* Persisted-settings wiring: theme (amber/green Pip-Boy palette,
+   server-side via /api/settings) and the log console drawer (client-only
+   UI state, localStorage - no server round-trip needed for something
+   this ephemeral). */
 
 async function patchSettings(body) {
   const res = await fetch("/api/settings", {
@@ -14,7 +15,9 @@ async function patchSettings(body) {
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   const input = document.getElementById("theme-switch");
-  if (input) input.checked = theme === "dark";
+  if (input) input.checked = theme === "green";
+  const label = document.querySelector(".switch-label");
+  if (label) label.textContent = theme === "green" ? "Green" : "Amber";
 }
 
 export function openConsole() {
@@ -24,7 +27,7 @@ export function openConsole() {
 }
 
 export async function initSettings() {
-  let settings = { theme: "dark" };
+  let settings = { theme: "amber" };
   try {
     const res = await fetch("/api/settings");
     settings = await res.json();
@@ -32,7 +35,7 @@ export async function initSettings() {
   applyTheme(settings.theme);
 
   document.getElementById("theme-switch").addEventListener("change", async (e) => {
-    const theme = e.target.checked ? "dark" : "light";
+    const theme = e.target.checked ? "green" : "amber";
     applyTheme(theme);
     await patchSettings({ theme });
   });
