@@ -199,7 +199,7 @@ def stack_restart_all(_=Depends(current_user_or_service)):
 
 
 class SettingsPatch(BaseModel):
-    theme: Literal["dark", "light"] | None = None
+    theme: Literal["amber", "green"] | None = None
     failed_pending_storm_threshold: int | None = None
     loop_review_profile_threshold: int | None = None
 

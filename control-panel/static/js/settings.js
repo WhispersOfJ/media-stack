@@ -16,7 +16,7 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   const input = document.getElementById("theme-switch");
   if (input) input.checked = theme === "green";
-  const label = document.querySelector(".switch-label");
+  const label = input?.closest(".switch")?.querySelector(".switch-label");
   if (label) label.textContent = theme === "green" ? "Green" : "Amber";
 }
 

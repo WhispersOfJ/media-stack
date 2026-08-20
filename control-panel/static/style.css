@@ -155,7 +155,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* ---------- Glass card: the one shared surface every panel, row-group,
    and floating dock in the app is built from. Backdrop-blur over the
    ambient glow set on <body>, a hairline border, soft shadow lift. ---------- */
-.glass-card, #palette, .poster-dock, #login-form, .lb-frame, .lb-run, .poster-review-card {
+.glass-card, #palette, #login-form, .lb-frame, .lb-run, .poster-review-card {
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
@@ -166,8 +166,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Cards nested inside an accented rail pick up a colored ambient glow,
    layered on top of the base shadow above (not replacing it). */
-.rail[data-rail-accent] .glass-card,
-.rail[data-rail-accent] .catalog-card {
+.rail[data-rail-accent] .glass-card {
   box-shadow: 0 20px 44px -28px rgba(20, 10, 40, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -12px var(--rail-accent, var(--accent));
 }
 
@@ -602,14 +601,6 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
 }
 #result-pane:empty::before { content: "—"; color: var(--ink-faint); }
 
-/* ---------- Poster sync dock ---------- */
-.poster-dock {
-  position: fixed; right: calc(var(--log-w) + 20px); bottom: 20px; z-index: 40; width: 420px; max-width: calc(100vw - 40px);
-  background: var(--glass-strong);
-}
-.poster-dock:has(#poster-review-grid:not([hidden])) { width: 720px; }
-.poster-dock:has(#poster-gallery:not([hidden])) { width: 780px; max-width: calc(100vw - 40px); }
-.poster-dock-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--glass-border); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; font-size: 0.78rem; }
 .poster-sync-form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; padding: 12px 14px; }
 .poster-sync-form label { display: flex; flex-direction: column; gap: 3px; font-family: var(--font-mono); font-size: 0.66rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.03em; }
 .poster-sync-form select { min-width: 190px; }
@@ -787,75 +778,7 @@ table.result-table td.num { text-align: right; white-space: nowrap; }
   .btn-icon { width: 34px; height: 34px; }
   .btn-ghost, .btn-primary, .btn-danger { padding: 9px 14px; }
 
-  .poster-dock { right: 12px; left: 12px; width: auto; bottom: 12px; }
-  .poster-dock:has(#poster-review-grid:not([hidden])) { width: auto; }
-
   #palette-overlay { padding-top: 4vh; padding-left: 10px; padding-right: 10px; }
-}
-
-/* ---------- Software Catalog ---------- */
-.catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-bottom: 22px; }
-.catalog-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-.catalog-card-top { display: flex; align-items: center; gap: 10px; }
-.catalog-badge {
-  width: 32px; height: 32px; flex: none; border-radius: 9px; display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-mono); font-size: 0.66rem; font-weight: 700; color: var(--accent-ink); background: var(--accent);
-}
-.catalog-card-name { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
-.catalog-pitch { max-width: none; }
-.catalog-caveat { color: var(--warn); }
-.catalog-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
-.catalog-card-actions button { min-width: 92px; }
-.catalog-status { margin-top: 0; }
-
-.catalog-details-toggle {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  padding: 0.25rem 0;
-  text-align: left;
-}
-
-.catalog-details-toggle:hover {
-  text-decoration: underline;
-}
-
-.catalog-details-panel {
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.5rem 0;
-  border-top: 1px solid var(--glass-border);
-  margin-top: 0.25rem;
-}
-
-.catalog-details-panel:not([hidden]) {
-  display: flex;
-}
-
-.catalog-detail-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.catalog-detail-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.7;
-}
-
-.catalog-detail-row {
-  font-size: 0.8rem;
-  font-family: var(--font-mono);
-}
-
-.catalog-detail-row.hint {
-  opacity: 0.6;
-  font-style: italic;
 }
 
 #login-overlay {
