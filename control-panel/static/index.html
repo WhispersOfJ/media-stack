@@ -34,10 +34,10 @@
     <span class="hud-sep">·</span>
     <span id="uptime"></span>
     <span class="hud-sep">·</span>
-    <label class="switch" title="Toggle dark/light theme">
+    <label class="switch" title="Toggle amber/green Pip-Boy palette">
       <input type="checkbox" id="theme-switch">
       <span class="switch-track"></span>
-      <span class="switch-label">Dark</span>
+      <span class="switch-label">Amber</span>
     </label>
     <button class="btn-ghost" id="console-toggle" type="button">Console</button>
     <button class="btn-ghost" id="logout-btn" type="button">Log out</button>
@@ -62,6 +62,51 @@
 <div id="workspace">
 
   <div id="col-main">
+
+    <section class="rail" id="rail-poster-sync" data-rail-accent="poster-sync" aria-labelledby="h-poster-sync">
+      <h2 id="h-poster-sync">Poster Sync</h2>
+      <form class="poster-sync-form" id="poster-sync-form">
+        <label>Library
+          <select id="poster-sync-library"><option value="">Loading libraries…</option></select>
+        </label>
+        <label>Source
+          <select id="poster-sync-source">
+            <option value="tmdb">TMDb</option>
+            <option value="fanart">Fanart.tv</option>
+            <option value="tvdb">TheTVDB</option>
+            <option value="omdb">OMDb</option>
+            <option value="tvmaze">TVmaze (shows only)</option>
+          </select>
+        </label>
+        <label>Mode
+          <select id="poster-sync-mode">
+            <option value="auto">Auto (apply top match)</option>
+            <option value="review">Review (pick top 3 per item)</option>
+            <option value="gallery">Gallery (browse + quality scan)</option>
+          </select>
+        </label>
+        <label class="poster-sync-check" id="poster-sync-dry-run-wrap">
+          <input type="checkbox" id="poster-sync-dry-run">
+          Dry run
+        </label>
+        <button class="btn-primary" type="submit">Start</button>
+        <span class="hint" id="poster-sync-summary"></span>
+      </form>
+      <pre id="poster-log"></pre>
+      <div class="poster-review-grid" id="poster-review-grid" hidden></div>
+      <div class="poster-gallery" id="poster-gallery" hidden>
+        <div class="poster-gallery-toolbar">
+          <button class="btn-ghost" type="button" id="poster-gallery-scan">Run quality scan</button>
+          <span class="hint" id="poster-gallery-scan-summary"></span>
+        </div>
+        <div class="poster-gallery-grid" id="poster-gallery-grid"></div>
+        <div class="poster-gallery-pager">
+          <button class="btn-ghost" type="button" id="poster-gallery-prev">&larr; Prev</button>
+          <span class="hint" id="poster-gallery-page-info"></span>
+          <button class="btn-ghost" type="button" id="poster-gallery-next">Next &rarr;</button>
+        </div>
+      </div>
+    </section>
 
     <section class="rail" id="rail-plex-health" data-rail-accent="plex-health" aria-labelledby="h-plex-health">
       <h2 id="h-plex-health">Plex Health <span class="rail-hint">live scan status — see CLAUDE.md's landmines for the two hang classes this detects</span></h2>
@@ -155,11 +200,6 @@
       </div>
     </section>
 
-    <section class="rail" id="rail-catalog" data-rail-accent="catalog" aria-labelledby="h-catalog">
-      <h2 id="h-catalog">Software Catalog <span class="rail-hint">curated install/remove — 20 vetted programs, no arbitrary images</span></h2>
-      <div id="catalog-grid"></div>
-    </section>
-
     <section class="rail" id="rail-reference" data-rail-accent="reference" aria-labelledby="h-reference">
       <h2 id="h-reference">Reference</h2>
 
@@ -235,54 +275,6 @@
       <pre id="result-pane"></pre>
     </section>
 
-  </div>
-</div>
-
-<div class="poster-dock" id="poster-dock" hidden>
-  <div class="poster-dock-head">
-    <span>Poster sync</span>
-    <button class="btn-ghost" id="poster-dock-close" type="button">Close</button>
-  </div>
-  <form class="poster-sync-form" id="poster-sync-form">
-    <label>Library
-      <select id="poster-sync-library"><option value="">Loading libraries…</option></select>
-    </label>
-    <label>Source
-      <select id="poster-sync-source">
-        <option value="tmdb">TMDb</option>
-        <option value="fanart">Fanart.tv</option>
-        <option value="tvdb">TheTVDB</option>
-        <option value="omdb">OMDb</option>
-        <option value="tvmaze">TVmaze (shows only)</option>
-      </select>
-    </label>
-    <label>Mode
-      <select id="poster-sync-mode">
-        <option value="auto">Auto (apply top match)</option>
-        <option value="review">Review (pick top 3 per item)</option>
-        <option value="gallery">Gallery (browse + quality scan)</option>
-      </select>
-    </label>
-    <label class="poster-sync-check" id="poster-sync-dry-run-wrap">
-      <input type="checkbox" id="poster-sync-dry-run">
-      Dry run
-    </label>
-    <button class="btn-primary" type="submit">Start</button>
-    <span class="hint" id="poster-sync-summary"></span>
-  </form>
-  <pre id="poster-log"></pre>
-  <div class="poster-review-grid" id="poster-review-grid" hidden></div>
-  <div class="poster-gallery" id="poster-gallery" hidden>
-    <div class="poster-gallery-toolbar">
-      <button class="btn-ghost" type="button" id="poster-gallery-scan">Run quality scan</button>
-      <span class="hint" id="poster-gallery-scan-summary"></span>
-    </div>
-    <div class="poster-gallery-grid" id="poster-gallery-grid"></div>
-    <div class="poster-gallery-pager">
-      <button class="btn-ghost" type="button" id="poster-gallery-prev">&larr; Prev</button>
-      <span class="hint" id="poster-gallery-page-info"></span>
-      <button class="btn-ghost" type="button" id="poster-gallery-next">Next &rarr;</button>
-    </div>
   </div>
 </div>
 
