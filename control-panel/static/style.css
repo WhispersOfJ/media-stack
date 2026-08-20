@@ -1,116 +1,90 @@
 /* Control Panel — operator console for The Stack.
-   Dark-glass redesign (2026-08-07): frosted panels floating over a near-
-   black ground, one violet accent doing all the signaling work, soft
-   depth instead of ruled hairlines. Every selector below kept its name
-   from the previous "P&ID blueprint" pass on purpose — every JS view
-   module targets these same classes, so this is a full re-skin with zero
-   markup changes required anywhere else in the app. Letterboxd's block
-   near the bottom is the one exception: it gets deliberately redesigned,
-   not just recolored, matching the individual attention it got when it
-   was first built.
-   Theme is persisted server-side (see settings_store.py) and applied via
-   [data-theme] rather than left to prefers-color-scheme alone. */
+   Pip-Boy CRT redesign (2026-08-20): amber/green monochrome terminal,
+   scanline + vignette overlay, glowing live values, beveled chunky
+   panel borders, monospace throughout. Every selector below kept its
+   name from the prior dark-glass pass on purpose — every JS view module
+   targets these same classes, so this is a full re-skin with zero
+   markup changes required anywhere else in the app except the
+   poster-sync/catalog rail moves covered elsewhere in this plan.
+   Theme is persisted server-side (see core/settings.py) and applied via
+   [data-theme] rather than left to prefers-color-scheme alone. Two
+   values only: "amber" and "green" — no light mode. */
 
 :root {
-  --bg: #f3f1f6;
-  --surface: #ffffff;
-  --surface-2: #ece8f5;
-  --glass: rgba(255, 255, 255, 0.6);
-  --glass-strong: rgba(255, 255, 255, 0.82);
-  --glass-border: rgba(33, 29, 43, 0.10);
-  --line: rgba(33, 29, 43, 0.10);
-  --line-strong: rgba(33, 29, 43, 0.20);
-  --ink: #211d2b;
-  --ink-soft: #55506b;
-  --ink-faint: #837e99;
-  --accent: #6a4fd0;
-  --accent-hover: #4f38b0;
-  --accent-ink: #ffffff;
-  --accent-tint: rgba(106, 79, 208, 0.10);
-  --accent-tint-strong: rgba(106, 79, 208, 0.18);
-  --good: #1f8f6e;
-  --good-tint: rgba(31, 143, 110, 0.10);
-  --warn: #a9701c;
-  --warn-tint: rgba(169, 112, 28, 0.10);
-  --bad: #b3403b;
-  --bad-tint: rgba(179, 64, 59, 0.10);
-  --unknown: #8b84a3;
-  --rail-plex-health: #c2571f;
-  --rail-overview: #6a4fd0;
-  --rail-fleet: #1a8f95;
-  --rail-host: #1c7ea9;
-  --rail-catalog: #9c6b30;
-  --rail-reference: #837e99;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --blur: 18px;
-  --font-ui: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", "JetBrains Mono", Consolas, monospace;
+  --bg: #0a0805;
+  --surface: #120d08;
+  --surface-2: #1a130b;
+  --glass: rgba(255, 176, 0, 0.04);
+  --glass-strong: rgba(255, 176, 0, 0.08);
+  --glass-border: rgba(255, 176, 0, 0.22);
+  --line: rgba(255, 176, 0, 0.16);
+  --line-strong: rgba(255, 176, 0, 0.32);
+  --ink: #ffb000;
+  --ink-soft: #cc8d00;
+  --ink-faint: #8a6100;
+  --accent: #ffb000;
+  --accent-hover: #ffc94d;
+  --accent-ink: #0a0805;
+  --accent-tint: rgba(255, 176, 0, 0.10);
+  --accent-tint-strong: rgba(255, 176, 0, 0.20);
+  --good: #ffb000;
+  --good-tint: rgba(255, 176, 0, 0.14);
+  --warn: #ff8c00;
+  --warn-tint: rgba(255, 140, 0, 0.14);
+  --bad: #ff3b1f;
+  --bad-tint: rgba(255, 59, 31, 0.14);
+  --unknown: #8a6100;
+  --rail-plex-health: #ffb000;
+  --rail-overview: #ffb000;
+  --rail-fleet: #ffb000;
+  --rail-host: #ffb000;
+  --rail-poster-sync: #ffb000;
+  --rail-reference: #cc8d00;
+  --radius: 2px;
+  --radius-sm: 1px;
+  --blur: 0px;
+  --font-ui: "Share Tech Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", "JetBrains Mono", Consolas, monospace;
+  --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", "JetBrains Mono", Consolas, monospace;
   --font-label: var(--font-mono);
   --log-w: 380px;
   --topbar-h: 58px;
+  --crt-glow: 0 0 6px currentColor;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #131018;
-    --surface: #1a1722;
-    --surface-2: #221e2e;
-    --glass: rgba(255, 255, 255, 0.05);
-    --glass-strong: rgba(255, 255, 255, 0.09);
-    --glass-border: rgba(239, 234, 247, 0.10);
-    --line: rgba(239, 234, 247, 0.12);
-    --line-strong: rgba(239, 234, 247, 0.24);
-    --ink: #efeaf7;
-    --ink-soft: #b8b0cf;
-    --ink-faint: #837c9c;
-    --accent: #a996ff;
-    --accent-hover: #c3b6ff;
-    --accent-ink: #100c1e;
-    --accent-tint: rgba(169, 150, 255, 0.14);
-    --accent-tint-strong: rgba(169, 150, 255, 0.24);
-    --good: #4fd1ac;
-    --good-tint: rgba(79, 209, 172, 0.14);
-    --warn: #e2a23c;
-    --warn-tint: rgba(226, 162, 60, 0.14);
-    --bad: #ef5b6a;
-    --bad-tint: rgba(239, 91, 106, 0.14);
-    --unknown: #837c9c;
-    --rail-plex-health: #f0964a;
-    --rail-overview: #a996ff;
-    --rail-fleet: #4fd1d8;
-    --rail-host: #4fb8e8;
-    --rail-catalog: #e0a854;
-    --rail-reference: #837c9c;
+  :root:not([data-theme="green"]) {
+    /* Fallback mirrors the amber theme's values from :root above —
+       amber is the default Pip-Boy palette when no explicit
+       [data-theme] is set yet (e.g. before initSettings() runs). */
   }
 }
-:root[data-theme="dark"] {
-  --bg: #131018; --surface: #1a1722; --surface-2: #221e2e;
-  --glass: rgba(255, 255, 255, 0.05); --glass-strong: rgba(255, 255, 255, 0.09);
-  --glass-border: rgba(239, 234, 247, 0.10);
-  --line: rgba(239, 234, 247, 0.12); --line-strong: rgba(239, 234, 247, 0.24);
-  --ink: #efeaf7; --ink-soft: #b8b0cf; --ink-faint: #837c9c;
-  --accent: #a996ff; --accent-hover: #c3b6ff; --accent-ink: #100c1e;
-  --accent-tint: rgba(169, 150, 255, 0.14); --accent-tint-strong: rgba(169, 150, 255, 0.24);
-  --good: #4fd1ac; --good-tint: rgba(79, 209, 172, 0.14);
-  --warn: #e2a23c; --warn-tint: rgba(226, 162, 60, 0.14);
-  --bad: #ef5b6a; --bad-tint: rgba(239, 91, 106, 0.14);
-  --unknown: #837c9c;
-  --rail-plex-health: #f0964a; --rail-overview: #a996ff; --rail-fleet: #4fd1d8; --rail-host: #4fb8e8; --rail-catalog: #e0a854; --rail-reference: #837c9c;
+:root[data-theme="amber"] {
+  --bg: #0a0805; --surface: #120d08; --surface-2: #1a130b;
+  --glass: rgba(255, 176, 0, 0.04); --glass-strong: rgba(255, 176, 0, 0.08);
+  --glass-border: rgba(255, 176, 0, 0.22);
+  --line: rgba(255, 176, 0, 0.16); --line-strong: rgba(255, 176, 0, 0.32);
+  --ink: #ffb000; --ink-soft: #cc8d00; --ink-faint: #8a6100;
+  --accent: #ffb000; --accent-hover: #ffc94d; --accent-ink: #0a0805;
+  --accent-tint: rgba(255, 176, 0, 0.10); --accent-tint-strong: rgba(255, 176, 0, 0.20);
+  --good: #ffb000; --good-tint: rgba(255, 176, 0, 0.14);
+  --warn: #ff8c00; --warn-tint: rgba(255, 140, 0, 0.14);
+  --bad: #ff3b1f; --bad-tint: rgba(255, 59, 31, 0.14);
+  --unknown: #8a6100;
+  --rail-plex-health: #ffb000; --rail-overview: #ffb000; --rail-fleet: #ffb000; --rail-host: #ffb000; --rail-poster-sync: #ffb000; --rail-reference: #cc8d00;
 }
-:root[data-theme="light"] {
-  --bg: #f3f1f6; --surface: #ffffff; --surface-2: #ece8f5;
-  --glass: rgba(255, 255, 255, 0.6); --glass-strong: rgba(255, 255, 255, 0.82);
-  --glass-border: rgba(33, 29, 43, 0.10);
-  --line: rgba(33, 29, 43, 0.10); --line-strong: rgba(33, 29, 43, 0.20);
-  --ink: #211d2b; --ink-soft: #55506b; --ink-faint: #837e99;
-  --accent: #6a4fd0; --accent-hover: #4f38b0; --accent-ink: #ffffff;
-  --accent-tint: rgba(106, 79, 208, 0.10); --accent-tint-strong: rgba(106, 79, 208, 0.18);
-  --good: #1f8f6e; --good-tint: rgba(31, 143, 110, 0.10);
-  --warn: #a9701c; --warn-tint: rgba(169, 112, 28, 0.10);
-  --bad: #b3403b; --bad-tint: rgba(179, 64, 59, 0.10);
-  --unknown: #8b84a3;
-  --rail-plex-health: #c2571f; --rail-overview: #6a4fd0; --rail-fleet: #1a8f95; --rail-host: #1c7ea9; --rail-catalog: #9c6b30; --rail-reference: #837e99;
+:root[data-theme="green"] {
+  --bg: #050a05; --surface: #0b120b; --surface-2: #101a10;
+  --glass: rgba(51, 255, 51, 0.04); --glass-strong: rgba(51, 255, 51, 0.08);
+  --glass-border: rgba(51, 255, 51, 0.22);
+  --line: rgba(51, 255, 51, 0.16); --line-strong: rgba(51, 255, 51, 0.32);
+  --ink: #33ff33; --ink-soft: #29cc29; --ink-faint: #1c8a1c;
+  --accent: #33ff33; --accent-hover: #7dff7d; --accent-ink: #050a05;
+  --accent-tint: rgba(51, 255, 51, 0.10); --accent-tint-strong: rgba(51, 255, 51, 0.20);
+  --good: #33ff33; --good-tint: rgba(51, 255, 51, 0.14);
+  --warn: #a0ff33; --warn-tint: rgba(160, 255, 51, 0.14);
+  --bad: #ff5533; --bad-tint: rgba(255, 85, 51, 0.14);
+  --unknown: #1c8a1c;
+  --rail-plex-health: #33ff33; --rail-overview: #33ff33; --rail-fleet: #33ff33; --rail-host: #33ff33; --rail-poster-sync: #33ff33; --rail-reference: #29cc29;
 }
 
 * { box-sizing: border-box; }
@@ -129,6 +103,45 @@ body {
   line-height: 1.5;
   display: flex;
   flex-direction: column;
+}
+
+/* Pip-Boy CRT effects — theme-independent, layered once over the whole
+   viewport. Scanlines use a repeating gradient; the vignette darkens
+   toward the edges; both are pointer-events:none so they never block
+   interaction. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.15) 0px,
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: multiply;
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+}
+.rail h2, .vital-value, #clock, #uptime {
+  text-shadow: var(--crt-glow);
+}
+.rail {
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
 }
 a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
 a:hover { color: var(--accent); text-decoration-color: var(--accent); }
@@ -160,11 +173,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* ---------- Rail accent hues ---------- */
 .rail[data-rail-accent] { border-top: 3px solid var(--rail-accent, var(--accent)); }
+.rail[data-rail-accent="poster-sync"] { --rail-accent: var(--rail-poster-sync); }
 .rail[data-rail-accent="plex-health"] { --rail-accent: var(--rail-plex-health); }
 .rail[data-rail-accent="overview"] { --rail-accent: var(--rail-overview); }
 .rail[data-rail-accent="fleet"] { --rail-accent: var(--rail-fleet); }
 .rail[data-rail-accent="host"] { --rail-accent: var(--rail-host); }
-.rail[data-rail-accent="catalog"] { --rail-accent: var(--rail-catalog); }
 .rail[data-rail-accent="reference"] { --rail-accent: var(--rail-reference); }
 .rail[data-rail-accent] h2 { color: var(--rail-accent); }
 
@@ -391,12 +404,15 @@ select {
 }
 select:focus { border-color: var(--accent); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23a996ff'/%3E%3C/svg%3E");
+  :root:not([data-theme="green"]) select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23ffb000'/%3E%3C/svg%3E");
   }
 }
-:root[data-theme="dark"] select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23a996ff'/%3E%3C/svg%3E");
+:root[data-theme="amber"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23ffb000'/%3E%3C/svg%3E");
+}
+:root[data-theme="green"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2333ff33'/%3E%3C/svg%3E");
 }
 input[type="checkbox"] {
   width: 15px; height: 15px; border: 1px solid var(--glass-border); background: var(--glass); border-radius: 4px;
