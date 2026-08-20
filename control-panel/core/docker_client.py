@@ -30,7 +30,6 @@ CONTAINER_LABELS = {
     "prefetcharr": ("Prefetcharr", "auto-fetches next Sonarr season from Plex watch progress"),
     "lingarr": ("Lingarr", "subtitle translation"),
     "control-panel": ("Control Panel", "this dashboard"),
-    "gaps2": ("GAPS-2", "finds titles missing from a collection/franchise - detection only, pushes route through the panel to the right Arr instance"),
 }
 
 # Same FUSE-landmine mount ordering as app.py's stack_restart_all - see

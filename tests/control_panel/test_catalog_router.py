@@ -67,7 +67,7 @@ def test_list_accepts_service_key_and_has_expanded_entry_count(cp_main_app):
     resp = client.get("/api/catalog", headers=headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["items"]) >= 43
+    assert len(body["items"]) >= 42
     assert all(i["status"] == "not_installed" for i in body["items"])
 
 

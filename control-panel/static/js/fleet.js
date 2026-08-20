@@ -19,7 +19,6 @@ const FLEET_GROUPS = {
   cleanuparr: "Queue cleanup",
   maintainerr: "Library maintenance", prefetcharr: "Library maintenance",
   "control-panel": "Dashboard",
-  gaps2: "Discovery",
   watchstate: "Discovery",
   // Scheduled batch job, not a persistent service - it sits in Exited(0)
   // between its four daily runs. Status comes from stack-plexanisync-last-run,

@@ -8,12 +8,12 @@ import importlib
 def test_a_broken_router_import_is_skipped_not_fatal(cp_main_app, monkeypatch):
     real_import_module = importlib.import_module
 
-    def _boom_on_gaps2(name, *args, **kwargs):
-        if name == "services.gaps2.router":
+    def _boom_on_radarr(name, *args, **kwargs):
+        if name == "services.radarr.router":
             raise ImportError("simulated broken import")
         return real_import_module(name, *args, **kwargs)
 
-    monkeypatch.setattr(cp_main_app.importlib, "import_module", _boom_on_gaps2)
+    monkeypatch.setattr(cp_main_app.importlib, "import_module", _boom_on_radarr)
 
     # Re-running discovery must not raise, even though one router fails.
     cp_main_app._discover_routers()
@@ -24,17 +24,17 @@ def test_a_broken_router_import_logs_the_failure(cp_main_app, monkeypatch, caplo
 
     real_import_module = importlib.import_module
 
-    def _boom_on_gaps2(name, *args, **kwargs):
-        if name == "services.gaps2.router":
+    def _boom_on_radarr(name, *args, **kwargs):
+        if name == "services.radarr.router":
             raise ImportError("simulated broken import")
         return real_import_module(name, *args, **kwargs)
 
-    monkeypatch.setattr(cp_main_app.importlib, "import_module", _boom_on_gaps2)
+    monkeypatch.setattr(cp_main_app.importlib, "import_module", _boom_on_radarr)
 
     with caplog.at_level(logging.ERROR, logger="control-panel"):
         cp_main_app._discover_routers()
 
-    assert any("services/gaps2/router.py failed to import" in r.message for r in caplog.records)
+    assert any("services/radarr/router.py failed to import" in r.message for r in caplog.records)
 
 
 def test_all_routers_still_import_cleanly_by_default(cp_main_app):

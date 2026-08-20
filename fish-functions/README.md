@@ -310,23 +310,6 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 
 ## 2026-08 additions — new-services batch (PLANS.md Phases 1–3)
 
-### GAPS-2 (Phase 5)
-
-Finds titles that belong to a collection (movies, via TMDB) or a franchise (TV, via TheTVDB) where the library owns some entries but not others — the third Alien film when you have the other two, a spin-off series you missed.
-
-Covers **Movies** and **Shows** only. The anime libraries were removed on 2026-08-12: TMDB collections and TheTVDB franchises model anime seasons, OVAs, specials and recap films inconsistently, so a "gap" there is usually a metadata artefact rather than a title worth grabbing.
-
-Two things shape how these commands work:
-
-- **Scans run one Plex library at a time.** GAPS-2's gap objects carry no library field, so a merged multi-library scan produces results that can't be attributed back to a library and therefore can't be routed. One library per scan makes each result a history entry tagged with exactly one library name.
-- **GAPS-2's own Radarr/Sonarr are wired to radarr/sonarr** with the same root folder and quality profile the push route uses, so its web UI's Add button and `stack-gaps2-push` land a title in the same place. (They were left unconfigured while the anime libraries were in scope, because GAPS-2 holds only one Radarr and one Sonarr and would have filed anime titles into the general instance.)
-
-- **`stack-gaps2-status`** — whether a sweep is running and which library it's on, plus each library's last scan time and gap count. Reports "never scanned" separately from "zero gaps"; a bare count of 0 reads identically for both and they mean opposite things.
-- **`stack-gaps2-scan [library] [--full]`** — sweep for gaps, both libraries if none named. Returns immediately and runs in the background, since a first full movie scan is minutes of TMDB round-trips. Incremental by default (only newly-added titles get fresh lookups); `--full` re-resolves everything.
-- **`stack-gaps2-missing [library] [limit]`** — the missing titles from each library's most recent scan, each tagged with the Arr instance it would be pushed to.
-- **`stack-gaps2-push <id> <library>`** — add one title to the Arr its library maps to (`Movies` → radarr, `Shows` → sonarr). The library argument is required, not inferred: it decides the target instance and the id type — movies push by TMDB id, shows by TheTVDB id, and the same integer is valid in both namespaces pointing at unrelated titles. One title per call by design — gap lists contain wrong-year matches and short films.
-
-
 ### WatchState (Phase 6)
 
 Keeps its own record of what has been watched, fed from Plex by **both** a scheduled import (hourly at :25, skipping 02:00-05:59 so it never overlaps the poster sync, Arr backup, Letterboxd sync or Plex's Butler window) **and** a webhook. Both stay on: upstream warns webhooks drop events, so neither is redundancy to remove.

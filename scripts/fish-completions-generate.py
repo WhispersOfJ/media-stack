@@ -163,10 +163,7 @@ def render(path: Path) -> str:
         bits = [f"complete -c {command}", f"-l {flag}"]
         if takes_value:
             bits.append("-r")
-        if flag in ("anime", "sonarr-anime"):
-            target = "sonarr-anime" if flag == "sonarr-anime" else "the anime instance"
-            bits.append(f"-d '{_escape('Route to ' + target)}'")
-        elif flag in ("yes", "y"):
+        if flag in ("yes", "y"):
             bits.append("-d 'Skip the confirmation prompt'")
         elif flag == "dry-run":
             bits.append("-d 'Report what would happen, change nothing'")

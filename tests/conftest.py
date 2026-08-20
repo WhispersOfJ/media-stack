@@ -145,16 +145,6 @@ def poster_sync_fanart():
 
 
 @pytest.fixture(scope="module")
-def gaps2_provision():
-    return _import_script("gaps2-provision")
-
-
-@pytest.fixture(scope="module")
-def gaps2_prune_history():
-    return _import_script("gaps2-prune-history")
-
-
-@pytest.fixture(scope="module")
 def watchstate_provision():
     return _import_script("watchstate-provision")
 

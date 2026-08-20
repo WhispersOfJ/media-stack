@@ -18,7 +18,6 @@ const QUICK_LINKS = [
   { id: "wrapperr", label: "Wrapperr", port: 8283 },
   { id: "maintainerr", label: "Maintainerr", port: 6246 },
   { id: "lingarr", label: "Lingarr", port: 9876 },
-  { id: "gaps2", label: "GAPS-2", port: 8704 },
   { id: "watchstate", label: "WatchState", port: 8705 },
   // No quicklink for prefetcharr - it publishes no port (headless poller).
 ];
@@ -49,7 +48,6 @@ const DOC_LINKS = [
   { app: "Maintainerr", desc: "Plex/Radarr/Sonarr library maintenance rules (installed with zero rules configured)", urls: [["Source", "https://github.com/Maintainerr/Maintainerr"]] },
   { app: "Prefetcharr", desc: "auto-fetches next Sonarr season from Plex watch progress", urls: [["Source", "https://github.com/p-hueber/prefetcharr"]] },
   { app: "Lingarr", desc: "subtitle translation", urls: [["Source", "https://github.com/lingarr-translate/lingarr"]] },
-  { app: "GAPS-2", desc: "finds movies/shows missing from a collection or franchise the library partly owns - scans one Plex library at a time so every gap can be routed to the right Arr instance; its own Radarr/Sonarr are deliberately left unconfigured so nothing can be pushed to the wrong one", urls: [["Source", "https://github.com/primetime43/GAPS-2"]] },
 ];
 
 export function buildDocLinks() {

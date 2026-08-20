@@ -19,12 +19,6 @@ from pathlib import Path
 APPS = {
     "radarr": {"port": 7878, "api": "v3"},
     "sonarr": {"port": 8989, "api": "v3"},
-    # Host-published port (docker-compose.yml maps 7879:7878) - this is only ever
-    # used as this script's own host-fallback default when RADARR_ANIME_URL is
-    # unset, never sent anywhere else, so unlike request-manager-integrator's
-    # ARR_APPS this needs no separate docker-internal port field.
-    "radarr_anime": {"port": 7879, "api": "v3"},
-    "sonarr_anime": {"port": 8990, "api": "v3"},
 }
 
 

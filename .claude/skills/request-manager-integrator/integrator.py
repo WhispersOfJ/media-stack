@@ -20,18 +20,10 @@ ARR_APPS = {
     # app over the compose network - same for every app here, since they each
     # listen on their own internal port regardless of host mapping). "host_port"
     # is only the host-fallback default this script's own direct API calls use
-    # (RADARR_ANIME_URL etc, when unset) - it differs from "port" wherever the
+    # when the *_URL env var is unset - it differs from "port" wherever the
     # host-published port differs from the container-internal one.
     "radarr": {"port": 7878, "host_port": 7878, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr"},
     "sonarr": {"port": 8989, "host_port": 8989, "api": "v3", "seerr_kind": "sonarr", "hostname": "sonarr"},
-    # hostname differs from the dict key (Docker's real container/service name
-    # uses a hyphen; this dict's key uses an underscore to stay a valid CLI
-    # arg / Python identifier) - confirmed live: "radarr_anime" doesn't
-    # resolve on stacknet, only "radarr-anime" does. host_port (7879) differs
-    # from port (7878) because docker-compose.yml maps 7879:7878 for this app -
-    # unlike this dict's other two entries, whose host and container ports match.
-    "radarr_anime": {"port": 7878, "host_port": 7879, "api": "v3", "seerr_kind": "radarr", "hostname": "radarr-anime"},
-    "sonarr_anime": {"port": 8989, "host_port": 8990, "api": "v3", "seerr_kind": "sonarr", "hostname": "sonarr-anime"},
 }
 
 
@@ -150,8 +142,7 @@ def cmd_connect(app_name: str, root: str, profile_name: str, label: str | None, 
     # Seerr's schema diverges here: Radarr connections require
     # minimumAvailability, Sonarr connections require enableSeasonFolders and
     # monitorNewItems instead - confirmed live against each app's own existing
-    # connection. Keyed off seerr_kind, not app_name, since radarr_anime is also a
-    # "radarr" connection as far as Seerr's schema is concerned.
+    # connection.
     if meta["seerr_kind"] == "radarr":
         payload["minimumAvailability"] = "released"
     elif meta["seerr_kind"] == "sonarr":

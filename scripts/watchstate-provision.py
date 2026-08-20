@@ -2,7 +2,7 @@
 """Provision WatchState from a bare volume: add the Plex backend and register
 the Plex webhook. Phase 6 of PLANS.md.
 
-Headless, like Phase 5's GAPS-2 script. PLANS.md 6.2 assumed the Plex token
+Headless, like other provisioning scripts in this batch. PLANS.md 6.2 assumed the Plex token
 had to go in through a setup CLI or web onboarding; it does not. `POST
 /v1/api/backends` takes everything, and there is no `backends:add` console
 command anyway, so the API is the only scriptable path.

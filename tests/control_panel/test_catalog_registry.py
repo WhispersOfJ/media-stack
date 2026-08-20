@@ -63,8 +63,8 @@ def test_no_host_port_collisions_with_compose_file():
     assert not collisions, f"catalog host port(s) collide with docker-compose.yml: {sorted(collisions)}"
 
 
-def test_at_least_43_entries_across_ten_categories():
-    assert len(CATALOG) >= 43, f"expected 43+ entries after the catalog expansion, got {len(CATALOG)}"
+def test_at_least_42_entries_across_ten_categories():
+    assert len(CATALOG) >= 42, f"expected 42+ entries after the gaps2 removal, got {len(CATALOG)}"
     categories = {entry["category"] for entry in CATALOG}
     expected_new = {"Media", "Browser Games", "RetroArch Emulation"}
     assert expected_new.issubset(categories), f"missing expected new categories: {expected_new - categories}"
