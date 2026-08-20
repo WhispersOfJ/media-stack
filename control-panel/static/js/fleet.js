@@ -13,7 +13,6 @@ import { renderSparkline, pushHistory } from "./sparkline.js";
 const FLEET_GROUPS = {
   prowlarr: "Indexing", radarr: "Arr apps", sonarr: "Arr apps",
   nzbdav: "Usenet", nzbdav_rclone: "Usenet", seerr: "Requests", plex: "Media server",
-  lingarr: "Subtitles",
   unpackerr: "Post-processing", watchtower: "Auto-updates",
   cleanuparr: "Queue cleanup",
   prefetcharr: "Library maintenance",

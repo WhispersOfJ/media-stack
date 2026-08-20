@@ -253,10 +253,10 @@ Standalone `OMDB_KEY`/`MDBLIST_KEY` secrets — no other app dependency.
 - **`stack-flatpak-updates [--apply]`** — list, or apply, pending Flatpak updates.
 - **`stack-log-levels [reset]`** — check, or reset, every Servarr app's log level.
 
-## 2026-07-30 additions — Prefetcharr, Lingarr
+## 2026-07-30 additions — Prefetcharr
 
-Tautulli, Wrapperr, and Maintainerr were part of this batch too, but were later
-decommissioned (see PLANS.md) — their fish commands are gone.
+Tautulli, Wrapperr, Maintainerr, and Lingarr were part of this batch too, but were
+later decommissioned (see PLANS.md) — their fish commands are gone.
 
 ### Prefetcharr
 
@@ -264,14 +264,6 @@ decommissioned (see PLANS.md) — their fish commands are gone.
 - **`stack-prefetcharr-status`** — container state plus the most recent prefetch-trigger event.
 - **`stack-prefetcharr-config`** — effective config (interval, prefetch count, etc) as deployed.
 - **`stack-prefetcharr-plex-link-check`** — confirms Prefetcharr's baked-in Plex URL is still current.
-
-### Lingarr
-
-- **`stack-lingarr-stats`** — lifetime translation totals.
-- **`stack-lingarr-movies [limit]`** — movies Lingarr tracks via its Radarr connection.
-- **`stack-lingarr-shows [limit]`** — shows Lingarr tracks via its Sonarr connection.
-- **`stack-lingarr-logs [lines]`** — tail Lingarr's container logs.
-- **`stack-lingarr-recent-translations`** — recent individual translation-completed events.
 
 ### Cross-app
 

@@ -54,8 +54,8 @@ def test_status_reports_all_healthy(cp_main_app, monkeypatch):
     headers = _service_key_header(cp_main_app)
     resp = client.get("/api/newapps/status", headers=headers)
     body = resp.json()
-    assert body["message"] == "All 2 new apps healthy."
-    assert body["apps"]["lingarr"]["running"] is True
+    assert body["message"] == "All 1 new app healthy."
+    assert body["apps"]["prefetcharr"]["running"] is True
     assert body["apps"]["prefetcharr"]["reachable"] is None
 
 
@@ -63,7 +63,7 @@ def test_status_reports_missing_container(cp_main_app, monkeypatch):
     dc = sys.modules["core.docker_client"]
 
     def fake_get(name):
-        if name == "lingarr":
+        if name == "prefetcharr":
             raise docker.errors.NotFound("not found")
         fake = MagicMock()
         fake.status = "running"
@@ -75,11 +75,13 @@ def test_status_reports_missing_container(cp_main_app, monkeypatch):
     headers = _service_key_header(cp_main_app)
     resp = client.get("/api/newapps/status", headers=headers)
     body = resp.json()
-    assert body["apps"]["lingarr"]["running"] is False
-    assert "lingarr" in body["message"]
+    assert body["apps"]["prefetcharr"]["running"] is False
+    assert "prefetcharr" in body["message"]
 
 
-def test_status_reports_unreachable_http(cp_main_app, monkeypatch):
+def test_status_skips_http_probe_for_portless_container(cp_main_app, monkeypatch):
+    """prefetcharr publishes no port, so it's container-status-only - the
+    HTTP probe must never fire for it, even if httpx.get would raise."""
     dc = sys.modules["core.docker_client"]
 
     def fake_get(name):
@@ -90,14 +92,12 @@ def test_status_reports_unreachable_http(cp_main_app, monkeypatch):
     dc.docker_client.containers.get.side_effect = fake_get
 
     def fake_http_get(url, timeout=None):
-        if "lingarr" in url:
-            raise httpx.HTTPError("boom")
-        return MagicMock(status_code=200)
+        raise httpx.HTTPError("boom")
 
     monkeypatch.setattr(httpx, "get", fake_http_get)
     client = TestClient(cp_main_app.app)
     headers = _service_key_header(cp_main_app)
     resp = client.get("/api/newapps/status", headers=headers)
     body = resp.json()
-    assert body["apps"]["lingarr"]["reachable"] is False
-    assert "lingarr" in body["message"]
+    assert body["apps"]["prefetcharr"]["reachable"] is None
+    assert body["message"] == "All 1 new app healthy."

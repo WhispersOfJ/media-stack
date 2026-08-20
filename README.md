@@ -233,14 +233,13 @@ service starts with a plain `docker compose up -d`.
 | 13 | `watchtower` | `nickfedor/watchtower:1.20.3` | none |
 | 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.10.3` | 11011 |
 | 15 | `prefetcharr` | `phueber/prefetcharr:latest` | none |
-| 16 | `lingarr` | `ghcr.io/lingarr-translate/lingarr:latest` | 9876 |
-| 17 | `kometa` | `kometateam/kometa:latest` | none |
-| 18 | `ntfy` | `binwiederhier/ntfy` | 8700 |
-| 19 | `speedtest-tracker` | `lscr.io/linuxserver/speedtest-tracker:latest` | 8701 |
-| 20 | `organizr` | `ghcr.io/organizr/organizr:latest` | 8702 |
-| 21 | `scrutiny` | `ghcr.io/analogj/scrutiny:latest-omnibus` | 8703 |
-| 22 | `watchstate` | `ghcr.io/arabcoders/watchstate:latest` | 8705 |
-| 23 | `plexanisync` | `ghcr.io/rickdb/plexanisync:latest` | none (profile `scheduled`) |
+| 16 | `kometa` | `kometateam/kometa:latest` | none |
+| 17 | `ntfy` | `binwiederhier/ntfy` | 8700 |
+| 18 | `speedtest-tracker` | `lscr.io/linuxserver/speedtest-tracker:latest` | 8701 |
+| 19 | `organizr` | `ghcr.io/organizr/organizr:latest` | 8702 |
+| 20 | `scrutiny` | `ghcr.io/analogj/scrutiny:latest-omnibus` | 8703 |
+| 21 | `watchstate` | `ghcr.io/arabcoders/watchstate:latest` | 8705 |
+| 22 | `plexanisync` | `ghcr.io/rickdb/plexanisync:latest` | none (profile `scheduled`) |
 
 <!-- END AUTO-GENERATED -->
 
@@ -250,8 +249,8 @@ Services 19-24 are the PLANS.md new-services batch (Phases 1-7, 2026-08-09 to 20
 (SMART disk health), WatchState (cross-server watch-state sync), and PlexAniSync (Plex to AniList
 sync, the one profiled service).
 
-Services 15-16 (Prefetcharr, Lingarr) are the survivors of the 2026-07-30
-awesome-arr batch - Tautulli, Wrapperr, and Maintainerr were part of that batch too, but
+Service 15 (Prefetcharr) is the survivor of the 2026-07-30
+awesome-arr batch - Tautulli, Wrapperr, Maintainerr, and Lingarr were part of that batch too, but
 were later decommissioned (2026-08-20, see PLANS.md).
 
 **`radarr-anime`** is a second, fully independent Radarr instance for anime movies only
@@ -837,15 +836,12 @@ receiving app's own config or API for a real instance entry, not just network re
 ## Plex-connected companions (added v11.11.0)
 
 Six additional apps were added in this batch, all configured post-boot via their own web UI
-unless noted. Tautulli, Wrapperr, and Maintainerr were later decommissioned (2026-08-20, see
-PLANS.md); the survivors:
+unless noted. Tautulli, Wrapperr, Maintainerr, and Lingarr were later decommissioned
+(2026-08-20, see PLANS.md); the survivor:
 
 - **Prefetcharr** (`phueber/prefetcharr:latest`, no web UI) - auto-fetches the next Sonarr
   season as a Plex viewer nears the end of the current one. Config is a single TOML blob via
   `PREFETCHARR_CONFIG`, not CLI flags.
-- **Lingarr** (`ghcr.io/lingarr-translate/lingarr:latest`, port 9876) - subtitle translation,
-  complements Bazarr (which only fetches existing subs) rather than replacing it. SQLite
-  backend, no separate DB container.
 
 **Unpackerr** (`golift/unpackerr@sha256:4ec141...`) auto-extracts RAR'd releases for the
 two `*arr` apps:

@@ -26,7 +26,6 @@ HTTP_SERVICES = {
     "seerr": (5055, "/api/v1/status"),
     "control-panel": (8420, "/healthz"),
     "plex": (32400, "/identity"),
-    "lingarr": (9876, "/"),
     "nzbdav": (3000, "/"),
     # Not "/" - that is the bundled WebUI and answers 200 with a dead backend
     # behind it. This endpoint needs no auth even with WS_SECURE_API_ENDPOINTS on.

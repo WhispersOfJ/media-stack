@@ -904,41 +904,6 @@ services:
     mem_reservation: 32m
     cpus: 1
 
-  # Subtitle translation, complements Bazarr (which only fetches existing
-  # subs) rather than replacing it. SQLite backend - no separate DB
-  # container needed. Radarr/Sonarr connections configured via its own UI
-  # post-boot, same pattern as Seerr.
-  lingarr:
-    restart: unless-stopped
-    logging: *common-logging
-    image: ghcr.io/lingarr-translate/lingarr:latest
-    container_name: lingarr
-    networks: [stacknet]
-    user: "${PUID}:${PGID}"
-    healthcheck:
-      # No curl/wget in this image (Ubuntu .NET runtime, minimal utils) -
-      # bare TCP-connect check via bash's /dev/tcp instead (confirmed
-      # live 2026-07-30). Also: actual internal listen port is 8080, not
-      # 9876 as originally assumed - confirmed via its own startup log
-      # ("Now listening on: http://[::]:8080").
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    environment:
-      TZ: ${TZ}
-      DB_CONNECTION: sqlite
-    volumes:
-      - ./config/lingarr:/app/config
-      - ./media/movies:/movies
-      - ./media/shows:/tv
-    ports:
-      - "9876:8080"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-
   # ---------------------------------------------------------------------
   # new-services (2026-08) - see PLANS.md for the full 7-service spec this
   # batch comes from. Each phase is its own commit; this is Phase 1.

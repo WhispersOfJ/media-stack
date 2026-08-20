@@ -25,7 +25,6 @@ CONTAINER_LABELS = {
     "watchtower": ("Watchtower", None),
     "cleanuparr": ("Cleanuparr", "queue cleanup: strikes, malware block, stalled/failed removal"),
     "prefetcharr": ("Prefetcharr", "auto-fetches next Sonarr season from Plex watch progress"),
-    "lingarr": ("Lingarr", "subtitle translation"),
     "control-panel": ("Control Panel", "this dashboard"),
 }
 
