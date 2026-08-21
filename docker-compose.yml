@@ -8,7 +8,10 @@ x-common: &common
     driver: json-file
     options:
       max-size: "10m"
-      max-file: "3"
+      max-file: "10"
+  ulimits: &common-ulimits
+    nofile: 65536
+    nproc: 8192
 
 networks:
   stacknet:
@@ -24,7 +27,7 @@ services:
     # equivalent to whatever :latest currently resolves to (same digest), so
     # this is a no-op today; going forward, Watchtower still tracks this
     # channel but the choice is explicit rather than an ambiguous "latest".
-    image: ghcr.io/hotio/prowlarr:release
+    image: ghcr.io/hotio/prowlarr:release@sha256:811390e411ad193cd57cdf8a79cbbba0f162e23ba0905899ba5be6df7bb6894d
     container_name: prowlarr
     networks: [stacknet]
     healthcheck:
@@ -49,7 +52,7 @@ services:
   # ---------------------------------------------------------------------
   radarr:
     <<: *common
-    image: ghcr.io/hotio/radarr:release
+    image: ghcr.io/hotio/radarr:release@sha256:2822513eb0f6663a53335fe9b65217cde20cfb10041ce97f369ef7f85deeca57
     container_name: radarr
     networks: [stacknet]
     healthcheck:
@@ -83,12 +86,13 @@ services:
     # observed baseline (~390MB) with real headroom for a 15,000+ title
     # library doing an active scan/import.
     mem_limit: 2g
-    mem_reservation: 256m
+    mem_reservation: 512m
     cpus: 2
+    ulimits: *common-ulimits
 
   sonarr:
     <<: *common
-    image: ghcr.io/hotio/sonarr:release
+    image: ghcr.io/hotio/sonarr:release@sha256:2a67fa7b63de93f8fe4b2292b2ba968b4c6beb33dfa7b53eb94018c16f6ffc9a
     container_name: sonarr
     networks: [stacknet]
     healthcheck:
@@ -116,8 +120,9 @@ services:
     # observed baseline (~477MB) with real headroom - this instance tracks
     # close to 300,000 episode records (see Known gaps' missing-aired note).
     mem_limit: 2g
-    mem_reservation: 256m
+    mem_reservation: 512m
     cpus: 2
+    ulimits: *common-ulimits
 
   # radarr-anime and sonarr-anime retired 2026-08-18 (Plan 3 consolidation).
   # Their libraries (728 movies, 1,022 series) were merged into base
@@ -146,12 +151,12 @@ services:
     # org.opencontainers.image.source label already pointed at the
     # infinidysk repo), same /config, same tags. The old path stops
     # receiving updates after the transition period.
-    image: ghcr.io/infinidysk/infinidysk:latest
+    image: ghcr.io/infinidysk/infinidysk:latest@sha256:6127a886fef41b14993f351b47e932b44dc2ae1d6648c982e22f91713acb4acf
     container_name: nzbdav
     networks: [stacknet]
     depends_on:
       prowlarr:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsSL http://localhost:3000/healthz > /dev/null || exit 1"]
       interval: 30s
@@ -345,8 +350,9 @@ services:
     ports:
       - "3000:3000"
     mem_limit: 4g
-    mem_reservation: 256m
+    mem_reservation: 512m
     cpus: 4
+    ulimits: *common-ulimits
 
   # rclone sidecar: NzbDAV has no native mount (pure WebDAV server), so this
   # does the actual FUSE mount of NzbDAV's WebDAV tree at /mnt/remote/nzbdav
@@ -354,7 +360,7 @@ services:
   # not the whole /mnt tree - see BearMount's own mount-table-leak incident
   # (2026-07-25, STACK.md) for why binding a shared ancestor is dangerous.
   nzbdav_rclone:
-    image: rclone/rclone:latest
+    image: rclone/rclone:latest@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548
     container_name: nzbdav_rclone
     restart: unless-stopped
     logging: *common-logging
@@ -418,13 +424,13 @@ services:
         --use-cookies
         --vfs-cache-mode=full
         --vfs-cache-max-size=50G
-        --vfs-cache-max-age=2160h
+        --vfs-cache-max-age=336h
         --buffer-size=0M
         --vfs-read-chunk-size=16M
         --vfs-read-chunk-size-limit=512M
         --no-checksum
         --dir-cache-time=1h
-        --poll-interval=0
+        --poll-interval=5m
         --timeout=30s
         --contimeout=15s
         --low-level-retries=3
@@ -433,8 +439,9 @@ services:
         --rc-user=rclone
         --rc-pass=${NZBDAV_RCLONE_RC_PASS}
     mem_limit: 2g
-    mem_reservation: 256m
+    mem_reservation: 512m
     cpus: 4
+    ulimits: *common-ulimits
 
   # ---------------------------------------------------------------------
   # Requests
@@ -467,6 +474,7 @@ services:
     mem_limit: 1g
     mem_reservation: 128m
     cpus: 2
+    ulimits: *common-ulimits
 
   # ---------------------------------------------------------------------
   # Media server. Containerized from a native install in 3.3.0; the native
@@ -488,7 +496,7 @@ services:
     # change, not an oversight) - Watchtower now auto-updates this container
     # nightly at 04:00 same as everything else in the stack, no more manual
     # version bumps.
-    image: plexinc/pms-docker:latest
+    image: plexinc/pms-docker:latest@sha256:83a425ae9e133b1cb2cc3b809556e01c61cd8ff65c582e41b4374bc2210bac9e
     container_name: plex
     # Plex's own guidance for Docker: GDM auto-discovery, DLNA, and
     # remote-access NAT-PMP/UPnP negotiation are all unreliable on bridge
@@ -681,7 +689,7 @@ services:
       # elevated blast radius here (exec/restart the whole stack from one
       # unauthenticated endpoint) is mitigated by the Origin/Host check
       # below, not by a login gate.
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       # Read-only additions for the stack-* diagnostic endpoints
       # (resource-check/mount-health/perms-check/etc.) - none of these
       # need write access, only visibility into what's already there.
@@ -736,6 +744,7 @@ services:
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
+    ulimits: *common-ulimits
 
   unpackerr:
     restart: unless-stopped
@@ -786,11 +795,12 @@ services:
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
+    ulimits: *common-ulimits
 
   watchtower:
     restart: unless-stopped
     logging: *common-logging
-    image: nickfedor/watchtower:1.20.3
+    image: nickfedor/watchtower:1.20.3@sha256:bee77696862e09521c49e5ab4904a4179accece6d561a2ef334c7589b84a2438
     container_name: watchtower
     networks: [stacknet]
     # No shell in this image (distroless-style) - uses Watchtower's own
@@ -811,12 +821,13 @@ services:
       WATCHTOWER_NOTIFICATION_URL: ${DISCORD_WATCHTOWER_SHOUTRRR_URL}
       WATCHTOWER_NOTIFICATIONS_HOSTNAME: ${HOST_IP}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     # No prior ceiling - idle daemon most of the time, cheap insurance
     # despite the docker.sock access it needs to do its job.
     mem_limit: 256m
     mem_reservation: 32m
     cpus: 1
+    ulimits: *common-ulimits
 
   # ---------------------------------------------------------------------
   # Queue cleanup automation. Automates what Control Panel's own "unstick"
@@ -856,6 +867,7 @@ services:
     mem_limit: 512m
     mem_reservation: 64m
     cpus: 2
+    ulimits: *common-ulimits
 
   # ---------------------------------------------------------------------
   # new-services (2026-08) - see PLANS.md for the full 7-service spec this
@@ -893,9 +905,10 @@ services:
   #    makes every API endpoint authenticated.
   watchstate:
     restart: unless-stopped
-    image: ghcr.io/arabcoders/watchstate:latest
+    image: ghcr.io/arabcoders/watchstate:latest@sha256:e26aef6772ad3a1a83e26cd5fb56c9798ab2c04de4d88806e4d76e8955eaac89
     container_name: watchstate
     user: "${PUID}:${PGID}"
+    ulimits: *common-ulimits
     environment:
       TZ: "${TZ}"
       WS_TZ: "${TZ}"
