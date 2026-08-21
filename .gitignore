@@ -70,3 +70,5 @@ ClaudeLocal.modelfile
 
 .superpowers/
 .env
+.upstream-versions.json
+.cve-scan-history/
