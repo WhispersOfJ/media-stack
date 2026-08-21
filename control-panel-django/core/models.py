@@ -13,6 +13,16 @@ class User(models.Model):
     # Meta.db_table parity with the existing `users` table).
     is_authenticated = True
 
+    def check_password(self, raw_password: str) -> bool:
+        from core.security import verify_password
+
+        return verify_password(raw_password, self.password_hash)
+
+    def set_password(self, raw_password: str) -> None:
+        from core.security import hash_password
+
+        self.password_hash = hash_password(raw_password)
+
     class Meta:
         db_table = "users"
 

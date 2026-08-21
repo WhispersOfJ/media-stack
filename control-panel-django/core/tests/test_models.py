@@ -73,3 +73,12 @@ def test_mdblist_tracked_list_defaults():
 @pytest.mark.django_db
 def test_mdblist_sync_log_table_name():
     assert MDBListSyncLog._meta.db_table == "mdblist_sync_log"
+
+
+@pytest.mark.django_db
+def test_user_set_password_and_check_password():
+    user = User(username="bear")
+    user.set_password("hunter2")
+    user.save()
+    assert user.check_password("hunter2") is True
+    assert user.check_password("wrong") is False
