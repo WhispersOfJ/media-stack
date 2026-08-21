@@ -1330,8 +1330,28 @@ has no backup coverage of any kind.
 
 ## Alerting (Discord)
 
-One webhook (`DISCORD_WEBHOOK_URL` in `.env`) backs several independent alert paths, all
-through `scripts/notify-discord.sh` (no-ops silently if unconfigured):
+One webhook (`DISCORD_WEBHOOK_URL` in `.env`) backs several independent alert paths:
+
+### Real-time Logging & CVE Alerts (Phase 2+)
+
+- **Grafana log alerts** (unified alerting): Real-time monitoring of Loki logs for errors,
+  warnings, and anomalies. Configured via `config/grafana/provisioning/alerting/contact-points.yaml`.
+  Manual alert rule creation via Grafana UI at http://localhost:3001/alerting/alert-rules.
+  See `DISCORD-ALERTS-SETUP.md` for webhook setup and rule examples.
+
+- **Weekly CVE scanning** (`scripts/weekly-cve-scan.sh`, cron Sunday 2 AM): Automated Trivy
+  scan of all 15 services. Alerts Discord only on surge: new CRITICAL CVE or +10 HIGH CVEs.
+  Stores trend in `.cve-scan-history/` with 30-day retention. See `CRON-JOBS-SETUP.md`.
+
+- **Upstream release monitoring** (`scripts/check-upstream-updates.sh`, cron Monday 9 AM):
+  Weekly check for new versions: hotio (Radarr/Sonarr/Prowlarr), seerr-team (Seerr),
+  arabcoders (Unpackerr/WatchState). Alerts Discord when new releases detected, enabling
+  Phase 2-3 remediation when blocked services unblock. Stores version state in
+  `.upstream-versions.json`. See `CRON-JOBS-SETUP.md`.
+
+### Original Alert Paths
+
+Legacy paths still active (no-ops silently if unconfigured, through `scripts/notify-discord.sh`):
 
 - **Watchtower**: every image update (or failed update) posts before it happens, via Shoutrrr
   (`discord://<token>@<id>` format, a separate URL from the plain webhook the others use).
@@ -1632,6 +1652,17 @@ Condensed chronological record through **v11.12.0**, frozen as of that release. 
 onward, [release-please](https://github.com/googleapis/release-please) generates `CHANGELOG.md`
 automatically from conventional-commit messages on `main` - that file is now the authoritative
 changelog going forward; this section is no longer hand-updated.
+
+**Phase 2 Security Hardening (2026-08-21)**: Logging infrastructure (Loki 2.5.0 + Promtail +
+Grafana 10.4.0) deployed and verified stable. CVE remediation complete: Control-panel upgraded
+to Python 3.13 (-165 CVEs, 46% reduction), Grafana trio updated (-112 HIGH CVEs), Watchtower
+updated (-10 CVEs). Total baseline: 2032 CVEs (0 CRITICAL, 686 HIGH). Trivy scanning deployed
+via GitHub Actions + pre-commit hooks. Real-time Grafana log alerting configured (Discord
+webhook). Two weekly automation scripts deployed (cron): upstream release monitoring
+(Task 2, Monday 9 AM) to auto-detect Phase 2-3 blockers (hotio/seerr-team/arabcoders) and
+weekly CVE scanning (Task 3, Sunday 2 AM) with trend tracking and surge alerts. Stack is now
+self-monitoring; awaiting upstream releases to continue Phase 2-3 remediation. See
+`SESSION-2026-08-21-SUMMARY.md`, `DISCORD-ALERTS-SETUP.md`, `CRON-JOBS-SETUP.md` for details.
 
 **v1.x**: initial build. Prowlarr, Zilean, Decypharr, Radarr, Sonarr, Lidarr, Readarr,
 Whisparr, NZBGet, Seerr, Homepage, Recyclarr/TRaSH-Guides, passwordless-sudo/CI baseline.
