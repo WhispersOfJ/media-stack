@@ -124,13 +124,13 @@ def test_install_already_installed_409s(cp_main_app):
 def test_install_port_conflict_409s(cp_main_app):
     dc = _docker_client_module(cp_main_app)
     dc.docker_client.containers.get.side_effect = docker.errors.NotFound("no such container")
-    # uptime-kuma wants host port 3001 - simulate another container already bound to it.
-    dc.docker_client.containers.list.return_value = [_fake_container("something-else", ports=[3001])]
+    # uptime-kuma wants host port 3050 - simulate another container already bound to it.
+    dc.docker_client.containers.list.return_value = [_fake_container("something-else", ports=[3050])]
     client = TestClient(cp_main_app.app)
     _login(client, cp_main_app)
     resp = client.post("/api/catalog/uptime-kuma/install", json={"confirm": True})
     assert resp.status_code == 409
-    assert "3001" in resp.text
+    assert "3050" in resp.text
 
 
 def test_install_success_pulls_and_runs_with_labels(cp_main_app):

@@ -8,7 +8,7 @@ CATALOG: list[dict] = [
         "pitch": "Pings every service's HTTP endpoint (and can watch Docker containers directly) - pages you the moment one goes dark, before you notice from the couch.",
         "image": "louislam/uptime-kuma",
         "tag": "2",
-        "ports": {"3001/tcp": 3001},
+        "ports": {"3001/tcp": 3050},
         "volumes": {"catalog_uptime_kuma_data": {"bind": "/app/data", "mode": "rw"}},
         "environment": {},
         "cap_add": [],
