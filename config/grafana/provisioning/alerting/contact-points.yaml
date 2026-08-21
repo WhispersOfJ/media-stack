@@ -1,0 +1,11 @@
+apiVersion: 1
+
+contactPoints:
+  - name: Discord
+    receivers:
+      - uid: discord_receiver
+        type: discord
+        settings:
+          url: ${DISCORD_WEBHOOK_URL}
+          title: Media Stack Alert
+          message: '{{ template "custom_message" . }}'

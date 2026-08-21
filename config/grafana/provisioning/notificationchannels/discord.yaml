@@ -1,0 +1,11 @@
+apiVersion: 1
+
+notificationChannels:
+  - name: Discord - Media Stack Alerts
+    type: discord
+    uid: discord-media-stack
+    isDefault: true
+    settings:
+      url: ${DISCORD_WEBHOOK_URL}
+      # Grafana will use the webhook URL directly
+    disableResolveMessage: false

@@ -1,0 +1,73 @@
+apiVersion: 1
+
+groups:
+  - name: Media Stack Alerts
+    interval: 1m
+    orgId: 1
+    folder: Alerts
+    rules:
+      - uid: critical_error_logs
+        title: Critical Errors in Logs
+        condition: A
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            expression: 'count(count_over_time({job=~".+"} |= "error" or |= "ERROR" or |= "fatal" or |= "FATAL" [5m])) by ()'
+            intervalMs: 1000
+            maxDataPoints: 43200
+        noDataState: NoData
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          description: "Critical or fatal errors detected in logs over the last 5 minutes"
+          summary: "Critical errors found"
+        labels:
+          severity: critical
+
+      - uid: high_restart_rate
+        title: High Service Restart Rate
+        condition: A
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            expression: 'count(count_over_time({job=~".+"} |= "restarting" or |= "restart" [10m])) by ()'
+            intervalMs: 1000
+            maxDataPoints: 43200
+        noDataState: NoData
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          description: "Services are restarting frequently (potential issues)"
+          summary: "High restart rate detected"
+        labels:
+          severity: warning
+
+      - uid: missing_logs
+        title: Service Not Logging
+        condition: A
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            expression: 'absent(count_over_time({job=~".+"} [10m])) == 1'
+            intervalMs: 1000
+            maxDataPoints: 43200
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          description: "A service has not produced logs in the last 10 minutes"
+          summary: "No recent logs from service"
+        labels:
+          severity: warning
