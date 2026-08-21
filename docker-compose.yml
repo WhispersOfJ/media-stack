@@ -800,7 +800,7 @@ services:
   watchtower:
     restart: unless-stopped
     logging: *common-logging
-    image: nickfedor/watchtower:1.20.3@sha256:bee77696862e09521c49e5ab4904a4179accece6d561a2ef334c7589b84a2438
+    image: nickfedor/watchtower:latest@sha256:d76a95a54ab636968f77cb1780fb597b3e28511b535a86e3af212a290ef4d743
     container_name: watchtower
     networks: [stacknet]
     # No shell in this image (distroless-style) - uses Watchtower's own
