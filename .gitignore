@@ -69,3 +69,4 @@ data/
 ClaudeLocal.modelfile
 
 .superpowers/
+.env
