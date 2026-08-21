@@ -7,7 +7,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-CACHE_FILE="$REPO_ROOT/trivy-cache.json"
 REPORT_FILE="$REPO_ROOT/STAGE-4-CVE-BASELINE.md"
 
 echo "🔍 Trivy Baseline Scan - All Services"
@@ -60,7 +59,6 @@ CRITICAL_COUNT=0
 HIGH_COUNT=0
 MEDIUM_COUNT=0
 LOW_COUNT=0
-UNKNOWN_COUNT=0
 
 for IMAGE in "${IMAGES[@]}"; do
   echo "Scanning: $IMAGE"

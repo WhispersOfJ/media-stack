@@ -19,7 +19,6 @@ if ! command -v trivy &> /dev/null; then
 fi
 
 # Extract staged images (only modified ones)
-REPO_ROOT="$(git rev-parse --show-toplevel)"
 STAGED_IMAGES=$(git diff --cached -U0 docker-compose.yml | grep -oP '^\+.*image:\s+\K[^@\n]+' | sort -u || true)
 
 if [ -z "$STAGED_IMAGES" ]; then
