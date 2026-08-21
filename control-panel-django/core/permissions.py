@@ -10,3 +10,18 @@ class IsAuthenticatedOrServiceKey(BasePermission):
 
     def has_permission(self, request, view):
         return bool(request.user and getattr(request.user, "is_authenticated", False))
+
+
+class IsAuthenticatedSessionOnly(BasePermission):
+    """Stricter than IsAuthenticatedOrServiceKey: rejects the
+    AnonymousServiceUser stand-in, so an X-Api-Key header alone cannot
+    trigger admin/irreversible actions (host reboot, pacman, settings
+    PATCH, disk-health prune, radarr exclude) — session cookie required."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and getattr(user, "is_authenticated", False)
+            and not getattr(user, "is_service_account", False)
+        )

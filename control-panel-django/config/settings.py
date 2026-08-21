@@ -76,6 +76,7 @@ SESSION_ENGINE = "django.contrib.sessions.backends.db"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["core.authentication.SessionOrApiKeyAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["core.permissions.IsAuthenticatedOrServiceKey"],
+    "EXCEPTION_HANDLER": "core.api_base.envelope_exception_handler",
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"

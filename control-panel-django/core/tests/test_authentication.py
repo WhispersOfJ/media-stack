@@ -76,3 +76,19 @@ def test_permission_allows_authenticated_duck_type():
         is_authenticated = True
 
     assert IsAuthenticatedOrServiceKey().has_permission(_FakeRequest(_Authed()), None) is True
+
+
+from core.authentication import AnonymousServiceUser
+from core.permissions import IsAuthenticatedSessionOnly
+
+
+def test_session_only_permission_rejects_service_account():
+    assert IsAuthenticatedSessionOnly().has_permission(_FakeRequest(AnonymousServiceUser()), None) is False
+
+
+def test_session_only_permission_allows_real_user_duck_type():
+    class _Authed:
+        is_authenticated = True
+        is_service_account = False
+
+    assert IsAuthenticatedSessionOnly().has_permission(_FakeRequest(_Authed()), None) is True
