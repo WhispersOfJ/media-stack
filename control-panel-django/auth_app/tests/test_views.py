@@ -61,6 +61,41 @@ def test_logout_clears_session():
 
 
 @pytest.mark.django_db
+def test_logout_rejects_get():
+    client = Client()
+    response = client.get(reverse("auth_app:logout"), HTTP_HOST="localhost")
+    assert response.status_code == 405
+
+
+@pytest.mark.django_db
+def test_login_rotates_session_key():
+    from django.conf import settings
+    from django.contrib.sessions.backends.db import SessionStore
+
+    user = User(username="bear")
+    user.set_password("hunter2")
+    user.save()
+
+    # Simulate an attacker-fixed session: a session key that exists before
+    # the victim ever authenticates.
+    pre_login_session = SessionStore()
+    pre_login_session["placeholder"] = "value"
+    pre_login_session.save()
+    pre_login_key = pre_login_session.session_key
+
+    client = Client()
+    client.cookies[settings.SESSION_COOKIE_NAME] = pre_login_key
+
+    response = client.post(
+        reverse("auth_app:login"), {"username": "bear", "password": "hunter2"}, HTTP_HOST="localhost"
+    )
+
+    assert response.status_code == 302
+    assert client.session.session_key != pre_login_key
+    assert client.session["user_id"] == user.id
+
+
+@pytest.mark.django_db
 def test_login_page_renders():
     client = Client()
     response = client.get(reverse("auth_app:login"))

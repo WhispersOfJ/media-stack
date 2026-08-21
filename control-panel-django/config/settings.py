@@ -3,9 +3,14 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("CONTROL_PANEL_SECRET_KEY", "dev-only-insecure-key-do-not-deploy")
-
 DEBUG = os.environ.get("CONTROL_PANEL_DEBUG", "") == "1"
+
+_secret_key_env = os.environ.get("CONTROL_PANEL_SECRET_KEY")
+if not _secret_key_env and not DEBUG:
+    raise RuntimeError(
+        "CONTROL_PANEL_SECRET_KEY must be set - see docker-compose.yml's control-panel environment block"
+    )
+SECRET_KEY = _secret_key_env or "dev-only-insecure-key-do-not-deploy"
 
 ALLOWED_HOSTS = ["*"]  # narrowed by core.middleware.VerifySameOriginMiddleware, not Django's own check
 
@@ -70,7 +75,7 @@ SESSION_ENGINE = "django.contrib.sessions.backends.db"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["core.authentication.SessionOrApiKeyAuthentication"],
-    "DEFAULT_PERMISSION_CLASSES": [],
+    "DEFAULT_PERMISSION_CLASSES": ["core.permissions.IsAuthenticatedOrServiceKey"],
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
