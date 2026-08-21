@@ -151,7 +151,9 @@ services:
     # org.opencontainers.image.source label already pointed at the
     # infinidysk repo), same /config, same tags. The old path stops
     # receiving updates after the transition period.
-    image: ghcr.io/infinidysk/infinidysk:latest@sha256:6127a886fef41b14993f351b47e932b44dc2ae1d6648c982e22f91713acb4acf
+    # v1.1.2 -> v1.2.1 2026-08-21: versioned admin API contract, arr import
+    # health on Overview, PAR2 background repair, no breaking changes noted.
+    image: ghcr.io/infinidysk/infinidysk:latest@sha256:a9d660991158da5df7979a302459c2c98480fc0cb29e4fb98b4a55ef29e07e77
     container_name: nzbdav
     networks: [stacknet]
     depends_on:
