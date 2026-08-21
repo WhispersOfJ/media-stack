@@ -945,7 +945,7 @@ services:
   # =======================================================================
   loki:
     restart: unless-stopped
-    image: grafana/loki:2.5.0
+    image: grafana/loki:2.8.0@sha256:0d28e4dddd4ccce1772544a501e8b8f96595accbb74ee8cd0415bce81dd2edfc
     container_name: loki
     ports:
       - "3100:3100"
@@ -969,7 +969,7 @@ services:
 
   promtail:
     restart: unless-stopped
-    image: grafana/promtail:2.5.0
+    image: grafana/promtail:2.8.0@sha256:f2d34db787476fbf0b5b9e69f9dac40762c362b9ad1f9e420895b1fc02b60b30
     container_name: promtail
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -990,7 +990,7 @@ services:
 
   grafana:
     restart: unless-stopped
-    image: grafana/grafana:10.0.0
+    image: grafana/grafana:10.4.0@sha256:f9811e4e687ffecf1a43adb9b64096c50bc0d7a782f8608530f478b6542de7d5
     container_name: grafana
     ports:
       - "3001:3000"
