@@ -1,5 +1,27 @@
 # Changelog
 
+## [11.17.0](https://github.com/WhispersOfJ/media-stack/compare/v11.16.0...v11.17.0) (2026-08-21)
+
+
+### Features
+
+* add Discord alert integration for Grafana/Loki ([4a54c46](https://github.com/WhispersOfJ/media-stack/commit/4a54c4622b38cbc683033d997eb74f653c199108))
+* add Task 2 & 3 automation (upstream monitoring + weekly CVE scans) ([3a1a7f6](https://github.com/WhispersOfJ/media-stack/commit/3a1a7f618b0e485415414c0ac933ad8ad173d8a9))
+* create Grafana dashboards for Loki (Logs Overview + Import Pipeline) ([519bb14](https://github.com/WhispersOfJ/media-stack/commit/519bb149e6f98636d3e85bbcf9b51eba81f2a988))
+* deploy Stage 1 logging (Loki 2.5.0 + Promtail + Grafana) ([7213249](https://github.com/WhispersOfJ/media-stack/commit/72132497eaca1bc729aa7e1e620ff2044d6080ca))
+* deploy Stage 4 (Trivy image CVE scanning + remediation plan) ([0e648b7](https://github.com/WhispersOfJ/media-stack/commit/0e648b7df9777072ec126debd96ff29904a954d6))
+* distroless control-panel image for maximum hardening ([3f2772d](https://github.com/WhispersOfJ/media-stack/commit/3f2772d9aec4b943ddb6d27c79481552614f496f))
+* upgrade control-panel to Python 3.13 with uvicorn 0.52.4 ([17fe4f8](https://github.com/WhispersOfJ/media-stack/commit/17fe4f8cb1643a871d2334b4f870463d96c79daa))
+
+
+### Bug Fixes
+
+* add missing Grafana admin credentials to .env.example ([5db9724](https://github.com/WhispersOfJ/media-stack/commit/5db972424af49dc6d9d38b362c7bbfcf6e9a2024))
+* Discord webhook integration - remove broken alert-rules YAML ([cb840a6](https://github.com/WhispersOfJ/media-stack/commit/cb840a62c68d92e333ffb104b1fcce3d92b27538))
+* remove unused variables from trivy scripts (shellcheck SC2034) ([7f45a00](https://github.com/WhispersOfJ/media-stack/commit/7f45a007de3b3b3b7c63b3041367911013441b3d))
+* resolve port collision between Grafana (3001) and Uptime Kuma catalog entry ([538fed8](https://github.com/WhispersOfJ/media-stack/commit/538fed8e0a453a61219795d93601b22f4081e70d))
+* revert distroless, keep Python 3.13-slim with shell-free healthcheck ([bc0a989](https://github.com/WhispersOfJ/media-stack/commit/bc0a9894a7af008e24ad90aa333af59b95d733ad))
+
 ## [11.16.0](https://github.com/WhispersOfJ/media-stack/compare/v11.15.0...v11.16.0) (2026-08-20)
 
 
