@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "catalog",
     "watchstate",
     "mdblist",
+    "letterboxd",
 ]
 
 MIDDLEWARE = [

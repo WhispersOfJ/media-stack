@@ -17,5 +17,6 @@ urlpatterns = [
     path("api/v2/catalog/", include("catalog.api.urls")),
     path("api/v2/watchstate/", include("watchstate.api.urls")),
     path("api/v2/mdblist/", include("mdblist.api.urls")),
+    path("api/v2/letterboxd/", include("letterboxd.api.urls")),
     path("healthz", healthz),
 ]
