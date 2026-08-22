@@ -66,7 +66,12 @@ def test_import_view_works_with_service_client(service_client):
 
 def test_import_view_rejects_unauthenticated():
     client = APIClient()
-    response = client.post("/api/v2/watchstate/import", format="json")
+    response = client.post(
+        "/api/v2/watchstate/import",
+        format="json",
+        HTTP_HOST="localhost",
+        REMOTE_ADDR="127.0.0.1",
+    )
     assert response.status_code in (401, 403)
 
 
