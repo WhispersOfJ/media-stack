@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "core",
     "auth_app",
     "ratings",
+    "seerr",
 ]
 
 MIDDLEWARE = [
