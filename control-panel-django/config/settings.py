@@ -26,6 +26,8 @@ INSTALLED_APPS = [
     "auth_app",
     "ratings",
     "seerr",
+    "prowlarr",
+    "radarr",
 ]
 
 MIDDLEWARE = [
