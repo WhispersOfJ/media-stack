@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "nzbdav",
     "host_actions",
     "catalog",
+    "watchstate",
 ]
 
 MIDDLEWARE = [

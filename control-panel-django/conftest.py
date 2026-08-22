@@ -15,6 +15,7 @@ from core.security import hash_api_key
 os.environ.setdefault("RADARR_API_KEY", "test-radarr-key")
 os.environ.setdefault("SONARR_API_KEY", "test-sonarr-key")
 os.environ.setdefault("PROWLARR_API_KEY", "test-prowlarr-key")
+os.environ.setdefault("WS_API_KEY", "test-watchstate-key")
 
 
 @pytest.fixture
