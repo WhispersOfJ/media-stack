@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "radarr",
     "sonarr",
     "cleanuparr",
+    "host_actions",
 ]
 
 MIDDLEWARE = [
