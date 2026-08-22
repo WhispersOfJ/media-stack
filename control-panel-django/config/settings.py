@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "host_actions",
     "catalog",
     "watchstate",
+    "mdblist",
 ]
 
 MIDDLEWARE = [
