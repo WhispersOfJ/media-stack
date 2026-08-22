@@ -92,7 +92,13 @@ def test_confirmed_action_502_when_helper_reports_failure(authed_client, url, se
 def test_confirmed_action_service_client_gets_403(service_client, url, service_path):
     """Critical regression test: a service (API-key) client must NEVER be able to
     trigger irreversible host actions, even with confirm=true. Session cookie only."""
-    response = service_client.post(url, {"confirm": True}, format="json")
+    response = service_client.post(
+        url,
+        {"confirm": True},
+        format="json",
+        HTTP_HOST="localhost",
+        REMOTE_ADDR="127.0.0.1",
+    )
     assert response.status_code == 403
 
 
@@ -100,5 +106,11 @@ def test_confirmed_action_rejects_unauthenticated():
     """Fully unauthenticated requests are rejected on all three endpoints."""
     client = APIClient()
     for url, _ in ENDPOINTS:
-        response = client.post(url, {"confirm": True}, format="json")
+        response = client.post(
+            url,
+            {"confirm": True},
+            format="json",
+            HTTP_HOST="localhost",
+            REMOTE_ADDR="127.0.0.1",
+        )
         assert response.status_code in (401, 403)
