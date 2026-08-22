@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "core",
     "auth_app",
+    "ratings",
 ]
 
 MIDDLEWARE = [

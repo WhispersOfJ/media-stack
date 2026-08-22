@@ -6,5 +6,6 @@ from core.views import healthz
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("auth_app.urls")),
+    path("api/v2/ratings/", include("ratings.api.urls")),
     path("healthz", healthz),
 ]
