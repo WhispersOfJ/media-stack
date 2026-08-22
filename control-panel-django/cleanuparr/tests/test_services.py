@@ -1,7 +1,10 @@
 import os
 import sqlite3
 
+import pytest
+
 from cleanuparr import services
+from core.api_base import ServiceError
 
 
 def _make_cleanuparr_db(path, configs, instances):
@@ -62,15 +65,14 @@ def test_check_instances_no_gaps(tmp_path, monkeypatch):
     assert result["message"] == "Every configured app type has a connected instance."
 
 
-def test_check_instances_missing_db_is_diagnostic_not_fatal(tmp_path, monkeypatch):
-    """A missing cleanuparr.db must not raise - it's a diagnostic result,
-    not a fatal error (Cleanuparr may simply not be deployed on this
-    host)."""
+def test_check_instances_missing_db_raises_service_error(tmp_path, monkeypatch):
+    """A missing cleanuparr.db must raise ServiceError(502), matching
+    router.py's real fail() behavior."""
     monkeypatch.setattr(services, "HOST_CONFIG_DIR", str(tmp_path))
-    result = services.check_instances()
-    assert result["connected"] == []
-    assert result["gaps"] == []
-    assert "not present" in result["message"]
+    with pytest.raises(ServiceError) as exc_info:
+        services.check_instances()
+    assert exc_info.value.status_code == 502
+    assert "not present" in str(exc_info.value.detail)
 
 
 def test_recent_strikes_reads_events_db(tmp_path, monkeypatch):
@@ -110,9 +112,9 @@ def test_recent_strikes_respects_limit(tmp_path, monkeypatch):
     assert len(result["items"]) == 2
 
 
-def test_recent_strikes_missing_db_is_diagnostic_not_fatal(tmp_path, monkeypatch):
+def test_recent_strikes_missing_db_raises_service_error(tmp_path, monkeypatch):
     monkeypatch.setattr(services, "HOST_CONFIG_DIR", str(tmp_path))
-    result = services.recent_strikes(limit=15)
-    assert result["items"] == []
-    assert result["total"] == 0
-    assert "not present" in result["message"]
+    with pytest.raises(ServiceError) as exc_info:
+        services.recent_strikes(limit=15)
+    assert exc_info.value.status_code == 502
+    assert "not present" in str(exc_info.value.detail)

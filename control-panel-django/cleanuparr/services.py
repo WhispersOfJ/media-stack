@@ -3,16 +3,15 @@ control-panel/services/cleanuparr/router.py.
 
 Both routes are read-only, session-or-service-key authenticated, and read
 directly from Cleanuparr's own SQLite files rather than its (nonexistent)
-HTTP API. A missing SQLite file is diagnostic, not fatal - it just means
-Cleanuparr isn't deployed on this host (or hasn't run yet), not that this
-endpoint is broken - so both functions return an empty/diagnostic result
-instead of raising. This is a deliberate deviation from router.py, which
-calls core.responses.fail() (raises a 502) on a missing file; the SDD
-brief for this task explicitly calls for the non-raising behavior.
+HTTP API. A missing SQLite file raises ServiceError (502), matching
+router.py's real behavior (core.responses.fail() raises HTTPException 502
+on a missing file) and this migration's own seerr/services.py precedent
+for the identical missing-mounted-file scenario.
 """
 import os
 import sqlite3
 
+from core.api_base import ServiceError
 from core.host_paths import HOST_CONFIG_DIR
 
 
@@ -24,7 +23,7 @@ def check_instances() -> dict:
     time."""
     db_path = os.path.join(HOST_CONFIG_DIR, "cleanuparr", "cleanuparr.db")
     if not os.path.isfile(db_path):
-        return {"message": f"{db_path} not present.", "connected": [], "gaps": []}
+        raise ServiceError(f"{db_path} not present.", status=502)
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     try:
@@ -57,7 +56,7 @@ def recent_strikes(limit: int = 15) -> dict:
     across cleanuparr.db and events.db)."""
     db_path = os.path.join(HOST_CONFIG_DIR, "cleanuparr", "events.db")
     if not os.path.isfile(db_path):
-        return {"message": f"{db_path} not present.", "items": [], "total": 0}
+        raise ServiceError(f"{db_path} not present.", status=502)
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     try:

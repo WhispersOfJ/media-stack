@@ -3,6 +3,8 @@ from unittest.mock import patch
 import pytest
 from rest_framework.test import APIClient
 
+from core.api_base import ServiceError
+
 
 @pytest.mark.django_db
 def test_instances_view_returns_envelope(authed_client):
@@ -20,16 +22,19 @@ def test_instances_view_returns_envelope(authed_client):
 
 
 @pytest.mark.django_db
-def test_instances_view_missing_db_still_200(authed_client):
-    """A missing cleanuparr.db is diagnostic, not fatal - the endpoint still
-    returns 200 with an empty result."""
-    result = {"message": "/host-config/cleanuparr/cleanuparr.db not present.", "connected": [], "gaps": []}
-    with patch("cleanuparr.api.views.services.check_instances", return_value=dict(result)):
+def test_instances_view_missing_db_returns_502(authed_client):
+    """A missing cleanuparr.db raises ServiceError(502), which the view
+    surfaces as a 502 error envelope, matching router.py's real
+    behavior."""
+    message = "/host-config/cleanuparr/cleanuparr.db not present."
+    with patch(
+        "cleanuparr.api.views.services.check_instances",
+        side_effect=ServiceError(message, status=502),
+    ):
         response = authed_client.get("/api/v2/cleanuparr/instances")
-    assert response.status_code == 200
-    assert response.data["ok"] is True
-    assert response.data["connected"] == []
-    assert response.data["gaps"] == []
+    assert response.status_code == 502
+    assert response.data["ok"] is False
+    assert response.data["message"] == message
 
 
 def test_instances_view_rejects_unauthenticated():
