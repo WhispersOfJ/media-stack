@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "cleanuparr",
     "nzbdav",
     "host_actions",
+    "catalog",
 ]
 
 MIDDLEWARE = [
