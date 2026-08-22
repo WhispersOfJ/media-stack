@@ -10,7 +10,7 @@ from radarr.api.views import ExcludeMovieView
 
 @pytest.mark.django_db
 def test_exclude_movie_view_happy_path():
-    """POST /api/v2/radarr/exclude excludes a movie via session auth."""
+    """POST /api/v2/radarr/exclude excludes a movie via session auth (via force_authenticate)."""
     user = User.objects.create(username="testuser", password_hash="x")
     request = APIRequestFactory().post(
         "/api/v2/radarr/exclude", {"movieId": 123}, format="json"

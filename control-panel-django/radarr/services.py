@@ -10,7 +10,8 @@ from core.arr_client import ARR_APPS, get_movie_or_episode
 def exclude_movie(movie_id: int) -> dict:
     """Exclude a movie from Radarr import lists - prevents re-monitoring
     on periodic syncs. A durable fix for movies that keep being re-added
-    by import lists (plain unmonitor only holds until the next sync)."""
+    by import lists (plain unmonitor only holds until the next sync).
+    Idempotent: 400/409 (already excluded) treated as success."""
     cfg = ARR_APPS["radarr"]
     movie = get_movie_or_episode("radarr", cfg, movie_id)
     if movie is None:
@@ -26,7 +27,9 @@ def exclude_movie(movie_id: int) -> dict:
             },
             timeout=20,
         )
-        response.raise_for_status()
+        # 400/409 from Radarr means already excluded - treat as success (idempotent)
+        if response.status_code not in (200, 201, 400, 409):
+            response.raise_for_status()
     except httpx.HTTPError as e:
         raise ServiceError(f"Exclusion failed: {e}") from e
     return {"movieId": movie_id}

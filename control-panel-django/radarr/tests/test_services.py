@@ -52,3 +52,39 @@ def test_exclude_movie_http_error(httpx_mock):
     ):
         with pytest.raises(ServiceError):
             exclude_movie(123)
+
+
+def test_exclude_movie_idempotent_400(httpx_mock):
+    """400 response (already excluded) treated as success (idempotent)."""
+    movie_data = {"id": 123, "title": "The Matrix", "year": 1999, "tmdbId": 603}
+
+    httpx_mock.add_response(
+        url="http://radarr:7878/api/v3/exclusions",
+        json={"message": "Already excluded"},
+        status_code=400,
+    )
+
+    with pytest.importorskip("unittest.mock").patch(
+        "radarr.services.get_movie_or_episode", return_value=movie_data
+    ):
+        result = exclude_movie(123)
+
+    assert result == {"movieId": 123}
+
+
+def test_exclude_movie_idempotent_409(httpx_mock):
+    """409 response (conflict/already excluded) treated as success (idempotent)."""
+    movie_data = {"id": 123, "title": "The Matrix", "year": 1999, "tmdbId": 603}
+
+    httpx_mock.add_response(
+        url="http://radarr:7878/api/v3/exclusions",
+        json={"message": "Conflict"},
+        status_code=409,
+    )
+
+    with pytest.importorskip("unittest.mock").patch(
+        "radarr.services.get_movie_or_episode", return_value=movie_data
+    ):
+        result = exclude_movie(123)
+
+    assert result == {"movieId": 123}
