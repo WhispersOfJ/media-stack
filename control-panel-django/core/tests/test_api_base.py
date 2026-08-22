@@ -46,3 +46,18 @@ def test_service_error_renders_envelope_with_custom_status():
 
 def test_envelope_exception_handler_ignores_non_service_errors():
     assert envelope_exception_handler(ValueError("boom"), {}) is None
+
+
+def test_service_error_logs_server_side_before_rendering(caplog):
+    """Mirrors FastAPI-era core.responses.fail(), which always did
+    logger.error(message) before raising - restored in Finding 1's fix
+    as centralized logging in ServiceError.__init__ rather than
+    re-adding logger.error() at each of the 28 ported call sites."""
+    with caplog.at_level("ERROR", logger="core.api_base"):
+        request = APIRequestFactory().get("/x")
+        request.session = {}
+        force_authenticate(request, user=_FakeAuthedUser())
+        response = _FailingView.as_view()(request)
+
+    assert response.status_code == 503
+    assert any(record.message == "upstream unreachable" for record in caplog.records)
