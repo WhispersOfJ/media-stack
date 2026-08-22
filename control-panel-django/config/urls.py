@@ -11,5 +11,6 @@ urlpatterns = [
     path("api/v2/prowlarr/", include("prowlarr.api.urls")),
     path("api/v2/radarr/", include("radarr.api.urls")),
     path("api/v2/sonarr/", include("sonarr.api.urls")),
+    path("api/v2/cleanuparr/", include("cleanuparr.api.urls")),
     path("healthz", healthz),
 ]

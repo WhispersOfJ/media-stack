@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "prowlarr",
     "radarr",
     "sonarr",
+    "cleanuparr",
 ]
 
 MIDDLEWARE = [
