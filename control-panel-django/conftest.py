@@ -14,6 +14,7 @@ from core.security import hash_api_key
 # core.arr_client, without clobbering a real value if one is already set.
 os.environ.setdefault("RADARR_API_KEY", "test-radarr-key")
 os.environ.setdefault("SONARR_API_KEY", "test-sonarr-key")
+os.environ.setdefault("PROWLARR_API_KEY", "test-prowlarr-key")
 
 
 @pytest.fixture
