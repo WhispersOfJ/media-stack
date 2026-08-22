@@ -4,7 +4,6 @@ import pytest
 from rest_framework.test import APIClient
 
 from core.api_base import ServiceError
-from core.models import User
 
 
 @pytest.mark.django_db
