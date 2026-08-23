@@ -1,0 +1,45 @@
+{% extends "ui/base.html" %}
+
+{% block content %}
+<div class="rail">
+  <h2>Plex Health</h2>
+  <div class="vitals-row">
+    <div class="vital">
+      <span class="vital-label">State</span>
+      <span class="vital-value">{{ health.state|default:"…" }}</span>
+    </div>
+    <div class="vital">
+      <span class="vital-label">Container</span>
+      <span class="vital-value">{{ health.container.health|default:"…" }}</span>
+      <span class="vital-sub">restarts: {{ health.container.restart_count|default:"0" }}</span>
+    </div>
+    {% if update_available %}
+    <div class="vital">
+      <span class="vital-label">Update</span>
+      <span class="vital-value state-pending">Available</span>
+      <span class="vital-sub">running {{ running_version }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div id="plex-health"
+       hx-get="/plex/_health/"
+       hx-trigger="every 15s"
+       hx-swap="outerHTML">
+    {% include "plex/partials/_health.html" %}
+  </div>
+
+  {% if sessions %}
+  <div class="rail-sub">Sessions</div>
+  <div class="rule-list">
+    {% for s in sessions %}
+    <div class="rule-row">
+      <span class="rule-title">{{ s.title }}</span>
+      <span class="rule-desc">{{ s.user }} · {{ s.decision }}</span>
+      <span class="rule-status">{{ s.progress_pct }}%</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

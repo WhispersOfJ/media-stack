@@ -1,5 +1,7 @@
 # FastAPI→Django Migration — Phase 3: Django Template + htmx Browser UI — Implementation Plan
 
+> **Status: COMPLETE** (2026-08-23) — see `docs/superpowers/plans/2026-08-23-django-migration-phase3-closeout.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the static HTML/JS SPA (the ~2900-line `control-panel/static/` client) with a server-rendered Django template UI + htmx partial swaps, one template per page, per the confirmed mockup: dense card grid (4 cards/row), monospace stat lines per card, status dot, thin nav bar, log strip below the grid. Template views call the Phase 2 `services.py` functions **directly server-side** (never re-fetching `/api/v2/*` from the browser) — that is why the spec made `services.py` framework-agnostic. No fish CLI changes (Phase 4) and no deployment/cutover (Phase 5) in this phase; the old FastAPI SPA stays in place and live until cutover — **nothing under `control-panel/static/` is deleted in this phase**.

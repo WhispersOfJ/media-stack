@@ -1,0 +1,9 @@
+<div class="hud" id="status-hud"
+     hx-get="/partials/status-dot/"
+     hx-trigger="every 15s"
+     hx-swap="outerHTML">
+  <span class="dot up"></span>
+  <span id="clock">{{ now|date:"H:i" }}</span>
+  <span class="hud-sep">|</span>
+  <span id="uptime">up</span>
+</div>

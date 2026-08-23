@@ -1,0 +1,27 @@
+<div class="poster-gallery-toolbar">
+  <span class="rule-title">{{ gallery.library|default:library }}</span>
+  <span class="rule-desc">{{ gallery.total|default:"0" }} items</span>
+  <button class="btn-ghost"
+          hx-get="/posters/_gallery/{{ library|urlencode }}/?offset={{ offset|add:60 }}"
+          hx-target="#poster-gallery"
+          hx-swap="outerHTML"
+          {% if offset|add:60 >= gallery.total %}disabled{% endif %}>
+    Next
+  </button>
+</div>
+<div class="poster-gallery-grid" id="poster-gallery">
+  {% for item in gallery.items %}
+  <div class="poster-gallery-card glass-card">
+    <span class="poster-gallery-title">{{ item.title }}</span>
+    {% if item.year %}<span class="rule-desc">{{ item.year }}</span>{% endif %}
+    {% if item.thumbUrl %}
+    <img src="{{ item.thumbUrl }}" alt="{{ item.title }}" loading="lazy"
+         style="aspect-ratio:2/3;object-fit:cover;border-radius:6px;">
+    {% else %}
+    <div class="hint" style="aspect-ratio:2/3;">no poster</div>
+    {% endif %}
+  </div>
+  {% empty %}
+  <div class="hint">No items in this library.</div>
+  {% endfor %}
+</div>

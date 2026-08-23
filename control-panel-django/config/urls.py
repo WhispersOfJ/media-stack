@@ -24,4 +24,11 @@ urlpatterns = [
     path("api/v2/host/", include("host.api.urls")),
     path("api/v2/arr/", include("arr.api.urls")),
     path("healthz", healthz),
+    path("", include("ui.urls")),
+    path("host/", include("host.urls")),
+    path("fleet/", include("arr.urls")),
+    path("plex/", include("plex.urls")),
+    path("posters/", include("posters.urls")),
+    path("letterboxd/", include("letterboxd.urls")),
+    path("mdblist/", include("mdblist.urls")),
 ]

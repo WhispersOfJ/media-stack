@@ -1,0 +1,13 @@
+{% extends "ui/base.html" %}
+
+{% block content %}
+<div class="rail" data-rail-accent="overview">
+  <h2>Overview</h2>
+  <div class="vitals-row" id="overview-cards"
+       hx-get="/partials/overview-cards/"
+       hx-trigger="every 20s"
+       hx-swap="outerHTML">
+    {% include "ui/partials/overview_cards.html" %}
+  </div>
+</div>
+{% endblock %}

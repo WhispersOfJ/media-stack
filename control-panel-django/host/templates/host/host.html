@@ -1,0 +1,39 @@
+{% extends "ui/base.html" %}
+
+{% block content %}
+<div class="rail">
+  <h2>Host</h2>
+  <div class="vitals-row">
+    <div class="vital">
+      <span class="vital-label">CPU</span>
+      <span class="vital-value">{{ cpu_percent|default:"…" }}%</span>
+    </div>
+    <div class="vital">
+      <span class="vital-label">RAM</span>
+      <span class="vital-value">{{ mem_percent|default:"…" }}%</span>
+      <span class="vital-sub">{{ mem_used|default:"…" }} / {{ mem_total|default:"…" }}</span>
+    </div>
+    <div class="vital">
+      <span class="vital-label">Disk</span>
+      <span class="vital-value">{{ disk.mount.percent|default:"…" }}%</span>
+      <span class="vital-sub">{{ disk.mount.free|default:"…" }} free</span>
+    </div>
+  </div>
+
+  <div hx-get="/host/_vitals/" hx-trigger="every 10s" hx-swap="outerHTML">
+    {% include "host/partials/_containers.html" %}
+  </div>
+
+  {% if mounts %}
+  <div class="rail-sub">Mounts</div>
+  <div class="rule-list">
+    {% for m in mounts %}
+    <div class="rule-row">
+      <span class="rule-title">{{ m.mount }}</span>
+      <span class="rule-status {% if m.status == 'healthy' %}state-success{% else %}state-error{% endif %}">{{ m.status }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

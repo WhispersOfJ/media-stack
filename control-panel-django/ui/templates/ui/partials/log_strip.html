@@ -1,0 +1,18 @@
+<div id="log-strip"
+     hx-get="/partials/log-strip/"
+     hx-trigger="every 10s"
+     hx-swap="outerHTML">
+  <div class="activity-head">recent activity</div>
+  <div class="activity-body">
+    {% if recent_activity %}
+      {% for entry in recent_activity %}
+        <div class="activity-line {{ entry.level }}">
+          <span class="t">{{ entry.time|date:"H:i:s" }}</span>
+          <span class="g"> {{ entry.message }}</span>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="activity-line log-empty">no recent activity</div>
+    {% endif %}
+  </div>
+</div>

@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "posters",
     "host",
     "arr",
+    "ui",
 ]
 
 MIDDLEWARE = [

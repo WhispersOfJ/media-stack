@@ -1,0 +1,43 @@
+<div class="vitals-row" id="overview-cards"
+     hx-get="/partials/overview-cards/"
+     hx-trigger="every 20s"
+     hx-swap="outerHTML">
+  {# Queue card — from queue_app.services.aggregate_queue_status() #}
+  <div class="vital">
+    <span class="vital-label">Queue</span>
+    <span class="vital-value">{{ q_downloading|default:"0" }}</span>
+    <span class="vital-sub">downloading · {{ q_queued|default:"0" }} waiting · {{ q_importing|default:"0" }} importing</span>
+  </div>
+
+  {# Host card — from host.services.host_resources() #}
+  <div class="vital">
+    <span class="vital-label">Host</span>
+    <span class="vital-value">{{ cpu_percent|default:"…" }}%</span>
+    <span class="vital-sub">RAM {{ mem_percent|default:"…" }}% ({{ mem_used|default:"…" }} / {{ mem_total|default:"…" }})</span>
+    {% if cpu_percent is not None %}
+    <svg class="sparkline" viewBox="0 0 200 24" preserveAspectRatio="none">
+      <rect x="0" y="0" width="{{ cpu_percent|floatformat:0|default:'0' }}" height="24"
+            fill="var(--good)" rx="1" opacity="0.8" />
+    </svg>
+    {% endif %}
+  </div>
+
+  {# Plex card — from plex.services.scan_health() #}
+  <div class="vital">
+    <span class="vital-label">Plex</span>
+    <span class="vital-value">{{ plex_state_label|default:"…" }}</span>
+    <span class="vital-sub">activities: {{ plex_activity_count|default:"0" }}</span>
+    {% if plex_activity_count %}
+    <svg class="sparkline" viewBox="0 0 200 24" preserveAspectRatio="none">
+      <circle cx="{{ plex_state_pct|default:'50' }}" cy="12" r="6" fill="var(--accent)" />
+    </svg>
+    {% endif %}
+  </div>
+
+  {# Arr Fleet card — from arr.services.backlog_status() #}
+  <div class="vital">
+    <span class="vital-label">Arr Fleet</span>
+    <span class="vital-value">{{ arr_missing|default:"…" }}</span>
+    <span class="vital-sub">missing across {{ arr_app_count|default:"2" }} apps</span>
+  </div>
+</div>

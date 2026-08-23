@@ -1,4 +1,5 @@
 import os
+from copy import copy
 
 import pytest
 from django.conf import settings
@@ -28,6 +29,32 @@ def authed_client(db):
     session.save()
     client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
     return client
+
+
+@pytest.fixture(autouse=True)
+def _fix_template_context_copy():
+    """Django 5.1.x + Python 3.14: BaseContext.__copy__ calls
+    super().__copy__() which hits object.__copy__ and fails because
+    Python 3.14 no longer auto-creates `__dict__`. Monkey-patch it
+    so all template-rendering tests (including the ones that already
+    exist in the project) don't raise AttributeError on context copy."""
+    from django.template.context import BaseContext
+
+    _original_copy = BaseContext.__copy__
+
+    def _fixed_copy(self):
+        # Python 3.14's object.__copy__ returns self (no-attribute-error),
+        # but we need a new object. Create one then copy attrs manually.
+        new = object.__new__(BaseContext)
+        if hasattr(self, 'dicts'):
+            new.dicts = self.dicts[:]
+        if hasattr(self, 'render_context'):
+            new.render_context = copy(self.render_context)
+        return new
+
+    BaseContext.__copy__ = _fixed_copy
+    yield
+    BaseContext.__copy__ = _original_copy
 
 
 @pytest.fixture

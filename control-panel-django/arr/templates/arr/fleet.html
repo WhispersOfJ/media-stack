@@ -1,0 +1,29 @@
+{% extends "ui/base.html" %}
+
+{% block content %}
+<div class="rail">
+  <h2>Arr Fleet</h2>
+
+  <div id="fleet-cards"
+       hx-get="/fleet/_cards/"
+       hx-trigger="every 15s"
+       hx-swap="outerHTML">
+    {% include "arr/partials/_fleet_cards.html" %}
+  </div>
+
+  <div class="rail-sub">Queue Errors
+    <button class="btn-primary"
+            hx-post="/fleet/autofix/"
+            hx-swap="outerHTML"
+            hx-target="#queue-table">
+      Auto-fix
+    </button>
+  </div>
+  <div id="queue-table"
+       hx-get="/fleet/_queue/"
+       hx-trigger="every 15s"
+       hx-swap="outerHTML">
+    {% include "arr/partials/_queue_table.html" %}
+  </div>
+</div>
+{% endblock %}

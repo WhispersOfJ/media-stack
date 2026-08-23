@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" data-theme="amber">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>control-panel — {{ page|default:'overview' }}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/vendor/htmx.min.js"></script>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <!-- Thin nav bar — one entry per page, matching the spec's mockup -->
+  <nav id="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-text">
+        <span class="brand-title">control-panel</span>
+        <span class="brand-sub">the stack</span>
+      </div>
+    </div>
+    <div class="stampgrid">
+      <div><span class="label">nav</span></div>
+      <a class="quicklink" href="/" {% if page == 'overview' %}style="color:var(--accent)"{% endif %}>Overview</a>
+      <a class="quicklink" href="/fleet/" {% if page == 'fleet' %}style="color:var(--accent)"{% endif %}>Fleet</a>
+      <a class="quicklink" href="/host/" {% if page == 'host' %}style="color:var(--accent)"{% endif %}>Host</a>
+      <a class="quicklink" href="/plex/" {% if page == 'plex' %}style="color:var(--accent)"{% endif %}>Plex</a>
+      <a class="quicklink" href="/posters/" {% if page == 'posters' %}style="color:var(--accent)"{% endif %}>Posters</a>
+      <a class="quicklink" href="/letterboxd/" {% if page == 'letterboxd' %}style="color:var(--accent)"{% endif %}>Lbx</a>
+      <a class="quicklink" href="/mdblist/" {% if page == 'mdblist' %}style="color:var(--accent)"{% endif %}>MDB</a>
+      <a class="quicklink" href="/settings/" {% if page == 'settings' %}style="color:var(--accent)"{% endif %}>Settings</a>
+      <a class="quicklink" href="/reference/" {% if page == 'reference' %}style="color:var(--accent)"{% endif %}>Ref</a>
+    </div>
+    <div class="hud" hx-get="/partials/status-dot/" hx-trigger="every 15s" hx-swap="outerHTML">
+      {% include "ui/partials/status_dot.html" %}
+    </div>
+    <div style="margin-left:auto">
+      <a class="quicklink" href="/auth/logout/">Log out</a>
+    </div>
+  </nav>
+
+  <!-- Main content area -->
+  <main id="workspace">
+    <div id="col-main">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- Log strip below the grid, fed by htmx polling -->
+  <footer id="log-strip"
+          hx-get="/partials/log-strip/"
+          hx-trigger="every 10s"
+          hx-swap="outerHTML">
+    {% include "ui/partials/log_strip.html" %}
+  </footer>
+
+  {# CRT scanline + vignette overlay — pure CSS, ported from the SPA's style.css #}
+</body>
+</html>

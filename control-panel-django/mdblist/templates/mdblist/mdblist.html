@@ -1,0 +1,37 @@
+{% extends "ui/base.html" %}
+
+{% block content %}
+<div class="rail">
+  <h2>MDBList</h2>
+  <div class="rail-sub">Tracked Lists</div>
+  <div class="rule-list">
+    {% for l in lists %}
+    <div class="rule-row">
+      <div class="rule-main">
+        <span class="rule-title">{{ l.label|default:l.url }}</span>
+        <span class="rule-desc">{{ l.url }}</span>
+      </div>
+      <span class="rule-status">Last sync: {{ l.lastSyncedAt|default:"never" }}</span>
+    </div>
+    {% empty %}
+    <div class="hint">No tracked lists.</div>
+    {% endfor %}
+  </div>
+
+  <div class="rail-sub">Recent Syncs</div>
+  <div class="rule-list">
+    {% for r in runs|slice:":20" %}
+    <div class="rule-row">
+      <span class="rule-title">{{ r.listUrl }}</span>
+      <span class="rule-desc">
+        +{{ r.radarrAdded }} added · {{ r.radarrAlready }} existed
+        {% if r.errorDetail %}<span class="state-error">{{ r.errorDetail }}</span>{% endif %}
+      </span>
+      <span class="rule-status">{{ r.runAt }}</span>
+    </div>
+    {% empty %}
+    <div class="hint">No sync runs yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

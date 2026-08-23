@@ -1,0 +1,17 @@
+<div class="rule-list" hx-get="/host/_vitals/" hx-trigger="every 10s" hx-swap="outerHTML">
+  {% for c in containers %}
+  <div class="rule-row">
+    <div class="rule-main">
+      <span class="rule-title">{{ c.label }}</span>
+      <span class="rule-desc">{{ c.image }}</span>
+    </div>
+    <span class="rule-status {% if c.state == 'running' %}state-success{% elif c.state == 'exited' %}state-error{% else %}state-pending{% endif %}">
+      {{ c.state }}
+      {% if c.health %}| {{ c.health }}{% endif %}
+    </span>
+    <span class="rule-status">CPU {{ c.cpu_percent|default:"--" }}% · MEM {{ c.mem_used_mb|default:"--" }}MB</span>
+  </div>
+  {% empty %}
+  <div class="hint">No containers found.</div>
+  {% endfor %}
+</div>
