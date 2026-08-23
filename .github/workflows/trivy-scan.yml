@@ -111,11 +111,10 @@ jobs:
 
       - name: Post to Discord (if configured)
         if: env.DISCORD_WEBHOOK_URL != ''
-        uses: slackapi/slack-github-action@v1
-        with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          payload: |
-            {
+        run: |
+          curl -s -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
               "text": "🔍 Trivy Image Scan Report",
               "blocks": [
                 {
@@ -126,4 +125,4 @@ jobs:
                   }
                 }
               ]
-            }
+            }'
