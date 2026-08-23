@@ -992,7 +992,7 @@ services:
 
   grafana:
     restart: unless-stopped
-    image: grafana/grafana:10.4.0@sha256:f9811e4e687ffecf1a43adb9b64096c50bc0d7a782f8608530f478b6542de7d5
+    image: grafana/grafana:13.2.0@sha256:3fd54ae1214669f8355f065ec9f6445d5279a3d77095ab048ca045685272429b
     container_name: grafana
     ports:
       - "3001:3000"
