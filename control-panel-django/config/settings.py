@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "mdblist",
     "letterboxd",
     "plex",
+    "queue_app",
 ]
 
 MIDDLEWARE = [
