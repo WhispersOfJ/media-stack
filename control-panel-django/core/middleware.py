@@ -1,11 +1,16 @@
 import os
 import socket
 
-import docker
-
 
 def _own_network_gateway():
+    """Best-effort Docker gateway lookup so requests from bridge-network
+    containers (whose REMOTE_ADDR is the gateway IP, not a real host IP)
+    are recognized as loopback. If Docker is unreachable the loopback set
+    stays at just localhost/127.0.0.1 — the middleware still works but the
+    narrower set may reject legitimate internal requests."""
     try:
+        import docker
+
         client = docker.from_env()
         self_container = client.containers.get(socket.gethostname())
         for net in self_container.attrs.get("NetworkSettings", {}).get("Networks", {}).values():

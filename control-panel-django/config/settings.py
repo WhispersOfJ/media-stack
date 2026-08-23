@@ -12,7 +12,12 @@ if not _secret_key_env and not DEBUG:
     )
 SECRET_KEY = _secret_key_env or "dev-only-insecure-key-do-not-deploy"
 
-ALLOWED_HOSTS = ["*"]  # narrowed by core.middleware.VerifySameOriginMiddleware, not Django's own check
+ALLOWED_HOSTS = [
+    # Narrowed to match VerifySameOriginMiddleware's actual allowlist — not
+    # ["*"] anymore. Falls back to localhost-only in dev (when HOST_IP is
+    # unset) so "manage.py runserver" works without extra config.
+    *(h for h in (os.environ.get("HOST_IP"), "localhost", "127.0.0.1", "[::1]") if h),
+]  # narrowed by core.middleware.VerifySameOriginMiddleware as defense-in-depth
 
 INSTALLED_APPS = [
     "django.contrib.admin",

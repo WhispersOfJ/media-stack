@@ -611,14 +611,39 @@ services:
     # Plex Health feature (Tier 3 "Force Unstick") - pid: host lets
     # /api/plex/scan-health resolve Plex's real host PID for D-state
     # thread introspection under /host-proc; cap_add + security_opt are
-    # what actually let the abort write to /host-sys-fuse succeed. Start
-    # minimal (this set) before adding anything broader if a real
-    # permission error proves it's needed - see CLAUDE.md.
-    # SYS_PTRACE added 2026-07-26 for _host_lazy_umount's nsenter call
-    # (unstick-ffprobe-hang's automated mount recovery) - reading another
-    # process's /proc/<pid>/ns/mnt requires ptrace access to that pid, not
-    # just SYS_ADMIN. This is a real privilege widening (ptrace access to
-    # any host process), accepted deliberately - see CLAUDE.md.
+    # what actually let the abort write to /host-sys-fuse succeed.
+    #
+    # Privilege rationale — what each cap enables and what breaks if removed:
+    #
+    #   pid: host
+    #     Enables: Plex D-state thread scan (/api/plex/scan-health,
+    #              /api/host-resources via /host-proc).
+    #     Breaks if removed: scan-health returns empty D-state lists;
+    #              host-resources falls back to 503.
+    #
+    #   SYS_ADMIN
+    #     Enables: Force Unstick writes to /host-sys-fuse/connections/<id>/abort
+    #              (the automated mount recovery from a wedged FUSE connection).
+    #     Breaks if removed: Force Unstick's abort writes fail with EPERM;
+    #              the manual workaround (restart nzbdav_rclone) still works.
+    #
+    #   SYS_PTRACE
+    #     Enables: nsenter into host mount namespaces (unstick-ffprobe-hang's
+    #              automated mount recovery — reading /proc/<pid>/ns/mnt).
+    #              This IS a real privilege widening: ptrace on any host process.
+    #     Breaks if removed: automated unstick-ffprobe-hang recovery fails;
+    #              no other feature depends on it.
+    #
+    #   apparmor:unconfined
+    #     Enables: everything above (SYS_ADMIN + SYS_PTRACE are blocked by
+    #              default AppArmor policy on this host).
+    #     Breaks if removed: every cap_add above becomes a no-op;
+    #              Force Unstick and unstick-ffprobe both fail.
+    #
+    # Start minimal before adding anything broader if a real permission
+    # error proves it's needed — see CLAUDE.md. SYS_PTRACE added
+    # 2026-07-26 for _host_lazy_umount's nsenter call — accepted
+    # deliberately (see CLAUDE.md).
     pid: host
     cap_add:
       - SYS_ADMIN
@@ -817,11 +842,6 @@ services:
       TZ: ${TZ}
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_SCHEDULE: "0 0 4 * * *"
-      # Every actual update (or update failure) now posts to Discord instead
-      # of happening silently overnight.
-      WATCHTOWER_NOTIFICATIONS: "shoutrrr"
-      WATCHTOWER_NOTIFICATION_URL: ${DISCORD_WATCHTOWER_SHOUTRRR_URL}
-      WATCHTOWER_NOTIFICATIONS_HOSTNAME: ${HOST_IP}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     # No prior ceiling - idle daemon most of the time, cheap insurance
