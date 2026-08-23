@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "watchstate",
     "mdblist",
     "letterboxd",
+    "plex",
 ]
 
 MIDDLEWARE = [
