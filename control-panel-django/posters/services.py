@@ -183,7 +183,10 @@ def list_libraries() -> dict:
     """Movie/show libraries only - same live-from-Plex source as
     plex.services.list_libraries, filtered to the section types this sync
     actually knows how to handle."""
-    sections = plex_sections()
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        raise ServiceError(f"Could not read Plex libraries: {e}") from e
     items = [{"key": s["key"], "title": s["title"], "type": s["type"]} for s in sections if s.get("type") in ("movie", "show")]
     return {"message": f"{len(items)} poster-capable Plex libraries.", "items": items}
 
@@ -380,18 +383,24 @@ def gallery(library: str, offset: int = 0, limit: int = 60) -> dict:
     """One page of a library's items, each with a `thumbUrl` pointing at
     our own thumb() proxy (never a raw Plex URL+token) - the frontend just
     <img src>s it directly."""
-    sections = plex_sections()
+    try:
+        sections = plex_sections()
+    except httpx.HTTPError as e:
+        raise ServiceError(f"Could not read Plex libraries: {e}") from e
     section = next((s for s in sections if s["title"].lower() == library.lower()), None)
     if not section or section.get("type") not in ("movie", "show"):
         raise ServiceError(f"No movie/show library found matching '{library}'.", status=404)
 
-    r = httpx.get(
-        f"{PLEX_URL}/library/sections/{section['key']}/all"
-        f"?X-Plex-Container-Start={offset}&X-Plex-Container-Size={limit}"
-        "&sort=titleSort",
-        headers=plex_headers(), timeout=30,
-    )
-    r.raise_for_status()
+    try:
+        r = httpx.get(
+            f"{PLEX_URL}/library/sections/{section['key']}/all"
+            f"?X-Plex-Container-Start={offset}&X-Plex-Container-Size={limit}"
+            "&sort=titleSort",
+            headers=plex_headers(), timeout=30,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        raise ServiceError(f"Could not list '{library}': {e}") from e
 
     container = r.json()["MediaContainer"]
     total = container.get("totalSize", container.get("size", 0))

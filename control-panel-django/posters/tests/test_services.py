@@ -95,6 +95,12 @@ class TestListLibraries:
         ]
         assert "2" in result["message"]
 
+    def test_plex_unreachable_raises_service_error(self, httpx_mock):
+        httpx_mock.add_response(url="http://plex:32400/library/sections", status_code=500)
+        with pytest.raises(ServiceError) as exc:
+            services.list_libraries()
+        assert "Could not read Plex libraries" in str(exc.value)
+
 
 # ---------------------------------------------------------------------
 # start_sync / sync_stream
@@ -502,6 +508,25 @@ class TestGallery:
         )
         result = services.gallery("Movies")
         assert result["items"][0]["thumbUrl"] is None
+
+    def test_plex_sections_unreachable_raises_service_error(self, httpx_mock):
+        httpx_mock.add_response(url="http://plex:32400/library/sections", status_code=500)
+        with pytest.raises(ServiceError) as exc:
+            services.gallery("Movies")
+        assert "Could not read Plex libraries" in str(exc.value)
+
+    def test_item_listing_unreachable_raises_service_error(self, httpx_mock):
+        httpx_mock.add_response(
+            url="http://plex:32400/library/sections",
+            json={"MediaContainer": {"Directory": [{"key": "1", "title": "Movies", "type": "movie"}]}},
+        )
+        httpx_mock.add_response(
+            url="http://plex:32400/library/sections/1/all?X-Plex-Container-Start=0&X-Plex-Container-Size=60&sort=titleSort",
+            status_code=500,
+        )
+        with pytest.raises(ServiceError) as exc:
+            services.gallery("Movies")
+        assert "Could not list 'Movies'" in str(exc.value)
 
 
 class TestThumb:
