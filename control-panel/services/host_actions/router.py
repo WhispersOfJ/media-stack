@@ -8,6 +8,7 @@ and requires confirm=true in the body, the same double-gate as
 /api/disk-health/prune and the catalog install/remove routes.
 """
 from core.host_helper_client import call_host_helper
+from core.rate_limit import rate_limit
 from core.responses import fail, ok
 from core.security import current_user
 from fastapi import APIRouter, Depends
@@ -32,7 +33,7 @@ def _run_host_action(action: str, label: str, payload: HostActionRequest) -> dic
 
 
 @router.post("/api/host/reboot")
-def host_reboot(payload: HostActionRequest, _=Depends(current_user)):
+def host_reboot(payload: HostActionRequest, _=Depends(current_user), _rate: None = Depends(rate_limit(max_requests=2, window_seconds=600))):
     """Reboots the physical host this entire stack runs on - every
     container, including this panel, goes down and back up. The daemon
     call itself returns before the reboot actually completes (systemctl
@@ -42,14 +43,14 @@ def host_reboot(payload: HostActionRequest, _=Depends(current_user)):
 
 
 @router.post("/api/host/pacman-sync")
-def host_pacman_sync(payload: HostActionRequest, _=Depends(current_user)):
+def host_pacman_sync(payload: HostActionRequest, _=Depends(current_user), _rate: None = Depends(rate_limit(max_requests=3, window_seconds=300))):
     """Refreshes the host's pacman package database only - no packages
     are installed or changed."""
     return _run_host_action("pacman_sync", "Package database sync", payload)
 
 
 @router.post("/api/host/pacman-upgrade")
-def host_pacman_upgrade(payload: HostActionRequest, _=Depends(current_user)):
+def host_pacman_upgrade(payload: HostActionRequest, _=Depends(current_user), _rate: None = Depends(rate_limit(max_requests=2, window_seconds=600))):
     """Runs a full host system upgrade (`pacman -Syu`) - can take a
     while and may itself require a reboot afterward for kernel/driver
     updates to take effect."""
