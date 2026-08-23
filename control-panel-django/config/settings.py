@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     "plex",
     "queue_app",
     "posters",
+    "host",
+    "arr",
 ]
 
 MIDDLEWARE = [

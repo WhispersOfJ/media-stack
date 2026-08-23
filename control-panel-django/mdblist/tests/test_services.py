@@ -6,6 +6,16 @@ from mdblist import services
 
 LIST_URL = "https://mdblist.com/lists/bear/my-list/"
 
+
+@pytest.fixture(autouse=True)
+def _force_test_mdblist_key(monkeypatch):
+    """conftest.py seeds MDBLIST_KEY via os.environ.setdefault, which is
+    honored only when the shell hasn't already exported the real key. When
+    it has (this host does), the service sends apikey=<real key> and these
+    tests' httpx mocks (apikey=test-mdblist-key) match nothing. Force the
+    test key so the suite is hermetic regardless of the host environment."""
+    monkeypatch.setenv("MDBLIST_KEY", "test-mdblist-key")
+
 MOVIES_PAGE = {
     "movies": [{"title": "The Matrix", "ids": {"tmdb": 603}}],
     "shows": [],
