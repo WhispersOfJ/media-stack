@@ -111,7 +111,7 @@ jobs:
 
       - name: Post to Discord (if configured)
         if: env.DISCORD_WEBHOOK_URL != ''
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v4
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
           payload: |
