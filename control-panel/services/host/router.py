@@ -38,6 +38,7 @@ from core.docker_client import (
 from core.host_paths import HOST_CONFIG_DIR, HOST_MNT_DIR, HOST_PROC_DIR, HOST_README
 from core.responses import fail, now, ok
 from core.security import current_user, current_user_or_service
+from core.rate_limit import rate_limit
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -146,7 +147,7 @@ def container_logs_stream(name: str, tail: int = 100, _=Depends(current_user_or_
 @router.post("/api/stack/restart-all")
 # current_user_or_service, not current_user: stack-restart-all.fish calls
 # this unattended via __stack_api's service key (2026-08-06).
-def stack_restart_all(_=Depends(current_user_or_service)):
+def stack_restart_all(_=Depends(current_user_or_service), _rate: None = Depends(rate_limit(max_requests=3, window_seconds=300))):
     me, containers = project_containers()
     targets = [c for c in containers if c.id != me.id]
     if not targets:
@@ -283,7 +284,7 @@ class PruneRequest(BaseModel):
 
 
 @router.post("/api/disk-health/prune")
-def disk_health_prune(payload: PruneRequest, _=Depends(current_user)):
+def disk_health_prune(payload: PruneRequest, _=Depends(current_user), _rate: None = Depends(rate_limit(max_requests=3, window_seconds=300))):
     """Prunes dangling images and unused (zero-refcount) volumes only -
     never a running or stopped-but-referenced container's own image or
     volume. Equivalent to `docker image prune` + `docker volume prune`,
@@ -385,7 +386,7 @@ def log_levels(_=Depends(current_user_or_service)):
 
 
 @router.post("/api/log-levels/reset")
-def log_levels_reset(_=Depends(current_user_or_service)):
+def log_levels_reset(_=Depends(current_user_or_service), _rate: None = Depends(rate_limit(max_requests=3, window_seconds=300))):
     """Sets logLevel back to 'info' on every app currently at 'debug'."""
     reset = []
     for name, cfg in LOG_LEVEL_APPS.items():
@@ -572,7 +573,7 @@ def docs_readme(_=Depends(current_user_or_service)):
 
 
 @router.post("/api/notify/test")
-def notify_test(_=Depends(current_user_or_service)):
+def notify_test(_=Depends(current_user_or_service), _rate: None = Depends(rate_limit(max_requests=3, window_seconds=300))):
     """Sends a real test message through the Discord webhook every
     backup/health-check alert already uses. ntfy was removed 2026-08-18
     (Plan 3 consolidation) and Discord is now the sole sink."""

@@ -1,8 +1,11 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.db import get_db
+from core.rate_limit import rate_limit
 from core.security import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE,
@@ -12,6 +15,11 @@ from core.security import (
 )
 from models.audit_log import AuditLog
 from models.user import User
+
+# secure=False by default: this stack runs LAN-only with no TLS. Set
+# CONTROL_PANEL_SECURE_COOKIE=1 if you ever add a reverse proxy with TLS;
+# with secure=True browsers will refuse to send the cookie over HTTP.
+_SESSION_SECURE = os.environ.get("CONTROL_PANEL_SECURE_COOKIE", "") == "1"
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -26,7 +34,12 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(
+    payload: LoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    _rate: None = Depends(rate_limit(max_requests=5, window_seconds=60)),
+):
     user = db.query(User).filter(User.username == payload.username).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         db.add(AuditLog(action="login_failed", detail=payload.username))
@@ -40,7 +53,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=_SESSION_SECURE,
     )
     db.add(AuditLog(user_id=user.id, action="login"))
     db.commit()
