@@ -947,7 +947,7 @@ services:
   # =======================================================================
   loki:
     restart: unless-stopped
-    image: grafana/loki:2.8.0@sha256:0d28e4dddd4ccce1772544a501e8b8f96595accbb74ee8cd0415bce81dd2edfc
+    image: grafana/loki:3.7.6@sha256:efd47c67f9bac88ca29bcf8cb997d9ab29d1848bd0aff579282295542a745952
     container_name: loki
     ports:
       - "3100:3100"
