@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "letterboxd",
     "plex",
     "queue_app",
+    "posters",
 ]
 
 MIDDLEWARE = [

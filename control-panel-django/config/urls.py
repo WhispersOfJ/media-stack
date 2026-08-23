@@ -20,5 +20,6 @@ urlpatterns = [
     path("api/v2/letterboxd/", include("letterboxd.api.urls")),
     path("api/v2/plex/", include("plex.api.urls")),
     path("api/v2/queue/", include("queue_app.api.urls")),
+    path("api/v2/posters/", include("posters.api.urls")),
     path("healthz", healthz),
 ]
