@@ -134,3 +134,23 @@ def test_current_user_or_service_rejects_invalid_api_key(cp_main_app):
             assert exc.status_code == 401
     finally:
         db.close()
+
+
+def test_login_rate_limited_after_5_failures_from_same_ip(cp_main_app):
+    """The sliding-window rate limiter (5 req/60s per IP) must return 429
+    on the 6th attempt. The TestClient shares the same in-process bucket
+    since rate_limit uses an in-memory defaultdict."""
+    _make_user(cp_main_app)
+    client = TestClient(cp_main_app.app)
+    payload = {"username": "admin", "password": "wrong"}
+
+    # First 5 attempts should be 401 (valid cred check, rate limit not hit).
+    for i in range(5):
+        resp = client.post("/api/auth/login", json=payload)
+        assert resp.status_code == 401, f"attempt {i + 1}: expected 401, got {resp.status_code}"
+
+    # 6th attempt must be 429 (rate limited).
+    resp = client.post("/api/auth/login", json=payload)
+    assert resp.status_code == 429
+    assert "Rate limit exceeded" in resp.json()["detail"]
+    assert "Retry-After" in resp.headers
