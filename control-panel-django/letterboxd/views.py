@@ -21,6 +21,7 @@ def letterboxd_page(request):
         runs = []
     return render(request, "letterboxd/letterboxd.html", {
         "page": "letterboxd",
+        "page_title": "Letterboxd",
         "lists": lists,
         "runs": runs,
     })

@@ -36,6 +36,7 @@ def host_page(request):
         "host/host.html",
         {
             "page": "host",
+            "page_title": "Host",
             "containers": containers,
             "cpu_percent": hr.get("cpu_percent"),
             "mem_percent": hr.get("mem_percent"),

@@ -21,6 +21,7 @@ def mdblist_page(request):
         runs = []
     return render(request, "mdblist/mdblist.html", {
         "page": "mdblist",
+        "page_title": "MDBList",
         "lists": lists,
         "runs": runs,
     })

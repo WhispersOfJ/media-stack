@@ -16,6 +16,7 @@ def posters_page(request):
         libs = []
     return render(request, "posters/posters.html", {
         "page": "posters",
+        "page_title": "Posters",
         "libraries": libs,
     })
 

@@ -24,6 +24,7 @@ def plex_page(request):
 
     return render(request, "plex/plex.html", {
         "page": "plex",
+        "page_title": "Plex",
         "health": health,
         "sessions": sessions.get("sessions", []),
         "update_available": updates.get("update_available", False),

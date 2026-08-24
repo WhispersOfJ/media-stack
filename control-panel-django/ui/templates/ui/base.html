@@ -231,7 +231,7 @@
         html += `<div class="command-category">${category}</div>`;
         cmds.forEach((cmd, i) => {
           html += `
-            <div class="command-item" onclick="executeCommand('${cmd.command}')" data-index="${i}">
+            <div class="command-item" data-command="${cmd.command.replace(/"/g, '&quot;')}" data-index="${i}">
               <div class="command-item-name">${cmd.name}</div>
               <div class="command-item-desc">${cmd.description}</div>
               <code class="command-item-code">${cmd.command}</code>
@@ -284,6 +284,14 @@
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         toggleCommandPalette();
+      }
+    });
+
+    // Event delegation for command items
+    document.getElementById('command-results').addEventListener('click', (e) => {
+      const item = e.target.closest('.command-item');
+      if (item) {
+        executeCommand(item.dataset.command);
       }
     });
   </script>

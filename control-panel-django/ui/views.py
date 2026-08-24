@@ -108,25 +108,26 @@ def home(request):
     redirect('/') a real target (it 404s today without this)."""
     ctx = _overview_context()
     ctx["page"] = "overview"
+    ctx["page_title"] = "Overview"
     return render(request, "ui/overview.html", ctx)
 
 
 @login_required
 def settings_page(request):
     """Placeholder — Task 8 builds the real settings page."""
-    return render(request, "ui/settings.html", {"page": "settings"})
+    return render(request, "ui/settings.html", {"page": "settings", "page_title": "Settings"})
 
 
 @login_required
 def reference_page(request):
     """Placeholder — Task 8 builds the real reference page."""
-    return render(request, "ui/reference.html", {"page": "reference"})
+    return render(request, "ui/reference.html", {"page": "reference", "page_title": "Reference"})
 
 
 @login_required
 def activity_log_page(request):
     """Placeholder — Task 8 builds the real activity log page."""
-    return render(request, "ui/activity_log.html", {"page": "activity_log"})
+    return render(request, "ui/activity_log.html", {"page": "activity_log", "page_title": "Activity Log"})
 
 
 # ─── htmx partial swap targets ───────────────────────────────────────
@@ -148,7 +149,3 @@ def log_strip_partial(request):
     })
 
 
-@login_required
-def overview_cards_partial(request):
-    """Returns the overview card grid fragment for htmx polling."""
-    return render(request, "ui/partials/overview_cards.html", {})

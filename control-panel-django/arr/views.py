@@ -24,6 +24,7 @@ def fleet_page(request):
 
     return render(request, "arr/fleet.html", {
         "page": "fleet",
+        "page_title": "Fleet",
         "apps": apps,
         "queue_errors": qstatus.get("apps", {}),
     })
