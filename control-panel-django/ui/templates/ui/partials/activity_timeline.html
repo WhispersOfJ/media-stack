@@ -1,0 +1,23 @@
+<div class="timeline">
+  {% for entry in activities %}
+  <div class="timeline-item">
+    <div class="timeline-dot {% if entry.action|slice:':5' == 'error' or 'Error' in entry.detail|default:'' %}timeline-dot-error{% elif 'success' in entry.action|lower or 'created' in entry.action|lower %}timeline-dot-success{% elif 'warn' in entry.action|lower %}timeline-dot-warning{% endif %}"></div>
+    <div class="timeline-content">
+      <div class="timeline-title">{{ entry.action }}</div>
+      {% if entry.detail %}
+      <div class="timeline-desc">{{ entry.detail|truncatewords:20 }}</div>
+      {% endif %}
+    </div>
+    <div class="timeline-time">{{ entry.created_at|timesince }} ago</div>
+  </div>
+  {% empty %}
+  <div class="timeline-item">
+    <div class="timeline-dot"></div>
+    <div class="timeline-content">
+      <div class="timeline-title">System ready</div>
+      <div class="timeline-desc">StackOps control panel is running</div>
+    </div>
+    <div class="timeline-time">now</div>
+  </div>
+  {% endfor %}
+</div>

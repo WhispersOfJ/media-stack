@@ -1,0 +1,138 @@
+{% extends "ui/base.html" %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+
+  <!-- Log Viewer -->
+  <div class="log-viewer">
+    <div class="log-viewer-toolbar">
+      <select class="input" id="log-container" style="width:200px" onchange="loadLogs(this.value)" aria-label="Select container">
+        <option value="">Select a container...</option>
+        {% for c in containers %}
+        <option value="{{ c }}" {% if c == selected_container %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+
+      <div class="search" style="flex:1">
+        <input type="text" class="input" placeholder="Filter logs..." id="log-filter"
+               oninput="filterLogs(this.value)" aria-label="Filter logs">
+      </div>
+
+      <select class="input" id="log-level" style="width:120px" onchange="filterLogs(document.getElementById('log-filter').value)" aria-label="Log level">
+        <option value="">All levels</option>
+        <option value="error">ERROR</option>
+        <option value="warn">WARN</option>
+        <option value="info">INFO</option>
+        <option value="debug">DEBUG</option>
+      </select>
+
+      <button class="btn btn-ghost btn-sm" onclick="toggleAutoScroll()" id="auto-scroll-btn" data-tooltip="Auto-scroll">
+        ↓ Auto
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="downloadLogs()" data-tooltip="Download logs">
+        ⬇
+      </button>
+    </div>
+
+    <div class="log-viewer-content" id="log-content"
+         hx-get="/partials/log-stream/?container={{ selected_container|default:'' }}"
+         hx-trigger="every 3s"
+         hx-swap="innerHTML"
+         hx-swap-oob="true">
+      <div class="empty-state" style="padding:var(--space-8)">
+        <div class="empty-state-icon">≡</div>
+        <div class="empty-state-title">Select a container</div>
+        <div class="empty-state-desc">Choose a container from the dropdown to view its logs in real-time</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log Stats -->
+  <div class="grid grid-4" id="log-stats" style="display:none">
+    <div class="card" style="padding:var(--space-3)">
+      <div class="stat">
+        <span class="stat-label">Total Lines</span>
+        <span class="stat-value" id="log-total">0</span>
+      </div>
+    </div>
+    <div class="card" style="padding:var(--space-3)">
+      <div class="stat">
+        <span class="stat-label">Errors</span>
+        <span class="stat-value text-error" id="log-errors">0</span>
+      </div>
+    </div>
+    <div class="card" style="padding:var(--space-3)">
+      <div class="stat">
+        <span class="stat-label">Warnings</span>
+        <span class="stat-value text-warning" id="log-warnings" style="color:var(--warning)">0</span>
+      </div>
+    </div>
+    <div class="card" style="padding:var(--space-3)">
+      <div class="stat">
+        <span class="stat-label">Last Updated</span>
+        <span class="stat-value text-sm" id="log-updated">—</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var autoScroll = true;
+
+function loadLogs(container) {
+  if (!container) return;
+  var url = '/partials/log-stream/?container=' + encodeURIComponent(container);
+  var el = document.getElementById('log-content');
+  el.setAttribute('hx-get', url);
+  el.setAttribute('hx-trigger', 'every 3s');
+  htmx.trigger(el, 'htmx:load');
+  document.getElementById('log-stats').style.display = '';
+  document.getElementById('log-updated').textContent = new Date().toLocaleTimeString();
+}
+
+function filterLogs(q) {
+  var level = document.getElementById('log-level').value.toLowerCase();
+  var lines = document.querySelectorAll('#log-content .log-line');
+  q = q.toLowerCase();
+  lines.forEach(function(line) {
+    var text = line.textContent.toLowerCase();
+    var matchQ = !q || text.indexOf(q) !== -1;
+    var matchLevel = !level || line.classList.contains('log-' + level);
+    line.style.display = (matchQ && matchLevel) ? '' : 'none';
+  });
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  var btn = document.getElementById('auto-scroll-btn');
+  btn.classList.toggle('btn-primary', autoScroll);
+  btn.classList.toggle('btn-ghost', !autoScroll);
+}
+
+function downloadLogs() {
+  var lines = document.querySelectorAll('#log-content .log-line');
+  var text = Array.from(lines).map(function(l) { return l.textContent; }).join('\n');
+  var blob = new Blob([text], {type: 'text/plain'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (document.getElementById('log-container').value || 'logs') + '.txt';
+  a.click();
+}
+
+// Auto-scroll to bottom
+document.getElementById('log-content').addEventListener('htmx:afterSwap', function() {
+  if (autoScroll) {
+    this.scrollTop = this.scrollHeight;
+  }
+  // Update stats
+  var lines = document.querySelectorAll('#log-content .log-line');
+  document.getElementById('log-total').textContent = lines.length;
+  var errors = document.querySelectorAll('#log-content .log-error');
+  document.getElementById('log-errors').textContent = errors.length;
+  var warnings = document.querySelectorAll('#log-content .log-warn');
+  document.getElementById('log-warnings').textContent = warnings.length;
+  document.getElementById('log-updated').textContent = new Date().toLocaleTimeString();
+});
+</script>
+{% endblock %}

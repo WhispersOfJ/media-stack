@@ -1,0 +1,93 @@
+{% extends "ui/base.html" %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+
+  <!-- Filters -->
+  <div class="activity-filters">
+    <div class="search" style="flex:1;max-width:400px">
+      <input type="text" class="input" placeholder="Search activity..." id="activity-search"
+             oninput="filterActivity(this.value)" aria-label="Search activity">
+    </div>
+    <button class="btn btn-sm btn-primary filter-btn active" data-filter="" onclick="setFilter(this,'')">All</button>
+    <button class="btn btn-sm btn-ghost filter-btn" data-filter="action" onclick="setFilter(this,'action')">Actions</button>
+    <button class="btn btn-sm btn-ghost filter-btn" data-filter="error" onclick="setFilter(this,'error')">Errors</button>
+    <button class="btn btn-sm btn-ghost filter-btn" data-filter="sync" onclick="setFilter(this,'sync')">Syncs</button>
+    <button class="btn btn-sm btn-ghost filter-btn" data-filter="config" onclick="setFilter(this,'config')">Config</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-ghost btn-sm" onclick="exportActivity()">⬇ Export CSV</button>
+  </div>
+
+  <!-- Activity Timeline -->
+  <div class="card" style="padding:0">
+    <div id="activity-list"
+         hx-get="/partials/activity-timeline/"
+         hx-trigger="every 30s"
+         hx-swap="innerHTML">
+      <div class="timeline" style="padding:var(--space-4)">
+        {% for entry in activities %}
+        <div class="activity-item" data-type="{{ entry.type|default:'action' }}">
+          <div class="activity-icon activity-icon-{{ entry.level|default:'info' }}">
+            {% if entry.level == 'error' %}✕{% elif entry.level == 'warning' %}!{% elif entry.level == 'success' %}✓{% else %}●{% endif %}
+          </div>
+          <div class="timeline-content">
+            <div class="timeline-title">{{ entry.action }}</div>
+            <div class="timeline-desc">{{ entry.detail|default:'' }}</div>
+          </div>
+          <div class="timeline-time">{{ entry.time|date:"H:i:s" }}</div>
+        </div>
+        {% empty %}
+        <div class="empty-state" style="padding:var(--space-8)">
+          <div class="empty-state-icon">◷</div>
+          <div class="empty-state-title">No activity yet</div>
+          <div class="empty-state-desc">Actions performed in the control panel will appear here</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function filterActivity(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#activity-list .activity-item').forEach(function(item) {
+    var text = item.textContent.toLowerCase();
+    item.style.display = text.indexOf(q) !== -1 ? '' : 'none';
+  });
+}
+
+function setFilter(btn, type) {
+  document.querySelectorAll('.filter-btn').forEach(function(b) {
+    b.classList.remove('btn-primary', 'active');
+    b.classList.add('btn-ghost');
+  });
+  btn.classList.add('btn-primary', 'active');
+  btn.classList.remove('btn-ghost');
+
+  document.querySelectorAll('#activity-list .activity-item').forEach(function(item) {
+    if (!type) { item.style.display = ''; return; }
+    item.style.display = item.dataset.type === type ? '' : 'none';
+  });
+}
+
+function exportActivity() {
+  var rows = [['Time', 'Action', 'Detail', 'Type']];
+  document.querySelectorAll('#activity-list .activity-item').forEach(function(item) {
+    rows.push([
+      item.querySelector('.timeline-time')?.textContent.trim() || '',
+      item.querySelector('.timeline-title')?.textContent.trim() || '',
+      item.querySelector('.timeline-desc')?.textContent.trim() || '',
+      item.dataset.type || ''
+    ]);
+  });
+  var csv = rows.map(function(r) { return r.map(function(c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(','); }).join('\n');
+  var blob = new Blob([csv], {type: 'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'activity-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+</script>
+{% endblock %}

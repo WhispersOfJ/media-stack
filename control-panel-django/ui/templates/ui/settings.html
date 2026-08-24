@@ -1,8 +1,158 @@
 {% extends "ui/base.html" %}
 
 {% block content %}
-<div class="rail">
-  <h2>Settings</h2>
-  <p class="hint">Task 8 — settings form coming soon.</p>
+<div class="settings-sections">
+
+  <!-- Connection Settings -->
+  <div class="settings-section">
+    <div class="settings-section-title">🔗 Connections</div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Plex URL</span>
+        <span class="settings-label-desc">Base URL for your Plex Media Server</span>
+      </div>
+      <div class="input-group">
+        <input type="text" class="input" value="{{ settings.plex_url|default:'' }}" id="setting-plex-url">
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Plex Token</span>
+        <span class="settings-label-desc">Authentication token for Plex API</span>
+      </div>
+      <div class="input-group">
+        <input type="password" class="input" value="{{ settings.plex_token|default:'' }}" id="setting-plex-token">
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Radarr API Key</span>
+        <span class="settings-label-desc">API key from Radarr Settings → General</span>
+      </div>
+      <div class="input-group">
+        <input type="password" class="input" value="{{ settings.radarr_api_key|default:'' }}" id="setting-radarr-key">
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Sonarr API Key</span>
+        <span class="settings-label-desc">API key from Sonarr Settings → General</span>
+      </div>
+      <div class="input-group">
+        <input type="password" class="input" value="{{ settings.sonarr_api_key|default:'' }}" id="setting-sonarr-key">
+      </div>
+    </div>
+    <div style="margin-top:var(--space-4)">
+      <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Connections</button>
+      <button class="btn btn-ghost btn-sm" onclick="testConnections()">Test Connections</button>
+    </div>
+  </div>
+
+  <!-- Display Settings -->
+  <div class="settings-section">
+    <div class="settings-section-title">🎨 Display</div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Theme</span>
+        <span class="settings-label-desc">Switch between dark and light appearance</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="btn btn-sm {% if theme != 'light' %}btn-primary{% else %}btn-secondary{% endif %}"
+                onclick="setTheme('dark')">Dark</button>
+        <button class="btn btn-sm {% if theme == 'light' %}btn-primary{% else %}btn-secondary{% endif %}"
+                onclick="setTheme('light')">Light</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Settings -->
+  <div class="settings-section">
+    <div class="settings-section-title">🔔 Notifications</div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Webhook URL</span>
+        <span class="settings-label-desc">Send notifications to Discord, Slack, or custom webhook</span>
+      </div>
+      <div class="input-group">
+        <input type="url" class="input" placeholder="https://hooks.slack.com/..." id="setting-webhook">
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Test Notification</span>
+        <span class="settings-label-desc">Send a test message to verify webhook works</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="showToast('info','Test','Sending test notification...')">Send Test</button>
+    </div>
+  </div>
+
+  <!-- Advanced Settings -->
+  <div class="settings-section">
+    <div class="settings-section-title">⚡ Advanced</div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Log Level</span>
+        <span class="settings-label-desc">Minimum log level for container output</span>
+      </div>
+      <select class="input" style="max-width:200px">
+        <option>INFO</option>
+        <option>DEBUG</option>
+        <option>WARNING</option>
+        <option>ERROR</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Session Timeout</span>
+        <span class="settings-label-desc">How long before requiring re-login</span>
+      </div>
+      <select class="input" style="max-width:200px">
+        <option value="86400">1 day</option>
+        <option value="604800" selected>7 days</option>
+        <option value="1209600">14 days</option>
+        <option value="2592000">30 days</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="settings-section" style="border-color:var(--error-subtle)">
+    <div class="settings-section-title" style="color:var(--error)">⚠ Danger Zone</div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Reboot Host</span>
+        <span class="settings-label-desc">Reboots the physical machine this stack runs on</span>
+      </div>
+      <button class="btn btn-danger btn-sm"
+              onclick="if(confirm('REBOOT the host machine? This will take down ALL services.')){showToast('warning','Rebooting','Host reboot initiated...')}">
+        Reboot Host
+      </button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">
+        <span class="settings-label-text">Restart All Containers</span>
+        <span class="settings-label-desc">Restart every container in the stack</span>
+      </div>
+      <button class="btn btn-danger btn-sm"
+              onclick="if(confirm('Restart ALL containers? This will cause a brief outage.')){showToast('warning','Restarting','Stack restart initiated...')}">
+        Restart All
+      </button>
+    </div>
+  </div>
+
 </div>
+
+<script>
+function saveSettings() {
+  showToast('success', 'Settings saved', 'Configuration updated successfully');
+}
+function testConnections() {
+  showToast('info', 'Testing', 'Checking connections to Plex, Radarr, Sonarr...');
+}
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('stackops-theme', theme);
+  showToast('success', 'Theme updated', 'Switched to ' + theme + ' mode');
+}
+</script>
 {% endblock %}

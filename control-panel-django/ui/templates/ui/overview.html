@@ -2,11 +2,157 @@
 
 {% block content %}
 <div class="overview-page">
-  <div class="grid grid-4" id="overview-cards"
-       hx-get="/partials/overview-cards/"
-       hx-trigger="every 20s"
-       hx-swap="outerHTML">
+
+  <!-- Quick Actions Toolbar -->
+  <div class="toolbar" id="quick-actions">
+    <button class="btn btn-secondary btn-sm"
+            hx-post="/fleet/rss-sync/radarr/"
+            hx-swap="none"
+            onclick="showToast('info','RSS Sync','Triggered RSS sync for Radarr')">
+      🔄 RSS Sync
+    </button>
+    <button class="btn btn-secondary btn-sm"
+            hx-post="/plex/scan/"
+            hx-swap="none"
+            onclick="showToast('info','Plex Scan','Scanning all libraries')">
+      ▶ Scan Plex
+    </button>
+    <button class="btn btn-secondary btn-sm"
+            hx-post="/fleet/autofix/"
+            hx-swap="none"
+            onclick="showToast('info','Auto-fix','Running queue auto-fix')">
+      🔧 Auto-fix Queue
+    </button>
+    <div class="toolbar-separator"></div>
+    <button class="btn btn-secondary btn-sm"
+            hx-post="/host/actions/prune/"
+            hx-swap="none"
+            onclick="showToast('info','Prune','Pruning unused Docker space')">
+      🧹 Prune Docker
+    </button>
+    <button class="btn btn-secondary btn-sm"
+            hx-get="/fleet/_queue/"
+            hx-target="#queue-preview"
+            hx-swap="innerHTML"
+            onclick="showToast('info','Queue','Refreshing queue status')">
+      📊 Queue Status
+    </button>
+  </div>
+
+  <!-- Live Metrics Grid -->
+  <div hx-get="/partials/overview-cards/"
+       hx-trigger="every 15s"
+       hx-swap="outerHTML"
+       id="overview-cards">
     {% include "ui/partials/overview_cards.html" %}
   </div>
+
+  <!-- Sparklines row -->
+  <div class="grid grid-2" id="sparklines-row">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Host Resources (30m)</span>
+      </div>
+      <div id="chart-host" style="height:120px"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Queue Depth (30m)</span>
+      </div>
+      <div id="chart-queue" style="height:120px"></div>
+    </div>
+  </div>
+
+  <!-- Recent Activity Timeline -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Recent Activity</span>
+      <a href="/activity/" class="btn btn-ghost btn-sm">View all →</a>
+    </div>
+    <div id="activity-timeline"
+         hx-get="/partials/activity-timeline/"
+         hx-trigger="every 30s"
+         hx-swap="innerHTML">
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-dot"></div>
+          <div class="timeline-content">
+            <div class="timeline-title">System ready</div>
+            <div class="timeline-desc">StackOps control panel is running</div>
+          </div>
+          <div class="timeline-time">now</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
+
+<script>
+// ── Sparkline charts (ApexCharts) ──────────────────────────────
+var hostChart, queueChart;
+var hostData = {cpu: [], ram: []};
+var queueData = {downloading: [], queued: []};
+var maxPoints = 60;
+
+function initCharts() {
+  var chartOpts = {
+    chart: {type: 'line', height: 120, sparkline: {enabled: true}, animations: {enabled: false}},
+    stroke: {curve: 'smooth', width: 2},
+    xaxis: {labels: {show: false}, axisBorder: {show: false}, axisTicks: {show: false}},
+    yaxis: {labels: {show: false}, min: 0},
+    grid: {show: false},
+    colors: ['#6366f1', '#22c55e'],
+    tooltip: {enabled: true, theme: 'dark', style: {fontSize: '11px'}},
+  };
+
+  hostChart = new ApexCharts(document.getElementById('chart-host'), Object.assign({}, chartOpts, {
+    series: [{name: 'CPU', data: []}, {name: 'RAM', data: []}],
+  }));
+  hostChart.render();
+
+  queueChart = new ApexCharts(document.getElementById('chart-queue'), Object.assign({}, chartOpts, {
+    series: [{name: 'Downloading', data: []}, {name: 'Queued', data: []}],
+    colors: ['#3b82f6', '#f59e0b'],
+  }));
+  queueChart.render();
+}
+
+function pushHostData(cpu, ram) {
+  hostData.cpu.push(cpu || 0);
+  hostData.ram.push(ram || 0);
+  if (hostData.cpu.length > maxPoints) { hostData.cpu.shift(); hostData.ram.shift(); }
+  if (hostChart) {
+    hostChart.updateSeries([{data: hostData.cpu}, {data: hostData.ram}]);
+  }
+}
+
+function pushQueueData(dl, q) {
+  queueData.downloading.push(dl || 0);
+  queueData.queued.push(q || 0);
+  if (queueData.downloading.length > maxPoints) { queueData.downloading.shift(); queueData.queued.shift(); }
+  if (queueChart) {
+    queueChart.updateSeries([{data: queueData.downloading}, {data: queueData.queued}]);
+  }
+}
+
+// Seed initial data points with zeros
+for (var i = 0; i < 30; i++) { hostData.cpu.push(0); hostData.ram.push(0); queueData.downloading.push(0); queueData.queued.push(0); }
+
+if (typeof ApexCharts !== 'undefined') { initCharts(); } else { document.addEventListener('DOMContentLoaded', initCharts); }
+
+// Listen for overview card updates to push chart data
+document.body.addEventListener('htmx:oobAfterSwap', function(e) {
+  if (e.detail.target && e.detail.target.id === 'overview-cards') {
+    // Extract values from the swapped card and push to charts
+    var el = e.detail.target;
+    var cpu = parseFloat(el.querySelector('[data-cpu]')?.textContent) || 0;
+    var ram = parseFloat(el.querySelector('[data-ram-pct]')?.textContent) || 0;
+    var dl = parseInt(el.querySelector('[data-downloading]')?.textContent) || 0;
+    var ql = parseInt(el.querySelector('[data-queued]')?.textContent) || 0;
+    pushHostData(cpu, ram);
+    pushQueueData(dl, ql);
+  }
+});
+</script>
 {% endblock %}

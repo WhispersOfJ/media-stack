@@ -1,8 +1,86 @@
 {% extends "ui/base.html" %}
 
 {% block content %}
-<div class="rail">
-  <h2>Reference</h2>
-  <p class="hint">Task 8 — reference links + docs panel coming soon.</p>
+<div class="flex flex-col gap-6">
+
+  <!-- Service Links -->
+  <div class="card">
+    <div class="section-heading">
+      <span class="section-title">Services</span>
+    </div>
+    <div class="grid grid-4">
+      <a href="http://{{ plex_host|default:'localhost' }}:32400" target="_blank" class="library-card">
+        <div style="font-size:24px;margin-bottom:var(--space-2)">▶</div>
+        <div class="font-medium">Plex</div>
+        <div class="text-xs text-muted">Media server</div>
+      </a>
+      <a href="http://{{ radarr_host|default:'localhost' }}:7878" target="_blank" class="library-card">
+        <div style="font-size:24px;margin-bottom:var(--space-2)">🎬</div>
+        <div class="font-medium">Radarr</div>
+        <div class="text-xs text-muted">Movie management</div>
+      </a>
+      <a href="http://{{ sonarr_host|default:'localhost' }}:8989" target="_blank" class="library-card">
+        <div style="font-size:24px;margin-bottom:var(--space-2)">📺</div>
+        <div class="font-medium">Sonarr</div>
+        <div class="text-xs text-muted">TV management</div>
+      </a>
+      <a href="http://{{ prowlarr_host|default:'localhost' }}:9696" target="_blank" class="library-card">
+        <div style="font-size:24px;margin-bottom:var(--space-2)">📡</div>
+        <div class="font-medium">Prowlarr</div>
+        <div class="text-xs text-muted">Indexer manager</div>
+      </a>
+      <a href="http://{{ nzbdav_host|default:'localhost' }}:3000" target="_blank" class="library-card">
+        <div style="font-size:24px;margin-bottom:var(--space-2)">📥</div>
+        <div class="font-medium">NzbDAV</div>
+        <div class="text-xs text-muted">Usenet WebDAV</div>
+      </a>
+      <a href="http://{{ seerr_host|default:'localhost' }}:5055" target="_blank" class="library-card">
+        <div style="font-size:24px;margin-bottom:var(--space-2)">🔍</div>
+        <div class="font-medium">Seerr</div>
+        <div class="text-xs text-muted">Request frontend</div>
+      </a>
+      <a href="http://{{ watchstate_host|default:'localhost' }}:8080" target="_blank" class="library-card">
+        <div style="font-size:24px;margin-bottom:var(--space-2)">👁</div>
+        <div class="font-medium">WatchState</div>
+        <div class="text-xs text-muted">Watch tracking</div>
+      </a>
+      <a href="http://{{ grafana_host|default:'localhost' }}:3001" target="_blank" class="library-card">
+        <div style="font-size:24px;margin-bottom:var(--space-2)">📊</div>
+        <div class="font-medium">Grafana</div>
+        <div class="text-xs text-muted">Dashboards</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Documentation -->
+  <div class="card">
+    <div class="section-heading">
+      <span class="section-title">Documentation</span>
+    </div>
+    <div class="flex flex-col gap-2">
+      <div class="activity-item">
+        <div class="activity-icon activity-icon-info">📖</div>
+        <div class="timeline-content">
+          <div class="timeline-title">STACK.md</div>
+          <div class="timeline-desc">Full architecture reference, history, and design decisions</div>
+        </div>
+      </div>
+      <div class="activity-item">
+        <div class="activity-icon activity-icon-info">📋</div>
+        <div class="timeline-content">
+          <div class="timeline-title">PLANS.md</div>
+          <div class="timeline-desc">Roadmap, milestones, and completed work</div>
+        </div>
+      </div>
+      <div class="activity-item">
+        <div class="activity-icon activity-icon-info">📝</div>
+        <div class="timeline-content">
+          <div class="timeline-title">CLAUDE.md</div>
+          <div class="timeline-desc">AI assistant rules and project conventions</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

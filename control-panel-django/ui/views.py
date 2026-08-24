@@ -114,20 +114,68 @@ def home(request):
 
 @login_required
 def settings_page(request):
-    """Placeholder — Task 8 builds the real settings page."""
-    return render(request, "ui/settings.html", {"page": "settings", "page_title": "Settings"})
+    """Settings page — connection config, auth, display, notifications."""
+    ctx = {"page": "settings", "page_title": "Settings"}
+    # Pull current env values for the form
+    import os
+    ctx["settings"] = {
+        "plex_url": os.environ.get("PLEX_URL", ""),
+        "plex_token": os.environ.get("PLEX_TOKEN", ""),
+        "radarr_api_key": os.environ.get("RADARR_API_KEY", ""),
+        "sonarr_api_key": os.environ.get("SONARR_API_KEY", ""),
+    }
+    ctx["theme"] = request.session.get("theme", "dark")
+    return render(request, "ui/settings.html", ctx)
 
 
 @login_required
 def reference_page(request):
-    """Placeholder — Task 8 builds the real reference page."""
-    return render(request, "ui/reference.html", {"page": "reference", "page_title": "Reference"})
+    """Reference page — links to all services and documentation."""
+    import os
+    host_ip = os.environ.get("HOST_IP", "localhost")
+    ctx = {
+        "page": "reference",
+        "page_title": "Reference",
+        "plex_host": host_ip,
+        "radarr_host": host_ip,
+        "sonarr_host": host_ip,
+        "prowlarr_host": host_ip,
+        "nzbdav_host": host_ip,
+        "seerr_host": host_ip,
+        "watchstate_host": host_ip,
+        "grafana_host": host_ip,
+    }
+    return render(request, "ui/reference.html", ctx)
 
 
 @login_required
 def activity_log_page(request):
-    """Placeholder — Task 8 builds the real activity log page."""
-    return render(request, "ui/activity_log.html", {"page": "activity_log", "page_title": "Activity Log"})
+    """Activity Log — searchable audit trail."""
+    from core.models import AuditLog
+    activities = AuditLog.objects.order_by("-created_at")[:100]
+    return render(request, "ui/activity.html", {
+        "page": "activity",
+        "page_title": "Activity Log",
+        "activities": activities,
+    })
+
+
+@login_required
+def logs_page(request):
+    """Log Viewer — centralized container log streaming."""
+    from host.services import list_containers
+    containers = []
+    try:
+        containers = [c["name"] for c in list_containers()]
+    except Exception:
+        pass
+    selected = request.GET.get("container", "")
+    return render(request, "ui/logs.html", {
+        "page": "logs",
+        "page_title": "Log Viewer",
+        "containers": containers,
+        "selected_container": selected,
+    })
 
 
 # ─── htmx partial swap targets ───────────────────────────────────────
@@ -146,6 +194,36 @@ def log_strip_partial(request):
     """Returns the log-strip fragment for htmx polling."""
     return render(request, "ui/partials/log_strip.html", {
         "recent_activity": [],
+    })
+
+
+@login_required
+def activity_timeline_partial(request):
+    """Returns the activity timeline fragment for htmx polling."""
+    from core.models import AuditLog
+    activities = AuditLog.objects.order_by("-created_at")[:20]
+    return render(request, "ui/partials/activity_timeline.html", {
+        "activities": activities,
+    })
+
+
+@login_required
+def log_stream_partial(request):
+    """Returns log lines from a container for htmx polling."""
+    container = request.GET.get("container", "")
+    log_lines = []
+    if container:
+        try:
+            import docker
+            client = docker.from_env()
+            c = client.containers.get(container)
+            raw = c.logs(tail=200, timestamps=True).decode(errors="replace")
+            log_lines = [line.rstrip() for line in raw.splitlines() if line.strip()]
+        except Exception:
+            log_lines = [f"Error: could not read logs for {container}"]
+    return render(request, "ui/partials/log_stream.html", {
+        "log_lines": log_lines,
+        "container": container,
     })
 
 

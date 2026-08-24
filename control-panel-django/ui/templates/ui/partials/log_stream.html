@@ -1,0 +1,19 @@
+{% if log_lines %}
+{% for line in log_lines %}
+<div class="log-line {% if 'error' in line|lower %}log-error{% elif 'warn' in line|lower or 'warning' in line|lower %}log-warn{% endif %}">
+  <span class="log-msg">{{ line }}</span>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state" style="padding:var(--space-8)">
+  <div class="empty-state-icon">≡</div>
+  <div class="empty-state-title">No logs</div>
+  <div class="empty-state-desc">
+    {% if container %}
+    No logs found for {{ container }}. The container may be stopped or not producing output.
+    {% else %}
+    Select a container from the dropdown to view its logs.
+    {% endif %}
+  </div>
+</div>
+{% endif %}

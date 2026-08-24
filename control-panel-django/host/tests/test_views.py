@@ -50,9 +50,9 @@ class TestHostPage:
         assert response.status_code == 200
         content = response.content.decode()
         assert "Host" in content
-        assert "Radarr" in content
+        assert "radarr" in content
         assert "10.0%" in content
-        assert "healthy" in content
+        assert "running" in content
 
     def test_host_page_unauth_redirects(self, db):
         client = Client()
@@ -62,5 +62,5 @@ class TestHostPage:
     def test_host_vitals_partial_renders(self, authed_client):
         response = authed_client.get("/host/_vitals/")
         assert response.status_code == 200
-        assert "Radarr" in response.content.decode()
+        assert "radarr" in response.content.decode()
 

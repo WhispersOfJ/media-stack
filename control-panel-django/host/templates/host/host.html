@@ -1,39 +1,188 @@
 {% extends "ui/base.html" %}
 
 {% block content %}
-<div class="rail">
-  <h2>Host</h2>
-  <div class="vitals-row">
-    <div class="vital">
-      <span class="vital-label">CPU</span>
-      <span class="vital-value">{{ cpu_percent|default:"…" }}%</span>
+<div class="flex flex-col gap-6">
+
+  <!-- Quick Actions -->
+  <div class="toolbar">
+    <button class="btn btn-secondary btn-sm" hx-post="/host/actions/restart-all/" hx-swap="none"
+            onclick="if(confirm('Restart ALL containers?')){showToast('warning','Restarting','Restarting entire stack...')}else{event.preventDefault()}">
+      🔄 Restart All
+    </button>
+    <button class="btn btn-secondary btn-sm" hx-post="/host/actions/prune/" hx-swap="none"
+            onclick="showToast('info','Prune','Pruning unused Docker space...')">
+      🧹 Prune Docker
+    </button>
+    <div class="toolbar-separator"></div>
+    <button class="btn btn-ghost btn-sm" hx-get="/host/_vitals/" hx-target="#host-vitals" hx-swap="innerHTML">
+      ↻ Refresh
+    </button>
+  </div>
+
+  <!-- Resource Gauges -->
+  <div class="host-vitals" id="host-vitals"
+       hx-get="/host/_vitals/"
+       hx-trigger="every 10s"
+       hx-swap="innerHTML">
+    <div class="card">
+      <div class="card-header"><span class="card-title">CPU</span></div>
+      <div class="flex items-center gap-4">
+        <div class="card-value" data-cpu="{{ cpu_percent|default:'0' }}">{{ cpu_percent|default:"…" }}%</div>
+        <div class="progress" style="flex:1">
+          <div class="progress-bar {% if cpu_percent > 80 %}progress-bar-error{% elif cpu_percent > 50 %}progress-bar-warning{% endif %}"
+               style="width:{{ cpu_percent|floatformat:0|default:'0' }}%"></div>
+        </div>
+      </div>
     </div>
-    <div class="vital">
-      <span class="vital-label">RAM</span>
-      <span class="vital-value">{{ mem_percent|default:"…" }}%</span>
-      <span class="vital-sub">{{ mem_used|default:"…" }} / {{ mem_total|default:"…" }}</span>
+    <div class="card">
+      <div class="card-header"><span class="card-title">RAM</span></div>
+      <div class="flex items-center gap-4">
+        <div class="card-value">{{ mem_percent|default:"…" }}%</div>
+        <div class="progress" style="flex:1">
+          <div class="progress-bar {% if mem_percent > 80 %}progress-bar-error{% elif mem_percent > 50 %}progress-bar-warning{% endif %}"
+               style="width:{{ mem_percent|floatformat:0|default:'0' }}%"></div>
+        </div>
+      </div>
+      <div class="card-label">{{ mem_used|default:"…" }} / {{ mem_total|default:"…" }}</div>
     </div>
-    <div class="vital">
-      <span class="vital-label">Disk</span>
-      <span class="vital-value">{{ disk.mount.percent|default:"…" }}%</span>
-      <span class="vital-sub">{{ disk.mount.free|default:"…" }} free</span>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Disk</span></div>
+      <div class="flex items-center gap-4">
+        <div class="card-value">{{ disk.mount.percent|default:"…" }}%</div>
+        <div class="progress" style="flex:1">
+          <div class="progress-bar {% if disk.mount.percent > 90 %}progress-bar-error{% elif disk.mount.percent > 75 %}progress-bar-warning{% endif %}"
+               style="width:{{ disk.mount.percent|floatformat:0|default:'0' }}%"></div>
+        </div>
+      </div>
+      <div class="card-label">{{ disk.mount.free|default:"…" }} free</div>
     </div>
   </div>
 
-  <div hx-get="/host/_vitals/" hx-trigger="every 10s" hx-swap="outerHTML">
-    {% include "host/partials/_containers.html" %}
+  <!-- Container Fleet -->
+  <div class="card">
+    <div class="section-heading">
+      <div>
+        <span class="section-title">Container Fleet</span>
+        <span class="text-xs text-muted" style="margin-left:var(--space-2)">
+          {% if containers %}{{ containers|length }} containers{% endif %}
+        </span>
+      </div>
+      <div class="flex gap-2">
+        <div class="search">
+          <input type="text" class="input" placeholder="Filter containers..." id="container-search"
+                 oninput="filterContainers(this.value)" style="width:200px" aria-label="Filter containers">
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="table" id="container-table">
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortTable('container-table',0)">Name</th>
+            <th class="sortable" onclick="sortTable('container-table',1)">Status</th>
+            <th class="sortable" onclick="sortTable('container-table',2)">CPU</th>
+            <th class="sortable" onclick="sortTable('container-table',3)">Memory</th>
+            <th>Uptime</th>
+            <th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in containers %}
+          <tr data-name="{{ c.name|lower }}">
+            <td><span class="container-name">{{ c.name }}</span></td>
+            <td>
+              <span class="container-status">
+                <span class="container-status-dot {% if c.state == 'running' %}up{% elif c.state == 'unhealthy' %}unhealthy{% else %}down{% endif %}"></span>
+                <span class="badge {% if c.state == 'running' %}badge-success{% elif c.state == 'unhealthy' %}badge-warning{% else %}badge-error{% endif %}">
+                  {{ c.state }}
+                </span>
+              </span>
+            </td>
+            <td class="font-mono text-sm">{{ c.cpu|default:"—" }}</td>
+            <td class="font-mono text-sm">{{ c.mem|default:"—" }}</td>
+            <td class="text-muted text-sm">{{ c.uptime|default:"—" }}</td>
+            <td style="text-align:right">
+              <div class="flex gap-1 justify-end">
+                <button class="btn btn-ghost btn-sm" data-tooltip="Restart"
+                        hx-post="/host/actions/restart/{{ c.name }}/"
+                        hx-swap="none"
+                        onclick="showToast('info','Restart','Restarting {{ c.name }}...')">↻</button>
+                <button class="btn btn-ghost btn-sm" data-tooltip="Stop"
+                        hx-post="/host/actions/stop/{{ c.name }}/"
+                        hx-swap="none"
+                        onclick="showToast('warning','Stop','Stopping {{ c.name }}...')">⏸</button>
+                <button class="btn btn-ghost btn-sm" data-tooltip="Logs"
+                        onclick="window.open('/logs/?container={{ c.name }}','_blank')">≡</button>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6">
+              <div class="empty-state">
+                <div class="empty-state-icon">🖥</div>
+                <div class="empty-state-title">No containers found</div>
+                <div class="empty-state-desc">Docker may not be accessible from this container</div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  {% if mounts %}
-  <div class="rail-sub">Mounts</div>
-  <div class="rule-list">
-    {% for m in mounts %}
-    <div class="rule-row">
-      <span class="rule-title">{{ m.mount }}</span>
-      <span class="rule-status {% if m.status == 'healthy' %}state-success{% else %}state-error{% endif %}">{{ m.status }}</span>
+  <!-- Host Diagnostics -->
+  <div class="grid grid-3">
+    <div class="card card-hover" onclick="runDiagnostic('mount-health')">
+      <div class="card-header"><span class="card-title">Mount Health</span></div>
+      <div id="diag-mount-health" class="text-sm text-muted">Click to check</div>
     </div>
-    {% endfor %}
+    <div class="card card-hover" onclick="runDiagnostic('oom-check')">
+      <div class="card-header"><span class="card-title">OOM Kills</span></div>
+      <div id="diag-oom" class="text-sm text-muted">Click to check</div>
+    </div>
+    <div class="card card-hover" onclick="runDiagnostic('disk-usage')">
+      <div class="card-header"><span class="card-title">Disk Usage</span></div>
+      <div id="diag-disk" class="text-sm text-muted">Click to check</div>
+    </div>
   </div>
-  {% endif %}
+
 </div>
+
+<script>
+function filterContainers(q) {
+  var rows = document.querySelectorAll('#container-table tbody tr');
+  q = q.toLowerCase();
+  rows.forEach(function(r) {
+    var name = r.dataset.name || '';
+    r.style.display = name.indexOf(q) !== -1 ? '' : 'none';
+  });
+}
+
+function sortTable(tableId, col) {
+  var table = document.getElementById(tableId);
+  var tbody = table.querySelector('tbody');
+  var rows = Array.from(tbody.querySelectorAll('tr'));
+  var th = table.querySelectorAll('th')[col];
+  var asc = !th.classList.contains('sorted-asc');
+
+  table.querySelectorAll('th').forEach(function(h) { h.classList.remove('sorted-asc', 'sorted-desc'); });
+  th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+
+  rows.sort(function(a, b) {
+    var av = a.cells[col]?.textContent.trim() || '';
+    var bv = b.cells[col]?.textContent.trim() || '';
+    var an = parseFloat(av), bn = parseFloat(bv);
+    if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+    return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+  rows.forEach(function(r) { tbody.appendChild(r); });
+}
+
+function runDiagnostic(type) {
+  showToast('info', 'Running check', type.replace('-', ' ') + '...');
+}
+</script>
 {% endblock %}

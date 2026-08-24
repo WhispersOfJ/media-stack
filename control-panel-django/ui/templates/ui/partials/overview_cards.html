@@ -1,48 +1,50 @@
-<div class="grid grid-4" id="overview-cards"
-     hx-get="/partials/overview-cards/"
-     hx-trigger="every 20s"
-     hx-swap="outerHTML">
+<div class="grid grid-4" id="overview-cards">
   {# Queue card #}
-  <div class="card">
+  <div class="card card-hover">
     <div class="card-header">
       <span class="card-title">Queue</span>
-      <span class="badge badge-info">Active</span>
+      <span class="badge badge-dot {% if q_downloading > 0 %}badge-info{% else %}badge-success{% endif %}">
+        {% if q_downloading > 0 %}Active{% else %}Idle{% endif %}
+      </span>
     </div>
-    <div class="card-value">{{ q_downloading|default:"0" }}</div>
-    <div class="card-label">downloading · {{ q_queued|default:"0" }} waiting · {{ q_importing|default:"0" }} importing</div>
+    <div class="card-value" data-downloading="{{ q_downloading|default:'0' }}">{{ q_downloading|default:"0" }}</div>
+    <div class="card-label">
+      downloading · <span data-queued="{{ q_queued|default:'0' }}">{{ q_queued|default:"0" }}</span> waiting · {{ q_importing|default:"0" }} importing
+    </div>
   </div>
 
   {# Host card #}
-  <div class="card">
+  <div class="card card-hover">
     <div class="card-header">
       <span class="card-title">Host</span>
-      <span class="badge {% if cpu_percent > 80 %}badge-error{% elif cpu_percent > 50 %}badge-warning{% else %}badge-success{% endif %}">
+      <span class="badge badge-dot {% if cpu_percent > 80 %}badge-error{% elif cpu_percent > 50 %}badge-warning{% else %}badge-success{% endif %}">
         {{ cpu_percent|default:"…" }}%
       </span>
     </div>
-    <div class="card-value">{{ cpu_percent|default:"…" }}%</div>
-    <div class="card-label">RAM {{ mem_percent|default:"…" }}% ({{ mem_used|default:"…" }} / {{ mem_total|default:"…" }})</div>
+    <div class="card-value" data-cpu="{{ cpu_percent|default:'0' }}">{{ cpu_percent|default:"…" }}%</div>
+    <div class="card-label">RAM <span data-ram-pct="{{ mem_percent|default:'0' }}">{{ mem_percent|default:"…" }}%</span> ({{ mem_used|default:"…" }} / {{ mem_total|default:"…" }})</div>
     {% if cpu_percent is not None %}
-    <div class="progress" style="margin-top: 12px;">
-      <div class="progress-bar" style="width: {{ cpu_percent|floatformat:0|default:'0' }}%"></div>
+    <div class="progress" style="margin-top:var(--space-3)">
+      <div class="progress-bar {% if cpu_percent > 80 %}progress-bar-error{% elif cpu_percent > 50 %}progress-bar-warning{% endif %}"
+           style="width:{{ cpu_percent|floatformat:0|default:'0' }}%"></div>
     </div>
     {% endif %}
   </div>
 
   {# Plex card #}
-  <div class="card">
+  <div class="card card-hover">
     <div class="card-header">
       <span class="card-title">Plex</span>
-      <span class="badge {% if plex_state_label == 'Idle' %}badge-success{% else %}badge-info{% endif %}">
+      <span class="badge badge-dot {% if plex_state_label == 'Idle' %}badge-success{% elif plex_state_label == 'Scanning' %}badge-info{% else %}badge-warning{% endif %}">
         {{ plex_state_label|default:"…" }}
       </span>
     </div>
     <div class="card-value">{{ plex_activity_count|default:"0" }}</div>
-    <div class="card-label">active {{ plex_activity_count|default:"0" }}activities</div>
+    <div class="card-label">active {{ plex_activity_count|default:"0" }} activities</div>
   </div>
 
   {# Arr Fleet card #}
-  <div class="card">
+  <div class="card card-hover">
     <div class="card-header">
       <span class="card-title">Arr Fleet</span>
       <span class="badge badge-warning">{{ arr_missing|default:"…" }}</span>
