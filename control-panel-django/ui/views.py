@@ -258,6 +258,8 @@ def log_stream_sse(request):
         )
 
     def generate():
+        import json
+        client = None
         try:
             import docker
             client = docker.from_env()
@@ -265,11 +267,12 @@ def log_stream_sse(request):
             for line in c.logs(stream=True, follow=True, tail=50, timestamps=True):
                 text = line.decode(errors="replace").rstrip()
                 if text:
-                    import json
                     yield f"data: {json.dumps({'line': text})}\n\n"
         except Exception as e:
-            import json
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            if client:
+                client.close()
         yield "data: [DONE]\n\n"
 
     response = StreamingHttpResponse(generate(), content_type="text/event-stream")

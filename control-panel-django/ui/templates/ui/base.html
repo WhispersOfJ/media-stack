@@ -221,6 +221,13 @@
     if (saved) document.documentElement.setAttribute('data-theme', saved);
   })();
 
+  // ── HTML escaping utility ─────────────────────────────────────────
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
   // ── Toast system ──────────────────────────────────────────────────
   function showToast(type, title, message, duration) {
     duration = duration || 4000;
@@ -231,8 +238,8 @@
     toast.innerHTML =
       '<div class="toast-icon">' + (icons[type] || 'i') + '</div>' +
       '<div class="toast-content">' +
-        '<div class="toast-title">' + title + '</div>' +
-        (message ? '<div class="toast-message">' + message + '</div>' : '') +
+        '<div class="toast-title">' + escHtml(title) + '</div>' +
+        (message ? '<div class="toast-message">' + escHtml(message) + '</div>' : '') +
       '</div>' +
       '<button class="toast-dismiss" onclick="dismissToast(this.parentElement)" aria-label="Dismiss">&times;</button>';
     container.appendChild(toast);

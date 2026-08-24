@@ -79,6 +79,7 @@ var autoScroll = true;
 var eventSource = null;
 var logLines = [];
 var maxLogLines = 2000;
+var sseConnectionId = 0;
 
 function connectSSE(container) {
   // Disconnect existing connection
@@ -86,6 +87,9 @@ function connectSSE(container) {
     eventSource.close();
     eventSource = null;
   }
+
+  // Increment connection ID to invalidate stale reconnect timers
+  var myId = ++sseConnectionId;
 
   if (!container) {
     document.getElementById('log-content').innerHTML =
@@ -109,6 +113,8 @@ function connectSSE(container) {
   eventSource = new EventSource('/partials/log-stream-sse/?container=' + encodeURIComponent(container));
 
   eventSource.onmessage = function(e) {
+    // Ignore messages from stale connections
+    if (myId !== sseConnectionId) return;
     try {
       var data = JSON.parse(e.data);
       if (data.error) {
@@ -125,17 +131,19 @@ function connectSSE(container) {
   };
 
   eventSource.onopen = function() {
+    if (myId !== sseConnectionId) return;
     updateSSEStatus('streaming');
   };
 
   eventSource.onerror = function() {
+    if (myId !== sseConnectionId) return;
     if (eventSource.readyState === EventSource.CLOSED) {
       updateSSEStatus('disconnected');
     } else {
       updateSSEStatus('reconnecting');
-      // Reconnect after 3s
+      // Reconnect after 3s, but only if this connection is still current
       setTimeout(function() {
-        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+        if (myId === sseConnectionId && eventSource && eventSource.readyState === EventSource.CLOSED) {
           connectSSE(container);
         }
       }, 3000);
