@@ -139,19 +139,59 @@ function pushQueueData(dl, q) {
 // Seed initial data points with zeros
 for (var i = 0; i < 30; i++) { hostData.cpu.push(0); hostData.ram.push(0); queueData.downloading.push(0); queueData.queued.push(0); }
 
-if (typeof ApexCharts !== 'undefined') { initCharts(); } else { document.addEventListener('DOMContentLoaded', initCharts); }
+// Seed with actual values from the initial page render
+function seedFromPage() {
+  var cpuEl = document.querySelector('#overview-cards [data-cpu]');
+  var ramEl = document.querySelector('#overview-cards [data-ram-pct]');
+  var dlEl = document.querySelector('#overview-cards [data-downloading]');
+  var qlEl = document.querySelector('#overview-cards [data-queued]');
+  if (cpuEl) {
+    var cpu = parseFloat(cpuEl.textContent) || 0;
+    var ram = parseFloat(ramEl?.textContent) || 0;
+    // Replace last 30 zeros with current value (simulate history)
+    for (var i = 0; i < 30; i++) { hostData.cpu[i] = cpu; hostData.ram[i] = ram; }
+    if (hostChart) hostChart.updateSeries([{data: hostData.cpu}, {data: hostData.ram}]);
+  }
+  if (dlEl) {
+    var dl = parseInt(dlEl.textContent) || 0;
+    var ql = parseInt(qlEl?.textContent) || 0;
+    for (var i = 0; i < 30; i++) { queueData.downloading[i] = dl; queueData.queued[i] = ql; }
+    if (queueChart) queueChart.updateSeries([{data: queueData.downloading}, {data: queueData.queued}]);
+  }
+}
+
+if (typeof ApexCharts !== 'undefined') {
+  initCharts();
+  seedFromPage();
+} else {
+  document.addEventListener('DOMContentLoaded', function() {
+    initCharts();
+    seedFromPage();
+  });
+}
 
 // Listen for overview card updates to push chart data
+// Use afterSwap for regular hx-swap, and oobAfterSwap for OOB swaps
+document.body.addEventListener('htmx:afterSwap', function(e) {
+  var el = e.detail.target;
+  if (el && el.id === 'overview-cards') {
+    var cpuEl = el.querySelector('[data-cpu]');
+    var ramEl = el.querySelector('[data-ram-pct]');
+    var dlEl = el.querySelector('[data-downloading]');
+    var qlEl = el.querySelector('[data-queued]');
+    if (cpuEl) pushHostData(parseFloat(cpuEl.textContent) || 0, parseFloat(ramEl?.textContent) || 0);
+    if (dlEl) pushQueueData(parseInt(dlEl.textContent) || 0, parseInt(qlEl?.textContent) || 0);
+  }
+});
 document.body.addEventListener('htmx:oobAfterSwap', function(e) {
-  if (e.detail.target && e.detail.target.id === 'overview-cards') {
-    // Extract values from the swapped card and push to charts
-    var el = e.detail.target;
-    var cpu = parseFloat(el.querySelector('[data-cpu]')?.textContent) || 0;
-    var ram = parseFloat(el.querySelector('[data-ram-pct]')?.textContent) || 0;
-    var dl = parseInt(el.querySelector('[data-downloading]')?.textContent) || 0;
-    var ql = parseInt(el.querySelector('[data-queued]')?.textContent) || 0;
-    pushHostData(cpu, ram);
-    pushQueueData(dl, ql);
+  var el = e.detail.target || e.detail.node;
+  if (el && el.id === 'overview-cards') {
+    var cpuEl = el.querySelector('[data-cpu]');
+    var ramEl = el.querySelector('[data-ram-pct]');
+    var dlEl = el.querySelector('[data-downloading]');
+    var qlEl = el.querySelector('[data-queued]');
+    if (cpuEl) pushHostData(parseFloat(cpuEl.textContent) || 0, parseFloat(ramEl?.textContent) || 0);
+    if (dlEl) pushQueueData(parseInt(dlEl.textContent) || 0, parseInt(qlEl?.textContent) || 0);
   }
 });
 </script>
