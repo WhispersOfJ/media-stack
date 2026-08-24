@@ -1827,6 +1827,28 @@ chose full removal over continued debugging.
   trusting it**, not just the secret's refreshed timestamp — it will silently re-strip this
   guard again if the upstream template hasn't changed to include an equivalent by then.
 
+## FastAPI→Django migration completed, 2026-08-24
+
+The control panel backend has been fully migrated from FastAPI to Django REST Framework.
+All 5 phases are complete:
+
+- **Phase 1:** Django project skeleton, data layer (9 ORM models), auth (session + API key)
+- **Phase 2:** 17 service apps ported to DRF with `/api/v2/*` endpoints (109 API endpoints)
+- **Phase 3:** Browser UI with htmx (7 app pages, 4 shell pages, CRT Pip-Boy aesthetic)
+- **Phase 4:** CLI migration (84 fish functions + commands.json updated to `/api/v2/*`)
+- **Phase 5:** Documentation updates, plan supersession, cutover preparation
+
+**Test coverage:** 820 Django tests passing, 92% total coverage.
+
+**Key files:**
+- `control-panel-django/` — new Django backend (replaces `control-panel/`)
+- `docs/superpowers/specs/2026-08-21-fastapi-to-django-migration-design.md` — design spec
+- `docs/superpowers/plans/2026-08-21-django-migration-phase*.md` — implementation plans
+
+**Cutover:** The FastAPI `control-panel/` remains untouched and live until the Docker Compose
+block is switched to `control-panel-django/`. The old `control-panel/` directory will be
+removed after successful production validation.
+
 ## Deliberate architecture decisions with non-obvious reasons
 
 - **A full Traefik + Authelia + CrowdSec stack (real 2FA, real CrowdSec ban behavior) was built

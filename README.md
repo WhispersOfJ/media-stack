@@ -979,6 +979,12 @@ actual embedded subtitle tracks before a release is grabbed.
 
 ## Control Panel
 
+> **⚠️ Django Migration Complete (2026-08-24):** The control panel backend has been fully
+> migrated from FastAPI to Django REST Framework. The new backend is in `control-panel-django/`
+> with 820 tests passing and 92% coverage. The FastAPI `control-panel/` remains live until
+> Docker Compose is switched over. See [STACK.md](STACK.md#fastapidjango-migration-completed-2026-08-24)
+> for details.
+
 `control-panel/`: a custom FastAPI app (`build: ./control-panel`, not a pulled image), the
 single dashboard for this stack. Live container status/control, one-click ops actions, and
 per-app queue tools. Port **8420**. Its addition allowed Heimdall and Homepage to be removed;

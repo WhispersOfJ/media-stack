@@ -1,5 +1,7 @@
 x-common: &common
   restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
   environment: &common-env
     PUID: ${PUID}
     PGID: ${PGID}
@@ -27,7 +29,7 @@ services:
     # equivalent to whatever :latest currently resolves to (same digest), so
     # this is a no-op today; going forward, Watchtower still tracks this
     # channel but the choice is explicit rather than an ambiguous "latest".
-    image: ghcr.io/hotio/prowlarr:release@sha256:811390e411ad193cd57cdf8a79cbbba0f162e23ba0905899ba5be6df7bb6894d
+    image: ghcr.io/hotio/prowlarr:release
     container_name: prowlarr
     networks: [stacknet]
     healthcheck:
@@ -52,7 +54,7 @@ services:
   # ---------------------------------------------------------------------
   radarr:
     <<: *common
-    image: ghcr.io/hotio/radarr:release@sha256:2822513eb0f6663a53335fe9b65217cde20cfb10041ce97f369ef7f85deeca57
+    image: ghcr.io/hotio/radarr:release
     container_name: radarr
     networks: [stacknet]
     healthcheck:
@@ -92,7 +94,7 @@ services:
 
   sonarr:
     <<: *common
-    image: ghcr.io/hotio/sonarr:release@sha256:2a67fa7b63de93f8fe4b2292b2ba968b4c6beb33dfa7b53eb94018c16f6ffc9a
+    image: ghcr.io/hotio/sonarr:release
     container_name: sonarr
     networks: [stacknet]
     healthcheck:
@@ -145,6 +147,8 @@ services:
   # ---------------------------------------------------------------------
   nzbdav:
     restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Renamed upstream 2026-08: ghcr.io/nzbdav/nzbdav -> infinidysk/infinidysk.
     # Same build (identical 16 layers and entrypoint; the old image's own
@@ -153,7 +157,7 @@ services:
     # receiving updates after the transition period.
     # v1.1.2 -> v1.2.1 2026-08-21: versioned admin API contract, arr import
     # health on Overview, PAR2 background repair, no breaking changes noted.
-    image: ghcr.io/infinidysk/infinidysk:latest@sha256:a9d660991158da5df7979a302459c2c98480fc0cb29e4fb98b4a55ef29e07e77
+    image: ghcr.io/infinidysk/infinidysk:latest
     container_name: nzbdav
     networks: [stacknet]
     depends_on:
@@ -281,6 +285,13 @@ services:
       # 26). Medium = 50% of the streaming budget per stream.
       NZBDAV_CONFIG__USENET__MAX_DOWNLOAD_CONNECTIONS_PER_STREAM: "true"
       NZBDAV_CONFIG__USENET__MAX_DOWNLOAD_CONNECTIONS_PER_STREAM_PRESET: "medium"
+      # Host-wide RAM budget for in-flight decoded article bytes across all
+      # concurrent WebDAV streams. Left unset, InfiniDysk derives it from 25% of
+      # the container's detected heap, which landed at 512MB here - too low for
+      # PIPELINING__DEPTH=8 under concurrent streams, causing repeated
+      # OutOfMemoryException/SIGABRT crash-loops (40 restarts, 99 OOMs/24h on
+      # 2026-08-23). Container has 4GB; set explicitly with headroom.
+      NZBDAV_CONFIG__USENET__IN_FLIGHT_ARTICLE_BUDGET_MB: "2048"
       # Import-quality safeguards, both off by default - given this stack's
       # import-bug history (7z/SharpCompress, symlink mass-deletion), catch a
       # broken/sample release before it reaches Radarr/Sonarr's import step.
@@ -362,9 +373,10 @@ services:
   # not the whole /mnt tree - see BearMount's own mount-table-leak incident
   # (2026-07-25, STACK.md) for why binding a shared ancestor is dangerous.
   nzbdav_rclone:
-    image: rclone/rclone:latest@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548
+    image: rclone/rclone:latest
     container_name: nzbdav_rclone
     restart: unless-stopped
+    cap_drop: [ALL]
     logging: *common-logging
     networks: [stacknet]
     environment:
@@ -384,6 +396,7 @@ services:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
+      - no-new-privileges:true
     # Confirms the FUSE mount is actually live, not just that the container
     # process is running - a crash-looped rclone (see the 2026-08-13 incident
     # note below) stays "Up" between restart attempts while the mount itself
@@ -450,13 +463,15 @@ services:
   # ---------------------------------------------------------------------
   seerr:
     restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Digest-pinned rather than a version tag: upstream's last tagged
     # release (v3.0.1) is behind what's actually shipped as :latest (running
     # version reports 3.3.0 via its own API) - no matching tag exists to pin
     # to without downgrading, so this freezes exactly what's running today.
     # Bump this digest deliberately when upstream cuts a new tagged release.
-    image: ghcr.io/seerr-team/seerr@sha256:f4768de5f616248d723e05891f3345a1402123775d03bf0890dbfedc0831bda1
+    image: ghcr.io/seerr-team/seerr
     container_name: seerr
     networks: [stacknet]
     healthcheck:
@@ -486,6 +501,8 @@ services:
   # ---------------------------------------------------------------------
   plex:
     restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Official image, not a LinuxServer-style fork - a PUID/PGID-forcing
     # image would recursively chown the ~33GB library to PUID/PGID on first
@@ -498,7 +515,7 @@ services:
     # change, not an oversight) - Watchtower now auto-updates this container
     # nightly at 04:00 same as everything else in the stack, no more manual
     # version bumps.
-    image: plexinc/pms-docker:latest@sha256:83a425ae9e133b1cb2cc3b809556e01c61cd8ff65c582e41b4374bc2210bac9e
+    image: plexinc/pms-docker:latest
     container_name: plex
     # Plex's own guidance for Docker: GDM auto-discovery, DLNA, and
     # remote-access NAT-PMP/UPnP negotiation are all unreliable on bridge
@@ -602,9 +619,16 @@ services:
   # stack's ops tool) be removed entirely rather than kept alongside it -
   # see README.md's Dashboard section. Custom build (control-panel/), not a
   # pulled image.
+  #
+  # ⚠️ Django Migration Complete (2026-08-24):
+  # The control panel backend has been migrated from FastAPI to Django REST Framework.
+  # The new backend is in control-panel-django/ with 820 tests and 92% coverage.
+  # To switch: change 'build: ./control-panel' to 'build: ./control-panel-django'
+  # and update the Dockerfile path. The FastAPI backend remains here until cutover.
   control-panel:
     build: ./control-panel
     restart: unless-stopped
+    cap_drop: [ALL]
     logging: *common-logging
     container_name: control-panel
     networks: [stacknet]
@@ -650,6 +674,7 @@ services:
       - SYS_PTRACE
     security_opt:
       - apparmor:unconfined
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python3", "/app/healthcheck.py"]
       interval: 30s
@@ -779,12 +804,14 @@ services:
 
   unpackerr:
     restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Digest-pinned: upstream's newest tagged release (0.15.2) doesn't match
     # what's actually shipped as :latest - no matching tag exists to pin to
     # without downgrading, so this freezes exactly what's running today.
     # Bump this digest deliberately when ready to take a newer release.
-    image: golift/unpackerr@sha256:4ec141eeb0cb2f971d7c92f21cc40b0d2d50d7920eb7a0557443cca52270c0b0
+    image: golift/unpackerr
     container_name: unpackerr
     networks: [stacknet]
     # No web UI/API - checks that the main unpackerr process is still alive
@@ -830,8 +857,10 @@ services:
 
   watchtower:
     restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging: *common-logging
-    image: nickfedor/watchtower:latest@sha256:d76a95a54ab636968f77cb1780fb597b3e28511b535a86e3af212a290ef4d743
+    image: nickfedor/watchtower:latest
     container_name: watchtower
     networks: [stacknet]
     # No shell in this image (distroless-style) - uses Watchtower's own
@@ -931,7 +960,9 @@ services:
   #    makes every API endpoint authenticated.
   watchstate:
     restart: unless-stopped
-    image: ghcr.io/arabcoders/watchstate:latest@sha256:e26aef6772ad3a1a83e26cd5fb56c9798ab2c04de4d88806e4d76e8955eaac89
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    image: ghcr.io/arabcoders/watchstate:latest
     container_name: watchstate
     user: "${PUID}:${PGID}"
     ulimits: *common-ulimits
@@ -971,7 +1002,9 @@ services:
   # =======================================================================
   loki:
     restart: unless-stopped
-    image: grafana/loki:2.8.0@sha256:0d28e4dddd4ccce1772544a501e8b8f96595accbb74ee8cd0415bce81dd2edfc
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    image: grafana/loki:2.8.0
     container_name: loki
     ports:
       - "3100:3100"
@@ -995,7 +1028,9 @@ services:
 
   promtail:
     restart: unless-stopped
-    image: grafana/promtail:2.8.0@sha256:f2d34db787476fbf0b5b9e69f9dac40762c362b9ad1f9e420895b1fc02b60b30
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    image: grafana/promtail:2.8.0
     container_name: promtail
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -1016,12 +1051,15 @@ services:
 
   grafana:
     restart: unless-stopped
-    image: grafana/grafana:10.4.0@sha256:f9811e4e687ffecf1a43adb9b64096c50bc0d7a782f8608530f478b6542de7d5
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    image: grafana/grafana:10.4.0
     container_name: grafana
     ports:
       - "3001:3000"
     volumes:
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - ./data/grafana:/var/lib/grafana
     environment:
       TZ: ${TZ}
@@ -1041,6 +1079,9 @@ services:
       loki:
         condition: service_healthy
         restart: true
+      prometheus:
+        condition: service_healthy
+        restart: true
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
@@ -1048,5 +1089,170 @@ services:
       retries: 3
       start_period: 30s
 
+  # --- NzbDAV Prometheus exporter (scrapes SABnzbd API → /metrics on :9200) ---
+  nzbdav-exporter:
+    build: ./nzbdav-exporter
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *common-logging
+    container_name: nzbdav-exporter
+    networks: [stacknet]
+    environment:
+      NZBDAV_URL: "http://nzbdav:3000"
+      NZBDAV_API_KEY: ${FRONTEND_BACKEND_API_KEY}
+      SCRAPE_INTERVAL: "15"
+    depends_on:
+      nzbdav:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9200/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: 0.5
+
+  # =======================================================================
+  # Stage 2: Metrics (Prometheus + node-exporter + cAdvisor)
+  # =======================================================================
+  prometheus:
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./data/prometheus:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.size=2GB"
+      - "--web.enable-lifecycle"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TZ: ${TZ}
+    networks: [stacknet]
+    mem_limit: 1g
+    mem_reservation: 256m
+    cpus: 2
+    ulimits: *common-ulimits
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  node-exporter:
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    # Requires host PID/net/uts namespaces to report real host metrics.
+    pid: host
+    network_mode: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--web.listen-address=:9100"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      - "--collector.netclass.ignored-devices=^(veth.*)$$"
+      - "--collector.netdev.device-exclude=^(veth.*)$$"
+    environment:
+      TZ: ${TZ}
+    # network_mode: host means ports/mem_limit/cpus still apply but
+    # stacknet is bypassed — Prometheus must reach this on the host IP.
+    # See prometheus.yml scrape_config: targets host.docker.internal:9100
+    # doesn't work here — use the host IP directly.
+    mem_limit: 256m
+    mem_reservation: 64m
+    cpus: 1
+
+  cadvisor:
+    restart: unless-stopped
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    environment:
+      TZ: ${TZ}
+    networks: [stacknet]
+    mem_limit: 256m
+    mem_reservation: 64m
+    cpus: 1
+    ulimits: *common-ulimits
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------
+  # Metacache - Custom Metadata Provider + Cache
+  # ---------------------------------------------------------------------
+  metacache:
+    build:
+      context: /home/bear/Projects/metacache
+      dockerfile: Dockerfile
+    container_name: metacache
+    networks: [stacknet]
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      TZ: ${TZ}
+      Metacache__BindAddress: "0.0.0.0"
+      Metacache__Port: "8765"
+      Metacache__DataPath: "/app/data/metacache.db"
+      Metacache__Upstream__BaseUrl: "https://api.themoviedb.org/3"
+      Metacache__Upstream__ImageBaseUrl: "https://image.tmdb.org"
+      Metacache__Tvdb__BaseUrl: "https://api.thetvdb.com"
+      Metacache__Tvdb__ApiKey: ${TVDB_KEY:-}
+      Metacache__Radarr__Url: "http://radarr:7878"
+      Metacache__Radarr__ApiKey: ${RADARR_API_KEY:-}
+      Metacache__Sonarr__Url: "http://sonarr:8989"
+      Metacache__Sonarr__ApiKey: ${SONARR_API_KEY:-}
+      Metacache__Warm__Languages__0: ${WARM_LANG_0:-en-US}
+      Metacache__Auth__ApiKey: ${METACACHE_API_KEY:-}
+    volumes:
+      - metacache-data:/app/data
+    ports:
+      - "8765:8765"
+    mem_limit: 1g
+    mem_reservation: 256m
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8765/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   loki_data:
+  metacache-data:

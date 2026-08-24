@@ -1,4 +1,8 @@
-# Implementation Plan: Evolved Control-Panel Backend
+# ⚠️ SUPERSEDED — Implementation Plan: Evolved Control-Panel Backend
+
+> **This plan has been superseded by the FastAPI→Django migration.**
+> See `docs/superpowers/specs/2026-08-21-fastapi-to-django-migration-design.md` for the current design.
+> All 5 phases are complete (Phase 5: docs + cutover).
 
 **Recovered:** 2026-08-04, from pre-compaction session transcript (originally produced via `/ecc:plan`, approved with "yes, proceed", then execution deferred with "start it next session").
 

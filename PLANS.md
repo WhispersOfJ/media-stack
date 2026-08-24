@@ -1,5 +1,9 @@
 # PLANS.md
 
+> **⚠️ Django Migration Complete (2026-08-24):** The control panel backend has been fully
+> migrated from FastAPI to Django REST Framework. All 5 phases are complete. See
+> `docs/superpowers/specs/2026-08-21-fastapi-to-django-migration-design.md` for the design spec.
+
 Agent-oriented implementation spec for the current pending work: adding 7 new
 services to the stack, fully wired in, plus a deferred phase-2 naming cleanup.
 
