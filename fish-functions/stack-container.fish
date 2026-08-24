@@ -4,5 +4,5 @@ function stack-container --description 'Restart/stop/start a single stack contai
         echo "Usage: stack-container <restart|stop|start> <container-name>" >&2
         return 1
     end
-    __stack_api POST "/api/container/$argv[2]/$argv[1]"
+    __stack_api POST "/api/v2/host/container/$argv[2]/$argv[1]"
 end

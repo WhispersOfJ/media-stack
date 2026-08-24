@@ -20,5 +20,5 @@ import json, sys
 username, listname, name, search = sys.argv[1:5]
 print(json.dumps({'implementation':'TraktListImport','name':name,'fields':{'username':username,'listname':listname},'search_on_add':search=='true'}))
 " "$argv[2]" "$argv[3]" "$argv[4]" "$search")
-    __stack_api POST "/api/arr/$app/import-list/add" "$body"
+    __stack_api POST "/api/v2/arr/$app/import-list/add" "$body"
 end

@@ -17,5 +17,5 @@ import json, sys
 keyword_id, name, search = sys.argv[1:4]
 print(json.dumps({'implementation':'TMDbKeywordImport','name':name,'fields':{'keywordId':keyword_id},'search_on_add':search=='true'}))
 " "$argv[1]" "$argv[2]" "$search")
-    __stack_api POST "/api/arr/radarr/import-list/add" "$body"
+    __stack_api POST "/api/v2/radarr/exclude" "$body"
 end

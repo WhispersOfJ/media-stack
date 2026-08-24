@@ -18,5 +18,5 @@ function stack-loop-unmonitor --description 'Unmonitor a looping movie or episod
             return 1
         end
     end
-    __stack_api POST "/api/arr/$app/unmonitor" "{\"ids\": [$item_id]}"
+    __stack_api POST "/api/v2/arr/$app/unmonitor" "{\"ids\": [$item_id]}"
 end

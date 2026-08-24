@@ -9,5 +9,5 @@ function stack-loop-candidates --description 'Looping titles in the queue-autofi
         return 1
     end
     set -l app (__stack_arr_app $argv[1])
-    __stack_api GET "/api/arr/$app/loop-candidates"
+    __stack_api GET "/api/v2/arr/$app/loop-candidates"
 end

@@ -3,5 +3,5 @@
 # against the return of the (2)/(3)-suffix importBlocked bug, where a
 # duplicate grab lands as "Title (2)" and the Arr app cannot import it.
 function stack-nzbdav-dedup-check --description 'Verify NzbDAV duplicate-nzb-behavior is still mark-failed'
-    __stack_api GET /api/nzbdav/dedup-config-check
+    __stack_api GET /api/v2/nzbdav/dedup-config-check
 end

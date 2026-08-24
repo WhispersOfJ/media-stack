@@ -23,5 +23,5 @@ if label:
     payload['label'] = label
 print(json.dumps(payload))
 " "$url" "$label" "$app" "$sonarr_app")
-    __stack_api POST "/api/arr/letterboxd/track" "$body"
+    __stack_api POST "/api/v2/letterboxd/track" "$body"
 end

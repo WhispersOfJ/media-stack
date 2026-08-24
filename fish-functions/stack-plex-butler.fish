@@ -15,5 +15,5 @@ function stack-plex-butler --description 'Trigger a named Plex Butler task on de
         echo "(optimize-db / clean-bundles have their own stack-plex subcommands, not this one)" >&2
         return 1
     end
-    __stack_api POST "/api/plex/butler/$argv[1]"
+    __stack_api POST "/api/v2/plex/butler/$argv[1]"
 end

@@ -26,5 +26,5 @@ function stack-arr --description 'Trigger an *arr app maintenance action'
         echo "Unknown action '$argv[2]' - use rss-sync, search-missing, unstick, or unstick-importing." >&2
         return 1
     end
-    __stack_api POST "/api/arr/$app/$argv[2]"
+    __stack_api POST "/api/v2/arr/$app/$argv[2]"
 end

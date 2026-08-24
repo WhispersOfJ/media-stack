@@ -9,7 +9,7 @@ function stack-arr-import --description 'Import a file listed by stack-arr-impor
     end
     set -l host_ip 192.168.4.20
     set -l app (__stack_arr_app $argv[1])
-    set -l body (curl -sS "http://$host_ip:8420/api/arr/$app/manual-import" | python3 -c "
+    set -l body (curl -sS "http://$host_ip:8420/api/v2/arr/$app/manual-import" | python3 -c "
 import json, sys
 items = json.load(sys.stdin)
 idx = int(sys.argv[1])
@@ -21,5 +21,5 @@ print(json.dumps(items[idx]['file']))
     if test -z "$body"
         return 1
     end
-    __stack_api POST "/api/arr/$app/manual-import" $body
+    __stack_api POST "/api/v2/arr/$app/manual-import" $body
 end

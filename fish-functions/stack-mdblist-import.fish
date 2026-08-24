@@ -30,5 +30,5 @@ if int(limit) > 0:
     payload['limit'] = int(limit)
 print(json.dumps(payload))
 " "$url" "$search" "$monitored" "$dry_run" "$limit" "$app" "$sonarr_app")
-    __stack_api POST "/api/mdblist/import-list" "$body"
+    __stack_api POST "/api/v2/mdblist/import-list" "$body"
 end

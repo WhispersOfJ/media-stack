@@ -23,7 +23,7 @@ function stack-arr-toggle-search --description 'Turn RSS sync + automatic search
     end
     set -l rc 0
     for app in $apps
-        __stack_api POST "/api/arr/$app/search-toggle?enabled=$enabled"
+        __stack_api POST "/api/v2/arr/$app/search-toggle?enabled=$enabled"
         or set rc 1
     end
     return $rc

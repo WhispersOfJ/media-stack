@@ -3,7 +3,7 @@
     "Name": "stack-arr",
     "Description": "Trigger an *arr app maintenance action",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/{2}",
+    "PathTemplate": "/api/v2/arr/{1}/{2}",
     "Query": null,
     "Args": [
       {
@@ -38,7 +38,7 @@
     "Name": "stack-arr-backlog",
     "Description": "Show an arr app's internal command queue backlog (searches, RSS sync, bulk moves, etc)",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/command-backlog",
+    "PathTemplate": "/api/v2/arr/{1}/command-backlog",
     "Query": null,
     "Args": [
       {
@@ -61,7 +61,7 @@
     "Name": "stack-arr-import",
     "Description": "Import a file listed by stack-arr-import-candidates",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/manual-import",
+    "PathTemplate": "/api/v2/arr/{1}/manual-import",
     "Query": null,
     "Args": [
       {
@@ -91,7 +91,7 @@
     "Name": "stack-arr-import-all",
     "Description": "Import every stuck queue file for an *arr app in one go",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/manual-import-all",
+    "PathTemplate": "/api/v2/arr/{1}/manual-import-all",
     "Query": null,
     "Args": [
       {
@@ -114,7 +114,7 @@
     "Name": "stack-arr-import-candidates",
     "Description": "List files ready to manually import in an *arr app",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/manual-import",
+    "PathTemplate": "/api/v2/arr/{1}/manual-import",
     "Query": null,
     "Args": [
       {
@@ -137,7 +137,7 @@
     "Name": "stack-arr-list-implementations",
     "Description": "List every import-list implementation Radarr/Sonarr supports",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/import-list/implementations",
+    "PathTemplate": "/api/v2/arr/{1}/import-list/implementations",
     "Query": null,
     "Args": [
       {
@@ -160,7 +160,7 @@
     "Name": "stack-arr-logs",
     "Description": "Tail an *arr app's container log directly",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/logs",
+    "PathTemplate": "/api/v2/arr/{1}/logs",
     "Query": [
       {
         "Key": "lines",
@@ -197,7 +197,7 @@
     "Name": "stack-arr-missing-aired",
     "Description": "List monitored items missing a file that have already aired/released",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/missing-aired",
+    "PathTemplate": "/api/v2/arr/{1}/missing-aired",
     "Query": null,
     "Args": [
       {
@@ -220,7 +220,7 @@
     "Name": "stack-arr-queue-errors",
     "Description": "Show only errored/warning queue items across all arr apps",
     "Method": "GET",
-    "PathTemplate": "/api/arr/queue-errors",
+    "PathTemplate": "/api/v2/arr/queue-errors",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -244,7 +244,7 @@
     "Name": "stack-cleanuparr-instances",
     "Description": "Which *arr apps Cleanuparr has an actual connected instance for",
     "Method": "GET",
-    "PathTemplate": "/api/cleanuparr/instances",
+    "PathTemplate": "/api/v2/cleanuparr/instances",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -256,7 +256,7 @@
     "Name": "stack-cleanuparr-strikes",
     "Description": "Show recent Cleanuparr strikes",
     "Method": "GET",
-    "PathTemplate": "/api/cleanuparr/strikes",
+    "PathTemplate": "/api/v2/cleanuparr/strikes",
     "Query": [
       {
         "Key": "limit",
@@ -282,7 +282,7 @@
     "Name": "stack-command-queue-summary",
     "Description": "Show command queue backlog across all arr apps at once",
     "Method": "GET",
-    "PathTemplate": "/api/arr/command-queue-summary",
+    "PathTemplate": "/api/v2/arr/command-queue-summary",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -294,7 +294,7 @@
     "Name": "stack-container",
     "Description": "Restart/stop/start a single stack container",
     "Method": "POST",
-    "PathTemplate": "/api/container/{2}/{1}",
+    "PathTemplate": "/api/v2/host/container/{2}/{1}",
     "Query": null,
     "Args": [
       {
@@ -325,7 +325,7 @@
     "Name": "stack-customformat-diff",
     "Description": "Diff current Radarr/Sonarr custom-format scores against the last check",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/customformat-snapshot",
+    "PathTemplate": "/api/v2/arr/{1}/customformat-snapshot",
     "Query": null,
     "Args": [
       {
@@ -348,7 +348,7 @@
     "Name": "stack-cutoff-unmet",
     "Description": "List items below quality cutoff in Radarr/Sonarr",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/cutoff-unmet",
+    "PathTemplate": "/api/v2/arr/{1}/cutoff-unmet",
     "Query": [
       {
         "Key": "limit",
@@ -384,7 +384,7 @@
     "Name": "stack-arr-blocklist",
     "Description": "Show blocklisted releases in Radarr/Sonarr",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/blocklist",
+    "PathTemplate": "/api/v2/arr/{1}/blocklist",
     "Query": [
       {
         "Key": "limit",
@@ -420,7 +420,7 @@
     "Name": "stack-arr-clear-blocklist",
     "Description": "Clear every blocklisted release in Radarr/Sonarr",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/blocklist/clear",
+    "PathTemplate": "/api/v2/arr/{1}/blocklist/clear",
     "Query": null,
     "Args": [
       {
@@ -479,7 +479,7 @@
     "Name": "stack-import-lists",
     "Description": "List configured import lists for Radarr/Sonarr",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/import-lists",
+    "PathTemplate": "/api/v2/arr/{1}/import-lists",
     "Query": null,
     "Args": [
       {
@@ -502,7 +502,7 @@
     "Name": "stack-letterboxd-radarr",
     "Description": "Add a Letterboxd film to Radarr by URL",
     "Method": "POST",
-    "PathTemplate": "/api/arr/radarr/add-from-letterboxd",
+    "PathTemplate": "/api/v2/letterboxd/add",
     "Query": null,
     "Args": [
       {
@@ -528,7 +528,7 @@
     "Name": "stack-letterboxd-radarr-collection",
     "Description": "Add every film in a Letterboxd collection to Radarr",
     "Method": "POST",
-    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "PathTemplate": "/api/v2/letterboxd/add-from-list",
     "Query": null,
     "Args": [
       {
@@ -554,7 +554,7 @@
     "Name": "stack-letterboxd-radarr-filmography",
     "Description": "Add every film in a Letterboxd person's filmography to Radarr",
     "Method": "POST",
-    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "PathTemplate": "/api/v2/letterboxd/add-from-list",
     "Query": null,
     "Args": [
       {
@@ -581,7 +581,7 @@
     "Name": "stack-letterboxd-radarr-list",
     "Description": "Add every film in a Letterboxd list to Radarr",
     "Method": "POST",
-    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "PathTemplate": "/api/v2/letterboxd/add-from-list",
     "Query": null,
     "Args": [
       {
@@ -607,7 +607,7 @@
     "Name": "stack-letterboxd-radarr-popular",
     "Description": "Add Letterboxd's popular films to Radarr",
     "Method": "POST",
-    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "PathTemplate": "/api/v2/letterboxd/add-from-list",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -619,7 +619,7 @@
     "Name": "stack-letterboxd-radarr-watched",
     "Description": "Add every film a Letterboxd user has watched to Radarr",
     "Method": "POST",
-    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "PathTemplate": "/api/v2/letterboxd/add-from-list",
     "Query": null,
     "Args": [
       {
@@ -645,7 +645,7 @@
     "Name": "stack-letterboxd-radarr-watchlist",
     "Description": "Add every film in a Letterboxd watchlist to Radarr",
     "Method": "POST",
-    "PathTemplate": "/api/arr/radarr/add-from-letterboxd-list",
+    "PathTemplate": "/api/v2/letterboxd/add-from-list",
     "Query": null,
     "Args": [
       {
@@ -691,7 +691,7 @@
     "Name": "stack-mdblist-import",
     "Description": "Import an MDBList list into Radarr and Sonarr",
     "Method": "POST",
-    "PathTemplate": "/api/mdblist/import-list",
+    "PathTemplate": "/api/v2/mdblist/import-list",
     "Query": null,
     "Args": [
       {
@@ -741,7 +741,7 @@
     "Name": "stack-nzbdav-delete-failures",
     "Description": "Delete all Failed entries from NzbDAV history",
     "Method": "POST",
-    "PathTemplate": "/api/nzbdav/delete-failures",
+    "PathTemplate": "/api/v2/nzbdav/delete-failures",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -753,7 +753,7 @@
     "Name": "stack-nzbdav-history",
     "Description": "Show NzbDAV's recent download history (completed/failed)",
     "Method": "GET",
-    "PathTemplate": "/api/nzbdav/history",
+    "PathTemplate": "/api/v2/nzbdav/history",
     "Query": [
       {
         "Key": "limit",
@@ -779,7 +779,7 @@
     "Name": "stack-nzbdav-queue",
     "Description": "Show NzbDAV's current Usenet download queue",
     "Method": "GET",
-    "PathTemplate": "/api/nzbdav/queue",
+    "PathTemplate": "/api/v2/nzbdav/queue",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -791,7 +791,7 @@
     "Name": "stack-nzbdav-stats",
     "Description": "Show aggregate NzbDAV queue/history stats",
     "Method": "GET",
-    "PathTemplate": "/api/nzbdav/stats",
+    "PathTemplate": "/api/v2/nzbdav/stats",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -827,7 +827,7 @@
     "Name": "stack-plex",
     "Description": "Trigger a Plex maintenance action",
     "Method": "POST",
-    "PathTemplate": "/api/plex/{1}",
+    "PathTemplate": "/api/v2/plex/{1}",
     "Query": null,
     "Args": [
       {
@@ -852,7 +852,7 @@
     "Name": "stack-plex-analyze",
     "Description": "Queue deep media analysis on one Plex library, or all of them",
     "Method": "POST",
-    "PathTemplate": "/api/plex/analyze",
+    "PathTemplate": "/api/v2/plex/analyze",
     "Query": [
       {
         "Key": "library",
@@ -878,7 +878,7 @@
     "Name": "stack-plex-butler",
     "Description": "Trigger a named Plex Butler task on demand",
     "Method": "POST",
-    "PathTemplate": "/api/plex/butler/{1}",
+    "PathTemplate": "/api/v2/plex/butler/{1}",
     "Query": null,
     "Args": [
       {
@@ -919,7 +919,7 @@
     "Name": "stack-plex-duplicates",
     "Description": "Flag Plex movies carrying redundant duplicate files",
     "Method": "GET",
-    "PathTemplate": "/api/plex/duplicates",
+    "PathTemplate": "/api/v2/plex/duplicates",
     "Query": [
       {
         "Key": "min_gb",
@@ -945,7 +945,7 @@
     "Name": "stack-plex-empty-trash",
     "Description": "Empty trash on one Plex library, or all of them",
     "Method": "POST",
-    "PathTemplate": "/api/plex/empty-trash",
+    "PathTemplate": "/api/v2/plex/empty-trash",
     "Query": [
       {
         "Key": "library",
@@ -971,7 +971,7 @@
     "Name": "stack-plex-libraries",
     "Description": "List Plex library names",
     "Method": "GET",
-    "PathTemplate": "/api/plex/libraries",
+    "PathTemplate": "/api/v2/plex/libraries",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -983,7 +983,7 @@
     "Name": "stack-plex-recently-added",
     "Description": "Show recently added items visible in Plex",
     "Method": "GET",
-    "PathTemplate": "/api/plex/recently-added",
+    "PathTemplate": "/api/v2/plex/recently-added",
     "Query": [
       {
         "Key": "limit",
@@ -1009,7 +1009,7 @@
     "Name": "stack-plex-import-rss",
     "Description": "Add a Plex Watchlist RSS feed as a Radarr/Sonarr import list",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/import-list/add",
+    "PathTemplate": "/api/v2/arr/{1}/import-list/add",
     "Query": null,
     "Args": [
       {
@@ -1060,7 +1060,7 @@
     "Name": "stack-plex-sessions",
     "Description": "Show active Plex streaming sessions",
     "Method": "GET",
-    "PathTemplate": "/api/plex/sessions",
+    "PathTemplate": "/api/v2/plex/sessions",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -1072,7 +1072,7 @@
     "Name": "stack-plex-updates",
     "Description": "Check for a Plex update (check only, does not apply it)",
     "Method": "GET",
-    "PathTemplate": "/api/plex/updates",
+    "PathTemplate": "/api/v2/plex/updates",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -1084,7 +1084,7 @@
     "Name": "stack-plex-import-watchlist",
     "Description": "Add your Plex watchlist as a Radarr/Sonarr import list",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/import-list/add",
+    "PathTemplate": "/api/v2/arr/{1}/import-list/add",
     "Query": null,
     "Args": [
       {
@@ -1122,7 +1122,7 @@
     "Name": "stack-prowlarr-indexers",
     "Description": "List Prowlarr indexers with enabled state and priority",
     "Method": "GET",
-    "PathTemplate": "/api/prowlarr/indexers",
+    "PathTemplate": "/api/v2/prowlarr/indexers",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -1194,7 +1194,7 @@
     "Name": "stack-rating-imdb",
     "Description": "Look up a title's IMDb rating",
     "Method": "GET",
-    "PathTemplate": "/api/ratings/imdb?imdb_id={1}",
+    "PathTemplate": "/api/v2/ratings/imdb?imdb_id={1}",
     "Query": null,
     "Args": [
       {
@@ -1214,7 +1214,7 @@
     "Name": "stack-rating-mdblist",
     "Description": "Look up a title's MDBList score",
     "Method": "GET",
-    "PathTemplate": "/api/ratings/mdblist?imdb_id={1}",
+    "PathTemplate": "/api/v2/ratings/mdblist?imdb_id={1}",
     "Query": null,
     "Args": [
       {
@@ -1234,7 +1234,7 @@
     "Name": "stack-arr-recently-added",
     "Description": "List recently added items in Radarr/Sonarr with file status",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/recently-added",
+    "PathTemplate": "/api/v2/arr/{1}/recently-added",
     "Query": [
       {
         "Key": "limit",
@@ -1294,7 +1294,7 @@
     "Name": "stack-seerr-requests",
     "Description": "List Seerr media requests by status",
     "Method": "GET",
-    "PathTemplate": "/api/seerr/requests",
+    "PathTemplate": "/api/v2/seerr/requests",
     "Query": [
       {
         "Key": "status",
@@ -1481,7 +1481,7 @@
     "Name": "stack-tmdb-missing",
     "Description": "Flag Plex items with no TMDb match",
     "Method": "GET",
-    "PathTemplate": "/api/plex/tmdb-missing",
+    "PathTemplate": "/api/v2/plex/tmdb-missing",
     "Query": null,
     "Args": null,
     "Confirm": false,
@@ -1534,7 +1534,7 @@
     "Name": "stack-trakt-import-list",
     "Description": "Add a public Trakt list as a Radarr/Sonarr import list",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/import-list/add",
+    "PathTemplate": "/api/v2/arr/{1}/import-list/add",
     "Query": null,
     "Args": [
       {
@@ -1616,7 +1616,7 @@
     "Name": "stack-loop-candidates",
     "Description": "Titles/episodes looping in the queue-autofix history (2+ downloadFailed in the last N hours) with a suggested remediation",
     "Method": "GET",
-    "PathTemplate": "/api/arr/{1}/loop-candidates",
+    "PathTemplate": "/api/v2/arr/{1}/loop-candidates",
     "Query": null,
     "Args": [
       {
@@ -1639,7 +1639,7 @@
     "Name": "stack-loop-unmonitor",
     "Description": "Unmonitor a movie (Radarr) or episode (Sonarr) by id \u2014 confirmed loop candidate",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/unmonitor",
+    "PathTemplate": "/api/v2/arr/{1}/unmonitor",
     "Query": null,
     "Args": [
       {
@@ -1701,7 +1701,7 @@
     "Name": "stack-nzbdav-dedup-check",
     "Description": "Verify NzbDAV api.duplicate-nzb-behavior is still mark-failed (guards against the (2)/(3)-suffix importBlocked bug returning)",
     "Method": "GET",
-    "PathTemplate": "/api/nzbdav/dedup-config-check",
+    "PathTemplate": "/api/v2/nzbdav/dedup-config-check",
     "Query": null,
     "Args": [],
     "Confirm": false,
@@ -1713,7 +1713,7 @@
     "Name": "stack-watchstate-status",
     "Description": "WatchState sync state: tracked items, last and next import",
     "Method": "GET",
-    "PathTemplate": "/api/watchstate/status",
+    "PathTemplate": "/api/v2/watchstate/status",
     "Query": null,
     "Args": [],
     "Confirm": false,
@@ -1725,7 +1725,7 @@
     "Name": "stack-watchstate-import-now",
     "Description": "Queue an out-of-schedule WatchState import from Plex",
     "Method": "POST",
-    "PathTemplate": "/api/watchstate/import",
+    "PathTemplate": "/api/v2/watchstate/import",
     "Query": null,
     "Args": [],
     "Confirm": false,
@@ -1737,7 +1737,7 @@
     "Name": "stack-watchstate-history",
     "Description": "Watch history, optionally filtered to a title",
     "Method": "GET",
-    "PathTemplate": "/api/watchstate/history",
+    "PathTemplate": "/api/v2/watchstate/history",
     "Query": [
       {
         "Key": "item",
@@ -1773,7 +1773,7 @@
     "Name": "stack-arr-toggle-search",
     "Description": "Turn RSS sync + automatic search on/off for Radarr/Sonarr indexers (the fish command also accepts `all`, which fans out to both apps)",
     "Method": "POST",
-    "PathTemplate": "/api/arr/{1}/search-toggle",
+    "PathTemplate": "/api/v2/arr/{1}/search-toggle",
     "Query": [
       {
         "Key": "enabled",

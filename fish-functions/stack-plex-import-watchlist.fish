@@ -14,5 +14,5 @@ function stack-plex-import-watchlist --description 'Add your Plex watchlist as a
     set -l search true
     set -q _flag_no_search; and set search false
     set -l body '{"implementation":"PlexImport","name":"Plex Watchlist","fields":{},"search_on_add":'"$search"'}'
-    __stack_api POST "/api/arr/$app/import-list/add" "$body"
+    __stack_api POST "/api/v2/arr/$app/import-list/add" "$body"
 end

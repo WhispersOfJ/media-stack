@@ -8,5 +8,5 @@ function stack-rating-mdblist --description 'Look up a title''s MDBList score'
         return 1
     end
     set -l imdb_id $argv[1]
-    __stack_api GET "/api/ratings/mdblist?imdb_id=$imdb_id"
+    __stack_api GET "/api/v2/ratings/mdblist?imdb_id=$imdb_id"
 end

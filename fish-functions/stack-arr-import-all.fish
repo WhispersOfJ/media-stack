@@ -8,5 +8,5 @@ function stack-arr-import-all --description 'Import every stuck queue file for a
         return 1
     end
     set -l app (__stack_arr_app $argv[1])
-    __stack_api POST "/api/arr/$app/manual-import-all"
+    __stack_api POST "/api/v2/arr/$app/manual-import-all"
 end

@@ -9,7 +9,7 @@ function stack-arr-import-candidates --description 'List files ready to manually
     set -l app (__stack_arr_app $argv[1])
     set -l host_ip 192.168.4.20
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
-    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/arr/$app/manual-import" | python3 -c "
+    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/v2/arr/$app/manual-import" | python3 -c "
 import json, sys
 items = json.load(sys.stdin)
 if not items:

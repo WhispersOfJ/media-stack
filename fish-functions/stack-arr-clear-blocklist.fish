@@ -14,5 +14,5 @@ function stack-arr-clear-blocklist --description 'Clear every blocklisted releas
             return 1
         end
     end
-    __stack_api POST "/api/arr/$app/blocklist/clear"
+    __stack_api POST "/api/v2/arr/$app/blocklist/clear"
 end

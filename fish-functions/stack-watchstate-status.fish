@@ -6,5 +6,5 @@
 # design - export writes watch state back INTO Plex, and Plex is the only
 # backend here - so seeing it on means something flipped it.
 function stack-watchstate-status --description 'WatchState sync state, tracked items, import schedule'
-    __stack_api GET /api/watchstate/status
+    __stack_api GET /api/v2/watchstate/status
 end

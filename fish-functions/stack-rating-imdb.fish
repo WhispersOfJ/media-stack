@@ -7,5 +7,5 @@ function stack-rating-imdb --description 'Look up a title''s IMDb rating'
         return 1
     end
     set -l imdb_id $argv[1]
-    __stack_api GET "/api/ratings/imdb?imdb_id=$imdb_id"
+    __stack_api GET "/api/v2/ratings/imdb?imdb_id=$imdb_id"
 end

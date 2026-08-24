@@ -5,5 +5,5 @@ function stack-mdblist-radarr-untrack --description 'Stop nightly-syncing a trac
         return 1
     end
     set -l body (python3 -c "import json, sys; print(json.dumps({'url': sys.argv[1]}))" "$argv[1]")
-    __stack_api POST "/api/mdblist/untrack" "$body"
+    __stack_api POST "/api/v2/mdblist/untrack" "$body"
 end

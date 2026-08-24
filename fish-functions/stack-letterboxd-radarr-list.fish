@@ -52,5 +52,5 @@ if rating_map:
     payload['rating_quality_map'] = {k: v for k, v in pairs}
 print(json.dumps(payload))
 " "$url" "$search" "$monitored" "$limit" "$dry_run" "$tags_as_radarr_tags" "$sonarr_crossover" "$rating_map" "$app" "$sonarr_app")
-    __stack_api POST "/api/arr/radarr/add-from-letterboxd-list" "$body"
+    __stack_api POST "/api/v2/letterboxd/add-from-list" "$body"
 end

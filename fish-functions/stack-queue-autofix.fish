@@ -4,5 +4,5 @@
 # detected, and reports NzbDAV queue health - the recurring 5-minute
 # queue-monitoring loop's workflow in one call.
 function stack-queue-autofix --description 'Blocklist+research stuck Radarr/Sonarr queue items, check NzbDAV health'
-    __stack_api POST "/api/arr/queue-autofix"
+    __stack_api POST "/api/v2/arr/queue-autofix"
 end

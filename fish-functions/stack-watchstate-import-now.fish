@@ -9,5 +9,5 @@
 # substitute for the webhook - all three paths stay on deliberately, because
 # webhooks drop events (upstream's own warning).
 function stack-watchstate-import-now --description 'Queue an out-of-schedule WatchState import from Plex'
-    __stack_api POST /api/watchstate/import '{}'
+    __stack_api POST /api/v2/watchstate/import '{}'
 end

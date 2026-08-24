@@ -5,5 +5,5 @@ function stack-letterboxd-radarr-untrack --description 'Stop nightly-syncing a t
         return 1
     end
     set -l body (python3 -c "import json, sys; print(json.dumps({'url': sys.argv[1]}))" "$argv[1]")
-    __stack_api POST "/api/arr/letterboxd/untrack" "$body"
+    __stack_api POST "/api/v2/letterboxd/untrack" "$body"
 end

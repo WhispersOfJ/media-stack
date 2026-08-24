@@ -6,10 +6,10 @@
 # stack-plex-butler deep-media-analysis below which runs server-wide.
 function stack-plex-analyze --description 'Queue deep media analysis on one Plex library, or all of them'
     if test (count $argv) -eq 0
-        __stack_api POST /api/plex/analyze
+        __stack_api POST /api/v2/plex/analyze
         return
     end
     set -l library (string join ' ' $argv)
     set -l encoded (python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" $library)
-    __stack_api POST "/api/plex/analyze?library=$encoded"
+    __stack_api POST "/api/v2/plex/analyze?library=$encoded"
 end

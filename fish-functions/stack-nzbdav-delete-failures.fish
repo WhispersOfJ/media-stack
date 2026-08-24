@@ -7,5 +7,5 @@
 # block re-grabbing an NZB with a matching release name, so there's no
 # reason to wait for the timer if you're stuck on this right now.
 function stack-nzbdav-delete-failures --description 'Delete all Failed entries from NzbDAV history'
-    __stack_api POST "/api/nzbdav/delete-failures"
+    __stack_api POST "/api/v2/nzbdav/delete-failures"
 end

@@ -17,5 +17,5 @@ function stack-plex-import-rss --description 'Add a Plex Watchlist RSS feed as a
 import json, sys
 print(json.dumps({'implementation':'PlexRssImport','name':'Plex Watchlist RSS','fields':{'url':sys.argv[1]},'search_on_add':sys.argv[2]=='true'}))
 " "$argv[2]" "$search")
-    __stack_api POST "/api/arr/$app/import-list/add" "$body"
+    __stack_api POST "/api/v2/arr/$app/import-list/add" "$body"
 end

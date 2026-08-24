@@ -28,5 +28,5 @@ if int(limit) > 0:
     payload['limit'] = int(limit)
 print(json.dumps(payload))
 " "$url" "$search" "$monitored" "$limit" "$dry_run" "$app")
-    __stack_api POST "/api/arr/radarr/add-from-letterboxd-list" "$body"
+    __stack_api POST "/api/v2/letterboxd/add-from-list" "$body"
 end

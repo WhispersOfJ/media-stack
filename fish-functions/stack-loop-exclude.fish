@@ -18,5 +18,5 @@ function stack-loop-exclude --description 'Add a Radarr movie to Exclusions'
             return 1
         end
     end
-    __stack_api POST "/api/arr/$app/exclude" "{\"movieId\": $movie_id}"
+    __stack_api POST "/api/v2/arr/$app/exclude" "{\"movieId\": $movie_id}"
 end

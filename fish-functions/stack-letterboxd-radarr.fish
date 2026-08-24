@@ -18,5 +18,5 @@ function stack-letterboxd-radarr --description 'Add a Letterboxd film to Radarr 
     set -q _flag_no_monitor; and set monitored false
     set -q _flag_dry_run; and set dry_run true
     set -l body (python3 -c "import json, sys; print(json.dumps({'url': sys.argv[1], 'search': sys.argv[2] == 'true', 'monitored': sys.argv[3] == 'true', 'dry_run': sys.argv[4] == 'true', 'app': sys.argv[5]}))" "$url" "$search" "$monitored" "$dry_run" "$app")
-    __stack_api POST "/api/arr/radarr/add-from-letterboxd" "$body"
+    __stack_api POST "/api/v2/letterboxd/add" "$body"
 end

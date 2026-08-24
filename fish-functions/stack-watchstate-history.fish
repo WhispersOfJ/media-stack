@@ -16,5 +16,5 @@ from urllib.parse import urlencode
 pairs = [(k, v) for k, v in zip(('item', 'limit'), sys.argv[1:]) if v.strip()]
 print(('?' + urlencode(pairs)) if pairs else '')
 " "$argv[1]" "$argv[2]")
-    __stack_api GET "/api/watchstate/history$query"
+    __stack_api GET "/api/v2/watchstate/history$query"
 end
