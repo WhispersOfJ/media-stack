@@ -32,66 +32,85 @@ logger = logging.getLogger(__name__)
 def _overview_context():
     """Gather all cross-app data for the overview cards + partial.
 
-    Calls every relevant services.py function directly.  Each call is
-    wrapped in a try/except so one unreachable service (e.g. Plex
-    restarting) doesn't blank the whole page — the card shows "…"
-    instead.
+    Runs all four service calls in parallel via threads to minimize
+    latency. Each call is wrapped in a try/except so one unreachable
+    service doesn't blank the whole page.
     """
     ctx: dict = {}
 
-    # ── Queue aggregate ────────────────────────────────────────────
-    try:
-        from queue_app.services import aggregate_queue_status
-        qstatus = aggregate_queue_status()
-        downloading = 0
-        queued = 0
-        importing = 0
-        for app_name, data in qstatus.items():
-            if isinstance(data, dict) and "error" not in data:
-                downloading += len(data.get("downloading", []))
-                queued += len(data.get("queued", []))
-                importing += len(data.get("importing", []))
-        ctx["q_downloading"] = downloading
-        ctx["q_queued"] = queued
-        ctx["q_importing"] = importing
-    except Exception:
-        logger.warning("overview: queue aggregate failed", exc_info=True)
+    def _fetch_queue():
+        try:
+            from queue_app.services import aggregate_queue_status
+            qstatus = aggregate_queue_status()
+            downloading = queued = importing = 0
+            for data in qstatus.values():
+                if isinstance(data, dict) and "error" not in data:
+                    downloading += len(data.get("downloading", []))
+                    queued += len(data.get("queued", []))
+                    importing += len(data.get("importing", []))
+            return {"q_downloading": downloading, "q_queued": queued, "q_importing": importing}
+        except Exception:
+            logger.warning("overview: queue aggregate failed", exc_info=True)
+            return {}
 
-    # ── Host resources ─────────────────────────────────────────────
-    try:
-        from host.services import host_resources
-        hr = host_resources()
-        ctx["cpu_percent"] = hr.get("cpu_percent")
-        ctx["mem_percent"] = hr.get("mem_percent")
-        ctx["mem_used"] = hr.get("mem_used")
-        ctx["mem_total"] = hr.get("mem_total")
-    except Exception:
-        logger.warning("overview: host resources failed", exc_info=True)
+    def _fetch_host():
+        try:
+            from host.services import host_resources
+            hr = host_resources()
+            return {
+                "cpu_percent": hr.get("cpu_percent"),
+                "mem_percent": hr.get("mem_percent"),
+                "mem_used": hr.get("mem_used"),
+                "mem_total": hr.get("mem_total"),
+            }
+        except Exception:
+            logger.warning("overview: host resources failed", exc_info=True)
+            return {}
 
-    # ── Plex health ────────────────────────────────────────────────
-    try:
-        from plex.services import scan_health
-        sh = scan_health()
-        state = sh.get("state", "unknown")
-        ctx["plex_state"] = state
-        ctx["plex_state_label"] = state.replace("_", " ").title()
-        ctx["plex_activity_count"] = len(sh.get("activities", []))
-        ctx["plex_state_pct"] = 50  # default; real would come from progress
-    except Exception:
-        logger.warning("overview: plex health failed", exc_info=True)
+    def _fetch_plex():
+        try:
+            from plex.services import scan_health
+            sh = scan_health()
+            state = sh.get("state", "unknown")
+            return {
+                "plex_state": state,
+                "plex_state_label": state.replace("_", " ").title(),
+                "plex_activity_count": len(sh.get("activities", [])),
+                "plex_state_pct": 50,
+            }
+        except Exception:
+            logger.warning("overview: plex health failed", exc_info=True)
+            return {}
 
-    # ── Arr Fleet backlog ──────────────────────────────────────────
-    try:
-        import arr.services as arr_services
-        bs = arr_services.backlog_status()
-        apps = bs.get("apps", {})
-        ctx["arr_app_count"] = len(apps)
-        ctx["arr_missing"] = sum(
-            v.get("missing", 0) for v in apps.values()
-            if isinstance(v, dict) and "error" not in v
-        )
-    except Exception:
-        logger.warning("overview: arr backlog failed", exc_info=True)
+    def _fetch_arr():
+        try:
+            import arr.services as arr_services
+            bs = arr_services.backlog_status()
+            apps = bs.get("apps", {})
+            return {
+                "arr_app_count": len(apps),
+                "arr_missing": sum(
+                    v.get("missing", 0) for v in apps.values()
+                    if isinstance(v, dict) and "error" not in v
+                ),
+            }
+        except Exception:
+            logger.warning("overview: arr backlog failed", exc_info=True)
+            return {}
+
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {
+            pool.submit(_fetch_queue): "queue",
+            pool.submit(_fetch_host): "host",
+            pool.submit(_fetch_plex): "plex",
+            pool.submit(_fetch_arr): "arr",
+        }
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                ctx.update(future.result())
+            except Exception:
+                logger.warning("overview: %s failed", futures[future], exc_info=True)
 
     return ctx
 

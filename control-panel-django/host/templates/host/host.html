@@ -6,7 +6,7 @@
   <!-- Quick Actions -->
   <div class="toolbar">
     <button class="btn btn-secondary btn-sm" hx-post="/host/actions/restart-all/" hx-swap="none"
-            onclick="if(confirm('Restart ALL containers?')){showToast('warning','Restarting','Restarting entire stack...')}else{event.preventDefault()}">
+            onclick="confirmDanger('Restart All Containers','This will briefly interrupt all services in the stack.',function(){showToast('warning','Restarting','Restarting entire stack...')})">
       🔄 Restart All
     </button>
     <button class="btn btn-secondary btn-sm" hx-post="/host/actions/prune/" hx-swap="none"

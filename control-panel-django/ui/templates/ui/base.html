@@ -146,6 +146,11 @@
     </footer>
   </div>
 
+  <!-- ═══ Connection Lost Banner ═══ -->
+  <div id="connection-banner" class="connection-banner" style="display:none">
+    <span>⚠ Connection lost — attempting to reconnect...</span>
+  </div>
+
   <!-- ═══ Command Palette Modal ═══ -->
   <div id="command-palette" class="modal-backdrop" style="display:none" onclick="if(event.target===this)toggleCommandPalette()">
     <div class="modal" style="max-width:560px" role="dialog" aria-label="Command palette">
@@ -162,6 +167,26 @@
       </div>
       <div id="command-results" class="modal-body" style="padding-top:var(--space-2);max-height:400px;overflow-y:auto">
         <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Confirmation Modal ═══ -->
+  <div id="confirm-modal" class="modal-backdrop" style="display:none">
+    <div class="modal" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
+      <div class="modal-header">
+        <h2 id="confirm-title" class="modal-title">Confirm Action</h2>
+        <button class="modal-close" onclick="closeConfirm()" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-desc" style="color:var(--text-secondary);font-size:var(--text-sm)"></p>
+        <div id="confirm-danger-label" style="display:none;margin-top:var(--space-3);padding:var(--space-3);background:var(--error-subtle);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius-md)">
+          <p style="color:var(--error);font-size:var(--text-sm);font-weight:var(--weight-medium)">⚠ This action is irreversible</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeConfirm()">Cancel</button>
+        <button id="confirm-action-btn" class="btn btn-danger" onclick="executeConfirm()">Confirm</button>
       </div>
     </div>
   </div>
@@ -340,6 +365,83 @@
       if (items[cmdIndex]) items[cmdIndex].scrollIntoView({block: 'nearest'});
     } else if (e.key === 'Enter' && cmdIndex >= 0 && items[cmdIndex]) {
       runCommand(items[cmdIndex].dataset.cmd);
+    }
+  }
+
+  // ── Confirmation modal ──────────────────────────────────────────
+  var _confirmCallback = null;
+  function confirmDanger(title, desc, callback) {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-desc').textContent = desc;
+    document.getElementById('confirm-danger-label').style.display = '';
+    document.getElementById('confirm-action-btn').className = 'btn btn-danger';
+    document.getElementById('confirm-modal').style.display = '';
+    _confirmCallback = callback;
+  }
+  function confirmAction(title, desc, callback) {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-desc').textContent = desc;
+    document.getElementById('confirm-danger-label').style.display = 'none';
+    document.getElementById('confirm-action-btn').className = 'btn btn-primary';
+    document.getElementById('confirm-modal').style.display = '';
+    _confirmCallback = callback;
+  }
+  function closeConfirm() {
+    document.getElementById('confirm-modal').style.display = 'none';
+    _confirmCallback = null;
+  }
+  function executeConfirm() {
+    if (_confirmCallback) _confirmCallback();
+    closeConfirm();
+  }
+
+  // ── Connection health monitoring ──────────────────────────────────
+  var _connFailCount = 0;
+  function checkConnection() {
+    fetch('/healthz', {method: 'GET', cache: 'no-store'})
+      .then(function(r) {
+        if (r.ok) {
+          _connFailCount = 0;
+          document.getElementById('connection-banner').style.display = 'none';
+        } else { _connFailCount++; }
+      })
+      .catch(function() {
+        _connFailCount++;
+        if (_connFailCount >= 3) {
+          document.getElementById('connection-banner').style.display = '';
+        }
+      });
+  }
+  setInterval(checkConnection, 30000);
+
+  // ── Inline editing ───────────────────────────────────────────────
+  function startInlineEdit(el, options) {
+    var current = el.textContent.trim();
+    var input = document.createElement('input');
+    input.type = options.type || 'text';
+    input.value = current;
+    input.className = 'input';
+    input.style.cssText = 'width:100%;padding:4px 8px;font-size:inherit';
+    input.onblur = function() { finishInlineEdit(el, input, options); };
+    input.onkeydown = function(e) {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') { input.value = current; input.blur(); }
+    };
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+  }
+  function finishInlineEdit(el, input, options) {
+    var val = input.value.trim();
+    var original = el.getAttribute('data-original') || el.textContent;
+    if (val && val !== original) {
+      el.textContent = val;
+      el.setAttribute('data-original', val);
+      if (options.onSave) options.onSave(val);
+      showToast('success', 'Saved', options.label + ' updated');
+    } else {
+      el.textContent = original || val;
     }
   }
 

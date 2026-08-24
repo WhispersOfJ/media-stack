@@ -124,7 +124,7 @@
         <span class="settings-label-desc">Reboots the physical machine this stack runs on</span>
       </div>
       <button class="btn btn-danger btn-sm"
-              onclick="if(confirm('REBOOT the host machine? This will take down ALL services.')){showToast('warning','Rebooting','Host reboot initiated...')}">
+              onclick="confirmDanger('Reboot Host','This will reboot the physical machine. ALL services will go down.',function(){showToast('warning','Rebooting','Host reboot initiated...')})">
         Reboot Host
       </button>
     </div>
@@ -134,7 +134,7 @@
         <span class="settings-label-desc">Restart every container in the stack</span>
       </div>
       <button class="btn btn-danger btn-sm"
-              onclick="if(confirm('Restart ALL containers? This will cause a brief outage.')){showToast('warning','Restarting','Stack restart initiated...')}">
+              onclick="confirmDanger('Restart All Containers','This will briefly interrupt all services in the stack.',function(){showToast('warning','Restarting','Stack restart initiated...')})">
         Restart All
       </button>
     </div>
@@ -144,7 +144,22 @@
 
 <script>
 function saveSettings() {
-  showToast('success', 'Settings saved', 'Configuration updated successfully');
+  var data = {
+    plex_url: document.getElementById('setting-plex-url').value,
+    plex_token: document.getElementById('setting-plex-token').value,
+    radarr_api_key: document.getElementById('setting-radarr-key').value,
+    sonarr_api_key: document.getElementById('setting-sonarr-key').value,
+  };
+  fetch('/api/v2/host/settings/', {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+    body: JSON.stringify(data)
+  }).then(function(r) {
+    if (r.ok) showToast('success', 'Settings saved', 'Configuration updated successfully');
+    else showToast('error', 'Save failed', 'Server returned ' + r.status);
+  }).catch(function() {
+    showToast('error', 'Save failed', 'Could not reach server');
+  });
 }
 function testConnections() {
   showToast('info', 'Testing', 'Checking connections to Plex, Radarr, Sonarr...');
