@@ -690,7 +690,8 @@ services:
       TZ: ${TZ}
       # Jellyfin removed entirely (reverted back to Plex - see CLAUDE.md's
       # History for the reversion and the reasons behind it).
-      PLEX_URL: ${PLEX_URL}
+      # Use host.docker.internal to reach Plex on the host network from stacknet
+      PLEX_URL: http://host.docker.internal:32400
       PLEX_TOKEN: ${PLEX_TOKEN}
       RADARR_API_KEY: ${RADARR_API_KEY}
       SONARR_API_KEY: ${SONARR_API_KEY}
@@ -739,6 +740,8 @@ services:
       # Persist the Django SQLite DB in the mounted /data volume so it
       # survives container recreations.
       CONTROL_PANEL_DB_PATH: /data/control-panel.db
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # issues restarts, not just reads status. Runs as root in-container (no
