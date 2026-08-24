@@ -1,27 +1,37 @@
-<div class="poster-gallery-toolbar">
-  <span class="rule-title">{{ gallery.library|default:library }}</span>
-  <span class="rule-desc">{{ gallery.total|default:"0" }} items</span>
-  <button class="btn-ghost"
-          hx-get="/posters/_gallery/{{ library|urlencode }}/?offset={{ offset|add:60 }}"
-          hx-target="#poster-gallery"
-          hx-swap="outerHTML"
-          {% if offset|add:60 >= gallery.total %}disabled{% endif %}>
-    Next
-  </button>
-</div>
-<div class="poster-gallery-grid" id="poster-gallery">
+{% load static %}
+<div data-total="{{ gallery.total|default:'0' }}" style="display:none"></div>
+<div class="poster-gallery">
   {% for item in gallery.items %}
-  <div class="poster-gallery-card glass-card">
-    <span class="poster-gallery-title">{{ item.title }}</span>
-    {% if item.year %}<span class="rule-desc">{{ item.year }}</span>{% endif %}
+  <div class="poster-thumb" data-rating-key="{{ item.ratingKey }}">
     {% if item.thumbUrl %}
-    <img src="{{ item.thumbUrl }}" alt="{{ item.title }}" loading="lazy"
-         style="aspect-ratio:2/3;object-fit:cover;border-radius:6px;">
+    <img src="{{ item.thumbUrl }}" alt="{{ item.title }}" loading="lazy">
     {% else %}
-    <div class="hint" style="aspect-ratio:2/3;">no poster</div>
+    <div class="poster-placeholder" style="aspect-ratio:2/3;background:var(--bg-tertiary);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;color:var(--text-muted)">
+      ☐
+    </div>
     {% endif %}
+    <div class="poster-overlay">
+      <div>
+        <div class="poster-title">{{ item.title }}</div>
+        {% if item.year %}
+        <div class="text-xs" style="color:var(--text-muted);margin-top:2px">{{ item.year }}</div>
+        {% endif %}
+      </div>
+    </div>
+    <!-- Quality indicator -->
+    <div class="poster-quality">
+      {% if item.has_poster %}
+      <span class="badge badge-success" style="font-size:10px">✓</span>
+      {% else %}
+      <span class="badge badge-error" style="font-size:10px">✕</span>
+      {% endif %}
+    </div>
   </div>
   {% empty %}
-  <div class="hint">No items in this library.</div>
+  <div class="empty-state" style="grid-column:1/-1">
+    <div class="empty-state-icon">☐</div>
+    <div class="empty-state-title">No items found</div>
+    <div class="empty-state-desc">This library may be empty or unreachable</div>
+  </div>
   {% endfor %}
 </div>
