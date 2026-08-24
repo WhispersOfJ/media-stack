@@ -8,33 +8,33 @@
     <button class="btn btn-secondary btn-sm"
             hx-post="/fleet/rss-sync/radarr/"
             hx-swap="none"
-            onclick="showToast('info','RSS Sync','Triggered RSS sync for Radarr')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','RSS Sync','Radarr RSS sync triggered')">
       🔄 RSS Sync
     </button>
     <button class="btn btn-secondary btn-sm"
             hx-post="/plex/scan/"
             hx-swap="none"
-            onclick="showToast('info','Plex Scan','Scanning all libraries')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Plex Scan','Scanning all libraries')">
       ▶ Scan Plex
     </button>
     <button class="btn btn-secondary btn-sm"
             hx-post="/fleet/autofix/"
             hx-swap="none"
-            onclick="showToast('info','Auto-fix','Running queue auto-fix')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Auto-fix','Queue auto-fix started')">
       🔧 Auto-fix Queue
     </button>
     <div class="toolbar-separator"></div>
     <button class="btn btn-secondary btn-sm"
             hx-post="/host/actions/prune/"
             hx-swap="none"
-            onclick="showToast('info','Prune','Pruning unused Docker space')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Prune','Docker space pruned')">
       🧹 Prune Docker
     </button>
     <button class="btn btn-secondary btn-sm"
             hx-get="/fleet/_queue/"
             hx-target="#queue-preview"
             hx-swap="innerHTML"
-            onclick="showToast('info','Queue','Refreshing queue status')">
+            hx-on::after-request="if(event.detail.successful)showToast('info','Queue','Queue status refreshed')">
       📊 Queue Status
     </button>
   </div>

@@ -8,25 +8,25 @@
     <button class="btn btn-primary btn-sm"
             hx-post="/plex/scan/"
             hx-swap="none"
-            onclick="showToast('info','Scan','Scanning all libraries...')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Scan','All libraries scanning')">
       ▶ Scan All
     </button>
     <button class="btn btn-secondary btn-sm"
             hx-post="/plex/empty-trash/"
             hx-swap="none"
-            onclick="showToast('info','Trash','Emptying trash...')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Trash','Trash emptied')">
       🗑 Empty Trash
     </button>
     <button class="btn btn-secondary btn-sm"
             hx-post="/plex/optimize-db/"
             hx-swap="none"
-            onclick="showToast('info','Optimize','Optimizing database...')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Optimize','Database optimized')">
       ⚙ Optimize DB
     </button>
     <button class="btn btn-secondary btn-sm"
             hx-post="/plex/clean-bundles/"
             hx-swap="none"
-            onclick="showToast('info','Clean','Cleaning bundles...')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Clean','Bundles cleaned')">
       🧹 Clean Bundles
     </button>
     <div class="toolbar-separator"></div>

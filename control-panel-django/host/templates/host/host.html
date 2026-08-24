@@ -10,7 +10,7 @@
       🔄 Restart All
     </button>
     <button class="btn btn-secondary btn-sm" hx-post="/host/actions/prune/" hx-swap="none"
-            onclick="showToast('info','Prune','Pruning unused Docker space...')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Prune','Docker space pruned')">
       🧹 Prune Docker
     </button>
     <div class="toolbar-separator"></div>
@@ -105,13 +105,13 @@
             <td style="text-align:right">
               <div class="flex gap-1 justify-end">
                 <button class="btn btn-ghost btn-sm" data-tooltip="Restart"
-                        hx-post="/host/actions/restart/{{ c.name }}/"
+                        hx-post="/host/actions/restart/{{ c.name }}/?activated=true"
                         hx-swap="none"
-                        onclick="showToast('info','Restart','Restarting {{ c.name }}...')">↻</button>
+                        hx-on::after-request="if(event.detail.successful)showToast('success','Restart','{{ c.name }} restarted')">↻</button>
                 <button class="btn btn-ghost btn-sm" data-tooltip="Stop"
                         hx-post="/host/actions/stop/{{ c.name }}/"
                         hx-swap="none"
-                        onclick="showToast('warning','Stop','Stopping {{ c.name }}...')">⏸</button>
+                        hx-on::after-request="if(event.detail.successful)showToast('success','Stop','{{ c.name }} stopped')">⏸</button>
                 <button class="btn btn-ghost btn-sm" data-tooltip="Logs"
                         onclick="window.open('/logs/?container={{ c.name }}','_blank')">≡</button>
               </div>

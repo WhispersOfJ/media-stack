@@ -8,19 +8,19 @@
     <button class="btn btn-primary btn-sm"
             hx-post="/fleet/rss-sync/radarr/"
             hx-swap="none"
-            onclick="showToast('info','RSS Sync','Triggered for Radarr')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','RSS Sync','Radarr RSS sync triggered')">
       🔄 RSS Sync Radarr
     </button>
     <button class="btn btn-primary btn-sm"
             hx-post="/fleet/rss-sync/sonarr/"
             hx-swap="none"
-            onclick="showToast('info','RSS Sync','Triggered for Sonarr')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','RSS Sync','Sonarr RSS sync triggered')">
       🔄 RSS Sync Sonarr
     </button>
     <button class="btn btn-secondary btn-sm"
             hx-post="/fleet/autofix/"
             hx-swap="none"
-            onclick="showToast('info','Auto-fix','Running queue auto-fix')">
+            hx-on::after-request="if(event.detail.successful)showToast('success','Auto-fix','Queue auto-fix started')">
       🔧 Auto-fix Queue
     </button>
     <div class="toolbar-separator"></div>
