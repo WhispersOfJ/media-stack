@@ -736,6 +736,9 @@ services:
       # secure=True, browsers refuse to send the session cookie over plain
       # HTTP — don't set this on a plain-LAN setup (the default).
       CONTROL_PANEL_SECURE_COOKIE: ${CONTROL_PANEL_SECURE_COOKIE:-}
+      # Persist the Django SQLite DB in the mounted /data volume so it
+      # survives container recreations.
+      CONTROL_PANEL_DB_PATH: /data/control-panel.db
     volumes:
       # Read-write, unlike Homepage's docker.sock mount above - this one
       # issues restarts, not just reads status. Runs as root in-container (no
