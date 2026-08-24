@@ -626,7 +626,7 @@ services:
   # To switch: change 'build: ./control-panel' to 'build: ./control-panel-django'
   # and update the Dockerfile path. The FastAPI backend remains here until cutover.
   control-panel:
-    build: ./control-panel
+    build: ./control-panel-django
     restart: unless-stopped
     cap_drop: [ALL]
     logging: *common-logging
