@@ -246,3 +246,35 @@ def log_stream_partial(request):
     })
 
 
+@login_required
+def log_stream_sse(request):
+    """SSE endpoint that streams live container logs."""
+    from django.http import StreamingHttpResponse
+    container = request.GET.get("container", "")
+    if not container:
+        return StreamingHttpResponse(
+            iter(["data: {\"error\": \"No container specified\"}\n\n"]),
+            content_type="text/event-stream",
+        )
+
+    def generate():
+        try:
+            import docker
+            client = docker.from_env()
+            c = client.containers.get(container)
+            for line in c.logs(stream=True, follow=True, tail=50, timestamps=True):
+                text = line.decode(errors="replace").rstrip()
+                if text:
+                    import json
+                    yield f"data: {json.dumps({'line': text})}\n\n"
+        except Exception as e:
+            import json
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    response = StreamingHttpResponse(generate(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+

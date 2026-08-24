@@ -6,7 +6,7 @@
   <!-- Log Viewer -->
   <div class="log-viewer">
     <div class="log-viewer-toolbar">
-      <select class="input" id="log-container" style="width:200px" onchange="loadLogs(this.value)" aria-label="Select container">
+      <select class="input" id="log-container" style="width:200px" onchange="connectSSE(this.value)" aria-label="Select container">
         <option value="">Select a container...</option>
         {% for c in containers %}
         <option value="{{ c }}" {% if c == selected_container %}selected{% endif %}>{{ c }}</option>
@@ -32,17 +32,14 @@
       <button class="btn btn-ghost btn-sm" onclick="downloadLogs()" data-tooltip="Download logs">
         ⬇
       </button>
+      <div id="sse-status" class="badge badge-neutral" style="font-size:10px">Disconnected</div>
     </div>
 
-    <div class="log-viewer-content" id="log-content"
-         hx-get="/partials/log-stream/?container={{ selected_container|default:'' }}"
-         hx-trigger="every 3s"
-         hx-swap="innerHTML"
-         hx-swap-oob="true">
+    <div class="log-viewer-content" id="log-content">
       <div class="empty-state" style="padding:var(--space-8)">
         <div class="empty-state-icon">≡</div>
         <div class="empty-state-title">Select a container</div>
-        <div class="empty-state-desc">Choose a container from the dropdown to view its logs in real-time</div>
+        <div class="empty-state-desc">Choose a container from the dropdown to stream its logs in real-time</div>
       </div>
     </div>
   </div>
@@ -64,7 +61,7 @@
     <div class="card" style="padding:var(--space-3)">
       <div class="stat">
         <span class="stat-label">Warnings</span>
-        <span class="stat-value text-warning" id="log-warnings" style="color:var(--warning)">0</span>
+        <span class="stat-value" id="log-warnings" style="color:var(--warning)">0</span>
       </div>
     </div>
     <div class="card" style="padding:var(--space-3)">
@@ -79,27 +76,118 @@
 
 <script>
 var autoScroll = true;
+var eventSource = null;
+var logLines = [];
+var maxLogLines = 2000;
 
-function loadLogs(container) {
-  if (!container) return;
-  var url = '/partials/log-stream/?container=' + encodeURIComponent(container);
-  var el = document.getElementById('log-content');
-  el.setAttribute('hx-get', url);
-  el.setAttribute('hx-trigger', 'every 3s');
-  htmx.trigger(el, 'htmx:load');
+function connectSSE(container) {
+  // Disconnect existing connection
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+
+  if (!container) {
+    document.getElementById('log-content').innerHTML =
+      '<div class="empty-state" style="padding:var(--space-8)">' +
+      '<div class="empty-state-icon">≡</div>' +
+      '<div class="empty-state-title">Select a container</div>' +
+      '<div class="empty-state-desc">Choose a container from the dropdown to stream its logs</div>' +
+      '</div>';
+    document.getElementById('log-stats').style.display = 'none';
+    updateSSEStatus('disconnected');
+    return;
+  }
+
+  // Clear existing logs
+  logLines = [];
+  document.getElementById('log-content').innerHTML = '';
   document.getElementById('log-stats').style.display = '';
-  document.getElementById('log-updated').textContent = new Date().toLocaleTimeString();
+  updateSSEStatus('connecting');
+
+  // Connect to SSE endpoint
+  eventSource = new EventSource('/partials/log-stream-sse/?container=' + encodeURIComponent(container));
+
+  eventSource.onmessage = function(e) {
+    try {
+      var data = JSON.parse(e.data);
+      if (data.error) {
+        addLogLine('[ERROR] ' + data.error, 'error');
+        return;
+      }
+      if (data.line) {
+        addLogLine(data.line, detectLevel(data.line));
+      }
+    } catch(err) {
+      // Raw text line
+      addLogLine(e.data, detectLevel(e.data));
+    }
+  };
+
+  eventSource.onopen = function() {
+    updateSSEStatus('streaming');
+  };
+
+  eventSource.onerror = function() {
+    if (eventSource.readyState === EventSource.CLOSED) {
+      updateSSEStatus('disconnected');
+    } else {
+      updateSSEStatus('reconnecting');
+      // Reconnect after 3s
+      setTimeout(function() {
+        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+          connectSSE(container);
+        }
+      }, 3000);
+    }
+  };
+}
+
+function addLogLine(text, level) {
+  var content = document.getElementById('log-content');
+  var line = document.createElement('div');
+  line.className = 'log-line log-' + (level || 'info');
+  line.innerHTML = '<span class="log-msg">' + escapeHtml(text) + '</span>';
+  content.appendChild(line);
+
+  logLines.push({text: text, level: level, el: line});
+
+  // Trim old lines
+  if (logLines.length > maxLogLines) {
+    var removed = logLines.shift();
+    if (removed.el && removed.el.parentNode) removed.el.remove();
+  }
+
+  // Auto-scroll
+  if (autoScroll) {
+    content.scrollTop = content.scrollHeight;
+  }
+
+  // Update stats
+  updateStats();
+}
+
+function detectLevel(line) {
+  var lower = line.toLowerCase();
+  if (lower.indexOf('error') !== -1 || lower.indexOf('fatal') !== -1 || lower.indexOf('exception') !== -1) return 'error';
+  if (lower.indexOf('warn') !== -1 || lower.indexOf('warning') !== -1) return 'warn';
+  if (lower.indexOf('debug') !== -1) return 'debug';
+  return 'info';
+}
+
+function escapeHtml(text) {
+  var div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function filterLogs(q) {
   var level = document.getElementById('log-level').value.toLowerCase();
-  var lines = document.querySelectorAll('#log-content .log-line');
   q = q.toLowerCase();
-  lines.forEach(function(line) {
-    var text = line.textContent.toLowerCase();
-    var matchQ = !q || text.indexOf(q) !== -1;
-    var matchLevel = !level || line.classList.contains('log-' + level);
-    line.style.display = (matchQ && matchLevel) ? '' : 'none';
+  logLines.forEach(function(item) {
+    var matchQ = !q || item.text.toLowerCase().indexOf(q) !== -1;
+    var matchLevel = !level || item.level === level;
+    item.el.style.display = (matchQ && matchLevel) ? '' : 'none';
   });
 }
 
@@ -111,8 +199,7 @@ function toggleAutoScroll() {
 }
 
 function downloadLogs() {
-  var lines = document.querySelectorAll('#log-content .log-line');
-  var text = Array.from(lines).map(function(l) { return l.textContent; }).join('\n');
+  var text = logLines.map(function(item) { return item.text; }).join('\n');
   var blob = new Blob([text], {type: 'text/plain'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -120,19 +207,27 @@ function downloadLogs() {
   a.click();
 }
 
-// Auto-scroll to bottom
-document.getElementById('log-content').addEventListener('htmx:afterSwap', function() {
-  if (autoScroll) {
-    this.scrollTop = this.scrollHeight;
-  }
-  // Update stats
-  var lines = document.querySelectorAll('#log-content .log-line');
-  document.getElementById('log-total').textContent = lines.length;
-  var errors = document.querySelectorAll('#log-content .log-error');
-  document.getElementById('log-errors').textContent = errors.length;
-  var warnings = document.querySelectorAll('#log-content .log-warn');
-  document.getElementById('log-warnings').textContent = warnings.length;
+function updateStats() {
+  document.getElementById('log-total').textContent = logLines.length;
+  var errors = logLines.filter(function(l) { return l.level === 'error'; }).length;
+  var warnings = logLines.filter(function(l) { return l.level === 'warn'; }).length;
+  document.getElementById('log-errors').textContent = errors;
+  document.getElementById('log-warnings').textContent = warnings;
   document.getElementById('log-updated').textContent = new Date().toLocaleTimeString();
-});
+}
+
+function updateSSEStatus(status) {
+  var el = document.getElementById('sse-status');
+  var map = {
+    'disconnected': {class: 'badge-neutral', text: 'Disconnected'},
+    'connecting': {class: 'badge-warning', text: 'Connecting...'},
+    'streaming': {class: 'badge-success', text: '● Streaming'},
+    'reconnecting': {class: 'badge-warning', text: 'Reconnecting...'},
+  };
+  var s = map[status] || map['disconnected'];
+  el.className = 'badge ' + s.class;
+  el.style.fontSize = '10px';
+  el.textContent = s.text;
+}
 </script>
 {% endblock %}

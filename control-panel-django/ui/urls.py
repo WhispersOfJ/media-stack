@@ -6,6 +6,7 @@ from ui.views import (
     home,
     log_strip_partial,
     log_stream_partial,
+    log_stream_sse,
     logs_page,
     overview_cards_partial,
     reference_page,
@@ -21,6 +22,8 @@ urlpatterns = [
     path("reference/", reference_page, name="reference"),
     path("activity/", activity_log_page, name="activity_log"),
     path("logs/", logs_page, name="logs"),
+    # SSE streaming endpoints
+    path("partials/log-stream-sse/", log_stream_sse, name="log_stream_sse"),
     # htmx partial swap targets
     path("partials/log-strip/", log_strip_partial, name="log_strip_partial"),
     path("partials/status-dot/", status_dot_partial, name="status_dot_partial"),
