@@ -1,58 +1,291 @@
 <!doctype html>
-<html lang="en" data-theme="amber">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>control-panel — {{ page|default:'overview' }}</title>
+  <title>StackOps — {{ page|default:'overview' }}</title>
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/vendor/hyperscript.min.js"></script>
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-  <!-- Thin nav bar — one entry per page, matching the spec's mockup -->
-  <nav id="topbar">
-    <div class="brand">
-      <div class="brand-mark"></div>
-      <div class="brand-text">
-        <span class="brand-title">control-panel</span>
-        <span class="brand-sub">the stack</span>
+  <!-- Sidebar navigation -->
+  <aside id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">⚡</div>
+      <span class="brand-name">StackOps</span>
+    </div>
+    
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-item {% if page == 'overview' %}active{% endif %}">
+        <span class="nav-icon">◉</span>
+        <span class="nav-label">Overview</span>
+      </a>
+      <a href="/fleet/" class="nav-item {% if page == 'fleet' %}active{% endif %}">
+        <span class="nav-icon">⊞</span>
+        <span class="nav-label">Fleet</span>
+      </a>
+      <a href="/host/" class="nav-item {% if page == 'host' %}active{% endif %}">
+        <span class="nav-icon">⚙</span>
+        <span class="nav-label">Host</span>
+      </a>
+      <a href="/plex/" class="nav-item {% if page == 'plex' %}active{% endif %}">
+        <span class="nav-icon">▶</span>
+        <span class="nav-label">Plex</span>
+      </a>
+      <a href="/posters/" class="nav-item {% if page == 'posters' %}active{% endif %}">
+        <span class="nav-icon">☐</span>
+        <span class="nav-label">Posters</span>
+      </a>
+      <a href="/letterboxd/" class="nav-item {% if page == 'letterboxd' %}active{% endif %}">
+        <span class="nav-icon">♥</span>
+        <span class="nav-label">Letterboxd</span>
+      </a>
+      <a href="/mdblist/" class="nav-item {% if page == 'mdblist' %}active{% endif %}">
+        <span class="nav-icon">☰</span>
+        <span class="nav-label">MDBList</span>
+      </a>
+      
+      <div class="nav-divider"></div>
+      
+      <a href="/settings/" class="nav-item {% if page == 'settings' %}active{% endif %}">
+        <span class="nav-icon">⛭</span>
+        <span class="nav-label">Settings</span>
+      </a>
+      <a href="/reference/" class="nav-item {% if page == 'reference' %}active{% endif %}">
+        <span class="nav-icon">?</span>
+        <span class="nav-label">Reference</span>
+      </a>
+    </nav>
+    
+    <div class="sidebar-footer">
+      <div class="status-indicator" hx-get="/partials/status-dot/" hx-trigger="every 15s" hx-swap="outerHTML">
+        {% include "ui/partials/status_dot.html" %}
       </div>
+      <a href="/auth/logout/" class="nav-item logout">
+        <span class="nav-icon">⏻</span>
+        <span class="nav-label">Logout</span>
+      </a>
     </div>
-    <div class="stampgrid">
-      <div><span class="label">nav</span></div>
-      <a class="quicklink" href="/" {% if page == 'overview' %}style="color:var(--accent)"{% endif %}>Overview</a>
-      <a class="quicklink" href="/fleet/" {% if page == 'fleet' %}style="color:var(--accent)"{% endif %}>Fleet</a>
-      <a class="quicklink" href="/host/" {% if page == 'host' %}style="color:var(--accent)"{% endif %}>Host</a>
-      <a class="quicklink" href="/plex/" {% if page == 'plex' %}style="color:var(--accent)"{% endif %}>Plex</a>
-      <a class="quicklink" href="/posters/" {% if page == 'posters' %}style="color:var(--accent)"{% endif %}>Posters</a>
-      <a class="quicklink" href="/letterboxd/" {% if page == 'letterboxd' %}style="color:var(--accent)"{% endif %}>Lbx</a>
-      <a class="quicklink" href="/mdblist/" {% if page == 'mdblist' %}style="color:var(--accent)"{% endif %}>MDB</a>
-      <a class="quicklink" href="/settings/" {% if page == 'settings' %}style="color:var(--accent)"{% endif %}>Settings</a>
-      <a class="quicklink" href="/reference/" {% if page == 'reference' %}style="color:var(--accent)"{% endif %}>Ref</a>
-    </div>
-    <div class="hud" hx-get="/partials/status-dot/" hx-trigger="every 15s" hx-swap="outerHTML">
-      {% include "ui/partials/status_dot.html" %}
-    </div>
-    <div style="margin-left:auto">
-      <a class="quicklink" href="/auth/logout/">Log out</a>
-    </div>
-  </nav>
+  </aside>
 
   <!-- Main content area -->
-  <main id="workspace">
-    <div id="col-main">
+  <div id="main-wrapper">
+    <!-- Top bar with search/command palette -->
+    <header id="topbar">
+      <div class="topbar-left">
+        <h1 class="page-title">{{ page_title|default:'Overview' }}</h1>
+      </div>
+      
+      <div class="topbar-center">
+        <!-- Command palette trigger -->
+        <div class="command-trigger" onclick="toggleCommandPalette()">
+          <span class="command-icon">⌘</span>
+          <span class="command-text">Command palette...</span>
+          <span class="command-shortcut">Ctrl+K</span>
+        </div>
+      </div>
+      
+      <div class="topbar-right">
+        <div class="system-status" hx-get="/partials/status-dot/" hx-trigger="every 15s" hx-swap="outerHTML">
+          {% include "ui/partials/status_dot.html" %}
+        </div>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main id="content">
       {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Activity log strip -->
+    <footer id="log-strip"
+            hx-get="/partials/log-strip/"
+            hx-trigger="every 10s"
+            hx-swap="outerHTML">
+      {% include "ui/partials/log_strip.html" %}
+    </footer>
+  </div>
+
+  <!-- Command Palette Modal -->
+  <div id="command-palette" class="modal hidden" onclick="if(event.target===this)toggleCommandPalette()">
+    <div class="modal-content command-palette-content">
+      <div class="command-input-wrapper">
+        <input type="text" id="command-input" 
+               placeholder="Type a command or search..."
+               oninput="filterCommands(this.value)"
+               onkeydown="handleCommandKeydown(event)">
+      </div>
+      <div id="command-results" class="command-results">
+        <!-- Command results populated by JS -->
+      </div>
     </div>
-  </main>
+  </div>
 
-  <!-- Log strip below the grid, fed by htmx polling -->
-  <footer id="log-strip"
-          hx-get="/partials/log-strip/"
-          hx-trigger="every 10s"
-          hx-swap="outerHTML">
-    {% include "ui/partials/log_strip.html" %}
-  </footer>
+  <script>
+    // Command palette functionality
+    const commands = [
+      // ARR commands
+      { name: 'RSS Sync', description: 'Trigger RSS sync for an *arr app', command: 'stack-arr radarr rss-sync', category: 'ARR' },
+      { name: 'Search Missing', description: 'Search for missing content', command: 'stack-arr radarr search-missing', category: 'ARR' },
+      { name: 'Command Backlog', description: 'Show command queue backlog', command: 'stack-arr-backlog radarr', category: 'ARR' },
+      { name: 'Import Candidates', description: 'Show import candidates', command: 'stack-arr-import-candidates radarr', category: 'ARR' },
+      { name: 'Import All', description: 'Import all stuck files', command: 'stack-arr-import-all radarr', category: 'ARR' },
+      { name: 'Queue Errors', description: 'Show queue errors', command: 'stack-arr-queue-errors radarr', category: 'ARR' },
+      { name: 'Missing Aired', description: 'Show missing aired content', command: 'stack-arr-missing-aired radarr', category: 'ARR' },
+      { name: 'Recently Added', description: 'Show recently added content', command: 'stack-arr-recently-added radarr', category: 'ARR' },
+      { name: 'Blocklist', description: 'Show blocklist', command: 'stack-arr-blocklist radarr', category: 'ARR' },
+      { name: 'Cutoff Unmet', description: 'Show items not meeting cutoff', command: 'stack-cutoff-unmet radarr', category: 'ARR' },
+      { name: 'Custom Format Diff', description: 'Show custom format differences', command: 'stack-customformat-diff radarr', category: 'ARR' },
+      
+      // Plex commands
+      { name: 'Plex Scan', description: 'Scan Plex libraries', command: 'stack-plex-scan', category: 'Plex' },
+      { name: 'Plex Refresh', description: 'Refresh Plex libraries', command: 'stack-plex-refresh-libraries', category: 'Plex' },
+      { name: 'Empty Trash', description: 'Empty Plex trash', command: 'stack-plex-empty-trash', category: 'Plex' },
+      { name: 'Optimize DB', description: 'Optimize Plex database', command: 'stack-plex-optimize-db', category: 'Plex' },
+      { name: 'Clean Bundles', description: 'Clean Plex bundles', command: 'stack-plex-clean-bundles', category: 'Plex' },
+      { name: 'Plex Sessions', description: 'Show active sessions', command: 'stack-plex-sessions', category: 'Plex' },
+      { name: 'Plex Libraries', description: 'Show library info', command: 'stack-plex-libraries', category: 'Plex' },
+      { name: 'Recently Added', description: 'Show recently added in Plex', command: 'stack-plex-recently-added', category: 'Plex' },
+      { name: 'Duplicates', description: 'Show duplicate content', command: 'stack-plex-duplicates', category: 'Plex' },
+      { name: 'Analyze', description: 'Run deep media analysis', command: 'stack-plex-analyze', category: 'Plex' },
+      
+      // Host commands
+      { name: 'Host Status', description: 'Show host status', command: 'stack-status', category: 'Host' },
+      { name: 'Resource Check', description: 'Check host resources', command: 'stack-resource-check', category: 'Host' },
+      { name: 'Disk Usage', description: 'Show disk usage', command: 'stack-disk-usage', category: 'Host' },
+      { name: 'Mount Health', description: 'Check mount health', command: 'stack-mount-health', category: 'Host' },
+      { name: 'OOM Check', description: 'Check for OOM conditions', command: 'stack-oom-check', category: 'Host' },
+      { name: 'Perms Check', description: 'Check permissions', command: 'stack-perms-check', category: 'Host' },
+      { name: 'Image Check', description: 'Check for image updates', command: 'stack-image-check', category: 'Host' },
+      { name: 'Restart All', description: 'Restart all services', command: 'stack-restart-all', category: 'Host' },
+      { name: 'Version', description: 'Show stack version', command: 'stack-version', category: 'Host' },
+      { name: 'Top', description: 'Show container resource usage', command: 'stack-top', category: 'Host' },
+      
+      // Queue commands
+      { name: 'Queue Status', description: 'Show queue status', command: 'stack-queue-status', category: 'Queue' },
+      { name: 'Queue Autofix', description: 'Auto-fix queue issues', command: 'stack-queue-autofix', category: 'Queue' },
+      { name: 'Command Queue Summary', description: 'Show command queue summary', command: 'stack-command-queue-summary', category: 'Queue' },
+      { name: 'Backlog Status', description: 'Show backlog status', command: 'stack-backlog-status', category: 'Queue' },
+      
+      // Letterboxd commands
+      { name: 'Letterboxd Sync', description: 'Sync Letterboxd lists', command: 'stack-letterboxd-radarr-list', category: 'Letterboxd' },
+      { name: 'Letterboxd Tracked', description: 'Show tracked lists', command: 'stack-letterboxd-radarr-tracked', category: 'Letterboxd' },
+      { name: 'Letterboxd History', description: 'Show sync history', command: 'stack-letterboxd-radarr-history', category: 'Letterboxd' },
+      
+      // MDBList commands
+      { name: 'MDBList Import', description: 'Import from MDBList', command: 'stack-mdblist-import', category: 'MDBList' },
+      { name: 'MDBList Tracked', description: 'Show tracked lists', command: 'stack-mdblist-radarr-tracked', category: 'MDBList' },
+      
+      // WatchState commands
+      { name: 'WatchState Status', description: 'Show watch state status', command: 'stack-watchstate-status', category: 'WatchState' },
+      { name: 'WatchState Import', description: 'Import watch state', command: 'stack-watchstate-import-now', category: 'WatchState' },
+      { name: 'WatchState History', description: 'Show watch history', command: 'stack-watchstate-history', category: 'WatchState' },
+      
+      // NzbDAV commands
+      { name: 'NzbDAV Queue', description: 'Show NzbDAV queue', command: 'stack-nzbdav-queue', category: 'NzbDAV' },
+      { name: 'NzbDAV Stats', description: 'Show NzbDAV stats', command: 'stack-nzbdav-stats', category: 'NzbDAV' },
+      { name: 'NzbDAV History', description: 'Show NzbDAV history', command: 'stack-nzbdav-history', category: 'NzbDAV' },
+      { name: 'Delete Failures', description: 'Delete failed items', command: 'stack-nzbdav-delete-failures', category: 'NzbDAV' },
+      
+      // Ratings commands
+      { name: 'IMDB Rating', description: 'Look up IMDB rating', command: 'stack-rating-imdb', category: 'Ratings' },
+      { name: 'MDBList Rating', description: 'Look up MDBList rating', command: 'stack-rating-mdblist', category: 'Ratings' },
+      
+      // Cleanuparr commands
+      { name: 'Cleanuparr Instances', description: 'Show cleanuparr instances', command: 'stack-cleanuparr-instances', category: 'Cleanup' },
+      { name: 'Cleanuparr Strikes', description: 'Show cleanuparr strikes', command: 'stack-cleanuparr-strikes', category: 'Cleanup' },
+    ];
 
-  {# CRT scanline + vignette overlay — pure CSS, ported from the SPA's style.css #}
+    let selectedCommandIndex = -1;
+
+    function toggleCommandPalette() {
+      const palette = document.getElementById('command-palette');
+      palette.classList.toggle('hidden');
+      if (!palette.classList.contains('hidden')) {
+        document.getElementById('command-input').focus();
+        filterCommands('');
+      }
+    }
+
+    function filterCommands(query) {
+      const results = document.getElementById('command-results');
+      const filtered = query 
+        ? commands.filter(cmd => 
+            cmd.name.toLowerCase().includes(query.toLowerCase()) ||
+            cmd.description.toLowerCase().includes(query.toLowerCase()) ||
+            cmd.command.toLowerCase().includes(query.toLowerCase())
+          )
+        : commands;
+      
+      // Group by category
+      const grouped = {};
+      filtered.forEach(cmd => {
+        if (!grouped[cmd.category]) grouped[cmd.category] = [];
+        grouped[cmd.category].push(cmd);
+      });
+      
+      let html = '';
+      for (const [category, cmds] of Object.entries(grouped)) {
+        html += `<div class="command-category">${category}</div>`;
+        cmds.forEach((cmd, i) => {
+          html += `
+            <div class="command-item" onclick="executeCommand('${cmd.command}')" data-index="${i}">
+              <div class="command-item-name">${cmd.name}</div>
+              <div class="command-item-desc">${cmd.description}</div>
+              <code class="command-item-code">${cmd.command}</code>
+            </div>
+          `;
+        });
+      }
+      
+      results.innerHTML = html || '<div class="command-empty">No matching commands</div>';
+      selectedCommandIndex = -1;
+    }
+
+    function handleCommandKeydown(event) {
+      const items = document.querySelectorAll('.command-item');
+      if (event.key === 'Escape') {
+        toggleCommandPalette();
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        selectedCommandIndex = Math.min(selectedCommandIndex + 1, items.length - 1);
+        items[selectedCommandIndex]?.classList.add('selected');
+        items[selectedCommandIndex - 1]?.classList.remove('selected');
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        selectedCommandIndex = Math.max(selectedCommandIndex - 1, 0);
+        items[selectedCommandIndex]?.classList.add('selected');
+        items[selectedCommandIndex + 1]?.classList.remove('selected');
+      } else if (event.key === 'Enter' && selectedCommandIndex >= 0) {
+        items[selectedCommandIndex]?.click();
+      }
+    }
+
+    function executeCommand(command) {
+      // Copy to clipboard and show notification
+      navigator.clipboard.writeText(command).then(() => {
+        showNotification(`Copied: ${command}`);
+      });
+      toggleCommandPalette();
+    }
+
+    function showNotification(message) {
+      const notification = document.createElement('div');
+      notification.className = 'notification';
+      notification.textContent = message;
+      document.body.appendChild(notification);
+      setTimeout(() => notification.remove(), 2000);
+    }
+
+    // Keyboard shortcut
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        toggleCommandPalette();
+      }
+    });
+  </script>
 </body>
 </html>

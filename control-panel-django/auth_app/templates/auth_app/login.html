@@ -1,14 +1,113 @@
 <!doctype html>
-<html>
-<head><title>control-panel — log in</title></head>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>StackOps — Log in</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background-color: var(--bg-primary);
+    }
+    
+    .login-container {
+      width: 100%;
+      max-width: 400px;
+      padding: 40px;
+    }
+    
+    .login-brand {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .login-brand .brand-icon {
+      width: 64px;
+      height: 64px;
+      font-size: 32px;
+      margin: 0 auto 16px;
+    }
+    
+    .login-brand .brand-name {
+      font-size: 24px;
+      display: block;
+    }
+    
+    .login-brand .brand-tagline {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    
+    .login-card {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    
+    .form-group input {
+      width: 100%;
+    }
+    
+    .login-btn {
+      width: 100%;
+      padding: 12px;
+      margin-top: 8px;
+    }
+    
+    .login-error {
+      background-color: var(--error-subtle);
+      color: var(--error);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
 <body>
-  <h1>control-panel</h1>
-  {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
-  <form method="post">
-    {% csrf_token %}
-    <label>Username <input type="text" name="username" autofocus></label>
-    <label>Password <input type="password" name="password"></label>
-    <button type="submit">Log in</button>
-  </form>
+  <div class="login-container">
+    <div class="login-brand">
+      <div class="brand-icon">⚡</div>
+      <span class="brand-name">StackOps</span>
+      <div class="brand-tagline">Media stack control panel</div>
+    </div>
+    
+    <div class="login-card">
+      {% if error %}
+      <div class="login-error">{{ error }}</div>
+      {% endif %}
+      
+      <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" class="input" autofocus>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" class="input">
+        </div>
+        <button type="submit" class="btn btn-primary login-btn">Log in</button>
+      </form>
+    </div>
+  </div>
 </body>
 </html>
