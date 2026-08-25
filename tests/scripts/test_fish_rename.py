@@ -66,10 +66,8 @@ def _tree(tmp_path):
     (tmp_path / "fish-functions").mkdir()
     (tmp_path / "fish-functions/stack-x.fish").write_text("x")
     (tmp_path / "fish-functions/README.md").write_text("x")
-    (tmp_path / "control-panel/static").mkdir(parents=True)
-    (tmp_path / "control-panel/static/commands.json").write_text("[]")
-    (tmp_path / "control-panel/services").mkdir(parents=True)
-    (tmp_path / "control-panel/services/router.py").write_text("x")
+    (tmp_path / "control-panel-django").mkdir(parents=True)
+    (tmp_path / "control-panel-django/router.py").write_text("x")
     (tmp_path / ".claude/skills/demo").mkdir(parents=True)
     (tmp_path / ".claude/skills/demo/SKILL.md").write_text("x")
     (tmp_path / "tests").mkdir()
@@ -87,7 +85,7 @@ def test_targets_include_every_live_reference_surface(renamer, tmp_path):
     they cover. Both were missed by the first draft of targets()."""
     found = {p.relative_to(tmp_path).as_posix() for p in renamer.targets(_tree(tmp_path))}
     assert {"fish-functions/stack-x.fish", "fish-functions/README.md",
-            "control-panel/static/commands.json", "control-panel/services/router.py",
+            "control-panel-django/router.py",
             ".claude/skills/demo/SKILL.md", "tests/test_a_router.py",
             "README.md", "STACK.md", "AGENTS.md"} <= found
 

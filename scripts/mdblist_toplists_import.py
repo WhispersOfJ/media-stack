@@ -52,7 +52,7 @@ HEADERS = {
 API_HEADERS = {**HEADERS, "Accept": "application/json"}
 
 # Only the exact <user>/<slug> shape this script (and this repo's existing
-# MDBLIST_URL_RE in control-panel/app.py) knows how to register - a handful
+# MDBLIST_URL_RE in the control panel) knows how to register - a handful
 # of toplists.html links don't match this (e.g. /lists/official on its own,
 # or three-segment /lists/official/movies/<slug> paths) and are skipped with
 # a warning rather than guessed at.

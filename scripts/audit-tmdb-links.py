@@ -22,7 +22,7 @@ Note on the requested libraries: tmdb3 (PyPI) is an abandoned, Python
 2-era wrapper around a TMDb API version that no longer exists - it's not
 usable against the current v3 REST API. This script uses `requests`
 directly against https://api.themoviedb.org/3, the same approach already
-used by control-panel/app.py's poster-sync feature in this repo.
+used by the control panel's poster-sync feature in this repo.
 
 Install:
     pip install plexapi requests

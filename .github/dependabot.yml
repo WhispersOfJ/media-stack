@@ -48,11 +48,12 @@ updates:
       - "dependencies"
       - "docker"
 
-  # Control Panel's pinned Python deps (control-panel/requirements.txt) - nothing
+  # Control Panel (Django)'s pinned Python deps
+  # (control-panel-django/requirements.txt and requirements-prod.txt) - nothing
   # was bumping these before. scripts/*.py are stdlib-only, no requirements file
   # there, so this is the only pip ecosystem needed.
   - package-ecosystem: "pip"
-    directory: "/control-panel"
+    directory: "/control-panel-django"
     schedule:
       interval: "weekly"
     commit-message:

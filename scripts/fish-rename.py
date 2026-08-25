@@ -82,18 +82,16 @@ def _is_record(path: Path, repo_root: Path) -> bool:
 def targets(repo_root: Path) -> list[Path]:
     """Every file that can name a command as a string, minus the record files.
 
-    Wider than "docs and fish functions": control-panel routers name .fish
-    files in comments explaining which auth dependency a command needs, and
-    router tests name the command that exercises them. Both go stale silently.
+    Wider than "docs and fish functions": control-panel-django routers name
+    .fish files in comments explaining which auth dependency a command
+    needs, and router tests name the command that exercises them. Both go
+    stale silently.
     """
     found: list[Path] = []
     found.extend(sorted((repo_root / "fish-functions").glob("*.fish")))
     found.extend(sorted((repo_root / "fish-functions").glob("*.md")))
-    commands = repo_root / "control-panel/static/commands.json"
-    if commands.is_file():
-        found.append(commands)
     found.extend(sorted((repo_root / ".claude/skills").rglob("SKILL.md")))
-    found.extend(sorted((repo_root / "control-panel").rglob("*.py")))
+    found.extend(sorted((repo_root / "control-panel-django").rglob("*.py")))
     found.extend(sorted((repo_root / "tests").rglob("*.py")))
     for name in ("README.md", "STACK.md", "AGENTS.md", "PLANS.md", "CLAUDE.md"):
         path = repo_root / name

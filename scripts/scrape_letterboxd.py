@@ -9,7 +9,7 @@ User-agent: * only blocks sort/filter path segments - /by/, /on/, /tag/,
 /friends/, /popular/this/*, none of which apply here). The page is fully
 server-rendered with no Cloudflare JS challenge (confirmed live), unlike
 some other Letterboxd paths this stack's own Letterboxd-to-Radarr feature
-already had to work around (control-panel/app.py's LETTERBOXD_HEADERS
+already had to work around (the control panel's LETTERBOXD_HEADERS
 comment) - still using the same full browser-shaped header set anyway,
 since a bare requests default UA is the one thing confirmed to trip a
 challenge on other paths.

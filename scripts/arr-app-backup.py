@@ -6,7 +6,8 @@ raw SQLite file copy taken mid-write isn't guaranteed to be, and it's what
 each app's own restore flow expects as input.
 
 Scoped to Radarr and Sonarr - this repo's own established meaning of "the
-arr apps" (see control-panel/app.py's ARR_APPS), which no longer includes
+arr apps" (see control-panel-django/core/arr_client.py's ARR_APPS), which
+no longer includes
 Lidarr/Readarr as of their removal. Prowlarr/Bazarr both have an equivalent
 native backup mechanism too, but neither is "an arr app" by that same
 convention, so both are left out here on purpose.

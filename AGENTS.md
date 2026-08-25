@@ -17,7 +17,7 @@ anymore, deliberately.
 
 Every `stack-*` command lives entirely in this host's own `~/.config/fish/functions/` (a fish
 function calling Control Panel's HTTP API at `/api/...`, backed by a route in
-`control-panel/app.py` in this repo). There is no other copy anywhere, in any shell, on any
+`control-panel-django/` in this repo). There is no other copy anywhere, in any shell, on any
 other repo. A new `stack-*` command is done when it works on this host - nothing further to
 mirror, port, or sync.
 

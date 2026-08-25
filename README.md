@@ -165,7 +165,7 @@ symlinks needs that same mount (Radarr, Sonarr, Plex, Unpackerr, Cleanuparr).
 > Panel's whole-stack restart (see [Control Panel](#control-panel)) already sequences this:
 > prereq (nzbdav healthy) first, mount provider next, wait for healthy, dependents last.
 
-`control-panel/app.py`'s mount-ordering sets (see [Control Panel](#control-panel)):
+`control-panel-django/core/docker_client.py`'s mount-ordering sets (see [Control Panel](#control-panel)):
 `MOUNT_PREREQS = {"nzbdav"}`, `MOUNT_PROVIDERS = {"nzbdav_rclone"}`, `MOUNT_DEPENDENTS =
 {"radarr", "sonarr", "plex", "unpackerr", "cleanuparr"}` - unlike AltMount/BearMount (which owned
 their mount directly, no prereq needed), nzbdav_rclone can't mount until the `nzbdav` WebDAV
@@ -190,7 +190,7 @@ Stack/
 ├── .env                              # PUID/PGID/TZ, every secret referenced below
 ├── README.md
 ├── config/<app>/                     # each app's persistent config (gitignored)
-├── control-panel/                    # custom-built dashboard (own Dockerfile)
+├── control-panel-django/             # custom-built dashboard (Django, own Dockerfile)
 ├── config/nzbdav/                    # nzbdav's own config (headless NZBDAV_CONFIG__... env)
 ├── config/nzbdav-rclone/             # nzbdav_rclone's rclone.conf + VFS cache
 ├── scripts/                          # backup/alert/setup automation, stdlib-only Python or bash
@@ -228,7 +228,7 @@ service starts with a plain `docker compose up -d`.
 | 8 | `seerr` | `ghcr.io/seerr-team/seerr@sha256:f4768d...` | 5055 |
 | 9 | `plex` | `plexinc/pms-docker:1.43.3.10861-07dfddaeb` | 32400 (host networking) |
 | 10 | `bazarr` | `ghcr.io/hotio/bazarr:release` | 6767 |
-| 11 | `control-panel` | built from `./control-panel` | 8420 |
+| 11 | `control-panel` | built from `./control-panel-django` | 8420 |
 | 12 | `unpackerr` | `golift/unpackerr@sha256:4ec141...` | none |
 | 13 | `watchtower` | `nickfedor/watchtower:1.20.3` | none |
 | 14 | `cleanuparr` | `ghcr.io/cleanuparr/cleanuparr:2.10.3` | 11011 |
@@ -979,14 +979,13 @@ actual embedded subtitle tracks before a release is grabbed.
 
 ## Control Panel
 
-> **⚠️ Django Migration Complete (2026-08-24):** The control panel backend has been fully
-> migrated from FastAPI to Django REST Framework. The new backend is in `control-panel-django/`
-> with 820 tests passing and 92% coverage. The FastAPI `control-panel/` remains live until
-> Docker Compose is switched over. See [STACK.md](STACK.md#fastapidjango-migration-completed-2026-08-24)
-> for details.
+> **✅ Django backend (migration completed 2026-08-24):** The control panel runs on Django
+> REST Framework. The backend lives in `control-panel-django/` with 820 tests passing and
+> 92% coverage; the FastAPI-era `control-panel/` tree was archived from the repo. See
+> [STACK.md](STACK.md#fastapidjango-migration-completed-2026-08-24) for details.
 
-`control-panel/`: a custom FastAPI app (`build: ./control-panel`, not a pulled image), the
-single dashboard for this stack. Live container status/control, one-click ops actions, and
+`control-panel-django/`: a custom Django app (`build: ./control-panel-django`, not a pulled
+image), the single dashboard for this stack. Live container status/control, one-click ops actions, and
 per-app queue tools. Port **8420**. Its addition allowed Heimdall and Homepage to be removed;
 see [History](#history).
 
@@ -1482,8 +1481,9 @@ Neither had a maintainer response as of the 2026-07-28 cutover.
 - **`.github/workflows/validate.yml`**: on every push/PR, copies `.env.example` to `.env`,
   validates `docker compose config` for both the default and `extras` profiles, checks that
   every `${VAR}` in `docker-compose.yml` has a matching key in `.env.example`, runs
-  `shellcheck` over every `.sh` file and `ruff` over `control-panel/app.py` + `scripts/*.py`,
-  and builds the installer image (no push).
+  `shellcheck` over every `.sh` file and `ruff` over `scripts/` + `tests/`, runs the
+  scripts/fish/systemd unit suite and the Django control-panel suite, and builds the
+  installer image (no push).
 - **`.github/dependabot.yml`**: weekly checks across `docker-compose`, `docker`, `pip`, and
   `github-actions`. Dependabot cannot propose digest bumps, only track tags it already
   watches, so the digest-pinned images are outside its coverage.

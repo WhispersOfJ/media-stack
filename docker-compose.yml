@@ -617,14 +617,11 @@ services:
   # to every service's own web UI. That last part is what let Heimdall and
   # Homepage (both simple link launchers/widget dashboards, never this
   # stack's ops tool) be removed entirely rather than kept alongside it -
-  # see README.md's Dashboard section. Custom build (control-panel/), not a
-  # pulled image.
+  # see README.md's Dashboard section. Custom build (control-panel-django/),
+  # not a pulled image.
   #
-  # ⚠️ Django Migration Complete (2026-08-24):
-  # The control panel backend has been migrated from FastAPI to Django REST Framework.
-  # The new backend is in control-panel-django/ with 820 tests and 92% coverage.
-  # To switch: change 'build: ./control-panel' to 'build: ./control-panel-django'
-  # and update the Dockerfile path. The FastAPI backend remains here until cutover.
+  # Django backend (migration completed 2026-08-24): the FastAPI-era
+  # control-panel/ tree was archived from the repo; this is the only backend.
   control-panel:
     build: ./control-panel-django
     restart: unless-stopped

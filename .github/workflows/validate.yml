@@ -45,18 +45,24 @@ jobs:
             config media usenet
 
       - name: Ruff
-        # Whole tree, not just control-panel/app.py: the live backend is
-        # main.py plus core/, services/, and models/ (app.py was retired from
-        # the image CMD in the 2026-08-05 backend rewrite), so the old
-        # single-file scope left every current backend module unlinted.
+        # scripts/ and the script/fish/systemd test suite. The retired
+        # FastAPI control-panel/ tree was archived from the repo; the live
+        # backend lives in control-panel-django/ (tested below).
         run: |
           pip install ruff==0.8.6
-          ruff check control-panel/ scripts/ tests/
+          ruff check scripts/ tests/
 
-      - name: Unit tests
+      - name: Unit tests - scripts, fish, and systemd
         run: |
-          pip install -r control-panel/requirements.txt -r requirements-dev.txt
-          pytest
+          pip install -r requirements-dev.txt
+          pytest tests/scripts tests/test_fish_naming.py \
+            tests/test_fish_functions_installed.py tests/test_systemd_units.py
+
+      - name: Unit tests - Django control panel
+        run: |
+          pip install -r control-panel-django/requirements.txt
+          cd control-panel-django
+          CONTROL_PANEL_SECRET_KEY=ci-test-secret pytest
 
       - name: Build installer image
         # Build-only, no push (no registry credentials here) - just catches a
