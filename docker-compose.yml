@@ -1,6 +1,5 @@
 x-common: &common
   restart: unless-stopped
-  cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   environment: &common-env
     PUID: ${PUID}
@@ -147,7 +146,6 @@ services:
   # ---------------------------------------------------------------------
   nzbdav:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Renamed upstream 2026-08: ghcr.io/nzbdav/nzbdav -> infinidysk/infinidysk.
@@ -376,7 +374,6 @@ services:
     image: rclone/rclone:latest
     container_name: nzbdav_rclone
     restart: unless-stopped
-    cap_drop: [ALL]
     logging: *common-logging
     networks: [stacknet]
     environment:
@@ -463,7 +460,6 @@ services:
   # ---------------------------------------------------------------------
   seerr:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Digest-pinned rather than a version tag: upstream's last tagged
@@ -501,7 +497,6 @@ services:
   # ---------------------------------------------------------------------
   plex:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Official image, not a LinuxServer-style fork - a PUID/PGID-forcing
@@ -625,7 +620,6 @@ services:
   control-panel:
     build: ./control-panel-django
     restart: unless-stopped
-    cap_drop: [ALL]
     logging: *common-logging
     container_name: control-panel
     networks: [stacknet]
@@ -807,7 +801,6 @@ services:
 
   unpackerr:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Digest-pinned: upstream's newest tagged release (0.15.2) doesn't match
@@ -860,7 +853,6 @@ services:
 
   watchtower:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     logging: *common-logging
     image: nickfedor/watchtower:latest
@@ -963,7 +955,6 @@ services:
   #    makes every API endpoint authenticated.
   watchstate:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     image: ghcr.io/arabcoders/watchstate:latest
     container_name: watchstate
@@ -1005,7 +996,6 @@ services:
   # =======================================================================
   loki:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     image: grafana/loki:2.8.0
     container_name: loki
@@ -1031,7 +1021,6 @@ services:
 
   promtail:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     image: grafana/promtail:2.8.0
     container_name: promtail
@@ -1054,7 +1043,6 @@ services:
 
   grafana:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     image: grafana/grafana:10.4.0
     container_name: grafana
@@ -1096,7 +1084,6 @@ services:
   nzbdav-exporter:
     build: ./nzbdav-exporter
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     logging: *common-logging
     container_name: nzbdav-exporter
@@ -1124,7 +1111,6 @@ services:
   # =======================================================================
   prometheus:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     image: prom/prometheus:latest
     container_name: prometheus
@@ -1157,7 +1143,6 @@ services:
 
   node-exporter:
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     image: prom/node-exporter:latest
     container_name: node-exporter
@@ -1225,7 +1210,6 @@ services:
     container_name: metacache
     networks: [stacknet]
     restart: unless-stopped
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
       TZ: ${TZ}
