@@ -1271,6 +1271,7 @@ services:
       - arr-dashboard-data:/config
     ports:
       - "41789:3000"
+    networks: [stacknet]
     mem_limit: 512m
     mem_reservation: 128m
     cpus: 1
