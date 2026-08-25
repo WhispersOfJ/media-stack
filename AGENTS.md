@@ -60,7 +60,7 @@ Prowlarr (indexers) ──▶ Radarr + Sonarr ──▶ nzbdav (Usenet) ──�
 | 18 | `node-exporter` | Host CPU/RAM/disk metrics | 9100 |
 | 19 | `nzbdav-exporter` | NzbDAV config/queue metrics | 1011 |
 | 20 | `watchtower` | Auto-updates channel-tagged images | — |
-| 21 | `watchtower` (cleanuparr instances) | Manages cleanuparr sub-instances | — |
+| 21 | `arr-dashboard` | Unified media dashboard (Next.js) | 41789 |
 
 ---
 
@@ -82,6 +82,7 @@ Prowlarr (indexers) ──▶ Radarr + Sonarr ──▶ nzbdav (Usenet) ──�
 9696  Prowlarr
 1011  nzbdav-exporter
 11011 Cleanuparr
+41789 arr-dashboard (Next.js)
 ```
 
 ---

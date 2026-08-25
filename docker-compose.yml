@@ -1257,6 +1257,25 @@ services:
       retries: 3
       start_period: 30s
 
+  arr-dashboard:
+    image: khak1s/arr-dashboard:latest
+    container_name: arr-dashboard
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - DATABASE_URL=file:/config/prod.db
+      - SESSION_TTL_HOURS=24
+      - LOG_LEVEL=info
+    volumes:
+      - arr-dashboard-data:/config
+    ports:
+      - "41789:3000"
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 1
+
 volumes:
   loki_data:
   metacache-data:
+  arr-dashboard-data:
