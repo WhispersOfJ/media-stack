@@ -73,7 +73,7 @@ CATALOG: list[dict] = [
         "pitch": "Runs a speed test on a schedule, graphs it over time - turns \"is the ISP throttling us\" from a feeling into a chart you can point at.",
         "image": "henrywhitaker3/speedtest-tracker",
         "tag": "latest",
-        "ports": {"80/tcp": 8765},
+        "ports": {"80/tcp": 8701},
         "volumes": {"catalog_speedtest_data": {"bind": "/config", "mode": "rw"}},
         "environment": {"OOKLA_EULA_GDPR": "true"},
         "cap_add": [],
