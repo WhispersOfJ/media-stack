@@ -19,11 +19,12 @@ COMPOSE = REPO_ROOT / "docker-compose.yml"
 # Host-level concerns. Not services, deliberately not renamed - see the spec's
 # decision 5. Adding a domain here is how a new host command becomes legal.
 HOST_DOMAINS = {
-    "aur", "backlog", "claude", "command", "container", "cron", "disk",
-    "docker", "firewall", "flatpak", "git", "image", "journal", "kernel",
-    "log", "loop", "mem", "mount", "notify", "oom", "perms",
-    "pkg", "queue", "reboot", "resource", "restart", "service", "ssh",
-    "status", "timer", "top", "uptime", "version", "zombie",
+    "alacritty", "aur", "backlog", "claude", "command", "container",
+    "cron", "disk", "docker", "file", "firewall", "flatpak", "git",
+    "image", "journal", "kernel", "log", "loop", "mem", "mount",
+    "notify", "oom", "perms", "pkg", "queue", "reboot", "resource",
+    "restart", "service", "ssh", "status", "timer", "top", "uptime",
+    "version", "zombie",
 }
 # `loop` joined the list in Phase 8b: stack-loop-{candidates,unmonitor,exclude}
 # read the queue-autofix history across both Arr apps and take the app as an

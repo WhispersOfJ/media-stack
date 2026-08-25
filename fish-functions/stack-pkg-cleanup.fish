@@ -1,5 +1,5 @@
 # Cleanup local orphaned packages
-function cleanup
+function stack-pkg-cleanup --description 'Remove orphaned packages via pacman'
     while pacman -Qdtq
         sudo pacman -R (pacman -Qdtq)
         # Fixed: was `-eq 1`, which only broke the retry loop on that one
