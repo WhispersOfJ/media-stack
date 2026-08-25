@@ -66,6 +66,31 @@ class _FakeImage:
         self.attrs = {"RepoDigests": ["test/name@sha256:digest"]}
 
 
+class _StaleImage:
+    """Image that was removed from the store while its container kept
+    running - the real nzbdav-exporter failure that 500'd list_containers
+    and image_check. c.image.* is a lazy inspect_image call that raises
+    ImageNotFound in that case."""
+
+    @property
+    def tags(self):
+        raise docker.errors.ImageNotFound("No such image: sha256:deadbeef")
+
+    @property
+    def short_id(self):
+        return "sha256:deadbeef"
+
+    @property
+    def attrs(self):
+        raise docker.errors.ImageNotFound("No such image: sha256:deadbeef")
+
+
+class _StaleImageContainer(_FakeContainer):
+    def __init__(self, name):
+        super().__init__(name)
+        self.image = _StaleImage()
+
+
 def _fake_project(monkeypatch, containers, self_name="control-panel"):
     me = _FakeContainer(self_name)
     # project_containers() is imported into host.services AND called by
@@ -128,6 +153,16 @@ def test_list_containers_marks_self_and_includes_stats(monkeypatch):
     assert set(row) >= {"cpu_percent", "mem_percent", "mem_used_mb", "mem_limit_mb"}
     # me is the control-panel container; only radarr is in the list
     assert me.name not in [i["name"] for i in items]
+
+
+def test_list_containers_tolerates_missing_image(monkeypatch):
+    # A container whose image left the store while it kept running must not
+    # 500 the whole grid - the row degrades to an empty image string.
+    _fake_project(monkeypatch, [_StaleImageContainer("nzbdav-exporter")])
+    items = services.list_containers()
+    assert len(items) == 1
+    assert items[0]["name"] == "nzbdav-exporter"
+    assert items[0]["image"] == ""
 
 
 def test_restart_container_requires_activated_for_plex(monkeypatch):
@@ -404,6 +439,17 @@ def test_image_check_tolerates_registry_error(monkeypatch):
     _fake_project(monkeypatch, containers)
     result = services.image_check()
     assert len(result["images"]) == 1
+    assert result["images"][0]["update_available"] is None
+    assert "error" in result["images"][0]
+
+
+def test_image_check_tolerates_missing_image(monkeypatch):
+    # Same stale-image case as list_containers: the per-container check must
+    # degrade to an error row, not 500 the endpoint.
+    _fake_project(monkeypatch, [_StaleImageContainer("nzbdav-exporter")])
+    result = services.image_check()
+    assert len(result["images"]) == 1
+    assert result["images"][0]["name"] == "nzbdav-exporter"
     assert result["images"][0]["update_available"] is None
     assert "error" in result["images"][0]
 

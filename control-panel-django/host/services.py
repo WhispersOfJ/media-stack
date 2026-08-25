@@ -71,8 +71,15 @@ def get_status() -> dict:
 def _container_row(me, c) -> dict:
     label, note = CONTAINER_LABELS.get(c.name, (c.name, None))
     health = c.attrs.get("State", {}).get("Health", {}).get("Status")
-    image_tags = c.image.tags
-    image = image_tags[0] if image_tags else (c.image.short_id or "")
+    # c.image.* is a lazy API call (inspect_image) that raises ImageNotFound
+    # when a container's image was removed from the store while the container
+    # still runs from it (e.g. an image prune raced a recreate). One stale
+    # image must not 500 the whole container grid.
+    try:
+        image_tags = c.image.tags
+        image = image_tags[0] if image_tags else (c.image.short_id or "")
+    except Exception:
+        image = ""
     service = c.labels.get("com.docker.compose.service", c.name)
     return {
         "name": c.name,
@@ -517,17 +524,24 @@ def image_check() -> dict:
     for c in containers:
         if c.id == me.id:
             continue
-        image_tags = c.image.tags
-        if not image_tags:
-            continue
-        tag_ref = image_tags[0]
-        current_digests = set(c.image.attrs.get("RepoDigests", []))
         try:
+            image_tags = c.image.tags
+            if not image_tags:
+                continue
+            tag_ref = image_tags[0]
+            current_digests = set(c.image.attrs.get("RepoDigests", []))
             registry_data = docker_client.images.get_registry_data(tag_ref)
             remote_digest = registry_data.attrs.get("Descriptor", {}).get("digest")
             has_update = bool(remote_digest) and not any(remote_digest in d for d in current_digests)
             results.append({"name": c.name, "image": tag_ref, "update_available": has_update})
         except Exception as e:
+            # c.image.* is lazy (inspect_image) and raises ImageNotFound if the
+            # container's image left the store while it kept running - the
+            # whole check is per-container best-effort by design.
+            try:
+                tag_ref = c.image.tags[0] if c.image.tags else ""
+            except Exception:
+                tag_ref = ""
             results.append({"name": c.name, "image": tag_ref, "update_available": None, "error": str(e)})
     updates = [r["name"] for r in results if r.get("update_available")]
     msg = f"{len(updates)} image(s) with a newer digest available: {', '.join(updates)}" if updates else \
