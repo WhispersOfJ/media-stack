@@ -42,9 +42,11 @@ def git_log(repo: str, n: int) -> list[dict]:
 
 
 BUG_PATTERNS = re.compile(
-    r"\b(fix|bug|crash|break|wrong|stale|dead|corrupt|leak|miss|fail|error|CVE|XSS|race|hang|false.positive|orphan|dangl|residual|revert|wrong|misalign|collision|broke|stuck|missing)\b",
+    r"\b(fix|crash|break|wrong|stale|dead|corrupt|leak|miss|fail|error|CVE|XSS|race|hang|false.positive|orphan|dangl|residual|revert|misalign|collision|broke|stuck|missing)\b",
     re.IGNORECASE,
 )
+# Exclude docs-only commits that mention "bug" in a filename, not a real bug
+DOC_EXCLUDE = re.compile(r"docs?:\s*.*BUG-SMASHED", re.IGNORECASE)
 
 # Subsystem classification keywords
 SUBSYSTEMS = {
@@ -83,6 +85,8 @@ def estimate_severity(subject: str) -> str:
 
 
 def is_bug(subject: str) -> bool:
+    if DOC_EXCLUDE.search(subject):
+        return False
     return bool(BUG_PATTERNS.search(subject))
 
 
