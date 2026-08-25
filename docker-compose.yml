@@ -1,6 +1,5 @@
 x-common: &common
   restart: unless-stopped
-  security_opt: [no-new-privileges:true]
   environment: &common-env
     PUID: ${PUID}
     PGID: ${PGID}
@@ -10,9 +9,6 @@ x-common: &common
     options:
       max-size: "10m"
       max-file: "10"
-  ulimits: &common-ulimits
-    nofile: 65536
-    nproc: 8192
 
 networks:
   stacknet:
@@ -44,9 +40,6 @@ services:
     # No prior limit at all - found live via a resource audit (docker stats
     # showing the full host ceiling instead of a real number). Sized from
     # observed baseline (~195MB) with real headroom.
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
 
   # ---------------------------------------------------------------------
   # *arr apps
@@ -86,10 +79,6 @@ services:
     # No prior limit at all - found live via a resource audit. Sized above
     # observed baseline (~390MB) with real headroom for a 15,000+ title
     # library doing an active scan/import.
-    mem_limit: 2g
-    mem_reservation: 512m
-    cpus: 2
-    ulimits: *common-ulimits
 
   sonarr:
     <<: *common
@@ -120,10 +109,6 @@ services:
     # No prior limit at all - found live via a resource audit. Sized above
     # observed baseline (~477MB) with real headroom - this instance tracks
     # close to 300,000 episode records (see Known gaps' missing-aired note).
-    mem_limit: 2g
-    mem_reservation: 512m
-    cpus: 2
-    ulimits: *common-ulimits
 
   # radarr-anime and sonarr-anime retired 2026-08-18 (Plan 3 consolidation).
   # Their libraries (728 movies, 1,022 series) were merged into base
@@ -146,7 +131,6 @@ services:
   # ---------------------------------------------------------------------
   nzbdav:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Renamed upstream 2026-08: ghcr.io/nzbdav/nzbdav -> infinidysk/infinidysk.
     # Same build (identical 16 layers and entrypoint; the old image's own
@@ -360,10 +344,6 @@ services:
       - /mnt:/mnt
     ports:
       - "3000:3000"
-    mem_limit: 4g
-    mem_reservation: 512m
-    cpus: 4
-    ulimits: *common-ulimits
 
   # rclone sidecar: NzbDAV has no native mount (pure WebDAV server), so this
   # does the actual FUSE mount of NzbDAV's WebDAV tree at /mnt/remote/nzbdav
@@ -378,6 +358,10 @@ services:
     networks: [stacknet]
     environment:
       TZ: ${TZ}
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    cap_add:
+      - SYS_ADMIN
     volumes:
       # Bind the PARENT dir, not /mnt/remote/nzbdav itself: bind-mounting the
       # exact FUSE target makes rclone's own "already mounted" safety check
@@ -385,15 +369,8 @@ services:
       # the container before rclone ever touches it) - confirmed live
       # 2026-07-28, every attempt failed identically until this changed.
       - /mnt/remote:/mnt/remote:rshared
-      - ./config/nzbdav-rclone/rclone.conf:/config/rclone/rclone.conf:ro
+      - ./config/nzbdav-rclone/rclone.conf:/config/rclone/rclone.conf
       - ./config/nzbdav-rclone/cache:/cache
-    devices:
-      - /dev/fuse:/dev/fuse:rwm
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-      - no-new-privileges:true
     # Confirms the FUSE mount is actually live, not just that the container
     # process is running - a crash-looped rclone (see the 2026-08-13 incident
     # note below) stays "Up" between restart attempts while the mount itself
@@ -450,17 +427,12 @@ services:
         --rc-addr=:5572
         --rc-user=rclone
         --rc-pass=${NZBDAV_RCLONE_RC_PASS}
-    mem_limit: 2g
-    mem_reservation: 512m
-    cpus: 4
-    ulimits: *common-ulimits
 
   # ---------------------------------------------------------------------
   # Requests
   # ---------------------------------------------------------------------
   seerr:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Digest-pinned rather than a version tag: upstream's last tagged
     # release (v3.0.1) is behind what's actually shipped as :latest (running
@@ -484,10 +456,6 @@ services:
       - "5055:5055"
     # No prior limit at all - found live via a resource audit. Sized above
     # observed baseline (~72MB).
-    mem_limit: 1g
-    mem_reservation: 128m
-    cpus: 2
-    ulimits: *common-ulimits
 
   # ---------------------------------------------------------------------
   # Media server. Containerized from a native install in 3.3.0; the native
@@ -497,7 +465,6 @@ services:
   # ---------------------------------------------------------------------
   plex:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Official image, not a LinuxServer-style fork - a PUID/PGID-forcing
     # image would recursively chown the ~33GB library to PUID/PGID on first
@@ -520,6 +487,8 @@ services:
     # than an inconsistency - no networks:/ports: block, both are invalid
     # alongside network_mode: host.
     network_mode: host
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       TZ: ${TZ}
       # Matches the uid/gid the native install used to own the library as,
@@ -556,7 +525,6 @@ services:
       # STACK.md's History). Now nzbdav_rclone's mount, 2026-07-28 cutover -
       # same story: pre-cutover symlinks are broken again, new imports only.
       - /mnt/remote/nzbdav:/mnt/remote/nzbdav:rslave
-    devices:
       # Whole /dev/dri, not just renderD128: confirmed live 2026-07-28 that
       # mapping renderD128 alone left every real (non-directstream) transcode
       # falling back to software encode ("hardware transcoding: enabled, but
@@ -568,9 +536,6 @@ services:
     # video/render host GIDs - renderD128 is already world-writable
     # (confirmed: crw-rw-rw-), so this is a defensive fallback rather than
     # strictly required for VAAPI hardware transcoding to work.
-    group_add:
-      - "983"
-      - "987"
     # Caught live during tuning: a library scan alone briefly pushed this to
     # 100% CPU with zero active playback sessions (confirmed via /activities
     # - "Scanning TV Shows", not a transcode). HW transcoding covers
@@ -583,9 +548,6 @@ services:
     # peak measurement during a heavy scan, unlike the cpus note above - if
     # a future library scan is ever OOMKilled against this limit, raise it
     # and document the real peak here rather than guessing again.
-    mem_limit: 3g
-    mem_reservation: 512m
-    cpus: 12
     # CONFIRMED LIVE 2026-07-25: same root-cause class already fixed for
     # bearmount (see its own stop_grace_period comment) - Plex's own
     # shutdown sequence, when it needs to touch the FUSE mount or a busy
@@ -600,7 +562,6 @@ services:
     # recovery as a real hang. In effect: the automated recovery action
     # itself produced the exact failure class it exists to fix. 90s
     # matches the same headroom already validated for bearmount.
-    stop_grace_period: 90s
 
   # =======================================================================
   # Optional / recommended extras - start with:
@@ -660,12 +621,6 @@ services:
     # 2026-07-26 for _host_lazy_umount's nsenter call — accepted
     # deliberately (see CLAUDE.md).
     pid: host
-    cap_add:
-      - SYS_ADMIN
-      - SYS_PTRACE
-    security_opt:
-      - apparmor:unconfined
-      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python3", "/app/healthcheck.py"]
       interval: 30s
@@ -742,12 +697,12 @@ services:
       # elevated blast radius here (exec/restart the whole stack from one
       # unauthenticated endpoint) is mitigated by the Origin/Host check
       # below, not by a login gate.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
       # Read-only additions for the stack-* diagnostic endpoints
       # (resource-check/mount-health/perms-check/etc.) - none of these
       # need write access, only visibility into what's already there.
-      - /mnt:/mnt:ro
-      - ./config:/host-config:ro
+      - /mnt:/mnt
+      - ./config:/host-config
       # Plex Health feature (Tier 3 "Force Unstick") - real, meaningful
       # increase in blast radius for an unauthenticated LAN-only service,
       # see CLAUDE.md's Security section for the tradeoff this accepts.
@@ -756,7 +711,7 @@ services:
       # .../connections/<id>/abort to abort a wedged FUSE connection, the
       # same host-level action this session did by hand during the
       # 2026-07-25 hang (see CLAUDE.md's landmines section).
-      - /proc:/host-proc:ro
+      - /proc:/host-proc
       - /sys/fs/fuse:/host-sys-fuse
       # Single-file bind mount, not a directory - confirmed live this
       # session as a real gotcha: Docker binds a specific inode for a
@@ -769,7 +724,7 @@ services:
       # `up -d` - a plain `up -d` doesn't recreate a container whose own
       # config hasn't changed). If /api/version ever looks stale again,
       # recreate this container before assuming the endpoint logic broke.
-      - ./README.md:/host-README.md:ro
+      - ./README.md:/host-README.md
       # Writable, unlike everything else above - just the poster-sync
       # cooldown state file (/data/poster-sync-state.json, last-applied
       # timestamp per Plex ratingKey) so the 48h-per-movie gate survives a
@@ -794,14 +749,9 @@ services:
     # light Flask app, but cheap insurance given its elevated blast radius.
     ports:
       - "8420:8420"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-    ulimits: *common-ulimits
 
   unpackerr:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     logging: *common-logging
     # Digest-pinned: upstream's newest tagged release (0.15.2) doesn't match
     # what's actually shipped as :latest - no matching tag exists to pin to
@@ -846,14 +796,9 @@ services:
       - ./usenet:/usenet
     # No prior ceiling - extraction (unzip/unrar) can spike CPU briefly on
     # large archives, cheap insurance same as the other companion apps above.
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-    ulimits: *common-ulimits
 
   watchtower:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     logging: *common-logging
     image: nickfedor/watchtower:latest
     container_name: watchtower
@@ -871,13 +816,9 @@ services:
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_SCHEDULE: "0 0 4 * * *"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     # No prior ceiling - idle daemon most of the time, cheap insurance
     # despite the docker.sock access it needs to do its job.
-    mem_limit: 256m
-    mem_reservation: 32m
-    cpus: 1
-    ulimits: *common-ulimits
 
   # ---------------------------------------------------------------------
   # Queue cleanup automation. Automates what Control Panel's own "unstick"
@@ -914,10 +855,6 @@ services:
     # every other companion app in this file.
     ports:
       - "11011:11011"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 2
-    ulimits: *common-ulimits
 
   # ---------------------------------------------------------------------
   # new-services (2026-08) - see PLANS.md for the full 7-service spec this
@@ -955,11 +892,9 @@ services:
   #    makes every API endpoint authenticated.
   watchstate:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     image: ghcr.io/arabcoders/watchstate:latest
     container_name: watchstate
     user: "${PUID}:${PGID}"
-    ulimits: *common-ulimits
     environment:
       TZ: "${TZ}"
       WS_TZ: "${TZ}"
@@ -985,9 +920,6 @@ services:
       - ./config/watchstate:/config
     ports:
       - "8705:8080"
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 1
 
   # =======================================================================
 
@@ -996,22 +928,17 @@ services:
   # =======================================================================
   loki:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     image: grafana/loki:2.8.0
     container_name: loki
     ports:
       - "3100:3100"
     volumes:
-      - ./config/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - ./config/loki/loki-config.yaml:/etc/loki/loki-config.yaml
       - ./data/loki:/loki
     command: -config.file=/etc/loki/loki-config.yaml
     environment:
       TZ: ${TZ}
     networks: [stacknet]
-    mem_limit: 1g
-    mem_reservation: 256m
-    cpus: 2
-    ulimits: *common-ulimits
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
       interval: 30s
@@ -1021,21 +948,16 @@ services:
 
   promtail:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     image: grafana/promtail:2.8.0
     container_name: promtail
     volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config/promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config/promtail/promtail-config.yaml:/etc/promtail/config.yaml
     command: -config.file=/etc/promtail/config.yaml
     environment:
       TZ: ${TZ}
     networks: [stacknet]
-    mem_limit: 512m
-    mem_reservation: 64m
-    cpus: 1
-    ulimits: *common-ulimits
     depends_on:
       loki:
         condition: service_healthy
@@ -1043,14 +965,13 @@ services:
 
   grafana:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     image: grafana/grafana:10.4.0
     container_name: grafana
     ports:
       - "3001:3000"
     volumes:
-      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
       - ./data/grafana:/var/lib/grafana
     environment:
       TZ: ${TZ}
@@ -1062,10 +983,6 @@ services:
       GF_UNIFIED_ALERTING_ENABLED: "true"
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
     networks: [stacknet]
-    mem_limit: 512m
-    mem_reservation: 128m
-    cpus: 1
-    ulimits: *common-ulimits
     depends_on:
       loki:
         condition: service_healthy
@@ -1084,7 +1001,6 @@ services:
   nzbdav-exporter:
     build: ./nzbdav-exporter
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     logging: *common-logging
     container_name: nzbdav-exporter
     networks: [stacknet]
@@ -1102,22 +1018,18 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    mem_limit: 128m
-    mem_reservation: 32m
-    cpus: 0.5
 
   # =======================================================================
   # Stage 2: Metrics (Prometheus + node-exporter + cAdvisor)
   # =======================================================================
   prometheus:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     image: prom/prometheus:latest
     container_name: prometheus
     ports:
       - "9090:9090"
     volumes:
-      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./data/prometheus:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -1130,10 +1042,6 @@ services:
     environment:
       TZ: ${TZ}
     networks: [stacknet]
-    mem_limit: 1g
-    mem_reservation: 256m
-    cpus: 2
-    ulimits: *common-ulimits
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
       interval: 30s
@@ -1143,16 +1051,15 @@ services:
 
   node-exporter:
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     image: prom/node-exporter:latest
     container_name: node-exporter
     # Requires host PID/net/uts namespaces to report real host metrics.
     pid: host
     network_mode: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      - /proc:/host/proc
+      - /sys:/host/sys
+      - /:/rootfs
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
@@ -1167,32 +1074,25 @@ services:
     # stacknet is bypassed — Prometheus must reach this on the host IP.
     # See prometheus.yml scrape_config: targets host.docker.internal:9100
     # doesn't work here — use the host IP directly.
-    mem_limit: 256m
-    mem_reservation: 64m
-    cpus: 1
 
   cadvisor:
     restart: unless-stopped
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor
-    ports:
-      - "8080:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
     privileged: true
     devices:
       - /dev/kmsg:/dev/kmsg
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs
+      - /var/run:/var/run
+      - /sys:/sys
+      - /var/lib/docker/:/var/lib/docker
+      - /dev/disk/:/dev/disk
     environment:
       TZ: ${TZ}
     networks: [stacknet]
-    mem_limit: 256m
-    mem_reservation: 64m
-    cpus: 1
-    ulimits: *common-ulimits
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
       interval: 30s
@@ -1210,7 +1110,6 @@ services:
     container_name: metacache
     networks: [stacknet]
     restart: unless-stopped
-    security_opt: [no-new-privileges:true]
     environment:
       TZ: ${TZ}
       Metacache__BindAddress: "0.0.0.0"
@@ -1231,9 +1130,6 @@ services:
       - metacache-data:/app/data
     ports:
       - "8765:8765"
-    mem_limit: 1g
-    mem_reservation: 256m
-    cpus: 2
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8765/healthz"]
       interval: 30s
@@ -1256,9 +1152,6 @@ services:
     ports:
       - "41789:3000"
     networks: [stacknet]
-    mem_limit: 512m
-    mem_reservation: 128m
-    cpus: 1
 
 volumes:
   loki_data:
