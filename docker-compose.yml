@@ -1233,13 +1233,14 @@ services:
       Metacache__Port: "8765"
       Metacache__DataPath: "/app/data/metacache.db"
       Metacache__Upstream__BaseUrl: "https://api.themoviedb.org/3"
+      Metacache__Tmdb__ApiKey: ${TMDB_KEY:-}
       Metacache__Upstream__ImageBaseUrl: "https://image.tmdb.org"
       Metacache__Tvdb__BaseUrl: "https://api.thetvdb.com"
       Metacache__Tvdb__ApiKey: ${TVDB_KEY:-}
-      Metacache__Radarr__Url: "http://radarr:7878"
-      Metacache__Radarr__ApiKey: ${RADARR_API_KEY:-}
-      Metacache__Sonarr__Url: "http://sonarr:8989"
-      Metacache__Sonarr__ApiKey: ${SONARR_API_KEY:-}
+      Metacache__Arr__RadarrUrl: "http://radarr:7878"
+      Metacache__Arr__RadarrApiKey: ${RADARR_API_KEY:-}
+      Metacache__Arr__SonarrUrl: "http://sonarr:8989"
+      Metacache__Arr__SonarrApiKey: ${SONARR_API_KEY:-}
       Metacache__Warm__Languages__0: ${WARM_LANG_0:-en-US}
       Metacache__Auth__ApiKey: ${METACACHE_API_KEY:-}
     volumes:
