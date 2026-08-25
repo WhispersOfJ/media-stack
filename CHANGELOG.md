@@ -1,5 +1,72 @@
 # Changelog
 
+## [11.18.0](https://github.com/WhispersOfJ/media-stack/compare/v11.17.0...v11.18.0) (2026-08-25)
+
+
+### Features
+
+* add /api/v2/cleanuparr/{instances,strikes} ([7886b3f](https://github.com/WhispersOfJ/media-stack/commit/7886b3f6fe9e3957b18a421c5ea70488412e6876))
+* add /api/v2/host/{reboot,pacman-sync,pacman-upgrade} ([0d9d725](https://github.com/WhispersOfJ/media-stack/commit/0d9d725f0b437193e5f5e26fda2d4c4cd381e298))
+* add /api/v2/prowlarr/indexers (Task 3) ([5e1ddfc](https://github.com/WhispersOfJ/media-stack/commit/5e1ddfc1fd2791543f0c0acbac659b2688c52dec))
+* add /api/v2/radarr/exclude (Task 4) ([1346ecf](https://github.com/WhispersOfJ/media-stack/commit/1346ecfe85ebe8ce0f31b9c1c1e0c5e8f73c22a0))
+* add /api/v2/ratings/* (imdb, mdblist rating lookups) ([ee9a3cd](https://github.com/WhispersOfJ/media-stack/commit/ee9a3cd3eb3dbd48468a0908fff2ac563b1e54fe))
+* add /api/v2/seerr/requests ([b9be395](https://github.com/WhispersOfJ/media-stack/commit/b9be395b58f756a0bc667f98850f076bb5f094d4))
+* add /api/v2/sonarr/monitor-episodes-fix ([9020911](https://github.com/WhispersOfJ/media-stack/commit/9020911b709be6ca7e8e38fa46b1b83153edf1ce))
+* add /healthz endpoint, close out Phase 1 with full test suite green ([3d1a0f1](https://github.com/WhispersOfJ/media-stack/commit/3d1a0f126aca576aa5830db1f1a709c7cbc924a5))
+* add auth_app login/logout views backed by core.models.User sessions ([fe51698](https://github.com/WhispersOfJ/media-stack/commit/fe516984b21ddcceeb6089761d9b7139c495d535))
+* add bootstrap management command for admin user and service api key ([7a9207d](https://github.com/WhispersOfJ/media-stack/commit/7a9207d0db2d9259970231d699793c5a5fbeaf08))
+* add catalog app (list/status/install/remove for Docker-SDK software catalog) ([dbad096](https://github.com/WhispersOfJ/media-stack/commit/dbad096a32c16a4fedcfc4777969b47827790c35))
+* add Django template + htmx browser UI, closing out Phase 3 ([dc8d549](https://github.com/WhispersOfJ/media-stack/commit/dc8d549a8ee1f0d615155dc57d8f7d3ac8d8e61f))
+* add DRF envelope base, session-only permission, and ported client modules ([50b53e8](https://github.com/WhispersOfJ/media-stack/commit/50b53e80a526063e36c61673f0065078751e4d0a))
+* add DRF session-or-api-key authentication and permission class ([0d280cc](https://github.com/WhispersOfJ/media-stack/commit/0d280cc3cbcd175c73ba147dd787a030ea7efbc9))
+* add letterboxd app (7 endpoints, scraping + ORM + cross-arr) ([d4b53af](https://github.com/WhispersOfJ/media-stack/commit/d4b53afd90bc3281d603e09f2437e22c6db72f97))
+* add mdblist app (import-list, track/untrack, sync-tick for MDBList) ([eff2936](https://github.com/WhispersOfJ/media-stack/commit/eff293629592aee6d0bf332e3852ffa51adfd5b3))
+* add nzbdav app (queue, history, dedup-config-check, stats, delete-failures) ([9c5bb32](https://github.com/WhispersOfJ/media-stack/commit/9c5bb32b352ee19a3ea5bbf1391fa1d1310b24a1))
+* add plex app (13 endpoints, complex diagnostics) ([d888505](https://github.com/WhispersOfJ/media-stack/commit/d888505f79a64c71db08d283b74dfd9f0cf3243c))
+* add posters app (10 endpoints, background threads + SSE) ([c9e16d6](https://github.com/WhispersOfJ/media-stack/commit/c9e16d654ef8c27a472e94bfca523758f75e20d9))
+* add queue app (cross-app download-queue aggregation) ([2ab1fee](https://github.com/WhispersOfJ/media-stack/commit/2ab1fee9f6f3226396682c409af712b2e4c5964a))
+* add toast feedback to all quick action buttons on htmx completion ([02d40c5](https://github.com/WhispersOfJ/media-stack/commit/02d40c5668d64aa572f37d3ed07035c0bcdf4886))
+* add watchstate app (status, import, history proxy for WatchState) ([292e9bd](https://github.com/WhispersOfJ/media-stack/commit/292e9bd889efc25f7269a86790abebc67eadb134))
+* complete control panel redesign — design system, component library, all pages rebuilt ([e368adc](https://github.com/WhispersOfJ/media-stack/commit/e368adcd45bd6c7cf03972d41fe18ab4e96b4d4c))
+* Complete UI redesign with modern dark theme and command palette ([1e3e45c](https://github.com/WhispersOfJ/media-stack/commit/1e3e45ccb78e478f45707d48c0269834461820ad))
+* confirmation modal, connection monitoring, inline editing, parallel overview ([4c2cd1c](https://github.com/WhispersOfJ/media-stack/commit/4c2cd1cf202a12de4a67286872b6c344232aa4d5))
+* generate initial Django migration for core models ([d7f1fb1](https://github.com/WhispersOfJ/media-stack/commit/d7f1fb14a9dd690dc1965e717581ca86044f296b))
+* port argon2 password and sha256 api-key hashing to core.security ([68b25fc](https://github.com/WhispersOfJ/media-stack/commit/68b25fc1ac80bce897dfb0e49fc632c8b08224b3))
+* port host and arr apps, closing out Phase 2 (51 endpoints) ([9a19606](https://github.com/WhispersOfJ/media-stack/commit/9a19606d6eb3b3f8cf1324fa21b05c188651ad02))
+* port same-origin verification middleware ([e94c6a5](https://github.com/WhispersOfJ/media-stack/commit/e94c6a5a9244c481830399f0ef6cd59c70b69296))
+* port SQLAlchemy models to Django ORM in core app ([b9a2941](https://github.com/WhispersOfJ/media-stack/commit/b9a2941b6b51ceff7d8ac1adbef39855e7691d1b))
+* rebuild Poster Sync page with masonry gallery and sync controls ([32edcbf](https://github.com/WhispersOfJ/media-stack/commit/32edcbf50e49a0512720fc9e0824a0cd63efa00f))
+* scaffold Django project skeleton for control-panel migration ([296c6ba](https://github.com/WhispersOfJ/media-stack/commit/296c6baf7d60ade94af43ec90dfc56478b4368c4))
+* wire SSE streaming for log viewer — live logs instead of 3s polling ([2935156](https://github.com/WhispersOfJ/media-stack/commit/2935156a583115adca25be4d1054fac858e33c75))
+
+
+### Bug Fixes
+
+* adapt NzbDAV config metrics to current API ([dfcbede](https://github.com/WhispersOfJ/media-stack/commit/dfcbede37fc0fc8bdbc2038d415b9e1f43d810c1))
+* add HTTP_HOST/REMOTE_ADDR to host_actions 403 tests ([8124bbc](https://github.com/WhispersOfJ/media-stack/commit/8124bbc419223c4506de3184534ef158f0d077ac))
+* add rate limiting to all destructive host-level endpoints ([67cb2f3](https://github.com/WhispersOfJ/media-stack/commit/67cb2f3bc3270249e71bbebf295048cac906000d))
+* adversarial review — XSS in toasts, SSE resource leak, reconnect race ([61be38c](https://github.com/WhispersOfJ/media-stack/commit/61be38c9704f29b2564e3cfd5be224a6def7fcf3))
+* align Speedtest Tracker catalog port ([953af74](https://github.com/WhispersOfJ/media-stack/commit/953af74b19cb346ecc0eb958399a7ec4331d7c43))
+* bump Django to 5.2.17 for Python 3.14 compatibility ([40f5f6d](https://github.com/WhispersOfJ/media-stack/commit/40f5f6d6227c33e322f8bd0e30c6617bbedd87ea))
+* bump pytest for CVE-2025-71176, add rate-limit test, document secure cookie env var ([687b77b](https://github.com/WhispersOfJ/media-stack/commit/687b77b34c8f4d2d38ff4dbb91830e043137d566))
+* cleanuparr missing-db raises 502 ServiceError, matching router.py ([206b3b7](https://github.com/WhispersOfJ/media-stack/commit/206b3b7484e78583ec9ff949ebd99a6193f72557))
+* control panel can reach Plex via host.docker.internal ([60adf62](https://github.com/WhispersOfJ/media-stack/commit/60adf62c62346f9590c1f95f8b0d31412556081e))
+* correct MDBList response shape and IMDb N/A handling in ratings app ([31db35a](https://github.com/WhispersOfJ/media-stack/commit/31db35a42e54b9c9850e1b225332bb1d8c8bdf93))
+* Django control panel Dockerfile, healthcheck, and static file serving ([0186e9d](https://github.com/WhispersOfJ/media-stack/commit/0186e9d86b3946ac702696f41503c9fae1621ced))
+* document Metacache compose variables ([a668252](https://github.com/WhispersOfJ/media-stack/commit/a668252d3a680375ce8a89ad815c602d0a600f73))
+* exercise real auth layer in watchstate import unauthenticated test ([4cc90d4](https://github.com/WhispersOfJ/media-stack/commit/4cc90d43052e4b35ed55e0acd23991da7fa36f07))
+* harden exporter metrics and live log handling ([ba98cff](https://github.com/WhispersOfJ/media-stack/commit/ba98cff1ad9f8ecd43beca4842493645176b590d))
+* harden Phase 1 findings from final review — secret key, session fixation, DRF defaults, gitignore ([76960b1](https://github.com/WhispersOfJ/media-stack/commit/76960b1dbf0bd7cd9a1b5caf115c016921db749d))
+* harden security — rate limiting, cookie config, ALLOWED_HOSTS, Docker import fallback, privilege docs ([fcdd57c](https://github.com/WhispersOfJ/media-stack/commit/fcdd57c376acf8ca61205a16da04d58204d45c46))
+* persist control-panel SQLite DB in mounted /data volume ([acced04](https://github.com/WhispersOfJ/media-stack/commit/acced041ccc8168108bda80f8ce0f76b415bc2ce))
+* replace slack-github-action with plain curl in Trivy scan workflow ([8340898](https://github.com/WhispersOfJ/media-stack/commit/834089828ce0a043718381268d1550caf9efa602))
+* restore server-side error logging in ServiceError/envelope handler ([b7f2485](https://github.com/WhispersOfJ/media-stack/commit/b7f2485f523b883ce33559f4cb21d5e7be553929))
+* Task 4 findings - idempotent exclusion + test fidelity ([d559024](https://github.com/WhispersOfJ/media-stack/commit/d559024321cfa2d4585e4ce802812cf5dba20ef9))
+* UI redesign bug fixes and security improvements ([0ec2800](https://github.com/WhispersOfJ/media-stack/commit/0ec280086c7198ff9272381e270d35ee0c06b66d))
+* VerifySameOriginMiddleware host check + pytest.ini testpaths ([9195d73](https://github.com/WhispersOfJ/media-stack/commit/9195d7392462b00ba4508133be687613993fde4c))
+* wire sparkline data binding so ApexCharts shows live CPU/RAM/queue history ([1af83b1](https://github.com/WhispersOfJ/media-stack/commit/1af83b1810783e40fe27e04dda564b9fbe22dc23))
+* wrap Plex httpx errors in posters list_libraries/gallery ([ba503b6](https://github.com/WhispersOfJ/media-stack/commit/ba503b6ffd9f80f38aff46b1e24b977dd91c929a))
+
 ## [11.17.0](https://github.com/WhispersOfJ/media-stack/compare/v11.16.0...v11.17.0) (2026-08-21)
 
 
