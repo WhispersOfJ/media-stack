@@ -1490,11 +1490,9 @@ Neither had a maintainer response as of the 2026-07-28 cutover.
 - **`.github/workflows/publish-installer.yml`**: rebuilds and republishes the installer image
   to GHCR on every push to `main` that touches a bundled file, tagged `:latest` and
   `:vX.Y.Z` (parsed from this document's version line), for `linux/amd64` and `linux/arm64`.
-- **`.github/workflows/claude.yml`** / **`claude-code-review.yml`**: `@claude`-triggered PR
-  assistance and automatic review on every PR. Dependabot-authored PRs are skipped (GitHub
-  withholds repo secrets from `pull_request`-triggered runs when the actor is
-  `dependabot[bot]`); the workaround is commenting `@claude` on the PR, which triggers the
-  other workflow.
+- **`.github/workflows/claude.yml`**: `@claude`-triggered PR assistance on demand (comment
+  `@claude` on a PR or issue). The automatic per-PR `claude-code-review.yml` workflow was
+  removed 2026-08-25.
 
 ## Installer image and setup wizard
 
