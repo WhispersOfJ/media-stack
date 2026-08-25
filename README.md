@@ -353,8 +353,12 @@ The installer wizard (`--setup` flag) renders a browser form from `.env.example`
 
 | Document | Purpose |
 |----------|---------|
-| [STACK.md](STACK.md) | Detailed reference: architecture facts, known landmines, incident history, gotchas, workflow playbooks |
-| [BUG-SMASHED.md](BUG-SMASHED.md) | Historical graph of every bug found and fixed, organized by subsystem |
+| [STACK.md](STACK.md) | Quick-reference index with links to focused docs |
+| [docs/architecture.md](docs/architecture.md) | Service inventory, commands, architecture facts, design decisions |
+| [docs/landmines.md](docs/landmines.md) | Active issues that affect operations today |
+| [docs/incidents.md](docs/incidents.md) | Chronological record of incidents, migrations, breaking changes |
+| [docs/playbooks.md](docs/playbooks.md) | Workflow playbooks, operational gotchas, backup/DR notes |
+| [BUG-SMASHED.md](BUG-SMASHED.md) | Historical bug graph — every bug found and fixed |
 | [PLANS.md](PLANS.md) | Implementation plans for pending and completed feature phases |
 | [MEMORY.md](MEMORY.md) | Agent session memory — cross-session state for AI coding agents |
 | [CLAUDE.md](CLAUDE.md) | Rules and commands for Claude Code sessions |
