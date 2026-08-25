@@ -1,23 +1,22 @@
 # BUG-SMASHED.md
 
 > **Every bug found and fixed in this repo, chronologically organized by subsystem.**
-> 79 fixes in the last 300 commits. This document is the historical record — the graveyard of smashed bugs.
+> 76 fixes in the last 300 commits. This document is the historical record — the graveyard of smashed bugs.
 
 ---
 
 ## Bug Timeline Graph
 
 ```
-2026-08 (August 2026): ████████████████████████████████████████ 79 bugs
+2026-08 (August 2026): ████████████████████████████████████████ 76 bugs
 ```
 
 ## Bug Details by Month
 
-### August 2026 (79 bugs)
+### August 2026 (76 bugs)
 
 | Date | Hash | Subsystem | Severity | Description |
 |------|------|-----------|----------|-------------|
-| 2026-08-04 | `5809a63` | Control Panel — Backend | Low | fix(control-panel): wire CONTROL_PANEL_SERVICE_API_KEY through to __stack_api.fish |
 | 2026-08-05 | `4b37554` | Usenet Pipeline, Control Panel — Backend, Control Panel — Frontend, Django Migration | Low | fix(control-panel): add login UI and static-file mount for evolved backend |
 | 2026-08-06 | `b5bf585` | Control Panel — Backend | Low | wire cleanuparr and seerr routers into main.py |
 | 2026-08-06 | `e8fae06` | Fish Functions | Low | send X-Api-Key from stack-* fish CLI commands |
@@ -40,7 +39,6 @@
 | 2026-08-09 | `553bde6` | Usenet Pipeline | Low | restore nzbdav usenet connections to 50 per provider |
 | 2026-08-09 | `8feda56` | Usenet Pipeline | Low | lower nzbdav usenet connections to 25 per provider |
 | 2026-08-11 | `d1b27b5` | Uncategorized | Low | remove thundernews, set newshosting primary and ninja as backup |
-| 2026-08-12 | `9b1ea76` | Uncategorized | Low | finish restic removal - doc/comment updates and dead import |
 | 2026-08-13 | `d799609` | Plex, CI/CD | Low | reconcile against the Plex API, not deleted_at (corrects a false positive) |
 | 2026-08-13 | `5d43a0f` | Usenet Pipeline | Low | self-heal stale FUSE mountpoint on nzbdav_rclone start |
 | 2026-08-14 | `113d38c` | Control Panel — Frontend | Low | remove dead sparkline CSS rules, diverge rail-fleet/rail-catalog from status colors |
@@ -49,7 +47,6 @@
 | 2026-08-14 | `76a2f66` | Plex | Low | send the service API key from the Plex health watchdog |
 | 2026-08-14 | `e070b54` | CI/CD | Low | green up Validate Compose and widen its lint/profile coverage |
 | 2026-08-15 | `a02163a` | Usenet Pipeline | Low | declare FUSE-mount dependency chain, add rclone healthcheck |
-| 2026-08-15 | `4e16caf` | Control Panel — Backend | Low | fix stale entry-count in router.py module docstring |
 | 2026-08-15 | `ff650a6` | Control Panel — Frontend | Low | catalog details panel display:flex overrode [hidden], never collapsed |
 | 2026-08-19 | `dc27428` | CI/CD | Low | clear ruff lint errors blocking Validate Compose CI |
 | 2026-08-19 | `10f545f` | Control Panel — Backend | Critical | isolate router-import failures instead of crashing all of boot |
@@ -115,18 +112,16 @@
 | 2026-08-23 | `8340898` | Low | replace slack-github-action with plain curl in Trivy scan workflow |
 | 2026-08-25 | `2795558` | Low | add whitenoise to CI test requirements |
 
-### Control Panel — Backend (25 bugs)
+### Control Panel — Backend (23 bugs)
 
 | Date | Hash | Severity | Description |
 |------|------|----------|-------------|
-| 2026-08-04 | `5809a63` | Low | fix(control-panel): wire CONTROL_PANEL_SERVICE_API_KEY through to __stack_api.fish |
 | 2026-08-05 | `4b37554` | Low | fix(control-panel): add login UI and static-file mount for evolved backend |
 | 2026-08-06 | `b5bf585` | Low | wire cleanuparr and seerr routers into main.py |
 | 2026-08-06 | `1437035` | Low | fix(control-panel): extend service-key auth to every fish-CLI-called route |
 | 2026-08-06 | `d982fca` | Low | fix(control-panel): allow service-key auth on add-from-letterboxd-list |
 | 2026-08-07 | `de6133f` | High | repair drifted skill scripts and port 3 missing control-panel routes |
 | 2026-08-07 | `d16b12b` | High | add missing Control Panel/radarr_anime vars to .env.example |
-| 2026-08-15 | `4e16caf` | Low | fix stale entry-count in router.py module docstring |
 | 2026-08-19 | `10f545f` | Critical | isolate router-import failures instead of crashing all of boot |
 | 2026-08-19 | `0df6ac1` | Low | log silent excepts, justify automation routes, add 35 router tests |
 | 2026-08-20 | `56840a0` | Low | update control-panel unit tests for amber/green theme default |
@@ -220,7 +215,7 @@
 | 2026-08-24 | `61be38c` | Critical | adversarial review — XSS in toasts, SSE resource leak, reconnect race |
 | 2026-08-24 | `0ec2800` | Critical | UI redesign bug fixes and security improvements |
 
-### Uncategorized (17 bugs)
+### Uncategorized (16 bugs)
 
 | Date | Hash | Severity | Description |
 |------|------|----------|-------------|
@@ -229,7 +224,6 @@
 | 2026-08-07 | `1c8c853` | High | fix(health-monitor): add 7 missing services to HTTP reachability check |
 | 2026-08-07 | `eafa540` | Low | treat radarr_anime as a Radarr-type app in queue/import/blocklist paths |
 | 2026-08-11 | `d1b27b5` | Low | remove thundernews, set newshosting primary and ninja as backup |
-| 2026-08-12 | `9b1ea76` | Low | finish restic removal - doc/comment updates and dead import |
 | 2026-08-19 | `7eb9af6` | Low | remove stale extras profile refs, fix dangling app.py COPY |
 | 2026-08-19 | `10ce1d1` | High | guard unhandled Cleanuparr seeker fetch, add 23 script tests |
 | 2026-08-19 | `922831c` | Low | remove dangling env vars for services deleted in consolidation |
@@ -268,15 +262,15 @@
 | **Critical** | 6 | Data loss, security exposure, or complete service outage |
 | **High** | 9 | Major feature broken, requires immediate fix |
 | **Medium** | 3 | Degraded functionality, wrong behavior in edge cases |
-| **Low** | 61 | Cosmetic, documentation, or minor inconvenience |
+| **Low** | 58 | Cosmetic, documentation, or minor inconvenience |
 
 ## Bug Density by Month
 
 ```
-2026-08: ████████████████████████████████████████ 79 bugs
+2026-08: ████████████████████████████████████████ 76 bugs
 ```
 
-**Total: 79 bugs fixed across 300 commits.**
+**Total: 76 bugs fixed across 300 commits.**
 
 ---
 

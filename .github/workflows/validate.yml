@@ -52,6 +52,13 @@ jobs:
           pip install ruff==0.8.6
           ruff check scripts/ tests/
 
+      - name: BUG-SMASHED.md smoke test
+        # Verify the bug-graph script runs without errors against the
+        # current git log. The checked-in BUG-SMASHED.md is a snapshot;
+        # regenerate locally with:
+        #   python3 scripts/generate-bug-graph.py --commits 300
+        run: python3 scripts/generate-bug-graph.py --repo . --output /dev/null --commits 300
+
       - name: Unit tests - scripts, fish, and systemd
         run: |
           pip install -r requirements-dev.txt

@@ -45,8 +45,8 @@ BUG_PATTERNS = re.compile(
     r"\b(fix|crash|break|wrong|stale|dead|corrupt|leak|miss|fail|error|CVE|XSS|race|hang|false.positive|orphan|dangl|residual|revert|misalign|collision|broke|stuck|missing)\b",
     re.IGNORECASE,
 )
-# Exclude docs-only commits that mention "bug" in a filename, not a real bug
-DOC_EXCLUDE = re.compile(r"docs?:\s*.*BUG-SMASHED", re.IGNORECASE)
+# Exclude docs-only commits — they document bugs but don't fix them
+DOC_EXCLUDE = re.compile(r"^docs?:\s", re.IGNORECASE)
 
 # Subsystem classification keywords
 SUBSYSTEMS = {
