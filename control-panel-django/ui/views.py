@@ -12,11 +12,6 @@ Phase 3 pages (built in later tasks):
 
 Cross-app page views live in their respective apps' views.py files:
   - Host page → host/views.py (Task 2)
-  - Arr Fleet page → arr/views.py (Task 3)
-  - Plex Health page → plex/views.py (Task 4)
-  - Poster Sync page → posters/views.py (Task 5)
-  - Letterboxd page → letterboxd/views.py (Task 6)
-  - MDBList page → mdblist/views.py (Task 7)
 """
 
 import logging
@@ -30,11 +25,14 @@ logger = logging.getLogger(__name__)
 
 
 def _overview_context():
-    """Gather all cross-app data for the overview cards + partial.
+    """Gather cross-app data for the overview cards + partial.
 
-    Runs all four service calls in parallel via threads to minimize
-    latency. Each call is wrapped in a try/except so one unreachable
-    service doesn't blank the whole page.
+    Runs service calls in parallel via threads to minimize latency.
+    Each call is wrapped in a try/except so one unreachable service
+    doesn't blank the whole page.
+
+    Note: Plex and Arr data are now served by arr-dashboard (:41789).
+    This panel only shows infrastructure metrics (queue, host resources).
     """
     ctx: dict = {}
 
@@ -67,44 +65,11 @@ def _overview_context():
             logger.warning("overview: host resources failed", exc_info=True)
             return {}
 
-    def _fetch_plex():
-        try:
-            from plex.services import scan_health
-            sh = scan_health()
-            state = sh.get("state", "unknown")
-            return {
-                "plex_state": state,
-                "plex_state_label": state.replace("_", " ").title(),
-                "plex_activity_count": len(sh.get("activities", [])),
-                "plex_state_pct": 50,
-            }
-        except Exception:
-            logger.warning("overview: plex health failed", exc_info=True)
-            return {}
-
-    def _fetch_arr():
-        try:
-            import arr.services as arr_services
-            bs = arr_services.backlog_status()
-            apps = bs.get("apps", {})
-            return {
-                "arr_app_count": len(apps),
-                "arr_missing": sum(
-                    v.get("missing", 0) for v in apps.values()
-                    if isinstance(v, dict) and "error" not in v
-                ),
-            }
-        except Exception:
-            logger.warning("overview: arr backlog failed", exc_info=True)
-            return {}
-
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         futures = {
             pool.submit(_fetch_queue): "queue",
             pool.submit(_fetch_host): "host",
-            pool.submit(_fetch_plex): "plex",
-            pool.submit(_fetch_arr): "arr",
         }
         for future in concurrent.futures.as_completed(futures):
             try:
@@ -135,14 +100,6 @@ def home(request):
 def settings_page(request):
     """Settings page — connection config, auth, display, notifications."""
     ctx = {"page": "settings", "page_title": "Settings"}
-    # Pull current env values for the form
-    import os
-    ctx["settings"] = {
-        "plex_url": os.environ.get("PLEX_URL", ""),
-        "plex_token": os.environ.get("PLEX_TOKEN", ""),
-        "radarr_api_key": os.environ.get("RADARR_API_KEY", ""),
-        "sonarr_api_key": os.environ.get("SONARR_API_KEY", ""),
-    }
     ctx["theme"] = request.session.get("theme", "dark")
     return render(request, "ui/settings.html", ctx)
 
@@ -155,14 +112,11 @@ def reference_page(request):
     ctx = {
         "page": "reference",
         "page_title": "Reference",
-        "plex_host": host_ip,
-        "radarr_host": host_ip,
-        "sonarr_host": host_ip,
-        "prowlarr_host": host_ip,
         "nzbdav_host": host_ip,
-        "seerr_host": host_ip,
         "watchstate_host": host_ip,
         "grafana_host": host_ip,
+        "arr_dashboard_host": host_ip,
+        "arr_dashboard_port": 41789,
     }
     return render(request, "ui/reference.html", ctx)
 
@@ -257,7 +211,7 @@ def log_stream_sse(request):
     container = request.GET.get("container", "")
     if not container:
         return StreamingHttpResponse(
-            iter(["data: {\"error\": \"No container specified\"}\n\n"]),
+            iter(['data: {"error": "No container specified"}\n\n']),
             content_type="text/event-stream",
         )
 
@@ -283,5 +237,3 @@ def log_stream_sse(request):
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
-
-

@@ -1,27 +1,22 @@
-"""Tests for queue_app.services.aggregate_queue_status, ported from the
-FastAPI-era control-panel/services/queue/router.py behavior (2-sample
-delta-bucketing, QUEUE_SAMPLE_SECONDS apart).
+"""Tests for queue_app.services.aggregate_queue_status.
 
 time.sleep is monkeypatched to a no-op so tests don't actually block for
 QUEUE_SAMPLE_SECONDS. Each mocked HTTP endpoint is registered with two
 responses (pytest-httpx serves them FIFO) representing the "before" and
 "after" snapshot round.
+
+Note: Plex activities are now displayed by arr-dashboard (:41789).
+This module only tests Arr app + NzbDAV queue aggregation.
 """
 import pytest
 
-from core import nzbdav_client, plex_client
+from core import nzbdav_client
 from queue_app import services
 
 
 @pytest.fixture(autouse=True)
 def _no_sleep(monkeypatch):
     monkeypatch.setattr(services.time, "sleep", lambda *_a, **_k: None)
-
-
-@pytest.fixture(autouse=True)
-def _plex_config(monkeypatch):
-    monkeypatch.setattr(plex_client, "PLEX_URL", "http://plex:32400")
-    monkeypatch.setattr(plex_client, "PLEX_TOKEN", "test-plex-token")
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +31,6 @@ SONARR_QUEUE_URL = (
     "http://sonarr:8989/api/v3/queue?pageSize=250&includeUnknownMovieItems=true&includeEpisode=true"
 )
 NZBDAV_QUEUE_URL = "http://nzbdav:3000/api?mode=queue&output=json&apikey=test-nzbdav-key"
-PLEX_ACTIVITIES_URL = "http://plex:32400/activities"
 
 
 def _radarr_round1():
@@ -78,20 +72,6 @@ def _nzbdav_round2():
     ]}}
 
 
-def _plex_round1():
-    return {"MediaContainer": {"Activity": [
-        {"uuid": "p1", "title": "Analyzing", "progress": 20},
-        {"uuid": "p2", "title": "Deep scan", "subtitle": "Section X", "progress": 50},
-    ]}}
-
-
-def _plex_round2():
-    return {"MediaContainer": {"Activity": [
-        {"uuid": "p1", "title": "Analyzing", "progress": 60},
-        {"uuid": "p2", "title": "Deep scan", "subtitle": "Section X", "progress": 50},
-    ]}}
-
-
 def _mock_happy_path(httpx_mock):
     httpx_mock.add_response(url=RADARR_QUEUE_URL, json={"records": _radarr_round1()})
     httpx_mock.add_response(url=RADARR_QUEUE_URL, json={"records": _radarr_round2()})
@@ -99,8 +79,6 @@ def _mock_happy_path(httpx_mock):
     httpx_mock.add_response(url=SONARR_QUEUE_URL, json={"records": _sonarr_round()})
     httpx_mock.add_response(url=NZBDAV_QUEUE_URL, json=_nzbdav_round1())
     httpx_mock.add_response(url=NZBDAV_QUEUE_URL, json=_nzbdav_round2())
-    httpx_mock.add_response(url=PLEX_ACTIVITIES_URL, json=_plex_round1())
-    httpx_mock.add_response(url=PLEX_ACTIVITIES_URL, json=_plex_round2())
 
 
 class TestAggregateQueueStatusHappyPath:
@@ -140,39 +118,21 @@ class TestAggregateQueueStatusHappyPath:
         assert [i["title"] for i in nzbdav["queued"]] == ["File3"]
         assert [i["title"] for i in nzbdav["importing"]] == ["File4"]
 
-    def test_plex_buckets_downloading_and_stalled(self, httpx_mock):
-        _mock_happy_path(httpx_mock)
-        result = services.aggregate_queue_status()
-        plex = result["plex"]
-        assert plex["label"] == "Plex"
-        assert plex["total"] == 2
-        assert [i["title"] for i in plex["downloading"]] == ["Analyzing"]
-        assert [i["title"] for i in plex["stalled"]] == ["Deep scan: Section X"]
-        assert "eta" in plex["downloading"][0]
-
 
 class TestAggregateQueueStatusUnreachable:
     def test_radarr_unreachable_produces_error_without_failing_call(self, httpx_mock):
-        # Radarr's queue lookup 500s on both rounds - arr_queue() raises
-        # ServiceError, which _arr_sizeleft_snapshot swallows to {} and the
-        # main loop catches to mark the app unreachable, without aborting
-        # the rest of the aggregation.
         httpx_mock.add_response(url=RADARR_QUEUE_URL, status_code=500)
         httpx_mock.add_response(url=RADARR_QUEUE_URL, status_code=500)
         httpx_mock.add_response(url=SONARR_QUEUE_URL, json={"records": _sonarr_round()})
         httpx_mock.add_response(url=SONARR_QUEUE_URL, json={"records": _sonarr_round()})
         httpx_mock.add_response(url=NZBDAV_QUEUE_URL, json=_nzbdav_round1())
         httpx_mock.add_response(url=NZBDAV_QUEUE_URL, json=_nzbdav_round2())
-        httpx_mock.add_response(url=PLEX_ACTIVITIES_URL, json=_plex_round1())
-        httpx_mock.add_response(url=PLEX_ACTIVITIES_URL, json=_plex_round2())
 
         result = services.aggregate_queue_status()
 
         assert result["radarr"] == {"label": "Radarr", "error": "unreachable"}
-        # the rest of the aggregation still succeeded
         assert result["sonarr"]["total"] == 2
         assert result["nzbdav"]["total"] == 4
-        assert result["plex"]["total"] == 2
 
     def test_nzbdav_unreachable_produces_error_without_failing_call(self, httpx_mock):
         httpx_mock.add_response(url=RADARR_QUEUE_URL, json={"records": _radarr_round1()})
@@ -181,25 +141,8 @@ class TestAggregateQueueStatusUnreachable:
         httpx_mock.add_response(url=SONARR_QUEUE_URL, json={"records": _sonarr_round()})
         httpx_mock.add_response(url=NZBDAV_QUEUE_URL, status_code=500)
         httpx_mock.add_response(url=NZBDAV_QUEUE_URL, status_code=500)
-        httpx_mock.add_response(url=PLEX_ACTIVITIES_URL, json=_plex_round1())
-        httpx_mock.add_response(url=PLEX_ACTIVITIES_URL, json=_plex_round2())
 
         result = services.aggregate_queue_status()
 
         assert result["nzbdav"] == {"label": "NzbDAV", "error": "unreachable"}
-        assert result["radarr"]["total"] == 2
-
-    def test_plex_unreachable_produces_error_without_failing_call(self, httpx_mock):
-        httpx_mock.add_response(url=RADARR_QUEUE_URL, json={"records": _radarr_round1()})
-        httpx_mock.add_response(url=RADARR_QUEUE_URL, json={"records": _radarr_round2()})
-        httpx_mock.add_response(url=SONARR_QUEUE_URL, json={"records": _sonarr_round()})
-        httpx_mock.add_response(url=SONARR_QUEUE_URL, json={"records": _sonarr_round()})
-        httpx_mock.add_response(url=NZBDAV_QUEUE_URL, json=_nzbdav_round1())
-        httpx_mock.add_response(url=NZBDAV_QUEUE_URL, json=_nzbdav_round2())
-        httpx_mock.add_response(url=PLEX_ACTIVITIES_URL, status_code=500)
-        httpx_mock.add_response(url=PLEX_ACTIVITIES_URL, status_code=500)
-
-        result = services.aggregate_queue_status()
-
-        assert result["plex"] == {"label": "Plex", "error": "unreachable"}
         assert result["radarr"]["total"] == 2

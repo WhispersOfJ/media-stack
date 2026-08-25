@@ -29,7 +29,15 @@ from host.api.serializers import (
     SettingsPatchSerializer,
     TopQuerySerializer,
 )
-from posters.api.sse import sse_response
+
+
+def sse_response(generator):
+    """Create an SSE StreamingHttpResponse from a generator."""
+    from django.http import StreamingHttpResponse
+    response = StreamingHttpResponse(generator, content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 class StatusView(EnvelopeAPIView):
