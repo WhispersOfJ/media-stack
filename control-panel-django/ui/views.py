@@ -232,6 +232,7 @@ def log_stream_partial(request):
     container = request.GET.get("container", "")
     log_lines = []
     if container:
+        client = None
         try:
             import docker
             client = docker.from_env()
@@ -240,6 +241,9 @@ def log_stream_partial(request):
             log_lines = [line.rstrip() for line in raw.splitlines() if line.strip()]
         except Exception:
             log_lines = [f"Error: could not read logs for {container}"]
+        finally:
+            if client:
+                client.close()
     return render(request, "ui/partials/log_stream.html", {
         "log_lines": log_lines,
         "container": container,
