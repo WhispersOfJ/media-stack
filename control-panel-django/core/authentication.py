@@ -39,3 +39,29 @@ class SessionOrApiKeyAuthentication(BaseAuthentication):
             return (user, None)
 
         return None
+
+
+class BearerTokenAuthentication(BaseAuthentication):
+    """Authenticates via the standard Authorization: Bearer <token> header.
+    The token is validated against stored ApiKey hashes, same as X-Api-Key.
+    Used for host-level destructive endpoints where a bearer token is more
+    appropriate than a session cookie (CLI tools, automation scripts)."""
+
+    def authenticate(self, request):
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if not auth_header.startswith("Bearer "):
+            return None
+
+        token = auth_header[7:].strip()
+        if not token:
+            return None
+
+        key_hash = hash_api_key(token)
+        try:
+            key_row = ApiKey.objects.get(key_hash=key_hash)
+        except ApiKey.DoesNotExist:
+            raise AuthenticationFailed("Invalid bearer token")
+
+        key_row.last_used_at = timezone.now()
+        key_row.save(update_fields=["last_used_at"])
+        return (AnonymousServiceUser(), None)

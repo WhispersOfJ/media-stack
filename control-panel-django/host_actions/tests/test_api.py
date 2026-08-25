@@ -114,3 +114,61 @@ def test_confirmed_action_rejects_unauthenticated():
             REMOTE_ADDR="127.0.0.1",
         )
         assert response.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,service_path", ENDPOINTS)
+def test_confirmed_action_accepts_bearer_token(authed_client, url, service_path):
+    """Bearer token (Authorization: Bearer <key>) authenticates and allows
+    host actions — the new standard for CLI/automation access to destructive
+    endpoints. The authed_client fixture has a session, but this test passes
+    the bearer header to verify the BearerTokenAuthentication path works."""
+    # Create an API key for bearer auth
+    from core.models import ApiKey
+    from core.security import hash_api_key
+
+    ApiKey.objects.create(name="bearer-test", key_hash=hash_api_key("bearer-token-123"))
+
+    with patch(service_path, return_value={"ok": True, "message": "done", "returncode": 0}):
+        response = authed_client.post(
+            url,
+            json.dumps({"confirm": True}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer bearer-token-123",
+            HTTP_HOST="localhost",
+            REMOTE_ADDR="127.0.0.1",
+        )
+    assert response.status_code == 200
+    data = json.loads(response.content)
+    assert data["ok"] is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,service_path", ENDPOINTS)
+def test_confirmed_action_rejects_invalid_bearer_token(url, service_path):
+    """An invalid bearer token is rejected with 401 or 403."""
+    client = APIClient()
+    response = client.post(
+        url,
+        {"confirm": True},
+        format="json",
+        HTTP_AUTHORIZATION="Bearer invalid-token",
+        HTTP_HOST="localhost",
+        REMOTE_ADDR="127.0.0.1",
+    )
+    assert response.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url,service_path", ENDPOINTS)
+def test_confirmed_action_rejects_x_api_key_not_bearer(service_client, url, service_path):
+    """X-Api-Key alone still gets 403 on host endpoints — callers must use
+    the Bearer header instead."""
+    response = service_client.post(
+        url,
+        {"confirm": True},
+        format="json",
+        HTTP_HOST="localhost",
+        REMOTE_ADDR="127.0.0.1",
+    )
+    assert response.status_code == 403

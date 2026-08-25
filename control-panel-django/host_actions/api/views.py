@@ -3,22 +3,27 @@ brokered through the host-side controlpanel-helper daemon (see
 core/host_helper_client.py). Ported from
 control-panel/services/host_actions/router.py.
 
-Every view here is session-only (IsAuthenticatedSessionOnly, never
-IsAuthenticatedOrServiceKey) - these are irreversible/disruptive
-host-level actions, never automation-invoked - and requires confirm=true
-in the body, the same double-gate as the FastAPI-era
+Every view here requires authentication via session cookie OR bearer token
+(IsAuthenticatedSessionOrBearer) - these are irreversible/disruptive
+host-level actions, never automation-invoked via X-Api-Key - and requires
+confirm=true in the body, the same double-gate as the FastAPI-era
 /api/disk-health/prune and catalog install/remove routes. The confirm
 check happens in post() BEFORE the action function is called, matching
 router.py's _run_host_action() checking payload.confirm before calling
-call_host_helper()."""
+call_host_helper().
+
+Bearer token auth: send Authorization: Bearer <CONTROL_PANEL_SERVICE_API_KEY>
+instead of X-Api-Key for these endpoints."""
 from core.api_base import EnvelopeAPIView, ServiceError
-from core.permissions import IsAuthenticatedSessionOnly
+from core.authentication import BearerTokenAuthentication, SessionOrApiKeyAuthentication
+from core.permissions import IsAuthenticatedSessionOrBearer
 from host_actions import services
 from host_actions.api.serializers import ConfirmRequestSerializer
 
 
 class _ConfirmedActionView(EnvelopeAPIView):
-    permission_classes = [IsAuthenticatedSessionOnly]
+    authentication_classes = [SessionOrApiKeyAuthentication, BearerTokenAuthentication]
+    permission_classes = [IsAuthenticatedSessionOrBearer]
     label = None
 
     def call_action(self) -> dict:
