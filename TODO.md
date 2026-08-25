@@ -42,60 +42,34 @@ Do you actually use Discord for stack alerts, or is ntfy (port 8700) sufficient?
 
 ## 3. Hub Repo for Project Discovery (from THOUGHTS.md)
 
-**Status:** Idea only, no implementation
-**Effort:** 1-2 hours
-**Impact:** Makes all your projects discoverable from one place
+**Status: ✅ DONE** — Profile README pushed to `WhispersOfJ/WhispersOfJ`.
 
-### The problem
-Three repos exist (`media-stack` private, `Stackalicious` public mirror deleted, `StackScripts` public redistribution deleted) plus Metacacharr. Nothing answers "what has this person built" in one place.
-
-### Constraint
-`media-stack` is private by design and must stay that way.
-
-### Options considered
-1. **GitHub Profile README** — public, shows pinned repos, no code exposure
-2. **GitHub Topics/Descriptions** — lightweight, no new repo needed
-3. **Static site** — overkill for this scale
-
-### Recommendation
-Option 1 (Profile README) + Option 2 (consistent topics/descriptions). Zero maintenance, maximum discoverability.
+Profile README at https://github.com/WhispersOfJ with pinned media-stack description and architecture diagram.
 
 ---
 
-## 4. PLANS.md Phase 8: Naming Cleanup — DEFERRED
+## 4. PLANS.md Phase 8: Naming Cleanup
 
-**Status:** Phase 8a and 8b completed (2026-08-13). Phase 8 (whole-stack naming cleanup) was the original plan but the actual work was narrower — only 12 functions renamed, not the full 150+ originally scoped.
+**Status: ✅ DONE** — All 141 stack commands now follow the `stack-<domain>-<verb>` convention.
 
-### What remains
-The original Phase 8 scope included renaming ~150 fish functions with drifting verb order. The actual cleanup renamed 12 and added a linter. If you want the broader rename (e.g., standardizing all `stack-plex-*` to a consistent verb pattern), that's new work.
-
-### Effort
-2-3 hours for the full rename pass
+Renamed 5 remaining non-conforming functions: TMDB→stack-tmdb-audit, backup→stack-file-backup, cleanup→stack-pkg-cleanup, claudehome→stack-claude-home, alacritty-use-theme→stack-alacritty-theme. Added completions and updated naming schema test.
 
 ---
 
 ## 5. Open Items from docs/stack-audit-2026-08-23.md
 
-**Status:** Audit complete, some items flagged but not fixed
+**Status: ✅ DONE** — All 4 flagged items remediated.
 
-### Items flagged, not fixed
-1. **AuditLog is write-only** — `services/auth/router.py` writes login/logout rows but nothing reads them. Either build a reader or stop writing.
-2. **`main.py:40-41` silent `except Exception: pass`** — gateway lookup fails silently. Low priority, fallback is intentional.
-3. **`services/host/router.py` automation-exception comments** — borderline convention compliance. Minor.
-4. **`DEDUP_SUFFIX_RE` ambiguity** — matches both `(2)` dedup suffix and `(2020)` year. Potential false positive on year-suffixed filenames.
-
-### Effort
-1-2 hours total for all four
+1. **AuditLog** — IS read by `ui/views.py` (confirmed, not write-only).
+2. **`main.py` silent except** — was in retired FastAPI code, moot.
+3. **`host/views.py` comments** — docstrings added.
+4. **`DEDUP_SUFFIX_RE`** — narrowed to `\d{1,3}` to exclude years. 3 new tests added.
 
 ---
 
 ## Review Checklist
 
-Before executing any of the above, confirm:
+All items complete. Remaining work:
 
-- [ ] **Upstream monitoring** — Do you want weekly release checks? (Y/N)
-- [ ] **Discord alerts** — Do you use Discord or is ntfy enough? (Y/N/Skip)
-- [ ] **Hub repo** — Want a GitHub profile README? (Y/N)
-- [ ] **Fish function rename** — Broad rename beyond the 12 already done? (Y/N)
-- [ ] **AuditLog reader** — Build it or stop writing? (Build/Stop/Skip)
-- [ ] **Audit fixes** — Fix the 4 flagged items? (Y/N)
+- [ ] **Upstream monitoring** — Already wired (cron + Discord webhook)
+- [ ] **Discord alerts** — Already Discord-only, ntfy removed
