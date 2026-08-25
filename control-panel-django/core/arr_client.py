@@ -282,7 +282,9 @@ def importing_queue_targets(app_name: str) -> list[dict]:
     return list(by_download.values())
 
 
-DEDUP_SUFFIX_RE = re.compile(r"\s\(\d+\)(\.[A-Za-z0-9]+)?$")
+# Matches Radarr/Sonarr dedup suffixes like "(2)" but not year suffixes like
+# "(2020)" — requires 1-3 digits to avoid false positives on 4-digit years.
+DEDUP_SUFFIX_RE = re.compile(r"\s\(\d{1,3}\)(\.[A-Za-z0-9]+)?$")
 
 
 def dedup_suffix_hit(name: str | None) -> bool:

@@ -174,7 +174,11 @@ class LogLevelsView(EnvelopeAPIView):
 
 
 class ResetLogLevelsView(EnvelopeAPIView):
-    """POST /api/v2/host/log-levels/reset"""
+    """POST /api/v2/host/log-levels/reset
+
+    Resets all debug-logging apps back to info level. Uses the default
+    IsAuthenticatedOrServiceKey permission (not session-only) — this is a
+    maintenance action, not irreversible like host reboot."""
 
     def post(self, request):
         message = services.reset_log_levels()
@@ -244,7 +248,11 @@ class DocsReadmeView(EnvelopeAPIView):
 
 
 class NotifyTestView(EnvelopeAPIView):
-    """POST /api/v2/host/notify/test"""
+    """POST /api/v2/host/notify/test
+
+    Sends a test notification to the configured Discord webhook. Uses the
+    default IsAuthenticatedOrServiceKey permission (not session-only) —
+    harmless, idempotent, useful for automation health checks."""
 
     def post(self, request):
         message = services.notify_test()

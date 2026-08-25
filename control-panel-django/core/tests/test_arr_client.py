@@ -1,4 +1,4 @@
-from core.arr_client import ARR_APPS, PROWLARR_CFG, QUEUE_ARR_APPS, RADARR_APPS, format_eta, human_size
+from core.arr_client import ARR_APPS, PROWLARR_CFG, QUEUE_ARR_APPS, RADARR_APPS, dedup_suffix_hit, format_eta, human_size
 
 
 def test_arr_apps_registry_is_populated():
@@ -30,3 +30,22 @@ def test_format_eta_formats_seconds_up_through_days():
     assert format_eta(125) == "2m05s"
     assert format_eta(3725) == "1h02m"
     assert format_eta(90000) == "1d01h"
+
+
+def test_dedup_suffix_hit_matches_real_dedup_suffixes():
+    assert dedup_suffix_hit("Movie Name (2).mkv") is True
+    assert dedup_suffix_hit("Movie Name (1).mkv") is True
+    assert dedup_suffix_hit("Movie Name (999).mkv") is True
+    assert dedup_suffix_hit("Movie Name (2).1080p.mkv") is True
+
+
+def test_dedup_suffix_hit_rejects_year_suffixes():
+    assert dedup_suffix_hit("Movie Name (2020).mkv") is False
+    assert dedup_suffix_hit("Movie Name (1999).mkv") is False
+    assert dedup_suffix_hit("Movie Name (2024).mkv") is False
+
+
+def test_dedup_suffix_hit_rejects_empty_and_none():
+    assert dedup_suffix_hit(None) is False
+    assert dedup_suffix_hit("") is False
+    assert dedup_suffix_hit("Movie Name.mkv") is False
