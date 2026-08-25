@@ -6,7 +6,7 @@ set -e
 
 GRAFANA_URL="${GRAFANA_URL:-http://localhost:3001}"
 GRAFANA_USER="${GRAFANA_USER:-admin}"
-GRAFANA_PASS="${GRAFANA_PASS:-media-stack-logging-secure-2026}"
+GRAFANA_PASS="${GRAFANA_PASS:-${GRAFANA_ADMIN_PASSWORD:-changeme}}"
 DASHBOARD_DIR="./config/grafana/dashboards"
 
 echo "═════════════════════════════════════════════════════════════════"

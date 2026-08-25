@@ -75,7 +75,7 @@
    ```
    http://localhost:3001
    Username: admin
-   Password: media-stack-logging-secure-2026
+   Password: changeme
    ```
 
 2. **Browse Dashboards**

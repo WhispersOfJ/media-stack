@@ -35,7 +35,7 @@
 - **Datasource:** Loki at `http://loki:3100`
 - **Config:** `./config/grafana/provisioning/datasources/loki.yaml`
 - **Plugins:** grafana-piechart-panel (pre-installed)
-- **Admin:** `admin` / `media-stack-logging-secure-2026`
+- **Admin:** `admin` / `changeme`
 
 ---
 
@@ -44,7 +44,7 @@
 **Grafana UI:**
 ```
 http://localhost:3001
-Login: admin / media-stack-logging-secure-2026
+Login: admin / changeme
 ```
 
 **Loki API:**

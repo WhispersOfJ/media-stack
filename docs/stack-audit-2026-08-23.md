@@ -60,8 +60,8 @@ login — anyone on the LAN can search/index/grab via the API.
 behind the reverse proxy with proper auth.
 
 ### 9. Grafana default admin password in `.env.example`
-`GRAFANA_ADMIN_PASSWORD=media-stack-logging-secure-2026` is a real, guessable
-password committed to git.
+`GRAFANA_ADMIN_PASSWORD` held a real, guessable password committed to git
+(redacted 2026-08-25 before the repo went public).
 **Fix:** Generate a random password, remove from `.env.example`, replace with
 `changeme`.
 
