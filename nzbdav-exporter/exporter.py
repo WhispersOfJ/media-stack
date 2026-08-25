@@ -7,6 +7,7 @@ then exposes Prometheus metrics on :9200/metrics.
 
 import json
 import logging
+import math
 import os
 import time
 import urllib.parse
@@ -28,6 +29,7 @@ except ValueError:
 # prevents samples from different categories/statuses overwriting one another.
 _metrics: dict[str, str] = {}
 _metric_help: dict[str, tuple[str, str]] = {}
+_last_config: dict[str, object] = {}
 _lock = Lock()
 
 
@@ -61,29 +63,43 @@ def _remove_family(name: str):
 
 def _as_float(value: object) -> float:
     try:
-        return float(value or 0)
+        number = float(value or 0)
     except (TypeError, ValueError):
         return 0.0
+    return number if math.isfinite(number) else 0.0
 
 
 def _as_number(value: object, default: str = "0") -> str:
-    """Return a Prometheus-compatible scalar, falling back for bad config."""
+    """Return a finite, Prometheus-compatible scalar."""
     try:
         number = float(value)
     except (TypeError, ValueError):
         return default
+    if not math.isfinite(number):
+        return default
     return str(int(number)) if number.is_integer() else str(number)
 
 
+def _slots(payload: object, section: str) -> list[dict]:
+    """Validate an SAB history/queue slots collection before processing it."""
+    if not isinstance(payload, dict):
+        raise ValueError(f"{section} response is not an object")
+    slots = payload.get("slots", [])
+    if not isinstance(slots, list):
+        raise ValueError(f"{section}.slots is not an array")
+    return [slot for slot in slots if isinstance(slot, dict)]
+
+
 def _get(url: str, params: dict | None = None, headers: dict | None = None,
-         method: str = "GET", data: dict | None = None, timeout: int = 10):
+         method: str = "GET", data: dict | list[tuple[str, object]] | None = None,
+         timeout: int = 10):
     """HTTP request using stdlib. Returns parsed JSON dict."""
     if params:
         separator = "&" if "?" in url else "?"
         url = url + separator + urllib.parse.urlencode(params)
     body = None
     if data is not None:
-        body = urllib.parse.urlencode(data).encode()
+        body = urllib.parse.urlencode(data, doseq=True).encode()
     req = urllib.request.Request(url, method=method, data=body)
     if headers:
         for k, v in headers.items():
@@ -108,19 +124,21 @@ def _scraper():
 
 
 def _scrape():
+    global _last_config
     headers = {"X-Api-Key": NZBDAV_API_KEY}
+    scrape_success = True
 
     # --- Queue ---
     t0 = time.monotonic()
     try:
         data = _get(f"{NZBDAV_URL}/api",
                     params={"mode": "queue", "output": "json", "apikey": NZBDAV_API_KEY})
-        queue = data.get("queue", {})
-        slots = queue.get("slots", [])
-        _set("nzbdav_up", "1", help_text="1 if the exporter completed a scrape", typ="gauge")
+        if not isinstance(data, dict):
+            raise ValueError("queue response is not an object")
+        slots = _slots(data.get("queue", {}), "queue")
     except Exception as exc:
         log.warning("queue scrape failed: %s", exc)
-        _set("nzbdav_up", "0", help_text="1 if the exporter completed a scrape", typ="gauge")
+        scrape_success = False
         slots = []
     _set("nzbdav_api_latency_seconds", f"{time.monotonic() - t0:.4f}",
          help_text="Latency of queue API call", typ="gauge")
@@ -164,10 +182,12 @@ def _scrape():
         data = _get(f"{NZBDAV_URL}/api",
                     params={"mode": "history", "output": "json",
                             "apikey": NZBDAV_API_KEY, "limit": "100"})
-        history = data.get("history", {})
-        history_slots = history.get("slots", [])
+        if not isinstance(data, dict):
+            raise ValueError("history response is not an object")
+        history_slots = _slots(data.get("history", {}), "history")
     except Exception as exc:
         log.warning("history scrape failed: %s", exc)
+        scrape_success = False
         history_slots = []
     _set("nzbdav_api_latency_seconds_history", f"{time.monotonic() - t0:.4f}",
          help_text="Latency of history API call", typ="gauge")
@@ -186,44 +206,62 @@ def _scrape():
 
     # --- Config (admin API, form-encoded POST) ---
     config_keys = [
-        "usenet.segmentCache.enabled",
-        "usenet.segmentCache.maxGb",
-        "queue.workerCount",
-        "usenet.pipelining.depth",
+        "usenet.segment-cache.enabled",
+        "usenet.segment-cache.max-gb",
+        "queue.worker-count",
+        "usenet.queue-pipelining.depth",
         "repair.enable",
-        "play.watchdogEnabled",
+        "play.watchdog-enabled",
         "preflight.mode",
-        "useNet.maxDownloadConnectionsPerStream",
+        "usenet.max-download-connections-per-stream",
     ]
     t0 = time.monotonic()
+    config_success = False
+    with _lock:
+        config = dict(_last_config)
     try:
         data = _get(f"{NZBDAV_URL}/api/get-config",
                     method="POST",
-                    data={"config-keys": ",".join(config_keys)},
+                    data=[("config-keys", key) for key in config_keys],
                     headers=headers)
+        if not isinstance(data, dict):
+            raise ValueError("config response is not an object")
+        if data.get("status") is False or str(data.get("status", "true")).lower() == "false":
+            raise ValueError(data.get("error") or "config API returned status=false")
         items = data.get("configItems", [])
-        config = {item.get("configKey"): item.get("configValue") for item in items}
+        if not isinstance(items, list):
+            raise ValueError("configItems is not an array")
+        config = {
+            item.get("configName", item.get("configKey")): item.get("configValue")
+            for item in items
+            if isinstance(item, dict) and item.get("configName", item.get("configKey"))
+        }
+        with _lock:
+            _last_config = dict(config)
+        config_success = True
     except Exception as exc:
-        log.warning("config scrape failed: %s", exc)
-        config = {}
+        log.warning("config scrape failed; retaining last known values: %s", exc)
+        scrape_success = False
     _set("nzbdav_api_latency_seconds_config", f"{time.monotonic() - t0:.4f}",
          help_text="Latency of config API call", typ="gauge")
+    _set("nzbdav_config_scrape_success", "1" if config_success else "0",
+         help_text="1 if the latest NzbDAV config scrape succeeded", typ="gauge")
 
     def _bool_val(key: str) -> str:
         return "1" if str(config.get(key, "")).lower() == "true" else "0"
 
-    _set("nzbdav_config_segment_cache_enabled", _bool_val("usenet.segmentCache.enabled"),
+    _set("nzbdav_config_segment_cache_enabled", _bool_val("usenet.segment-cache.enabled"),
          help_text="1 if segment cache is enabled", typ="gauge")
     _set("nzbdav_config_segment_cache_max_gb",
-         _as_number(config.get("usenet.segmentCache.maxGb")),
+         _as_number(config.get("usenet.segment-cache.max-gb")),
          help_text="Configured max segment cache in GB", typ="gauge")
-    _set("nzbdav_config_queue_worker_count", _as_number(config.get("queue.workerCount")),
+    _set("nzbdav_config_queue_worker_count", _as_number(config.get("queue.worker-count")),
          help_text="Configured queue worker count", typ="gauge")
-    _set("nzbdav_config_pipelining_depth", _as_number(config.get("usenet.pipelining.depth")),
+    _set("nzbdav_config_pipelining_depth", _as_number(config.get("usenet.queue-pipelining.depth")),
          help_text="Configured pipelining depth", typ="gauge")
     _set("nzbdav_config_repair_enabled", _bool_val("repair.enable"),
          help_text="1 if repair is enabled", typ="gauge")
-    _set("nzbdav_config_watchdog_enabled", _bool_val("play.watchdogEnabled"),
+    _set("nzbdav_config_watchdog_enabled", _bool_val("play.watchdog-enabled"),
          help_text="1 if watchdog is enabled", typ="gauge")
     _set("nzbdav_config_preflight_mode", "0",
          help_text="Preflight mode (see nzbdav_config_preflight_mode_info label)", typ="gauge")
@@ -232,8 +270,10 @@ def _scrape():
          help_text="Configured preflight mode", typ="gauge",
          labels={"mode": config.get("preflight.mode") or "unknown"})
     _set("nzbdav_config_max_connections_per_stream",
-         _bool_val("useNet.maxDownloadConnectionsPerStream"),
+         _bool_val("usenet.max-download-connections-per-stream"),
          help_text="1 if per-stream connection cap is enabled", typ="gauge")
+    _set("nzbdav_up", "1" if scrape_success else "0",
+         help_text="1 if the exporter completed a queue, history, and config scrape", typ="gauge")
 
     # --- Health ---
     t0 = time.monotonic()
