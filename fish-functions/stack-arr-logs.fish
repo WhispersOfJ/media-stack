@@ -20,7 +20,7 @@ function stack-arr-logs --description 'Tail an *arr app''s container log directl
     if test (count $argv) -ge 2
         set lines $argv[2]
     end
-    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/arr/$container/logs?lines=$lines" | python3 -c "
+    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/v2/arr/$container/logs?lines=$lines" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 if isinstance(d, dict) and isinstance(d.get('detail'), dict):

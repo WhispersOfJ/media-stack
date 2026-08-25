@@ -1,3 +1,3 @@
 function stack-status --description 'Show live state/health of every media-stack container'
-    __stack_api GET /api/status
+    __stack_api GET /api/v2/host/status
 end

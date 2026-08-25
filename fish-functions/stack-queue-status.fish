@@ -2,7 +2,7 @@ function stack-queue-status --description 'Show every app''s download queue with
     set -l host_ip 192.168.4.20
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
     echo 'Measuring (2 samples, ~4s apart - each app''s own timeleft/progress reporting is unreliable in this stack)...' >&2
-    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/queue-status" | python3 -c "
+    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/v2/queue/status" | python3 -c "
 import json, sys
 
 data = json.load(sys.stdin)

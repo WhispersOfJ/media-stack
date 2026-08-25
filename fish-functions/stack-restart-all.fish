@@ -10,5 +10,5 @@ function stack-restart-all --description 'Restart the whole stack (confirms firs
             return 1
         end
     end
-    __stack_api POST /api/stack/restart-all
+    __stack_api POST /api/v2/host/stack/restart-all
 end

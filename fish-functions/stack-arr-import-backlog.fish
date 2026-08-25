@@ -7,7 +7,7 @@
 function stack-arr-import-backlog --description 'Show only items waiting on import across radarr/sonarr, grouped by release'
     set -l host_ip 192.168.4.20
     set -l service_key (string match -r '^CONTROL_PANEL_SERVICE_API_KEY=(.*)$' -- (cat /home/bear/Claude/media-stack/.env 2>/dev/null))[2]
-    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/queue-status" | python3 -c "
+    curl -sS -H "X-Api-Key: $service_key" "http://$host_ip:8420/api/v2/queue/status" | python3 -c "
 import json, sys
 from collections import Counter
 
