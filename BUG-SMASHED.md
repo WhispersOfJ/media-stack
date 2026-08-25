@@ -1,19 +1,19 @@
 # BUG-SMASHED.md
 
 > **Every bug found and fixed in this repo, chronologically organized by subsystem.**
-> 79 fixes in the last 300 commits. This document is the historical record — the graveyard of smashed bugs.
+> 80 fixes in the last 300 commits. This document is the historical record — the graveyard of smashed bugs.
 
 ---
 
 ## Bug Timeline Graph
 
 ```
-2026-08 (August 2026): ████████████████████████████████████████ 79 bugs
+2026-08 (August 2026): ████████████████████████████████████████ 80 bugs
 ```
 
 ## Bug Details by Month
 
-### August 2026 (79 bugs)
+### August 2026 (80 bugs)
 
 | Date | Hash | Subsystem | Severity | Description |
 |------|------|-----------|----------|-------------|
@@ -88,6 +88,7 @@
 | 2026-08-24 | `acced04` | Usenet Pipeline, Control Panel — Backend | Low | persist control-panel SQLite DB in mounted /data volume |
 | 2026-08-24 | `0186e9d` | Control Panel — Backend, Django Migration | Low | Django control panel Dockerfile, healthcheck, and static file serving |
 | 2026-08-24 | `0ec2800` | Control Panel — Frontend, Security | Critical | UI redesign bug fixes and security improvements |
+| 2026-08-25 | `1a87651` | Uncategorized | Low | rewrite README with architecture diagram, CLI reference, screenshots; add auto-generated BUG-SMASHED.md |
 | 2026-08-25 | `2795558` | Control Panel — Frontend, Django Migration, CI/CD | Low | add whitenoise to CI test requirements |
 | 2026-08-25 | `2763d67` | Django Migration | Low | bump pytest-httpx for pytest 9 compatibility |
 | 2026-08-25 | `7bdbeb9` | Uncategorized | Critical | contain stale-image crashes in list_containers and image_check |
@@ -220,7 +221,7 @@
 | 2026-08-24 | `61be38c` | Critical | adversarial review — XSS in toasts, SSE resource leak, reconnect race |
 | 2026-08-24 | `0ec2800` | Critical | UI redesign bug fixes and security improvements |
 
-### Uncategorized (17 bugs)
+### Uncategorized (18 bugs)
 
 | Date | Hash | Severity | Description |
 |------|------|----------|-------------|
@@ -239,6 +240,7 @@
 | 2026-08-21 | `bc0a989` | Low | revert distroless, keep Python 3.13-slim with shell-free healthcheck |
 | 2026-08-22 | `8124bbc` | Low | add HTTP_HOST/REMOTE_ADDR to host_actions 403 tests |
 | 2026-08-22 | `d559024` | Low | Task 4 findings - idempotent exclusion + test fidelity |
+| 2026-08-25 | `1a87651` | Low | rewrite README with architecture diagram, CLI reference, screenshots; add auto-generated BUG-SMASHED.md |
 | 2026-08-25 | `7bdbeb9` | Critical | contain stale-image crashes in list_containers and image_check |
 | 2026-08-25 | `a668252` | Low | document Metacache compose variables |
 
@@ -268,15 +270,15 @@
 | **Critical** | 6 | Data loss, security exposure, or complete service outage |
 | **High** | 9 | Major feature broken, requires immediate fix |
 | **Medium** | 3 | Degraded functionality, wrong behavior in edge cases |
-| **Low** | 61 | Cosmetic, documentation, or minor inconvenience |
+| **Low** | 62 | Cosmetic, documentation, or minor inconvenience |
 
 ## Bug Density by Month
 
 ```
-2026-08: ████████████████████████████████████████ 79 bugs
+2026-08: ████████████████████████████████████████ 80 bugs
 ```
 
-**Total: 79 bugs fixed across 300 commits.**
+**Total: 80 bugs fixed across 300 commits.**
 
 ---
 
