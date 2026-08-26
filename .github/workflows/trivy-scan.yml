@@ -35,7 +35,7 @@ jobs:
       - name: Extract images from docker-compose.yml
         id: images
         run: |
-          images=$(grep -oP '^\s+image:\s+\K[^@\n]+' docker-compose.yml | sort -u | jq -R -s -c 'split(" ") | map(select(. != ""))')
+          images=$(grep -oP '^\s+image:\s+\K[^\s@\n]+' docker-compose.yml | sort -u | jq -R -s -c 'split(" ") | map(select(. != ""))')
           echo "list=$images" >> $GITHUB_OUTPUT
 
       - name: Scan each image individually
@@ -47,25 +47,22 @@ jobs:
             trivy image --format sarif --severity CRITICAL,HIGH,MEDIUM --output "trivy-${safe_name}.sarif" "$image" || true
             echo "::endgroup::"
           done
-          # Merge all per-image SARIFs into one
-          FIRST=true
-          for f in trivy-*.sarif; do
-            [ -f "$f" ] || continue
-            if $FIRST; then
-              cp "$f" trivy-results.sarif
-              FIRST=false
-            else
-              jq -s '{version:"2.1.0",runs:([.runs[]] + [input.runs[]])}' trivy-results.sarif "$f" > trivy-merged.sarif && mv trivy-merged.sarif trivy-results.sarif
-            fi
-            rm -f "$f"
-          done
-          if [ -f trivy-results.sarif ]; then
-            echo "Scan complete. Results: $(jq '.runs | length' trivy-results.sarif) image runs"
-          else
-            echo '{"version":"2.1.0","runs":[]}' > trivy-results.sarif
-            echo "No SARIF files produced"
-          fi"
-        shell: bash
+
+          # Merge all per-image SARIFs into one using Python
+          cat > /tmp/merge_sarif.py << 'PYEOF'
+          import glob, json, os
+          merged = {"version": "2.1.0", "runs": []}
+          for f in sorted(glob.glob("trivy-*.sarif")):
+              try:
+                  data = json.load(open(f))
+                  merged["runs"].extend(data.get("runs", []))
+              except Exception:
+                  pass
+              os.remove(f)
+          json.dump(merged, open("trivy-results.sarif", "w"))
+          print(f"Scan complete. Results: {len(merged['runs'])} image runs")
+          PYEOF
+          python3 /tmp/merge_sarif.py
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
@@ -126,7 +123,7 @@ jobs:
 
       - name: Extract images and scan for HIGH+CRITICAL
         run: |
-          images=$(grep -oP '^\s+image:\s+\K[^@\n]+' docker-compose.yml | sort -u)
+          images=$(grep -oP '^\s+image:\s+\K[^\s@\n]+' docker-compose.yml | sort -u)
           HIGH_TOTAL=0
           CRITICAL_TOTAL=0
           
