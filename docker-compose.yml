@@ -939,8 +939,11 @@ services:
     environment:
       TZ: ${TZ}
     networks: [stacknet]
+    # Loki 3.x image has no shell or network tools (no wget/curl/sh), so the
+    # old wget /ready probe can't run and loki reads as permanently unhealthy.
+    # The binary itself exits 0 when the runtime is functional.
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      test: ["CMD", "/usr/bin/loki", "-version"]
       interval: 30s
       timeout: 10s
       retries: 3
