@@ -78,8 +78,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Same apt install as the scan job - trivy-action@master with no inputs
+      # tries to scan an empty image ref ("could not parse reference: .").
       - name: Install Trivy
-        uses: aquasecurity/trivy-action@master
+        run: |
+          sudo apt-get update && sudo apt-get install -y wget apt-transport-https
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install -y trivy
 
       - name: Run baseline scan
         run: |
