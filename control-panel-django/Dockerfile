@@ -13,23 +13,14 @@ COPY healthcheck.py .
 COPY config ./config
 COPY core ./core
 COPY auth_app ./auth_app
-COPY arr ./arr
-COPY radarr ./radarr
-COPY sonarr ./sonarr
-COPY prowlarr ./prowlarr
 COPY cleanuparr ./cleanuparr
 COPY nzbdav ./nzbdav
 COPY host ./host
 COPY host_actions ./host_actions
 COPY catalog ./catalog
 COPY watchstate ./watchstate
-COPY mdblist ./mdblist
-COPY letterboxd ./letterboxd
-COPY plex ./plex
 COPY queue_app ./queue_app
-COPY posters ./posters
-COPY ratings ./ratings
-COPY seerr ./seerr
+
 COPY ui ./ui
 
 # Collect static files for whitenoise to serve in production

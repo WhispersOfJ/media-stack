@@ -284,7 +284,10 @@ class HealthCheckView(EnvelopeAPIView):
     Returns a dict mapping service name to {status: "up"|"down", code: int}.
     Uses the same API keys the control panel already has for Arr/NzbDAV.
     The landing page calls this instead of hitting each service directly.
+    Public endpoint (no auth) so the landing page can poll it.
     """
+
+    permission_classes = []  # AllowAny - read-only status check
 
     def get(self, request):
         import concurrent.futures
@@ -321,4 +324,6 @@ class HealthCheckView(EnvelopeAPIView):
             for name, info in pool.map(check_one, services_to_check):
                 result[name] = info
 
-        return self.ok(f"{sum(1 for v in result.values() if v['status'] == 'up')}/{len(result)} services up", services=result)
+        response = self.ok(f"{sum(1 for v in result.values() if v['status'] == 'up')}/{len(result)} services up", services=result)
+        response["Access-Control-Allow-Origin"] = "*"
+        return response

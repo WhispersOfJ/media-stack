@@ -203,19 +203,19 @@
 
   <script>
     const SERVICES = [
-      { name: "Plex",           desc: "Media server & streaming",          port: 32400, health: "/identity" },
-      { name: "Radarr",         desc: "Movie management & downloads",      port: 7878,  proxy: true },
-      { name: "Sonarr",         desc: "TV show management & downloads",    port: 8989,  proxy: true },
-      { name: "Prowlarr",       desc: "Indexer management & search",       port: 9696,  proxy: true },
-      { name: "NzbDAV",         desc: "Usenet queue & WebDAV mount",       port: 3000,  proxy: true },
-      { name: "Overseerr",      desc: "Request management & discovery",    port: 5055,  health: "/api/v1/status" },
-      { name: "Control Panel",  desc: "Stack operations & fish CLI",       port: 8420,  health: "/healthz" },
-      { name: "arr-dashboard",  desc: "Queue, calendar & TRaSH Guides",    port: 41789, health: "/" },
-      { name: "Metacache",      desc: "Plex metadata cache & matching",    port: 8765,  health: "/healthz" },
-      { name: "Watchstate",     desc: "Watch history sync",                port: 8705,  health: "/" },
-      { name: "Cleanuparr",     desc: "Stale download cleanup",            port: 11011, health: "/health" },
-      { name: "Grafana",        desc: "Metrics dashboards & visualization", port: 3001,  health: "/api/health" },
-      { name: "Prometheus",     desc: "Metrics collection & alerting",     port: 9090,  health: "/-/healthy" },
+      { name: "Plex",           desc: "Media server & streaming",          port: 32400 },
+      { name: "Radarr",         desc: "Movie management & downloads",      port: 7878 },
+      { name: "Sonarr",         desc: "TV show management & downloads",    port: 8989 },
+      { name: "Prowlarr",       desc: "Indexer management & search",       port: 9696 },
+      { name: "NzbDAV",         desc: "Usenet queue & WebDAV mount",       port: 3000 },
+      { name: "Overseerr",      desc: "Request management & discovery",    port: 5055 },
+      { name: "Control Panel",  desc: "Stack operations & fish CLI",       port: 8420 },
+      { name: "arr-dashboard",  desc: "Queue, calendar & TRaSH Guides",    port: 41789 },
+      { name: "Metacache",      desc: "Plex metadata cache & matching",    port: 8765 },
+      { name: "Watchstate",     desc: "Watch history sync",                port: 8705 },
+      { name: "Cleanuparr",     desc: "Stale download cleanup",            port: 11011 },
+      { name: "Grafana",        desc: "Metrics dashboards & visualization", port: 3001 },
+      { name: "Prometheus",     desc: "Metrics collection & alerting",     port: 9090 },
     ];
 
     const BASE = location.hostname;
@@ -224,7 +224,7 @@
     function renderServices() {
       const grid = document.getElementById("services-grid");
       grid.innerHTML = SERVICES.map(s => `
-        <a class="card" href="http://${BASE}:${s.port}" target="_blank" data-port="${s.port}" data-health="${s.health || ''}" data-proxy="${s.proxy || false}" data-name="${s.name}">
+        <a class="card" href="http://${BASE}:${s.port}" target="_blank" data-port="${s.port}" data-name="${s.name}">
           <div class="card-header">
             <span class="card-title">${s.name}</span>
             <span class="card-status" id="status-${s.port}"></span>
@@ -235,59 +235,38 @@
       `).join("");
     }
 
-    async function fetchProxyStatus() {
+    async function checkAll() {
+      const cards = document.querySelectorAll(".card[data-port]");
+      // Reset all to pending (gray)
+      cards.forEach(c => { document.getElementById(`status-${c.dataset.port}`).className = "card-status"; });
       try {
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), 5000);
         const r = await fetch(`http://${BASE}:${CP_PORT}/api/v2/host/health`, { signal: ctrl.signal });
         clearTimeout(tid);
-        if (!r.ok) return {};
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();
-        return data.services || {};
+        const svc = data.services || {};
+        let up = 0;
+        cards.forEach(c => {
+          const name = c.dataset.name;
+          const el = document.getElementById(`status-${c.dataset.port}`);
+          if (svc[name]) {
+            el.className = svc[name].status === "up" ? "card-status up" : "card-status down";
+            if (svc[name].status === "up") up++;
+          } else {
+            el.className = "card-status down";
+          }
+        });
+        document.getElementById("online-count").textContent = up;
+        document.getElementById("offline-count").textContent = cards.length - up;
       } catch (e) {
-        if (e.name !== "AbortError") console.warn("Health proxy unavailable:", e.message);
-        return {};
+        cards.forEach(c => {
+          document.getElementById(`status-${c.dataset.port}`).className = "card-status down";
+        });
+        document.getElementById("online-count").textContent = 0;
+        document.getElementById("offline-count").textContent = cards.length;
       }
-    }
-
-    async function checkHealth(card, proxyData) {
-      const port = card.dataset.port;
-      const healthPath = card.dataset.health;
-      const isProxy = card.dataset.proxy === "true";
-      const el = document.getElementById(`status-${port}`);
-      const name = card.dataset.name;
-
-      if (isProxy && proxyData[name]) {
-        el.className = proxyData[name].status === "up" ? "card-status up" : "card-status down";
-        return proxyData[name].status === "up";
-      }
-
-      if (!healthPath) {
-        el.className = "card-status down";
-        return false;
-      }
-
-      try {
-        const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 3000);
-        const r = await fetch(`http://${BASE}:${port}${healthPath}`, { signal: ctrl.signal });
-        clearTimeout(tid);
-        el.className = r.ok ? "card-status up" : "card-status down";
-        return r.ok;
-      } catch (e) {
-        if (e.name !== "AbortError") console.warn(`Health check failed for ${name}:`, e.message);
-        el.className = "card-status down";
-        return false;
-      }
-    }
-
-    async function checkAll() {
-      const proxyData = await fetchProxyStatus();
-      const cards = document.querySelectorAll(".card[data-port]");
-      const results = await Promise.all([...cards].map(c => checkHealth(c, proxyData)));
-      const up = results.filter(Boolean).length;
-      document.getElementById("online-count").textContent = up;
-      document.getElementById("offline-count").textContent = results.length - up;
       document.getElementById("last-checked").textContent = new Date().toLocaleTimeString();
     }
 
