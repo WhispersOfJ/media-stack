@@ -119,9 +119,10 @@ jobs:
             git commit -m "docs: update CVE baseline scan report"
             git push -f origin chore/trivy-baseline
           fi
-          # Ensure the PR exists regardless of whether content changed - the
-          # first run found an unchanged report would have skipped creation.
-          if gh pr view chore/trivy-baseline --json number --jq .number >/dev/null 2>&1; then
+          # Ensure an OPEN PR exists regardless of whether content changed.
+          # gh pr view by branch also matches closed PRs, so check state
+          # explicitly - editing a closed PR keeps it closed.
+          if [ "$(gh pr view chore/trivy-baseline --json state --jq .state 2>/dev/null)" = "OPEN" ]; then
             gh pr edit chore/trivy-baseline \
               --title "chore: update CVE baseline scan report" \
               --body "Automated Trivy baseline refresh from the nightly image scan." || true
