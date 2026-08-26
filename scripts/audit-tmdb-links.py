@@ -28,7 +28,7 @@ Install:
     pip install plexapi requests
 
 Run:
-    export PLEX_URL=http://192.168.4.20:32400
+    export PLEX_URL=http://192.0.2.1:32400
     export PLEX_TOKEN=xxxx
     export TMDB_KEY=xxxx
     python3 audit-tmdb-links.py

@@ -228,21 +228,21 @@ stack-tmdb-missing                # items missing TMDb links
 
 ```bash
 # Container health grid
-curl -s http://192.168.4.20:8420/api/v2/host/status | jq .
+curl -s http://192.0.2.1:8420/api/v2/host/status | jq .
 
 # Live container stats (CPU, RAM, state)
-curl -s http://192.168.4.20:8420/api/v2/host/containers | jq .
+curl -s http://192.0.2.1:8420/api/v2/host/containers | jq .
 
 # Per-app operations
-curl -X POST http://192.168.4.20:8420/api/v2/arr/radarr/rss-sync
-curl -X POST http://192.168.4.20:8420/api/v2/arr/sonarr/search-missing
+curl -X POST http://192.0.2.1:8420/api/v2/arr/radarr/rss-sync
+curl -X POST http://192.0.2.1:8420/api/v2/arr/sonarr/search-missing
 
 # NzbDAV queue + history
-curl -s http://192.168.4.20:8420/api/v2/nzbdav/queue | jq .
-curl -s http://192.168.4.20:8420/api/v2/nzbdav/stats | jq .
+curl -s http://192.0.2.1:8420/api/v2/nzbdav/queue | jq .
+curl -s http://192.0.2.1:8420/api/v2/nzbdav/stats | jq .
 
 # Whole-stack restart (mount-order aware)
-curl -X POST http://192.168.4.20:8420/api/v2/host/restart-all
+curl -X POST http://192.0.2.1:8420/api/v2/host/restart-all
 ```
 
 Full API reference: see the Control Panel section of the [detailed docs](STACK.md).
@@ -261,10 +261,10 @@ Loki :3100 ◀──promtail── syslog + Docker logs
 Grafana :3001 ──queries──▶ Prometheus + Loki
 ```
 
-- **Grafana** at `http://192.168.4.20:3001` — logs overview + import pipeline dashboards
-- **Prometheus** at `http://192.168.4.20:9090` — metrics scraping, alerting rules
-- **Scrutiny** at `http://192.168.4.20:8703` — SMART disk health
-- **Speedtest Tracker** at `http://192.168.4.20:8701` — hourly ISP speed/latency
+- **Grafana** at `http://192.0.2.1:3001` — logs overview + import pipeline dashboards
+- **Prometheus** at `http://192.0.2.1:9090` — metrics scraping, alerting rules
+- **Scrutiny** at `http://192.0.2.1:8703` — SMART disk health
+- **Speedtest Tracker** at `http://192.0.2.1:8701` — hourly ISP speed/latency
 
 ---
 
@@ -339,7 +339,7 @@ The Control Panel (`http://<host-ip>:8420`) is a Django + htmx dashboard with an
 
 ![Control Panel Dashboard](docs/images/dashboard-snapshot.html)
 
-> **Live dashboard:** visit `http://192.168.4.20:8420` (login: admin/changeme) to see the real thing with live data, sparklines, and SSE log streaming.
+> **Live dashboard:** visit `http://192.0.2.1:8420` (login: admin/changeme) to see the real thing with live data, sparklines, and SSE log streaming.
 
 ### Setup Wizard
 

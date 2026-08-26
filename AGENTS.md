@@ -9,7 +9,7 @@ work style and non-negotiable rules — this file covers the system itself.
 
 A private, self-hosted media-acquisition-and-serving stack. 21 Docker Compose services,
 55 fish CLI functions, a Django control panel, an arr-dashboard, Prometheus/Grafana monitoring,
-and CI/CD via GitHub Actions. Hosted on Arch Linux at `192.168.4.20`.
+and CI/CD via GitHub Actions. Hosted on Arch Linux at `192.0.2.1`.
 
 **This repo has no public mirror.** Do not create one. `StackMaster`/`Stackalicious`/`StackScripts`
 were deleted deliberately. The public profile README at `github.com/WhispersOfJ/WhispersOfJ`
@@ -308,7 +308,7 @@ Handles all media operations that the control panel no longer provides.
 
 ### First-run setup
 
-1. Visit `http://192.168.4.20:41789`
+1. Visit `http://192.0.2.1:41789`
 2. Create admin account
 3. Add Radarr/Sonarr/Prowlarr instances in Settings
 4. Optionally connect Plex via OAuth

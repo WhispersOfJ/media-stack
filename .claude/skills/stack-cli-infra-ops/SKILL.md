@@ -6,7 +6,7 @@ description: Exact fish CLI command reference for container control and infrastr
 # Stack CLI: Infra & Ops
 
 <skill_scope skill="stack-cli-infra-ops">
-This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every container-control/diagnostic terminal command in this stack is already known, without reading the fish source fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.168.4.20:8420`); the actual behavior lives in `control-panel/main.py` plus `services/host/router.py` (`app.py` is retired dead code, not the live source; `services/backups/router.py` no longer exists - restic support was removed entirely 2026-08-12).
+This is a command reference, not an operational tool: it exists so the exact fish function name, argument order, and output shape for every container-control/diagnostic terminal command in this stack is already known, without reading the fish source fresh each time. Every command here is a thin fish wrapper around Control Panel's own HTTP API (`http://192.0.2.1:8420`); the actual behavior lives in `control-panel/main.py` plus `services/host/router.py` (`app.py` is retired dead code, not the live source; `services/backups/router.py` no longer exists - restic support was removed entirely 2026-08-12).
 
 **Related skills:**
 - `docker-compose-manager` operates one layer lower - it runs `docker compose` directly on the host with FUSE-mount cascade awareness (restarting `nzbdav_rclone`'s dependents in the right order). `stack-container`/`stack-restart-all` below go through Control Panel's own HTTP API instead, which has its own (separately maintained) mount-ordering logic for the whole-stack restart specifically, but no cascade awareness for a single-container restart. Prefer `docker-compose-manager` when a FUSE-mount-owning container needs restarting; either works for a plain application container.
@@ -20,7 +20,7 @@ Many commands here (`stack-status`, `stack-resource-check`, `stack-mount-health`
 
 None of these read a `STACK_HOST_IP` environment variable - the Control Panel URL is a literal hardcoded string in every function.
 
-**Three commands in this file are not Control Panel wrappers at all** - `stack-claude-full-backup`, `stack-disk-free`, and `stack-docker-disk-usage` run local tools directly (`tar`, `df`, `docker system df`) against this host, with no HTTP call anywhere in their source. They're grouped here by theme (backup/disk), not by mechanism - don't assume every command in this file hits `192.168.4.20:8420` just because most of them do.
+**Three commands in this file are not Control Panel wrappers at all** - `stack-claude-full-backup`, `stack-disk-free`, and `stack-docker-disk-usage` run local tools directly (`tar`, `df`, `docker system df`) against this host, with no HTTP call anywhere in their source. They're grouped here by theme (backup/disk), not by mechanism - don't assume every command in this file hits `192.0.2.1:8420` just because most of them do.
 </calling_convention>
 
 ## Command reference

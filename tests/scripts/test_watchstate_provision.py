@@ -15,7 +15,7 @@ ENV = {
     "WS_API_KEY": "ws-key",
     "PLEX_URL": "http://plex:32400",
     "PLEX_TOKEN": "plex-token",
-    "HOST_IP": "192.168.4.20",
+    "HOST_IP": "192.0.2.1",
 }
 
 BACKEND = {
@@ -133,7 +133,7 @@ def test_webhook_url_is_the_host_ip_and_carries_the_backend_token(watchstate_pro
     watchstate_provision.provision_webhook(BACKEND, ENV, "ws-key", dry_run=False)
 
     body = next(b for m, p, b in calls if p.endswith("/webhook"))
-    assert body["webhook_url"] == "http://192.168.4.20:8705/v1/api/webhook?apikey=backend-token"
+    assert body["webhook_url"] == "http://192.0.2.1:8705/v1/api/webhook?apikey=backend-token"
     assert "watchstate:8080" not in body["webhook_url"]
 
 
