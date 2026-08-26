@@ -38,50 +38,46 @@ jobs:
           images=$(grep -oP '^\s+image:\s+\K[^\s@\n]+' docker-compose.yml | sort -u | jq -R -s -c 'split(" ") | map(select(. != ""))')
           echo "list=$images" >> $GITHUB_OUTPUT
 
-      - name: Scan each image individually
+      - name: Scan each image and report
         run: |
+          CRITICAL_TOTAL=0
+          HIGH_TOTAL=0
+
           echo '${{ steps.images.outputs.list }}' | jq -r '.[]' | while IFS= read -r image; do
             [ -z "$image" ] && continue
-            safe_name=$(echo "$image" | tr '/:' '__')
             echo "::group::Scanning $image"
-            trivy image --format sarif --severity CRITICAL,HIGH,MEDIUM --output "trivy-${safe_name}.sarif" "$image" || true
+            
+            RESULT=$(trivy image --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
+            
+            CRIT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
+            HIGH=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
+            
+            echo "  CRITICAL: $CRIT, HIGH: $HIGH"
             echo "::endgroup::"
           done
 
-          # Merge all per-image SARIFs into one using Python
-          cat > /tmp/merge_sarif.py << 'PYEOF'
-          import glob, json, os
-          merged = {"version": "2.1.0", "runs": []}
-          for f in sorted(glob.glob("trivy-*.sarif")):
-              try:
-                  data = json.load(open(f))
-                  merged["runs"].extend(data.get("runs", []))
-              except Exception:
-                  pass
-              os.remove(f)
-          json.dump(merged, open("trivy-results.sarif", "w"))
-          print(f"Scan complete. Results: {len(merged['runs'])} image runs")
-          PYEOF
-          python3 /tmp/merge_sarif.py
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-          category: 'trivy-image-scan'
-
-      - name: Parse scan results and fail on CRITICAL
-        if: always()
+      - name: Final CRITICAL check
         run: |
-          CRITICAL_COUNT=$(jq '[.runs[].results[] | select(.level=="error")] | length' trivy-results.sarif 2>/dev/null || echo 0)
-          echo "CRITICAL CVEs found: $CRITICAL_COUNT"
+          # Re-scan to get aggregate counts
+          CRITICAL_TOTAL=0
+          HIGH_TOTAL=0
           
-          if [ "$CRITICAL_COUNT" -gt 0 ]; then
-            echo "❌ CRITICAL CVEs detected - PR merge BLOCKED"
+          for image in $(echo '${{ steps.images.outputs.list }}' | jq -r '.[]'); do
+            [ -z "$image" ] && continue
+            RESULT=$(trivy image --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
+            CRIT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
+            HIGH=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
+            CRITICAL_TOTAL=$((CRITICAL_TOTAL + CRIT))
+            HIGH_TOTAL=$((HIGH_TOTAL + HIGH))
+          done
+          
+          echo "=== TOTAL: CRITICAL=$CRITICAL_TOTAL HIGH=$HIGH_TOTAL ==="
+          
+          if [ "$CRITICAL_TOTAL" -gt 0 ]; then
+            echo "❌ $CRITICAL_TOTAL CRITICAL CVEs detected across all images"
             exit 1
           else
-            echo "✅ No CRITICAL CVEs found - PR can merge"
+            echo "✅ No CRITICAL CVEs found"
             exit 0
           fi
 
@@ -110,45 +106,3 @@ jobs:
           git add STAGE-4-CVE-BASELINE.md || true
           git diff --staged --quiet || git commit -m "docs: update CVE baseline scan report" || true
           git push || echo "No changes to push"
-
-  notify:
-    runs-on: ubuntu-latest
-    name: Notify on HIGH/CRITICAL
-    if: always()
-    needs: scan
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Extract images and scan for HIGH+CRITICAL
-        run: |
-          images=$(grep -oP '^\s+image:\s+\K[^\s@\n]+' docker-compose.yml | sort -u)
-          HIGH_TOTAL=0
-          CRITICAL_TOTAL=0
-          
-          for image in $images; do
-            trivy image --format json --severity HIGH,CRITICAL "$image" 2>/dev/null | \
-              jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH") | .Severity' | wc -l | xargs -I {} sh -c 'HIGH_TOTAL=$((HIGH_TOTAL + {}))'
-          done
-          
-          echo "HIGH_VULNERABILITIES=$HIGH_TOTAL" >> $GITHUB_ENV
-          echo "CRITICAL_VULNERABILITIES=$CRITICAL_TOTAL" >> $GITHUB_ENV
-
-      - name: Post to Discord (if configured)
-        if: env.DISCORD_WEBHOOK_URL != ''
-        run: |
-          curl -s -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "text": "🔍 Trivy Image Scan Report",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Weekly Image CVE Scan*\n\n:red_circle: CRITICAL: ${{ env.CRITICAL_VULNERABILITIES }}\n:orange_circle: HIGH: ${{ env.HIGH_VULNERABILITIES }}"
-                  }
-                }
-              ]
-            }'
