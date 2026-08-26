@@ -1,5 +1,29 @@
 # Changelog
 
+## [11.19.0](https://github.com/WhispersOfJ/media-stack/compare/v11.18.0...v11.19.0) (2026-08-26)
+
+
+### Features
+
+* add arr-dashboard alongside existing control panel ([d9a48cd](https://github.com/WhispersOfJ/media-stack/commit/d9a48cd9d92f22e5d427651ece8cc6c43ea53c48))
+* add bearer-token auth to /api/v2/host/* destructive endpoints ([40b8206](https://github.com/WhispersOfJ/media-stack/commit/40b820649179ff35836fa4e9d2635444b6cb7000))
+* add landing page with service status dashboard ([6af004f](https://github.com/WhispersOfJ/media-stack/commit/6af004f104c53ceb653f41e7f1b07c31b6f18793))
+
+
+### Bug Fixes
+
+* add arr-dashboard to stacknet so it can resolve Arr hostnames ([fe6a2f0](https://github.com/WhispersOfJ/media-stack/commit/fe6a2f01d74282c4eb35651eabac242e5cee2631))
+* add whitenoise to CI test requirements ([2795558](https://github.com/WhispersOfJ/media-stack/commit/279555846fa0cda6f6a3485af25f78c49635951f))
+* add workflow_dispatch and fix trivy-scan path triggers ([8a39cb3](https://github.com/WhispersOfJ/media-stack/commit/8a39cb3ccdb6fbd910536518612414a737eb386a))
+* audit findings — dedup regex year-match, view permission comments ([7552008](https://github.com/WhispersOfJ/media-stack/commit/7552008ecaeebdab3d7f541d607514f617ef5eb9))
+* bump pytest-httpx for pytest 9 compatibility ([2763d67](https://github.com/WhispersOfJ/media-stack/commit/2763d67b03dbb4e00b5deceee4a6de4f3d934251))
+* contain stale-image crashes in list_containers and image_check ([7bdbeb9](https://github.com/WhispersOfJ/media-stack/commit/7bdbeb9a6cbc64d34797ed5da14abe2085093e35))
+* correct hardcoded /home/daddybear/ path in stack-tmdb-audit ([efd300f](https://github.com/WhispersOfJ/media-stack/commit/efd300f15743fd25dda64aba403ac7f6a8ab7450))
+* correct Metacache ARR config env vars to match code expectations ([854625b](https://github.com/WhispersOfJ/media-stack/commit/854625b248f02d99804fd2de4792019d8b90f6d2))
+* remove cap_drop: [ALL] from all services to fix SIGABRT crash-loops ([5b99139](https://github.com/WhispersOfJ/media-stack/commit/5b99139791bbc2da36dac684836450cf083c1641))
+* repair fish function API paths after Django migration ([fa353b8](https://github.com/WhispersOfJ/media-stack/commit/fa353b81e0a4583f6fdf260143ca178e7caa9da8))
+* scan Trivy images individually instead of as one string ([fe73dcb](https://github.com/WhispersOfJ/media-stack/commit/fe73dcb4bb02b2161090829669c6530658e2639a))
+
 ## [11.18.0](https://github.com/WhispersOfJ/media-stack/compare/v11.17.0...v11.18.0) (2026-08-25)
 
 
