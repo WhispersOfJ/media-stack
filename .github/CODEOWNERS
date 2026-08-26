@@ -1,0 +1,18 @@
+# Default owner for everything in the repo
+* @WhispersOfJ
+
+# CI/CD configuration
+.github/ @WhispersOfJ
+
+# Docker
+docker-compose.yml @WhispersOfJ
+Dockerfile @WhispersOfJ
+
+# Control panel
+control-panel-django/ @WhispersOfJ
+
+# Landing page
+landing-page/ @WhispersOfJ
+
+# Fish functions
+fish/ @WhispersOfJ
