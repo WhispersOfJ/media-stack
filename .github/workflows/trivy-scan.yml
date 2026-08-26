@@ -1,6 +1,7 @@
 name: Trivy Image Security Scan
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'docker-compose.yml'
@@ -10,6 +11,7 @@ on:
       - main
     paths:
       - 'docker-compose.yml'
+      - '.github/workflows/trivy-scan.yml'
   schedule:
     # Weekly scan (Sunday 2 AM UTC)
     - cron: '0 2 * * 0'
