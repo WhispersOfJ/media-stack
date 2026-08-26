@@ -928,7 +928,7 @@ services:
   # =======================================================================
   loki:
     restart: unless-stopped
-    image: grafana/loki:2.8.0
+    image: grafana/loki:3.7.6
     container_name: loki
     ports:
       - "3100:3100"
@@ -948,7 +948,7 @@ services:
 
   promtail:
     restart: unless-stopped
-    image: grafana/promtail:2.8.0
+    image: grafana/promtail:3.6.11
     container_name: promtail
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers
@@ -965,7 +965,7 @@ services:
 
   grafana:
     restart: unless-stopped
-    image: grafana/grafana:10.4.0
+    image: grafana/grafana:13.2.0
     container_name: grafana
     ports:
       - "3001:3000"
