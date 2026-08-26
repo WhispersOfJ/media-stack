@@ -139,6 +139,57 @@
       margin-top: 0.3rem;
       line-height: 1.4;
     }
+    .cve-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 2.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+    .cve-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .cve-stat {
+      flex: 1 1 100px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 0.8rem;
+      text-align: center;
+    }
+    .cve-stat .cve-count {
+      display: block;
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .cve-stat .cve-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+    }
+    .cve-critical .cve-count { color: var(--red); }
+    .cve-high .cve-count { color: #ff9f43; }
+    .cve-medium .cve-count { color: var(--yellow); }
+    .cve-low .cve-count { color: var(--text-dim); }
+    .cve-total .cve-count { color: var(--accent); }
+    .cve-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+    .cve-foot a { color: var(--accent); text-decoration: none; }
+    .cve-foot a:hover { text-decoration: underline; }
     footer {
       text-align: center;
       padding: 2rem;
@@ -168,6 +219,21 @@
   <main>
     <h2>Services</h2>
     <div class="grid" id="services-grid"></div>
+
+    <h2>Security &middot; CVE Baseline</h2>
+    <div class="cve-card">
+      <div class="cve-stats">
+        <div class="cve-stat cve-critical"><span class="cve-label">CRITICAL</span><span class="cve-count" id="cve-critical">—</span></div>
+        <div class="cve-stat cve-high"><span class="cve-label">HIGH</span><span class="cve-count" id="cve-high">—</span></div>
+        <div class="cve-stat cve-medium"><span class="cve-label">MEDIUM</span><span class="cve-count" id="cve-medium">—</span></div>
+        <div class="cve-stat cve-low"><span class="cve-label">LOW</span><span class="cve-count" id="cve-low">—</span></div>
+        <div class="cve-stat cve-total"><span class="cve-label">TOTAL</span><span class="cve-count" id="cve-total">—</span></div>
+      </div>
+      <div class="cve-foot">
+        <span id="cve-meta">Loading baseline&hellip;</span>
+        <a href="https://github.com/WhispersOfJ/media-stack/blob/main/STAGE-4-CVE-BASELINE.md" target="_blank">View baseline &nearr;</a>
+      </div>
+    </div>
 
     <h2>Documentation</h2>
     <div class="docs-grid">
@@ -277,6 +343,39 @@
     // against the landing page itself (nginx serves index.html for any path).
     document.getElementById("grafana-link").href = `http://${BASE}:3001`;
     document.getElementById("prometheus-link").href = `http://${BASE}:9090`;
+
+    // CVE baseline card - parses the summary table in STAGE-4-CVE-BASELINE.md
+    // from the public repo. Refreshes every 5 minutes; degrades gracefully
+    // when GitHub is unreachable.
+    const BASELINE_URL = "https://raw.githubusercontent.com/WhispersOfJ/media-stack/main/STAGE-4-CVE-BASELINE.md";
+    async function loadCveBaseline() {
+      try {
+        const r = await fetch(BASELINE_URL, { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const md = await r.text();
+        let total = 0;
+        for (const sev of ["CRITICAL", "HIGH", "MEDIUM", "LOW"]) {
+          const m = md.match(new RegExp(`\\|\\s*${sev}\\s*\\|\\s*(\\d+|—)`));
+          const n = m ? (m[1] === "—" ? 0 : parseInt(m[1], 10)) : 0;
+          total += n;
+          document.getElementById(`cve-${sev.toLowerCase()}`).textContent = n;
+        }
+        document.getElementById("cve-total").textContent = total;
+        const crit = parseInt(document.getElementById("cve-critical").textContent, 10);
+        document.getElementById("cve-meta").textContent =
+          crit > 0
+            ? "Baseline from main \u00b7 CRITICALs block merge until cleared"
+            : "Baseline from main \u00b7 no CRITICAL CVEs";
+      } catch (e) {
+        document.getElementById("cve-meta").textContent = "Baseline unavailable \u2014 cannot reach GitHub";
+        for (const sev of ["critical", "high", "medium", "low", "total"]) {
+          document.getElementById(`cve-${sev}`).textContent = "\u2014";
+        }
+      }
+    }
+    loadCveBaseline();
+    setInterval(loadCveBaseline, 300000);
+
     checkAll();
     setInterval(checkAll, 15000);
   </script>
