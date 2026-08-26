@@ -1,5 +1,14 @@
 # Changelog
 
+## [11.19.2](https://github.com/WhispersOfJ/media-stack/compare/v11.19.1...v11.19.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* landing page health checks and nginx Content-Type ([6391150](https://github.com/WhispersOfJ/media-stack/commit/639115093839bbf7a06b93ce577a7ca1f066be37))
+* landing page health proxy, trivy dedup, console cleanup ([25ffa2b](https://github.com/WhispersOfJ/media-stack/commit/25ffa2bd796e1dda5b3f3d554717aa827b7eedf1))
+* route all health checks through control panel proxy ([8d3754d](https://github.com/WhispersOfJ/media-stack/commit/8d3754d6f04e961a1bc136ee190a3e9f576254ed))
+
 ## [11.19.1](https://github.com/WhispersOfJ/media-stack/compare/v11.19.0...v11.19.1) (2026-08-26)
 
 
