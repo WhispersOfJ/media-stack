@@ -47,14 +47,24 @@ jobs:
             trivy image --format sarif --severity CRITICAL,HIGH,MEDIUM --output "trivy-${safe_name}.sarif" "$image" || true
             echo "::endgroup::"
           done
-          # Merge all SARIFs into one
-          echo '{"version":"2.1.0","runs":[]}' > trivy-results.sarif
+          # Merge all per-image SARIFs into one
+          FIRST=true
           for f in trivy-*.sarif; do
             [ -f "$f" ] || continue
-            jq -r '.runs[]' "$f" | jq -s '.runs += [.[]] | {version:"2.1.0",runs:.runs}' trivy-results.sarif > trivy-merged.sarif && mv trivy-merged.sarif trivy-results.sarif
+            if $FIRST; then
+              cp "$f" trivy-results.sarif
+              FIRST=false
+            else
+              jq -s '{version:"2.1.0",runs:([.runs[]] + [input.runs[]])}' trivy-results.sarif "$f" > trivy-merged.sarif && mv trivy-merged.sarif trivy-results.sarif
+            fi
             rm -f "$f"
           done
-          echo "Scan complete. Results: $(jq '.runs | length' trivy-results.sarif) image runs"
+          if [ -f trivy-results.sarif ]; then
+            echo "Scan complete. Results: $(jq '.runs | length' trivy-results.sarif) image runs"
+          else
+            echo '{"version":"2.1.0","runs":[]}' > trivy-results.sarif
+            echo "No SARIF files produced"
+          fi"
         shell: bash
 
       - name: Upload Trivy scan results to GitHub Security tab
