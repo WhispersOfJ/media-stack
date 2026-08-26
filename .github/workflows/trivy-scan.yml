@@ -101,11 +101,16 @@ jobs:
       # open/update the PR. The PR still needs its required review to merge,
       # which is the intended human gate.
       - name: Commit report to bot branch
+        # Use the release-please PAT, not the default GITHUB_TOKEN: since
+        # mid-2026 GitHub requires manual approval for workflow runs on PRs
+        # created/updated by github-actions[bot], which stalls the validate
+        # check. A user PAT authors the PR as a trusted actor.
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
           git config user.name "Trivy Scanner Bot"
           git config user.email "trivy@bot.local"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git checkout -b chore/trivy-baseline
           git add STAGE-4-CVE-BASELINE.md || true
           if git diff --cached --quiet; then
