@@ -35,42 +35,34 @@ jobs:
       - name: Extract images from docker-compose.yml
         id: images
         run: |
-          images=$(grep -oP '^\s+image:\s+\K[^\s@\n]+' docker-compose.yml | sort -u | jq -R -s -c 'split(" ") | map(select(. != ""))')
-          echo "list=$images" >> $GITHUB_OUTPUT
+          grep -oP '^\s+image:\s+\K[^\s@\n]+' docker-compose.yml | sort -u > /tmp/images.txt
+          echo "Found $(wc -l < /tmp/images.txt) images"
+          cat /tmp/images.txt
 
       - name: Scan each image and report
         run: |
-          CRITICAL_TOTAL=0
-          HIGH_TOTAL=0
-
-          echo '${{ steps.images.outputs.list }}' | jq -r '.[]' | while IFS= read -r image; do
+          while IFS= read -r image; do
             [ -z "$image" ] && continue
             echo "::group::Scanning $image"
-            
             RESULT=$(trivy image --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
-            
             CRIT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
             HIGH=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
-            
             echo "  CRITICAL: $CRIT, HIGH: $HIGH"
             echo "::endgroup::"
-          done
+          done < /tmp/images.txt
 
       - name: Final CRITICAL check
         run: |
-          # Re-scan to get aggregate counts
           CRITICAL_TOTAL=0
           HIGH_TOTAL=0
-          
-          for image in $(echo '${{ steps.images.outputs.list }}' | jq -r '.[]'); do
+          while IFS= read -r image; do
             [ -z "$image" ] && continue
             RESULT=$(trivy image --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
             CRIT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
             HIGH=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
             CRITICAL_TOTAL=$((CRITICAL_TOTAL + CRIT))
             HIGH_TOTAL=$((HIGH_TOTAL + HIGH))
-          done
-          
+          done < /tmp/images.txt
           echo "=== TOTAL: CRITICAL=$CRITICAL_TOTAL HIGH=$HIGH_TOTAL ==="
           
           if [ "$CRITICAL_TOTAL" -gt 0 ]; then
