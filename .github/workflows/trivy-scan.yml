@@ -66,8 +66,13 @@ jobs:
   report:
     runs-on: ubuntu-latest
     name: Generate CVE Report
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Scan intentionally exits 1 when CRITICALs exist (it gates PRs), so this
+    # must run on main pushes even when scan fails — otherwise the baseline
+    # report is never updated and the job is dead code.
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: scan
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -81,10 +86,33 @@ jobs:
           chmod +x ./scripts/trivy-scan.sh
           ./scripts/trivy-scan.sh || true  # Don't fail main branch scan
 
-      - name: Commit report if changed
+      # main is protected (require-PR), so a direct git push from the
+      # GITHUB_TOKEN is blocked and silently swallowed by `|| echo`. Land the
+      # report through a PR instead: force-push a dedicated bot branch and
+      # open/update the PR. The PR still needs its required review to merge,
+      # which is the intended human gate.
+      - name: Commit report to bot branch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "Trivy Scanner Bot"
           git config user.email "trivy@bot.local"
+          git checkout -b chore/trivy-baseline
           git add STAGE-4-CVE-BASELINE.md || true
-          git diff --staged --quiet || git commit -m "docs: update CVE baseline scan report" || true
-          git push || echo "No changes to push"
+          if git diff --cached --quiet; then
+            echo "Report unchanged - skipping push"
+            exit 0
+          fi
+          git commit -m "docs: update CVE baseline scan report"
+          git push -f origin chore/trivy-baseline
+          if gh pr view chore/trivy-baseline --json number --jq .number >/dev/null 2>&1; then
+            gh pr edit chore/trivy-baseline \
+              --title "chore: update CVE baseline scan report" \
+              --body "Automated Trivy baseline refresh from the nightly image scan." || true
+          else
+            gh pr create \
+              --base main \
+              --head chore/trivy-baseline \
+              --title "chore: update CVE baseline scan report" \
+              --body "Automated Trivy baseline refresh from the nightly image scan." || true
+          fi
