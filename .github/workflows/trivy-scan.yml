@@ -44,7 +44,7 @@ jobs:
           while IFS= read -r image; do
             [ -z "$image" ] && continue
             echo "::group::Scanning $image"
-            RESULT=$(trivy image --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
+            RESULT=$(trivy image --scanners vuln --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
             CRIT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
             HIGH=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
             echo "  CRITICAL: $CRIT, HIGH: $HIGH"
@@ -57,7 +57,7 @@ jobs:
           HIGH_TOTAL=0
           while IFS= read -r image; do
             [ -z "$image" ] && continue
-            RESULT=$(trivy image --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
+            RESULT=$(trivy image --scanners vuln --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
             CRIT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
             HIGH=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
             CRITICAL_TOTAL=$((CRITICAL_TOTAL + CRIT))
