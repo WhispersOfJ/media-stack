@@ -99,7 +99,8 @@ jobs:
       # GITHUB_TOKEN is blocked and silently swallowed by `|| echo`. Land the
       # report through a PR instead: force-push a dedicated bot branch and
       # open/update the PR. The PR still needs its required review to merge,
-      # which is the intended human gate.
+      # which is the intended human gate - unless the auto-merge step below
+      # finds it is a docs-only baseline update with validate green.
       - name: Commit report to bot branch
         # Use the release-please PAT, not the default GITHUB_TOKEN: since
         # mid-2026 GitHub requires manual approval for workflow runs on PRs
@@ -113,23 +114,71 @@ jobs:
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git checkout -b chore/trivy-baseline
           git add STAGE-4-CVE-BASELINE.md || true
+          CHANGED=false
           if git diff --cached --quiet; then
-            echo "Report unchanged - branch already up to date"
+            echo "Report unchanged - no new commits"
           else
+            CHANGED=true
             git commit -m "docs: update CVE baseline scan report"
             git push -f origin chore/trivy-baseline
           fi
-          # Ensure an OPEN PR exists regardless of whether content changed.
-          # gh pr view by branch also matches closed PRs, so check state
-          # explicitly - editing a closed PR keeps it closed.
+          # gh pr view by branch also matches closed/merged PRs, so check the
+          # state explicitly. Only create when there is something new; close a
+          # stale open PR whose content now matches main (empty diff).
+          IS_OPEN=false
           if [ "$(gh pr view chore/trivy-baseline --json state --jq .state 2>/dev/null)" = "OPEN" ]; then
-            gh pr edit chore/trivy-baseline \
-              --title "chore: update CVE baseline scan report" \
-              --body "Automated Trivy baseline refresh from the nightly image scan." || true
-          else
+            IS_OPEN=true
+          fi
+          if [ "$CHANGED" = true ] && [ "$IS_OPEN" = false ]; then
             gh pr create \
               --base main \
               --head chore/trivy-baseline \
               --title "chore: update CVE baseline scan report" \
               --body "Automated Trivy baseline refresh from the nightly image scan." || true
+          elif [ "$CHANGED" = false ] && [ "$IS_OPEN" = true ]; then
+            gh pr close chore/trivy-baseline \
+              --comment "Baseline unchanged since last merge." || true
           fi
+
+      - name: Auto-merge docs-only baseline PR
+        # Hands-off operation: if the PR only touches STAGE-4-CVE-BASELINE.md
+        # and the validate check passes, merge it with the PAT (admin bypass -
+        # the sole code owner cannot self-approve, and that is exactly the
+        # friction the auto-merge is meant to remove). Any other diff, a
+        # failed validate, or a timeout leaves the PR open for manual review.
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          PR_NUM=$(gh pr view chore/trivy-baseline --json number --jq .number 2>/dev/null || true)
+          if [ -z "$PR_NUM" ] || [ "$(gh pr view "$PR_NUM" --json state --jq .state 2>/dev/null)" != "OPEN" ]; then
+            echo "No open baseline PR - nothing to merge"
+            exit 0
+          fi
+          FILES=$(gh pr diff "$PR_NUM" --name-only)
+          if [ -z "$FILES" ]; then
+            echo "PR has no diff - closing"
+            gh pr close "$PR_NUM" --comment "No changes vs main." || true
+            exit 0
+          fi
+          if [ "$(printf '%s\n' "$FILES" | grep -c .)" -ne 1 ] || ! printf '%s\n' "$FILES" | grep -qx "STAGE-4-CVE-BASELINE.md"; then
+            echo "Diff is not docs-only (files: $(printf '%s ' $FILES)) - leaving for manual review"
+            exit 0
+          fi
+          echo "Diff is docs-only - waiting for validate to pass"
+          HEAD=$(gh pr view "$PR_NUM" --json headRefOid --jq .headRefOid)
+          RESULT=""
+          for _ in $(seq 1 40); do
+            STATE=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD}/check-runs" \
+              --jq '[.check_runs[] | select(.name=="validate")] | sort_by(.id) | reverse | .[0].conclusion // "pending"' 2>/dev/null || echo pending)
+            case "$STATE" in
+              success) RESULT=success; break ;;
+              failure|action_required|cancelled) RESULT="$STATE"; break ;;
+              *) sleep 15 ;;
+            esac
+          done
+          if [ "$RESULT" != "success" ]; then
+            echo "validate did not pass (${RESULT:-timeout after 10m}) - leaving PR open"
+            exit 0
+          fi
+          echo "validate passed - merging"
+          gh pr merge "$PR_NUM" --squash --admin --delete-branch || echo "merge failed - leaving PR open"

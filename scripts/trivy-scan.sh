@@ -114,6 +114,12 @@ sed -i "s/\*\*Total CVEs:\*\* —/\*\*Total CVEs:\*\* $TOTAL/g" "$REPORT_FILE"
 ACTIONABLE=$((CRITICAL_COUNT + HIGH_COUNT))
 sed -i "s/\*\*Actionable (CRIT+HIGH):\*\* —/\*\*Actionable (CRIT+HIGH):\*\* $ACTIONABLE/g" "$REPORT_FILE"
 
+# Fill in the generated/version stamps - also guarantees every run produces a
+# real diff, so the auto-merge path in the workflow gets exercised.
+sed -i "s/\*\*Generated:\*\* .*/\*\*Generated:\*\* $(date -u '+%Y-%m-%d %H:%M UTC')/" "$REPORT_FILE"
+TRIVY_VER=$(trivy --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+sed -i "s/\*\*Trivy Version:\*\* (auto-filled)/\*\*Trivy Version:\*\* ${TRIVY_VER:-unknown}/" "$REPORT_FILE"
+
 # Add next steps
 cat >> "$REPORT_FILE" << EOF
 
