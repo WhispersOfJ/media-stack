@@ -1,5 +1,18 @@
 # Changelog
 
+## [11.19.3](https://github.com/WhispersOfJ/media-stack/compare/v11.19.2...v11.19.3) (2026-08-26)
+
+
+### Bug Fixes
+
+* author baseline PR as trusted user via release-please PAT ([57858f4](https://github.com/WhispersOfJ/media-stack/commit/57858f42f9effbc8918648d31befdfda09ed9391))
+* correct landing page health checks and doc links ([f1f0667](https://github.com/WhispersOfJ/media-stack/commit/f1f0667382f32b08a1e10808b58f97b2ed7a6e1b))
+* count CRITICAL package CVEs in baseline report ([e20f28a](https://github.com/WhispersOfJ/media-stack/commit/e20f28a402bb1e5e42fdb124506662f033c65545))
+* grant pull-requests write and always ensure baseline PR ([3df982e](https://github.com/WhispersOfJ/media-stack/commit/3df982edb7cef57e9ff2025652b46d2f3f5a5dea))
+* install trivy via apt in report job ([e8827b1](https://github.com/WhispersOfJ/media-stack/commit/e8827b16aee0cf3eda595098af56473fd9ba6a2e))
+* land trivy baseline report via PR instead of direct push ([0b2f5b2](https://github.com/WhispersOfJ/media-stack/commit/0b2f5b2ea26a5b179a3c0c590b97cb5c94ed8e93))
+* only edit an OPEN baseline PR, create otherwise ([cf491db](https://github.com/WhispersOfJ/media-stack/commit/cf491db8a723f2c24729a8301474840529e199e1))
+
 ## [11.19.2](https://github.com/WhispersOfJ/media-stack/compare/v11.19.1...v11.19.2) (2026-08-26)
 
 
