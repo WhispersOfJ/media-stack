@@ -5,7 +5,7 @@ docker==7.2.0
 httpx==0.28.1
 pytest==9.1.1
 pytest-django==4.14.0
-pytest-cov==6.0.0
+pytest-cov==7.1.0
 pytest-httpx==1.1.0
 pillow==12.3.0
 whitenoise==6.12.0
