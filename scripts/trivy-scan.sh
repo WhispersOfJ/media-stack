@@ -66,8 +66,10 @@ for IMAGE in "${IMAGES[@]}"; do
   # Run trivy scan with JSON output (suppress progress)
   TRIVY_OUTPUT=$(trivy image --format json --severity CRITICAL,HIGH,MEDIUM,LOW "$IMAGE" 2>/dev/null || echo "{}")
   
-  # Parse JSON to count vulnerabilities
-  CRIT=$(echo "$TRIVY_OUTPUT" | jq '[.Results[]?.Misconfigurations[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
+  # Parse JSON to count vulnerabilities (Vulnerabilities for every severity,
+  # matching the CI gate - the old Misconfigurations path undercounted
+  # CRITICAL package CVEs to 0 while the gate blocked on dozens).
+  CRIT=$(echo "$TRIVY_OUTPUT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
   HIGH=$(echo "$TRIVY_OUTPUT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
   MEDIUM=$(echo "$TRIVY_OUTPUT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' 2>/dev/null || echo 0)
   LOW=$(echo "$TRIVY_OUTPUT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' 2>/dev/null || echo 0)
