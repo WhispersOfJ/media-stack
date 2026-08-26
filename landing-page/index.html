@@ -187,11 +187,11 @@
         <div class="doc-title">⚙️ CI/CD</div>
         <div class="doc-desc">GitHub Actions workflows — build, test, and deploy status</div>
       </a>
-      <a class="doc-card" href="/grafana/" target="_blank">
+      <a class="doc-card" id="grafana-link" href="#" target="_blank">
         <div class="doc-title">📊 Grafana Dashboards</div>
         <div class="doc-desc">Live metrics, logs, and monitoring dashboards</div>
       </a>
-      <a class="doc-card" href="/prometheus/" target="_blank">
+      <a class="doc-card" id="prometheus-link" href="#" target="_blank">
         <div class="doc-title">🔥 Prometheus</div>
         <div class="doc-desc">Raw metrics and alerting rules</div>
       </a>
@@ -240,8 +240,10 @@
       // Reset all to pending (gray)
       cards.forEach(c => { document.getElementById(`status-${c.dataset.port}`).className = "card-status"; });
       try {
+        // 10s cap: the proxy checks 13 services with up to 3s timeouts each,
+        // so a 5s client abort fired on slow polls and flashed everything red.
         const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 5000);
+        const tid = setTimeout(() => ctrl.abort(), 10000);
         const r = await fetch(`http://${BASE}:${CP_PORT}/api/v2/host/health`, { signal: ctrl.signal });
         clearTimeout(tid);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -271,6 +273,10 @@
     }
 
     renderServices();
+    // Docs cards link to the live services; relative /grafana/ would resolve
+    // against the landing page itself (nginx serves index.html for any path).
+    document.getElementById("grafana-link").href = `http://${BASE}:3001`;
+    document.getElementById("prometheus-link").href = `http://${BASE}:9090`;
     checkAll();
     setInterval(checkAll, 15000);
   </script>

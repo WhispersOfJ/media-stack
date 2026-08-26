@@ -295,13 +295,20 @@ class HealthCheckView(EnvelopeAPIView):
 
         from core.arr_client import ARR_APPS, PROWLARR_CFG
         from core.nzbdav_client import NZBDAV_API_KEY, NZBDAV_URL
+        from core.plex_client import PLEX_URL
 
+        # Plex runs host-networked (network_mode: host), so it has no DNS
+        # name on stacknet — PLEX_URL (compose overrides it to
+        # host.docker.internal:32400) is the only reachable address from here.
+        # NzbDAV's SABnzbd-compatible API takes apikey as a query param and
+        # NZBDAV_URL already ends in /api (adding /api again 404s).
+        nzbdav_key = f"&apikey={NZBDAV_API_KEY}" if NZBDAV_API_KEY else ""
         services_to_check = [
-            {"name": "Plex", "url": "http://plex:32400/identity", "timeout": 3},
+            {"name": "Plex", "url": f"{PLEX_URL}/identity" if PLEX_URL else "http://127.0.0.1:9/", "timeout": 3},
             {"name": "Radarr", "url": f"{ARR_APPS['radarr']['url']}/api/v3/system/status", "headers": {"X-Api-Key": ARR_APPS['radarr']['key']}, "timeout": 3},
             {"name": "Sonarr", "url": f"{ARR_APPS['sonarr']['url']}/api/v3/system/status", "headers": {"X-Api-Key": ARR_APPS['sonarr']['key']}, "timeout": 3},
             {"name": "Prowlarr", "url": f"{PROWLARR_CFG['url']}/api/v1/system/status", "headers": {"X-Api-Key": PROWLARR_CFG['key']}, "timeout": 3},
-            {"name": "NzbDAV", "url": f"{NZBDAV_URL}/api?mode=get_cats&output=json", "headers": {"apikey": NZBDAV_API_KEY}, "timeout": 3},
+            {"name": "NzbDAV", "url": f"{NZBDAV_URL}?mode=get_cats&output=json{nzbdav_key}", "timeout": 3},
             {"name": "Overseerr", "url": "http://seerr:5055/api/v1/status", "timeout": 3},
             {"name": "Control Panel", "url": "http://localhost:8420/healthz", "timeout": 2},
             {"name": "Metacache", "url": "http://metacache:8765/healthz", "timeout": 2},
@@ -309,6 +316,7 @@ class HealthCheckView(EnvelopeAPIView):
             {"name": "Cleanuparr", "url": "http://cleanuparr:11011/health", "timeout": 2},
             {"name": "Grafana", "url": "http://grafana:3000/api/health", "timeout": 2},
             {"name": "Prometheus", "url": "http://prometheus:9090/-/healthy", "timeout": 2},
+            {"name": "arr-dashboard", "url": "http://arr-dashboard:3000/health", "timeout": 3},
         ]
 
         def check_one(svc):
