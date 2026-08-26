@@ -1,5 +1,23 @@
 # Changelog
 
+## [11.19.1](https://github.com/WhispersOfJ/media-stack/compare/v11.19.0...v11.19.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* correct SARIF merge logic in trivy-scan workflow ([ccd5d99](https://github.com/WhispersOfJ/media-stack/commit/ccd5d9960b8a3f3152459fb00915707c927b9d40))
+* downgrade pytest to 8.3.4 for pytest-httpx 0.36.2 compat ([ad5539b](https://github.com/WhispersOfJ/media-stack/commit/ad5539b6a06a5e85193ef22810fe2c65c47150a6))
+* restore pytest==9.1.1 for pytest-httpx 0.36.2 compat ([71fd9fb](https://github.com/WhispersOfJ/media-stack/commit/71fd9fb1905ce16282d79952a8139b2b744855d3))
+* rewrite trivy-scan workflow with Python SARIF merge ([df68414](https://github.com/WhispersOfJ/media-stack/commit/df68414c3df75a849a6b02698d9c60142102c538))
+* simplify trivy-scan to individual scans with CRITICAL gating ([44987d8](https://github.com/WhispersOfJ/media-stack/commit/44987d876ff2ea7b5048f221a5fcf219b1e030ab))
+* upgrade pytest-httpx to 1.1.0 for pytest 9 compatibility ([d30867a](https://github.com/WhispersOfJ/media-stack/commit/d30867a9dff3c7d41fb4a1fd4b4ef5ca4d0a7860))
+* write image list to file to avoid shell quoting issues ([07ccbbd](https://github.com/WhispersOfJ/media-stack/commit/07ccbbd74be9fc9cf00e873db800c1d979fbefc4))
+
+
+### Performance Improvements
+
+* add --scanners vuln to trivy for faster scans ([af2db03](https://github.com/WhispersOfJ/media-stack/commit/af2db03021d9ec09dd3474511ccb09849449b0df))
+
 ## [11.19.0](https://github.com/WhispersOfJ/media-stack/compare/v11.18.0...v11.19.0) (2026-08-26)
 
 
