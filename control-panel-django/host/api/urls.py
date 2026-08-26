@@ -9,6 +9,7 @@ from host.api.views import (
     DiskHealthView,
     DiskUsageView,
     DocsReadmeView,
+    HealthCheckView,
     HostResourcesView,
     ImageCheckView,
     LogLevelsView,
@@ -34,6 +35,7 @@ app_name = "host_api"
 # coexist (verified against the Task 7 path list).
 urlpatterns = [
     path("status", StatusView.as_view(), name="status"),
+    path("health", HealthCheckView.as_view(), name="health"),
     path("containers", ContainersView.as_view(), name="containers"),
     path("container/<str:name>/restart", ContainerRestartView.as_view(), name="container_restart"),
     path("container/<str:name>/stop", ContainerStopView.as_view(), name="container_stop"),

@@ -276,3 +276,49 @@ class TopView(EnvelopeAPIView):
         result = services.stack_top(query.validated_data["by"], query.validated_data["limit"])
         message = result.pop("message")
         return self.ok(message, **result)
+
+
+class HealthCheckView(EnvelopeAPIView):
+    """GET /api/v2/host/health - check all service health endpoints.
+
+    Returns a dict mapping service name to {status: "up"|"down", code: int}.
+    Uses the same API keys the control panel already has for Arr/NzbDAV.
+    The landing page calls this instead of hitting each service directly.
+    """
+
+    def get(self, request):
+        import concurrent.futures
+        import httpx
+
+        from core.arr_client import ARR_APPS, PROWLARR_CFG
+        from core.nzbdav_client import NZBDAV_API_KEY, NZBDAV_URL
+
+        services_to_check = [
+            {"name": "Plex", "url": "http://plex:32400/identity", "timeout": 3},
+            {"name": "Radarr", "url": f"{ARR_APPS['radarr']['url']}/api/v3/system/status", "headers": {"X-Api-Key": ARR_APPS['radarr']['key']}, "timeout": 3},
+            {"name": "Sonarr", "url": f"{ARR_APPS['sonarr']['url']}/api/v3/system/status", "headers": {"X-Api-Key": ARR_APPS['sonarr']['key']}, "timeout": 3},
+            {"name": "Prowlarr", "url": f"{PROWLARR_CFG['url']}/api/v1/system/status", "headers": {"X-Api-Key": PROWLARR_CFG['key']}, "timeout": 3},
+            {"name": "NzbDAV", "url": f"{NZBDAV_URL}/api?mode=get_cats&output=json", "headers": {"apikey": NZBDAV_API_KEY}, "timeout": 3},
+            {"name": "Overseerr", "url": "http://seerr:5055/api/v1/status", "timeout": 3},
+            {"name": "Control Panel", "url": "http://localhost:8420/healthz", "timeout": 2},
+            {"name": "Metacache", "url": "http://metacache:8765/healthz", "timeout": 2},
+            {"name": "Watchstate", "url": "http://watchstate:8080/", "timeout": 3},
+            {"name": "Cleanuparr", "url": "http://cleanuparr:11011/health", "timeout": 2},
+            {"name": "Grafana", "url": "http://grafana:3000/api/health", "timeout": 2},
+            {"name": "Prometheus", "url": "http://prometheus:9090/-/healthy", "timeout": 2},
+        ]
+
+        def check_one(svc):
+            try:
+                with httpx.Client(timeout=svc["timeout"], follow_redirects=True) as client:
+                    r = client.get(svc["url"], headers=svc.get("headers", {}))
+                    return svc["name"], {"status": "up" if r.status_code < 400 else "down", "code": r.status_code}
+            except Exception:
+                return svc["name"], {"status": "down", "code": 0}
+
+        result = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            for name, info in pool.map(check_one, services_to_check):
+                result[name] = info
+
+        return self.ok(f"{sum(1 for v in result.values() if v['status'] == 'up')}/{len(result)} services up", services=result)

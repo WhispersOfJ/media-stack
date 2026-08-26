@@ -39,32 +39,22 @@ jobs:
           echo "Found $(wc -l < /tmp/images.txt) images"
           cat /tmp/images.txt
 
-      - name: Scan each image and report
+      - name: Scan all images and gate on CRITICAL
         run: |
+          CRITICAL_TOTAL=0
+          HIGH_TOTAL=0
           while IFS= read -r image; do
             [ -z "$image" ] && continue
             echo "::group::Scanning $image"
             RESULT=$(trivy image --scanners vuln --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
             CRIT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
             HIGH=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
-            echo "  CRITICAL: $CRIT, HIGH: $HIGH"
-            echo "::endgroup::"
-          done < /tmp/images.txt
-
-      - name: Final CRITICAL check
-        run: |
-          CRITICAL_TOTAL=0
-          HIGH_TOTAL=0
-          while IFS= read -r image; do
-            [ -z "$image" ] && continue
-            RESULT=$(trivy image --scanners vuln --format json --severity CRITICAL,HIGH "$image" 2>/dev/null || echo '{}')
-            CRIT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
-            HIGH=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
             CRITICAL_TOTAL=$((CRITICAL_TOTAL + CRIT))
             HIGH_TOTAL=$((HIGH_TOTAL + HIGH))
+            echo "  CRITICAL: $CRIT, HIGH: $HIGH (running total: C=$CRITICAL_TOTAL H=$HIGH_TOTAL)"
+            echo "::endgroup::"
           done < /tmp/images.txt
           echo "=== TOTAL: CRITICAL=$CRITICAL_TOTAL HIGH=$HIGH_TOTAL ==="
-          
           if [ "$CRITICAL_TOTAL" -gt 0 ]; then
             echo "❌ $CRITICAL_TOTAL CRITICAL CVEs detected across all images"
             exit 1
