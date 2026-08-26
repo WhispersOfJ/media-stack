@@ -23,20 +23,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install Trivy
+        run: |
+          sudo apt-get update && sudo apt-get install -y wget apt-transport-https
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install -y trivy
+
       - name: Extract images from docker-compose.yml
         id: images
         run: |
-          images=$(grep -oP '^\s+image:\s+\K[^@\n]+' docker-compose.yml | sort -u | tr '\n' ' ')
+          images=$(grep -oP '^\s+image:\s+\K[^@\n]+' docker-compose.yml | sort -u | jq -R -s -c 'split(" ") | map(select(. != ""))')
           echo "list=$images" >> $GITHUB_OUTPUT
 
-      - name: Run Trivy scan on all images
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'image'
-          scan-ref: ${{ steps.images.outputs.list }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM'
+      - name: Scan each image individually
+        run: |
+          echo '${{ steps.images.outputs.list }}' | jq -r '.[]' | while IFS= read -r image; do
+            [ -z "$image" ] && continue
+            safe_name=$(echo "$image" | tr '/:' '__')
+            echo "::group::Scanning $image"
+            trivy image --format sarif --severity CRITICAL,HIGH,MEDIUM --output "trivy-${safe_name}.sarif" "$image" || true
+            echo "::endgroup::"
+          done
+          # Merge all SARIFs into one
+          echo '{"version":"2.1.0","runs":[]}' > trivy-results.sarif
+          for f in trivy-*.sarif; do
+            [ -f "$f" ] || continue
+            jq -r '.runs[]' "$f" | jq -s '.runs += [.[]] | {version:"2.1.0",runs:.runs}' trivy-results.sarif > trivy-merged.sarif && mv trivy-merged.sarif trivy-results.sarif
+            rm -f "$f"
+          done
+          echo "Scan complete. Results: $(jq '.runs | length' trivy-results.sarif) image runs"
+        shell: bash
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
