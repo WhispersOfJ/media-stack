@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Media Stack</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e4e6f0;
+      --text-dim: #8b8fa3;
+      --accent: #6c5ce7;
+      --green: #00d68f;
+      --red: #ff6b6b;
+      --yellow: #ffd93d;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 2rem 2rem 1rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      color: var(--text-dim);
+      margin-top: 0.3rem;
+      font-size: 0.9rem;
+    }
+    .status-bar {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1rem;
+      font-size: 0.8rem;
+    }
+    .status-bar .stat { display: flex; align-items: center; gap: 0.4rem; }
+    .status-bar .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block;
+    }
+    .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+    main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+    h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 2.5rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.2s, transform 0.15s;
+      position: relative;
+    }
+    .card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .card .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card .card-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .card .card-status {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-dim);
+      transition: background 0.3s;
+    }
+    .card .card-status.up { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .card .card-status.down { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .card .card-desc {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      line-height: 1.4;
+    }
+    .card .card-port {
+      font-size: 0.72rem;
+      color: var(--accent);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      margin-top: auto;
+      padding-top: 0.3rem;
+    }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.75rem;
+    }
+    .doc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .doc-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .doc-card .doc-title { font-weight: 600; font-size: 0.9rem; }
+    .doc-card .doc-desc {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      margin-top: 0.3rem;
+      line-height: 1.4;
+    }
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
+      .docs-grid { grid-template-columns: 1fr; }
+      header h1 { font-size: 1.4rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📦 Media Stack</h1>
+    <p>Unified control plane for your media infrastructure</p>
+    <div class="status-bar">
+      <span class="stat"><span class="dot green" id="online-count-dot"></span> <span id="online-count">0</span> online</span>
+      <span class="stat"><span class="dot red" id="offline-count-dot"></span> <span id="offline-count">0</span> offline</span>
+      <span class="stat" style="color:var(--text-dim)">Last checked: <span id="last-checked">—</span></span>
+    </div>
+  </header>
+  <main>
+    <h2>Services</h2>
+    <div class="grid" id="services-grid"></div>
+
+    <h2>Documentation</h2>
+    <div class="docs-grid">
+      <a class="doc-card" href="https://github.com/WhispersOfJ/media-stack" target="_blank">
+        <div class="doc-title">📖 README</div>
+        <div class="doc-desc">Full setup guide, architecture overview, and commands reference</div>
+      </a>
+      <a class="doc-card" href="https://github.com/WhispersOfJ/media-stack/blob/main/AGENTS.md" target="_blank">
+        <div class="doc-title">🤖 AGENTS.md</div>
+        <div class="doc-desc">AI agent context — technologies, APIs, service map, and coding conventions</div>
+      </a>
+      <a class="doc-card" href="https://github.com/WhispersOfJ/media-stack/blob/main/BUG-SMASHED.md" target="_blank">
+        <div class="doc-title">🐛 Bug History</div>
+        <div class="doc-desc">Graphical history of resolved issues across the stack</div>
+      </a>
+      <a class="doc-card" href="https://github.com/WhispersOfJ/media-stack/actions" target="_blank">
+        <div class="doc-title">⚙️ CI/CD</div>
+        <div class="doc-desc">GitHub Actions workflows — build, test, and deploy status</div>
+      </a>
+      <a class="doc-card" href="/grafana/" target="_blank">
+        <div class="doc-title">📊 Grafana Dashboards</div>
+        <div class="doc-desc">Live metrics, logs, and monitoring dashboards</div>
+      </a>
+      <a class="doc-card" href="/prometheus/" target="_blank">
+        <div class="doc-title">🔥 Prometheus</div>
+        <div class="doc-desc">Raw metrics and alerting rules</div>
+      </a>
+    </div>
+  </main>
+  <footer>
+    Media Stack &middot; <a href="https://github.com/WhispersOfJ/media-stack">GitHub</a>
+  </footer>
+
+  <script>
+    const SERVICES = [
+      { name: "Plex",           desc: "Media server & streaming",          port: 32400, health: "/identity" },
+      { name: "Radarr",         desc: "Movie management & downloads",      port: 7878,  health: "/api/v3/system/status" },
+      { name: "Sonarr",         desc: "TV show management & downloads",    port: 8989,  health: "/api/v3/system/status" },
+      { name: "Prowlarr",       desc: "Indexer management & search",       port: 9696,  health: "/api/v1/system/status" },
+      { name: "NzbDAV",         desc: "Usenet queue & WebDAV mount",       port: 3000,  health: "/api?mode=get_cats&output=json" },
+      { name: "Overseerr",      desc: "Request management & discovery",    port: 5055,  health: "/api/v1/status" },
+      { name: "Control Panel",  desc: "Stack operations & fish CLI",       port: 8420,  health: "/healthz" },
+      { name: "arr-dashboard",  desc: "Queue, calendar & TRaSH Guides",    port: 41789, health: "/" },
+      { name: "Metacache",      desc: "Plex metadata cache & matching",    port: 8765,  health: "/healthz" },
+      { name: "Watchstate",     desc: "Watch history sync",                port: 8705,  health: "/health" },
+      { name: "Cleanuparr",     desc: "Stale download cleanup",            port: 11011, health: "/health" },
+      { name: "Grafana",        desc: "Metrics dashboards & visualization", port: 3001,  health: "/api/health" },
+      { name: "Prometheus",     desc: "Metrics collection & alerting",     port: 9090,  health: "/-/healthy" },
+    ];
+
+    const BASE = location.hostname;
+
+    function renderServices() {
+      const grid = document.getElementById("services-grid");
+      grid.innerHTML = SERVICES.map(s => `
+        <a class="card" href="http://${BASE}:${s.port}" target="_blank" data-port="${s.port}" data-health="${s.health}">
+          <div class="card-header">
+            <span class="card-title">${s.name}</span>
+            <span class="card-status" id="status-${s.port}"></span>
+          </div>
+          <div class="card-desc">${s.desc}</div>
+          <div class="card-port">:${s.port}</div>
+        </a>
+      `).join("");
+    }
+
+    async function checkHealth(card) {
+      const port = card.dataset.port;
+      const healthPath = card.dataset.health;
+      const el = document.getElementById(`status-${port}`);
+      try {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 3000);
+        const r = await fetch(`http://${BASE}:${port}${healthPath}`, {
+          mode: "no-cors", signal: ctrl.signal
+        });
+        clearTimeout(tid);
+        // no-cors always returns opaque, treat as "reached"
+        el.className = "card-status up";
+        return true;
+      } catch {
+        el.className = "card-status down";
+        return false;
+      }
+    }
+
+    async function checkAll() {
+      const cards = document.querySelectorAll(".card[data-port]");
+      const results = await Promise.all([...cards].map(checkHealth));
+      const up = results.filter(Boolean).length;
+      document.getElementById("online-count").textContent = up;
+      document.getElementById("offline-count").textContent = results.length - up;
+      document.getElementById("last-checked").textContent = new Date().toLocaleTimeString();
+    }
+
+    renderServices();
+    checkAll();
+    setInterval(checkAll, 15000);
+  </script>
+</body>
+</html>
