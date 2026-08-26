@@ -73,6 +73,7 @@ jobs:
     needs: scan
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -106,11 +107,13 @@ jobs:
           git checkout -b chore/trivy-baseline
           git add STAGE-4-CVE-BASELINE.md || true
           if git diff --cached --quiet; then
-            echo "Report unchanged - skipping push"
-            exit 0
+            echo "Report unchanged - branch already up to date"
+          else
+            git commit -m "docs: update CVE baseline scan report"
+            git push -f origin chore/trivy-baseline
           fi
-          git commit -m "docs: update CVE baseline scan report"
-          git push -f origin chore/trivy-baseline
+          # Ensure the PR exists regardless of whether content changed - the
+          # first run found an unchanged report would have skipped creation.
           if gh pr view chore/trivy-baseline --json number --jq .number >/dev/null 2>&1; then
             gh pr edit chore/trivy-baseline \
               --title "chore: update CVE baseline scan report" \
