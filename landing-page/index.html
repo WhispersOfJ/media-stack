@@ -212,7 +212,7 @@
       { name: "Control Panel",  desc: "Stack operations & fish CLI",       port: 8420,  health: "/healthz" },
       { name: "arr-dashboard",  desc: "Queue, calendar & TRaSH Guides",    port: 41789, health: "/" },
       { name: "Metacache",      desc: "Plex metadata cache & matching",    port: 8765,  health: "/healthz" },
-      { name: "Watchstate",     desc: "Watch history sync",                port: 8705,  health: "/health" },
+      { name: "Watchstate",     desc: "Watch history sync",                port: 8705,  health: "/" },
       { name: "Cleanuparr",     desc: "Stale download cleanup",            port: 11011, health: "/health" },
       { name: "Grafana",        desc: "Metrics dashboards & visualization", port: 3001,  health: "/api/health" },
       { name: "Prometheus",     desc: "Metrics collection & alerting",     port: 9090,  health: "/-/healthy" },
@@ -242,11 +242,10 @@
         const ctrl = new AbortController();
         const tid = setTimeout(() => ctrl.abort(), 3000);
         const r = await fetch(`http://${BASE}:${port}${healthPath}`, {
-          mode: "no-cors", signal: ctrl.signal
+          signal: ctrl.signal
         });
         clearTimeout(tid);
-        // no-cors always returns opaque, treat as "reached"
-        el.className = "card-status up";
+        el.className = r.ok ? "card-status up" : "card-status down";
         return true;
       } catch {
         el.className = "card-status down";
