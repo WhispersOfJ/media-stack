@@ -1,5 +1,18 @@
 # Changelog
 
+## [11.20.0](https://github.com/WhispersOfJ/media-stack/compare/v11.19.3...v11.20.0) (2026-08-26)
+
+
+### Features
+
+* add CVE baseline summary card to landing page ([c8113ae](https://github.com/WhispersOfJ/media-stack/commit/c8113aed395fd4a931bb903dc0ba1e683d26e61c))
+* auto-merge docs-only baseline PRs when validate passes ([70005d4](https://github.com/WhispersOfJ/media-stack/commit/70005d4ca060150cd4697153d62919c707c6c11f))
+
+
+### Bug Fixes
+
+* bump grafana stack images to clear 31 critical CVEs ([c9ecb48](https://github.com/WhispersOfJ/media-stack/commit/c9ecb482fd3f7d68d31bfcdab91858375ae55a82))
+
 ## [11.19.3](https://github.com/WhispersOfJ/media-stack/compare/v11.19.2...v11.19.3) (2026-08-26)
 
 
