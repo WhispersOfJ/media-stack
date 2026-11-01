@@ -968,7 +968,7 @@ services:
 
   grafana:
     restart: unless-stopped
-    image: grafana/grafana:13.2.0
+    image: grafana/grafana:13.3.0
     container_name: grafana
     ports:
       - "3001:3000"
